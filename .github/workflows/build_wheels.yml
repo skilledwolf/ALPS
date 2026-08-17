@@ -1,28 +1,56 @@
 name: ALPS Python Packaging CI/CD
 
+# PRs build a single smoke-test wheel (one platform, one Python) to verify
+# packaging isn't broken. The full wheel matrix — all platforms x CPython
+# 3.9-3.13 — runs on release tags and manual dispatch, and publishing to PyPI
+# stays gated on 'v*' tags.
+
 on:
   push:
-    branches:
-      - master    # the default branch
     tags:
-      - 'v*'    # this triggers the workflow when a tag starting with 'v' is pushed
+      - 'v*'
   pull_request:
     branches:
       - master
+    paths-ignore:
+      - '**.md'
+      - '.github/ISSUE_TEMPLATE/**'
+  workflow_dispatch:
+
+concurrency:
+  group: wheels-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  matrix:
+    name: Select wheel matrix
+    runs-on: ubuntu-latest
+    outputs:
+      plat: ${{ steps.pick.outputs.plat }}
+    steps:
+      - id: pick
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            # PR smoke test: newest CPython on Linux only.
+            echo 'plat=[{"os":"ubuntu-latest","target":"","arch":"x86_64","homebrew":"","cibw_build":"cp313-*"}]' >> "$GITHUB_OUTPUT"
+          else
+            # Full matrix for tags / manual dispatch.
+            full='[
+              {"os":"ubuntu-latest","target":"","arch":"x86_64","homebrew":"","cibw_build":"cp39-* cp310-* cp311-* cp312-* cp313-*"},
+              {"os":"macos-15","target":"15.0","arch":"arm64","homebrew":"/opt/homebrew","cibw_build":"cp39-* cp310-* cp311-* cp312-* cp313-*"},
+              {"os":"macos-26","target":"26.0","arch":"arm64","homebrew":"/opt/homebrew","cibw_build":"cp39-* cp310-* cp311-* cp312-* cp313-*"}
+            ]'
+            echo "plat=$(jq -c . <<< "$full")" >> "$GITHUB_OUTPUT"
+          fi
+
   build_wheels:
     name: Build wheels on ${{ matrix.plat.os }}
+    needs: matrix
     runs-on: ${{ matrix.plat.os }}
     strategy:
+      fail-fast: false
       matrix:
-        # macos-13 is an intel runner, macos-14 is apple silicon
-        plat: 
-        - { os: ubuntu-latest, target: "", arch: x86_64, homebrew: ''}
-        #- { os: macos-13, target: "13.0" , arch: x86_64, homebrew: '/usr/local'} #DEPRECATED. Too old.
-        - { os: macos-15, target: "15.0" , arch: arm64, homebrew: '/opt/homebrew'}
-        - { os: macos-26, target: "26.0" , arch: arm64, homebrew: '/opt/homebrew'}
-
+        plat: ${{ fromJSON(needs.matrix.outputs.plat) }}
     steps:
       - uses: actions/checkout@v7
 
@@ -40,7 +68,7 @@ jobs:
       - name: Build wheels
         uses: pypa/cibuildwheel@v2.22.0
         env:
-          CIBW_BUILD: cp39-* cp310-* cp311-* cp312-* cp313-*
+          CIBW_BUILD: ${{ matrix.plat.cibw_build }}
           CIBW_ARCHS: ${{ matrix.plat.arch }}
           CIBW_ARCHS_MACOS: ${{ matrix.plat.arch }}
 
@@ -52,15 +80,6 @@ jobs:
             Boost_ROOT_DIR=/Users/runner/work/ALPS/ALPS/boost_1_87_0
             MACOSX_DEPLOYMENT_TARGET=${{ matrix.plat.target }}
             CXXFLAGS="-stdlib=libc++"
-#          CIBW_ENVIRONMENT: >
-
-        # env:
-        #   CIBW_SOME_OPTION: value
-        #    ...
-        # with:
-        #   package-dir: .
-        #   output-dir: wheelhouse
-        #   config-file: "{package}/pyproject.toml"
 
       - uses: actions/upload-artifact@v7
         with:
@@ -89,8 +108,6 @@ jobs:
     environment: pypi
     permissions:
       id-token: write
-    #if: github.event_name == 'release' && github.event.action == 'published'
-    # or, alternatively, upload to PyPI on every tag starting with 'v' (remove on: release above to use this)
     if: startsWith(github.ref, 'refs/tags/v')  || github.event_name == 'release'
     steps:
       - uses: actions/download-artifact@v8
@@ -101,6 +118,3 @@ jobs:
           merge-multiple: true
 
       - uses: pypa/gh-action-pypi-publish@release/v1
-        #with:
-          # To test: 
-          # repository-url: https://test.pypi.org/legacy/
