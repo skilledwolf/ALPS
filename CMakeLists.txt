@@ -17,7 +17,7 @@
 #   FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 #   DEALINGS IN THE SOFTWARE.
 
-cmake_minimum_required(VERSION 3.18.0)
+cmake_minimum_required(VERSION 3.22.0)
 
 if(${CMAKE_SOURCE_DIR} STREQUAL ${CMAKE_BINARY_DIR})
   message(FATAL_ERROR "In-source builds not allowed. Please make a new directory (called a build directory) and run CMake from there. You may need to remove CMakeCache.txt.")
@@ -92,7 +92,11 @@ else(ALPS_BUILD_FORTRAN)
   project(alps C CXX)
 endif(ALPS_BUILD_FORTRAN)
 
-set(CMAKE_CXX_STANDARD 14)
+# C++17 is the minimum supported standard; allow callers (and CI) to select
+# a newer one with -DCMAKE_CXX_STANDARD=20/23.
+if(NOT DEFINED CMAKE_CXX_STANDARD)
+  set(CMAKE_CXX_STANDARD 17)
+endif()
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 

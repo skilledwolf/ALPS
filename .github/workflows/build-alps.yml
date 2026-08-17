@@ -91,7 +91,8 @@ jobs:
                 -DCMAKE_C_COMPILER_LAUNCHER=ccache \
                 -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
                 -DBoost_ROOT_DIR=`pwd`/boost_1_${{ matrix.plat.boost_version }}_0 \
-                -DCMAKE_CXX_FLAGS="-std=c++${{ matrix.plat.cxx_standard || '14' }} -fpermissive -DBOOST_NO_AUTO_PTR -DBOOST_FILESYSTEM_NO_CXX20_ATOMIC_REF -DBOOST_TIMER_ENABLE_DEPRECATED"
+                -DCMAKE_CXX_STANDARD=${{ matrix.plat.cxx_standard || '17' }} \
+                -DCMAKE_CXX_FLAGS="-fpermissive -DBOOST_NO_AUTO_PTR -DBOOST_FILESYSTEM_NO_CXX20_ATOMIC_REF -DBOOST_TIMER_ENABLE_DEPRECATED"
           cmake --build build -j $(nproc)
           ccache -s
       - name: Run tests
@@ -151,7 +152,8 @@ jobs:
                 -DCMAKE_C_COMPILER_LAUNCHER=ccache \
                 -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
                 -DBoost_ROOT_DIR=`pwd`/boost_1_${{ matrix.plat.boost_version }}_0 \
-                -DCMAKE_CXX_FLAGS="${{ matrix.plat.cxx_stdlib }} -std=c++14 -fpermissive -DBOOST_NO_AUTO_PTR -DBOOST_FILESYSTEM_NO_CXX20_ATOMIC_REF -DBOOST_TIMER_ENABLE_DEPRECATED" \
+                -DCMAKE_CXX_STANDARD=${{ matrix.plat.cxx_standard || '17' }} \
+                -DCMAKE_CXX_FLAGS="${{ matrix.plat.cxx_stdlib }} -fpermissive -DBOOST_NO_AUTO_PTR -DBOOST_FILESYSTEM_NO_CXX20_ATOMIC_REF -DBOOST_TIMER_ENABLE_DEPRECATED" \
                 -DPython_ROOT_DIR=`$(brew --prefix)/bin/python${{ matrix.plat.py_version }} -c "import sys, os; print(os.path.dirname(os.path.dirname(str(sys.executable))));"` \
                 -DCMAKE_Fortran_COMPILER=gfortran
           cmake --build build -j $(sysctl -n hw.ncpu)
