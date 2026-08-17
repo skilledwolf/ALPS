@@ -74,7 +74,7 @@ namespace alps {
     {
       std::vector<T> to;
       to.reserve(from.size());
-      std::copy(data(from),data(from)+from.size(),std::back_inserter(to));
+      std::copy(alps::data(from),alps::data(from)+from.size(),std::back_inserter(to));
       return to;
     }
 
@@ -87,7 +87,7 @@ namespace alps {
     std::valarray<T> vector2valarray(std::vector<T> const & from)
     {
       std::valarray<T> to(from.size());
-      std::copy(from.begin(),from.end(),data(to));
+      std::copy(from.begin(),from.end(),alps::data(to));
       return to;
     }
 
@@ -95,7 +95,7 @@ namespace alps {
     std::valarray<T2> vector2valarray(std::vector<T1> const & from)
     {
       std::valarray<T2> to(from.size());
-      std::copy(from.begin(),from.end(),data(to));
+      std::copy(from.begin(),from.end(),alps::data(to));
       return to;
     }
 
