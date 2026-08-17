@@ -2,7 +2,7 @@ name: ALPS Python Packaging CI/CD
 
 # PRs build a single smoke-test wheel (one platform, one Python) to verify
 # packaging isn't broken. The full wheel matrix — all platforms x CPython
-# 3.11-3.13 — runs on release tags and manual dispatch, and publishing to
+# 3.10-3.13 — runs on release tags and manual dispatch, and publishing to
 # PyPI stays gated on 'v*' tags.
 
 on:
@@ -36,9 +36,9 @@ jobs:
           else
             # Full matrix for tags / manual dispatch.
             full='[
-              {"os":"ubuntu-latest","target":"","arch":"x86_64","homebrew":"","cibw_build":"cp311-* cp312-* cp313-*"},
-              {"os":"macos-15","target":"15.0","arch":"arm64","homebrew":"/opt/homebrew","cibw_build":"cp311-* cp312-* cp313-*"},
-              {"os":"macos-26","target":"26.0","arch":"arm64","homebrew":"/opt/homebrew","cibw_build":"cp311-* cp312-* cp313-*"}
+              {"os":"ubuntu-latest","target":"","arch":"x86_64","homebrew":"","cibw_build":"cp310-* cp311-* cp312-* cp313-*"},
+              {"os":"macos-15","target":"15.0","arch":"arm64","homebrew":"/opt/homebrew","cibw_build":"cp310-* cp311-* cp312-* cp313-*"},
+              {"os":"macos-26","target":"26.0","arch":"arm64","homebrew":"/opt/homebrew","cibw_build":"cp310-* cp311-* cp312-* cp313-*"}
             ]'
             echo "plat=$(jq -c . <<< "$full")" >> "$GITHUB_OUTPUT"
           fi

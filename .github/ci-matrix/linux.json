@@ -23,6 +23,7 @@
   { "label": "boost-1.89",       "tier": "full",  "os": "ubuntu-24.04", "comp_pack": "gcc-14 g++-14", "c_compiler": "gcc",   "cxx_compiler": "g++",     "c_version": 14, "py_version": "3.14", "boost_version": 89 },
   { "label": "boost-1.90",       "tier": "full",  "os": "ubuntu-24.04", "comp_pack": "gcc-14 g++-14", "c_compiler": "gcc",   "cxx_compiler": "g++",     "c_version": 14, "py_version": "3.14", "boost_version": 90 },
 
+  { "label": "py3.10",           "tier": "full",  "os": "ubuntu-24.04", "comp_pack": "gcc-14 g++-14", "c_compiler": "gcc",   "cxx_compiler": "g++",     "c_version": 14, "py_version": "3.10", "boost_version": 91 },
   { "label": "py3.11",           "tier": "full",  "os": "ubuntu-24.04", "comp_pack": "gcc-14 g++-14", "c_compiler": "gcc",   "cxx_compiler": "g++",     "c_version": 14, "py_version": "3.11", "boost_version": 91 },
   { "label": "py3.12",           "tier": "full",  "os": "ubuntu-24.04", "comp_pack": "gcc-14 g++-14", "c_compiler": "gcc",   "cxx_compiler": "g++",     "c_version": 14, "py_version": "3.12", "boost_version": 91 },
   { "label": "py3.13",           "tier": "full",  "os": "ubuntu-24.04", "comp_pack": "gcc-14 g++-14", "c_compiler": "gcc",   "cxx_compiler": "g++",     "c_version": 14, "py_version": "3.13", "boost_version": 91 },
@@ -30,5 +31,5 @@
   { "label": "cxx20",            "tier": "full",  "os": "ubuntu-24.04", "comp_pack": "gcc-14 g++-14", "c_compiler": "gcc",   "cxx_compiler": "g++",     "c_version": 14, "py_version": "3.14", "boost_version": 91, "cxx_standard": 20 },
   { "label": "cxx23",            "tier": "quick", "os": "ubuntu-24.04", "comp_pack": "gcc-14 g++-14", "c_compiler": "gcc",   "cxx_compiler": "g++",     "c_version": 14, "py_version": "3.14", "boost_version": 91, "cxx_standard": 23 },
 
-  { "label": "minimums",         "tier": "quick", "os": "ubuntu-24.04", "comp_pack": "gcc-14 g++-14", "c_compiler": "gcc",   "cxx_compiler": "g++",     "c_version": 14, "py_version": "3.11", "boost_version": 76, "cxx_standard": 17 }
+  { "label": "minimums",         "tier": "quick", "os": "ubuntu-24.04", "comp_pack": "gcc-14 g++-14", "c_compiler": "gcc",   "cxx_compiler": "g++",     "c_version": 14, "py_version": "3.10", "boost_version": 76, "cxx_standard": 17 }
 ]
