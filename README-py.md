@@ -21,7 +21,7 @@ pip install pyalps
   - BLAS/LAPACK
   - HDF5
   - MPI
-  - Python >= 3.9
+  - Python >= 3.11
     - Python 3.13 requires Boost version 1.87 or later
     - Earlier versions maybe also work but unsupported
   - C++ compiler (build has been tested on GCC 10.5 through 14.2)
