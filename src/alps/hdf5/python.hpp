@@ -39,7 +39,7 @@
 #include <alps/ngs/boost_python.hpp>
 #include <alps/python/numpy_array.hpp>
 
-#include <boost/scoped_ptr.hpp>
+#include <boost/scoped_array.hpp>
 
 #include <boost/python/list.hpp>
 #include <boost/python/dict.hpp>

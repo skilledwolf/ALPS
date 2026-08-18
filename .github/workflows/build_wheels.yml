@@ -1,130 +1,129 @@
-name: ALPS Python Packaging CI/CD
-
-# PRs build a single smoke-test wheel (one platform, one Python) to verify
-# packaging isn't broken. The full wheel matrix — all platforms x CPython
-# 3.10-3.13 — runs on release tags and manual dispatch, and publishing to
-# PyPI stays gated on 'v*' tags.
+name: Release
 
 on:
-  push:
-    tags:
-      - 'v*'
-  pull_request:
-    branches:
-      - master
-    paths-ignore:
-      - '**.md'
-      - '.github/ISSUE_TEMPLATE/**'
+  release:
+    types: [published]
   workflow_dispatch:
 
 permissions:
   contents: read
 
-# Newest wins (note: an expression here yields a string, which GitHub
-# treats as truthy — use literal booleans only). Tag builds are safe: each
-# tag is its own group.
 concurrency:
-  group: wheels-${{ github.ref }}
-  cancel-in-progress: true
+  group: release-${{ github.event.release.tag_name || github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  matrix:
-    name: Select wheel matrix
-    runs-on: ubuntu-latest
-    outputs:
-      plat: ${{ steps.pick.outputs.plat }}
-    steps:
-      - id: pick
-        run: |
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            # PR smoke test: newest CPython on Linux only.
-            echo 'plat=[{"os":"ubuntu-latest","target":"","arch":"x86_64","homebrew":"","cibw_build":"cp313-*"}]' >> "$GITHUB_OUTPUT"
-          else
-            # Full matrix for tags / manual dispatch.
-            full='[
-              {"os":"ubuntu-latest","target":"","arch":"x86_64","homebrew":"","cibw_build":"cp310-* cp311-* cp312-* cp313-*"},
-              {"os":"ubuntu-24.04-arm","target":"","arch":"aarch64","homebrew":"","cibw_build":"cp310-* cp311-* cp312-* cp313-*"},
-              {"os":"macos-15","target":"15.0","arch":"arm64","homebrew":"/opt/homebrew","cibw_build":"cp310-* cp311-* cp312-* cp313-*"},
-              {"os":"macos-26","target":"26.0","arch":"arm64","homebrew":"/opt/homebrew","cibw_build":"cp310-* cp311-* cp312-* cp313-*"}
-            ]'
-            echo "plat=$(jq -c . <<< "$full")" >> "$GITHUB_OUTPUT"
-          fi
-
-  build_wheels:
-    name: Build wheels on ${{ matrix.plat.os }}
-    needs: matrix
-    runs-on: ${{ matrix.plat.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        plat: ${{ fromJSON(needs.matrix.outputs.plat) }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-
-      # Install Fortran compiler based on OS
-      - name: Install dependencies
-        run: |
-          case "${{ matrix.plat.os }}" in
-            ubuntu-*)
-              sudo apt-get update
-              sudo apt-get install -y gfortran
-              ;;
-            *)
-              brew update
-              brew install gfortran
-              ;;
-          esac
-
-      - name: Build wheels
-        uses: pypa/cibuildwheel@ee63bf16da6cddfb925f542f2c7b59ad50e93969 # v2.22.0
-        env:
-          CIBW_BUILD: ${{ matrix.plat.cibw_build }}
-          CIBW_ARCHS: ${{ matrix.plat.arch }}
-          CIBW_ARCHS_MACOS: ${{ matrix.plat.arch }}
-
-          # Set Fortran compiler for all platforms
-          CIBW_ENVIRONMENT: "FC=gfortran"
-
-          # macOS-specific settings
-          CIBW_ENVIRONMENT_MACOS: >
-            Boost_ROOT_DIR=/Users/runner/work/ALPS/ALPS/boost_1_87_0
-            MACOSX_DEPLOYMENT_TARGET=${{ matrix.plat.target }}
-            CXXFLAGS="-stdlib=libc++"
-
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: cibw-wheels-${{ matrix.plat.os }}-${{ strategy.job-index }}
-          path: ./wheelhouse/*.whl
-
-
-  build_sdist:
+  sdist:
     name: Build source distribution
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-
-      - name: Build sdist
-        run: pipx run build --sdist
-
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.release.tag_name || github.ref }}
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: '3.14'
+      - name: Verify release tag and package version
+        if: github.event_name == 'release'
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: python .github/scripts/check-release-version.py "$RELEASE_TAG"
+      - name: Build and verify source distribution
+        run: |
+          python -m pip install "build==1.5.0" "twine==7.0.0"
+          python -m build --sdist
+          python -m twine check dist/*.tar.gz
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: cibw-sdist
+          name: release-sdist
           path: dist/*.tar.gz
+          if-no-files-found: error
+          retention-days: 14
 
-
-  upload_pypi:
-    needs: [build_wheels, build_sdist]
-    runs-on: ubuntu-latest
-    environment: pypi
-    permissions:
-      id-token: write
-    if: startsWith(github.ref, 'refs/tags/v')  || github.event_name == 'release'
+  wheels:
+    name: Wheels ${{ matrix.platform.os }} ${{ matrix.platform.arch }}
+    needs: sdist
+    runs-on: ${{ matrix.platform.os }}
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        platform:
+          - { os: ubuntu-latest, arch: x86_64, target: '' }
+          - { os: ubuntu-24.04-arm, arch: aarch64, target: '' }
+          - { os: macos-15, arch: arm64, target: '15.0' }
     steps:
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
-          # unpacks all CIBW artifacts into dist/
-          pattern: cibw-*
+          name: release-sdist
+          path: dist
+      - id: sdist
+        name: Locate source distribution
+        shell: bash
+        run: |
+          path="$(find dist -maxdepth 1 -name '*.tar.gz' -print -quit)"
+          test -n "$path"
+          echo "path=$path" >> "$GITHUB_OUTPUT"
+      - name: Build and test wheels
+        uses: pypa/cibuildwheel@1828c10ab37f080699c7b81cea34097c684a7074 # v4.2.0
+        with:
+          package-dir: ${{ steps.sdist.outputs.path }}
+        env:
+          CIBW_ARCHS: ${{ matrix.platform.arch }}
+          CIBW_ARCHS_LINUX: ${{ matrix.platform.arch }}
+          CIBW_ARCHS_MACOS: ${{ matrix.platform.arch }}
+          CIBW_ENVIRONMENT: "FC=gfortran"
+          CIBW_ENVIRONMENT_MACOS: >-
+            FC=gfortran
+            MACOSX_DEPLOYMENT_TARGET=${{ matrix.platform.target }}
+            CXXFLAGS="-stdlib=libc++"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: release-wheels-${{ matrix.platform.os }}-${{ matrix.platform.arch }}
+          path: wheelhouse/*.whl
+          if-no-files-found: error
+          retention-days: 14
+
+  verify:
+    name: Verify release artifacts
+    needs: [sdist, wheels]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: release-*
           path: dist
           merge-multiple: true
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: '3.14'
+      - name: Check metadata and list hashes
+        run: |
+          python -m pip install "twine==7.0.0"
+          python -m twine check dist/*
+          sha256sum dist/*
 
-      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
+  publish:
+    name: Publish to PyPI
+    if: github.event_name == 'release'
+    needs: [sdist, wheels, verify]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: pypi
+    permissions:
+      id-token: write # Required only here for PyPI Trusted Publishing via OIDC.
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: release-*
+          path: dist
+          merge-multiple: true
+      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+        with:
+          packages-dir: dist
+          verify-metadata: true
+          attestations: true

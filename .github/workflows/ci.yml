@@ -1,52 +1,85 @@
 name: CI
 
-# PR gate: the "quick" tier of the build matrix (~9 jobs covering the
-# boundaries of every axis). The exhaustive sweep runs weekly and on demand
-# via full-matrix.yml. See .github/ci-matrix/README.md.
-#
-# NOTE for branch protection: if the "Linux …" / "macOS …" checks are made
-# required, a paths-ignore skip leaves them in "Expected" state and blocks
-# merging. Keep the ignore list to files that can never affect the build.
-
 on:
   push:
-    branches:
-      - master
-    paths-ignore:
-      - '**.md'
-      - '.github/ISSUE_TEMPLATE/**'
+    branches: [master]
   pull_request:
-    paths-ignore:
-      - '**.md'
-      - '.github/ISSUE_TEMPLATE/**'
   merge_group:
 
 permissions:
   contents: read
 
-# Newest wins: a superseded run tests a stale commit, so cancel it — on PR
-# branches and master alike. (An expression here is a trap: it yields the
-# string "false", which GitHub treats as truthy.)
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
   lint-workflows:
-    name: Lint workflows
+    name: Lint workflows and support files
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - name: actionlint
-        uses: docker://rhysd/actionlint:1.7.7
         with:
-          # shellcheck style findings in the inherited build scripts are
-          # tracked separately; lint the workflow structure strictly.
-          args: -color -ignore shellcheck
+          persist-credentials: false
+      - name: actionlint
+        uses: docker://rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667 # v1.7.12
+        with:
+          args: -color
+      - name: Validate scripts and matrices
+        run: |
+          shellcheck .github/scripts/*.sh
+          jq empty .github/ci-matrix/*.json
+          python3 -m py_compile .github/scripts/*.py
 
   build:
-    name: Build
+    name: Source builds
     uses: ./.github/workflows/build-alps.yml
     with:
       tier: quick
+      max_parallel: 4
+
+  package-smoke:
+    name: Package smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: '3.14'
+      - name: Build and check source distribution
+        run: |
+          python -m pip install "build==1.5.0" "twine==7.0.0"
+          python -m build --sdist
+          python -m twine check dist/*.tar.gz
+      - id: sdist
+        name: Locate source distribution
+        run: |
+          path="$(find dist -maxdepth 1 -name '*.tar.gz' -print -quit)"
+          test -n "$path"
+          echo "path=$path" >> "$GITHUB_OUTPUT"
+      - name: Build and test CPython 3.14 wheel
+        uses: pypa/cibuildwheel@1828c10ab37f080699c7b81cea34097c684a7074 # v4.2.0
+        with:
+          package-dir: ${{ steps.sdist.outputs.path }}
+          only: cp314-manylinux_x86_64
+
+  gate:
+    name: Gate
+    if: always()
+    needs: [lint-workflows, build, package-smoke]
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    env:
+      LINT_RESULT: ${{ needs.lint-workflows.result }}
+      BUILD_RESULT: ${{ needs.build.result }}
+      PACKAGE_RESULT: ${{ needs.package-smoke.result }}
+    steps:
+      - name: Require every CI component
+        run: |
+          test "$LINT_RESULT" = success
+          test "$BUILD_RESULT" = success
+          test "$PACKAGE_RESULT" = success

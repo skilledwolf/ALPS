@@ -35,6 +35,7 @@
 #include <boost/call_traits.hpp>
 #include <boost/classic_spirit.hpp>
 #include <boost/throw_exception.hpp>
+#include <cstdint>
 #include <iosfwd>
 #include <limits>
 #include <stdexcept>
@@ -123,9 +124,14 @@ public:
 
   value_type min BOOST_PREVENT_MACRO_SUBSTITUTION () const { return mi_; }
   value_type max BOOST_PREVENT_MACRO_SUBSTITUTION () const { return ma_; }
-  value_type size() const { return 1 + ma_ - mi_; }
-  bool empty() const { return size() == 0; }
-  bool valid() const { return size() != 0; }
+  std::uintmax_t size() const {
+    if (empty()) return 0;
+    std::uintmax_t span = static_cast<std::uintmax_t>(ma_) -
+                          static_cast<std::uintmax_t>(mi_);
+    return span == (std::numeric_limits<std::uintmax_t>::max)() ? span : span + 1;
+  }
+  bool empty() const { return mi_ > ma_; }
+  bool valid() const { return !empty(); }
   bool is_included(param_type v) const { return (v >= min BOOST_PREVENT_MACRO_SUBSTITUTION ()) && (v <= max BOOST_PREVENT_MACRO_SUBSTITUTION ()); }
 
   integer_range overlap(integer_range const& r) const {

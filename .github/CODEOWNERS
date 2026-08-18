@@ -1,0 +1,7 @@
+/.github/workflows/ @skilledwolf
+/.github/scripts/ @skilledwolf
+/.github/ci-matrix/ @skilledwolf
+/.github/dependabot.yml @skilledwolf
+/CMakeLists.txt @skilledwolf
+/pyproject.toml @skilledwolf
+/config/FindBoostForALPS.cmake @skilledwolf

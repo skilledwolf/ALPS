@@ -1,0 +1,22 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: master
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      actions:
+        patterns: ['*']
+
+  - package-ecosystem: pip
+    directory: /
+    target-branch: master
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 5
+    groups:
+      python-build-and-runtime:
+        patterns: ['*']
