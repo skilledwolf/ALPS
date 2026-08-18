@@ -61,12 +61,19 @@ NB_MODULE(dwa_c, m) {
         .def("load", static_cast<void (worldlines::*)(std::string const &)>(&worldlines::load))
         .def("save", static_cast<void (worldlines::*)(std::string const &) const>(&worldlines::save))
         .def("open_worldlines", &worldlines::open_worldlines)
-        .def("worldlines_siteindicator", &worldlines::worldlines_siteindicator)
-        .def("worldlines_time",          &worldlines::worldlines_time)
-        .def("worldlines_state",         &worldlines::worldlines_state)
+        // The four sequence accessors below return snapshots (nanobind's
+        // STL caster copies); mutating the returned list does not touch
+        // the worldline, unlike the old vector_indexing_suite proxies.
+        .def("worldlines_siteindicator", &worldlines::worldlines_siteindicator,
+             "Returns a copy; mutating it does not affect the worldline.")
+        .def("worldlines_time",          &worldlines::worldlines_time,
+             "Returns a copy; mutating it does not affect the worldline.")
+        .def("worldlines_state",         &worldlines::worldlines_state,
+             "Returns a copy; mutating it does not affect the worldline.")
         .def("num_sites", &worldlines::num_sites)
         .def("num_kinks", &worldlines::num_kinks)
-        .def("states",   &worldlines::states)
+        .def("states",   &worldlines::states,
+             "Returns a copy; mutating it does not affect the worldline.")
         .def("location", &worldlines::location)
         .def("state_before", &worldlines::state_before)
         .def("state",        &worldlines::state)
