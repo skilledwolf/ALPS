@@ -1,0 +1,34 @@
+name: CI
+
+# PR gate: the "quick" tier of the build matrix (~8 jobs covering the
+# boundaries of every axis). The exhaustive sweep runs weekly and on demand
+# via full-matrix.yml. See .github/ci-matrix/README.md.
+#
+# NOTE for branch protection: if the "Linux …" / "macOS …" checks are made
+# required, a paths-ignore skip leaves them in "Expected" state and blocks
+# merging. Keep the ignore list to files that can never affect the build.
+
+on:
+  push:
+    branches:
+      - master
+    paths-ignore:
+      - '**.md'
+      - '.github/ISSUE_TEMPLATE/**'
+  pull_request:
+    paths-ignore:
+      - '**.md'
+      - '.github/ISSUE_TEMPLATE/**'
+
+# A force-push to a PR branch cancels the superseded run instead of letting
+# it occupy runners for another hour. Runs on master are never cancelled.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    name: Build
+    uses: ./.github/workflows/build-alps.yml
+    with:
+      tier: quick

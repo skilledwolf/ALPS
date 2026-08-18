@@ -1,0 +1,35 @@
+[
+  { "label": "gcc-12-ubuntu22",  "tier": "full",  "os": "ubuntu-22.04", "comp_pack": "gcc-12 g++-12", "c_compiler": "gcc",   "cxx_compiler": "g++",     "c_version": 12, "py_version": "3.14", "boost_version": 91 },
+  { "label": "gcc-14-ubuntu24",  "tier": "full",  "os": "ubuntu-24.04", "comp_pack": "gcc-14 g++-14", "c_compiler": "gcc",   "cxx_compiler": "g++",     "c_version": 14, "py_version": "3.14", "boost_version": 91 },
+  { "label": "clang-15-ubuntu22","tier": "full",  "os": "ubuntu-22.04", "comp_pack": "clang-15",      "c_compiler": "clang", "cxx_compiler": "clang++", "c_version": 15, "py_version": "3.14", "boost_version": 91 },
+  { "label": "clang-18-ubuntu24","tier": "full",  "os": "ubuntu-24.04", "comp_pack": "clang-18",      "c_compiler": "clang", "cxx_compiler": "clang++", "c_version": 18, "py_version": "3.14", "boost_version": 91 },
+
+  { "label": "gcc-11",           "tier": "quick", "os": "ubuntu-22.04", "comp_pack": "gcc-11 g++-11", "c_compiler": "gcc",   "cxx_compiler": "g++",     "c_version": 11, "py_version": "3.14", "boost_version": 91 },
+  { "label": "gcc-13",           "tier": "full",  "os": "ubuntu-24.04", "comp_pack": "gcc-13 g++-13", "c_compiler": "gcc",   "cxx_compiler": "g++",     "c_version": 13, "py_version": "3.14", "boost_version": 91 },
+  { "label": "gcc-15",           "tier": "quick", "os": "ubuntu-24.04", "comp_pack": "gcc-15 g++-15", "c_compiler": "gcc",   "cxx_compiler": "g++",     "c_version": 15, "py_version": "3.14", "boost_version": 91 },
+  { "label": "clang-14",         "tier": "quick", "os": "ubuntu-22.04", "comp_pack": "clang-14",      "c_compiler": "clang", "cxx_compiler": "clang++", "c_version": 14, "py_version": "3.14", "boost_version": 91 },
+  { "label": "clang-16",         "tier": "full",  "os": "ubuntu-24.04", "comp_pack": "clang-16",      "c_compiler": "clang", "cxx_compiler": "clang++", "c_version": 16, "py_version": "3.14", "boost_version": 91 },
+  { "label": "clang-17",         "tier": "full",  "os": "ubuntu-24.04", "comp_pack": "clang-17",      "c_compiler": "clang", "cxx_compiler": "clang++", "c_version": 17, "py_version": "3.14", "boost_version": 91 },
+  { "label": "clang-19",         "tier": "full",  "os": "ubuntu-24.04", "comp_pack": "clang-19",      "c_compiler": "clang", "cxx_compiler": "clang++", "c_version": 19, "py_version": "3.14", "boost_version": 91 },
+  { "label": "clang-20",         "tier": "full",  "os": "ubuntu-24.04", "comp_pack": "clang-20",      "c_compiler": "clang", "cxx_compiler": "clang++", "c_version": 20, "py_version": "3.14", "boost_version": 91 },
+  { "label": "clang-21",         "tier": "full",  "os": "ubuntu-24.04", "comp_pack": "clang-21",      "c_compiler": "clang", "cxx_compiler": "clang++", "c_version": 21, "py_version": "3.14", "boost_version": 91 },
+  { "label": "clang-22",         "tier": "quick", "os": "ubuntu-24.04", "comp_pack": "clang-22",      "c_compiler": "clang", "cxx_compiler": "clang++", "c_version": 22, "py_version": "3.14", "boost_version": 91 },
+
+  { "label": "boost-1.76",       "tier": "full",  "os": "ubuntu-24.04", "comp_pack": "gcc-14 g++-14", "c_compiler": "gcc",   "cxx_compiler": "g++",     "c_version": 14, "py_version": "3.14", "boost_version": 76 },
+  { "label": "boost-1.81",       "tier": "full",  "os": "ubuntu-24.04", "comp_pack": "gcc-14 g++-14", "c_compiler": "gcc",   "cxx_compiler": "g++",     "c_version": 14, "py_version": "3.14", "boost_version": 81 },
+  { "label": "boost-1.86",       "tier": "full",  "os": "ubuntu-24.04", "comp_pack": "gcc-14 g++-14", "c_compiler": "gcc",   "cxx_compiler": "g++",     "c_version": 14, "py_version": "3.14", "boost_version": 86 },
+  { "label": "boost-1.87",       "tier": "full",  "os": "ubuntu-24.04", "comp_pack": "gcc-14 g++-14", "c_compiler": "gcc",   "cxx_compiler": "g++",     "c_version": 14, "py_version": "3.14", "boost_version": 87 },
+  { "label": "boost-1.88",       "tier": "full",  "os": "ubuntu-24.04", "comp_pack": "gcc-14 g++-14", "c_compiler": "gcc",   "cxx_compiler": "g++",     "c_version": 14, "py_version": "3.14", "boost_version": 88 },
+  { "label": "boost-1.89",       "tier": "full",  "os": "ubuntu-24.04", "comp_pack": "gcc-14 g++-14", "c_compiler": "gcc",   "cxx_compiler": "g++",     "c_version": 14, "py_version": "3.14", "boost_version": 89 },
+  { "label": "boost-1.90",       "tier": "full",  "os": "ubuntu-24.04", "comp_pack": "gcc-14 g++-14", "c_compiler": "gcc",   "cxx_compiler": "g++",     "c_version": 14, "py_version": "3.14", "boost_version": 90 },
+
+  { "label": "py3.10",           "tier": "full",  "os": "ubuntu-24.04", "comp_pack": "gcc-14 g++-14", "c_compiler": "gcc",   "cxx_compiler": "g++",     "c_version": 14, "py_version": "3.10", "boost_version": 91 },
+  { "label": "py3.11",           "tier": "full",  "os": "ubuntu-24.04", "comp_pack": "gcc-14 g++-14", "c_compiler": "gcc",   "cxx_compiler": "g++",     "c_version": 14, "py_version": "3.11", "boost_version": 91 },
+  { "label": "py3.12",           "tier": "full",  "os": "ubuntu-24.04", "comp_pack": "gcc-14 g++-14", "c_compiler": "gcc",   "cxx_compiler": "g++",     "c_version": 14, "py_version": "3.12", "boost_version": 91 },
+  { "label": "py3.13",           "tier": "full",  "os": "ubuntu-24.04", "comp_pack": "gcc-14 g++-14", "c_compiler": "gcc",   "cxx_compiler": "g++",     "c_version": 14, "py_version": "3.13", "boost_version": 91 },
+
+  { "label": "cxx20",            "tier": "full",  "os": "ubuntu-24.04", "comp_pack": "gcc-14 g++-14", "c_compiler": "gcc",   "cxx_compiler": "g++",     "c_version": 14, "py_version": "3.14", "boost_version": 91, "cxx_standard": 20 },
+  { "label": "cxx23",            "tier": "quick", "os": "ubuntu-24.04", "comp_pack": "gcc-14 g++-14", "c_compiler": "gcc",   "cxx_compiler": "g++",     "c_version": 14, "py_version": "3.14", "boost_version": 91, "cxx_standard": 23 },
+
+  { "label": "minimums",         "tier": "quick", "os": "ubuntu-24.04", "comp_pack": "gcc-14 g++-14", "c_compiler": "gcc",   "cxx_compiler": "g++",     "c_version": 14, "py_version": "3.10", "boost_version": 76, "cxx_standard": 17 }
+]

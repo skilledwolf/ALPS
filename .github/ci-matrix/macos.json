@@ -1,0 +1,8 @@
+[
+  { "label": "macos-14-appleclang",       "tier": "full",  "os": "macos-14",       "c_compiler": "/usr/bin/clang", "cxx_compiler": "/usr/bin/clang++", "comp_pack": "",       "cxx_stdlib": "-stdlib=libc++", "py_version": "3.14", "boost_version": 91 },
+  { "label": "macos-15-appleclang",       "tier": "quick", "os": "macos-15",       "c_compiler": "/usr/bin/clang", "cxx_compiler": "/usr/bin/clang++", "comp_pack": "",       "cxx_stdlib": "-stdlib=libc++", "py_version": "3.14", "boost_version": 91 },
+  { "label": "macos-15-intel-appleclang", "tier": "quick", "os": "macos-15-intel", "c_compiler": "/usr/bin/clang", "cxx_compiler": "/usr/bin/clang++", "comp_pack": "",       "cxx_stdlib": "-stdlib=libc++", "py_version": "3.14", "boost_version": 91 },
+  { "label": "macos-26-appleclang",       "tier": "full",  "os": "macos-26",       "c_compiler": "/usr/bin/clang", "cxx_compiler": "/usr/bin/clang++", "comp_pack": "",       "cxx_stdlib": "-stdlib=libc++", "py_version": "3.14", "boost_version": 91 },
+  { "label": "macos-15-gcc-13",           "tier": "full",  "os": "macos-15",       "c_compiler": "gcc-13",         "cxx_compiler": "g++-13",           "comp_pack": "gcc@13", "cxx_stdlib": "",               "py_version": "3.14", "boost_version": 91 },
+  { "label": "macos-15-gcc-14",           "tier": "full",  "os": "macos-15",       "c_compiler": "gcc-14",         "cxx_compiler": "g++-14",           "comp_pack": "gcc@14", "cxx_stdlib": "",               "py_version": "3.14", "boost_version": 91 }
+]

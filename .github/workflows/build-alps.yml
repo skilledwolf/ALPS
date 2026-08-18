@@ -1,0 +1,168 @@
+name: Build ALPS (reusable)
+
+# Reusable build workflow. Callers pick a tier:
+#   quick — matrix entries tagged "quick" in .github/ci-matrix/*.json (PR gate)
+#   full  — every matrix entry (weekly sweep / manual dispatch)
+# See .github/ci-matrix/README.md for the tiering rationale.
+
+on:
+  workflow_call:
+    inputs:
+      tier:
+        description: "Matrix slice to run: 'quick' or 'full'"
+        required: true
+        type: string
+
+jobs:
+  matrix:
+    name: Select ${{ inputs.tier }} matrix
+    runs-on: ubuntu-latest
+    outputs:
+      linux: ${{ steps.pick.outputs.linux }}
+      macos: ${{ steps.pick.outputs.macos }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: .github/ci-matrix
+      - id: pick
+        run: |
+          for plat in linux macos; do
+            echo "$plat=$(jq -c --arg tier "${{ inputs.tier }}" \
+              '[.[] | select($tier == "full" or .tier == "quick") | del(.tier)]' \
+              .github/ci-matrix/$plat.json)" >> "$GITHUB_OUTPUT"
+          done
+
+  linux-build:
+    name: Linux ${{ matrix.plat.label }}
+    needs: matrix
+    runs-on: ${{ matrix.plat.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        plat: ${{ fromJSON(needs.matrix.outputs.linux) }}
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_MAXSIZE: 500M
+    steps:
+      - uses: actions/checkout@v7
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.plat.py_version }}
+      - name: Cache Boost sources
+        uses: actions/cache@v6
+        with:
+          path: boost_1_${{ matrix.plat.boost_version }}_0.tar.gz
+          key: boost-src-1.${{ matrix.plat.boost_version }}.0
+      - name: Cache compiled objects (ccache)
+        uses: actions/cache@v6
+        with:
+          path: ${{ github.workspace }}/.ccache
+          key: ccache-${{ matrix.plat.label }}-${{ github.run_id }}
+          restore-keys: |
+            ccache-${{ matrix.plat.label }}-
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          python -m pip install --upgrade pip
+          pip install "numpy>=1.26" "scipy>=1.13"
+          sudo apt install ccache liblapack-dev libblas-dev libopenmpi-dev libhdf5-serial-dev
+          # Clang >= 19: not in Ubuntu's default apt repos; use apt.llvm.org.
+          # GCC >= 15: not in Ubuntu's default apt repos; use ubuntu-toolchain-r PPA.
+          if [[ "${{ matrix.plat.c_compiler }}" == "clang" && "${{ matrix.plat.c_version }}" -ge 19 ]]; then
+            wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s -- ${{ matrix.plat.c_version }} all
+          else
+            if [[ "${{ matrix.plat.c_compiler }}" == "gcc" && "${{ matrix.plat.c_version }}" -ge 15 ]]; then
+              sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
+              sudo apt-get update
+            fi
+            sudo apt install ${{ matrix.plat.comp_pack }}
+          fi
+          if [[ ! -f boost_1_${{ matrix.plat.boost_version }}_0.tar.gz ]]; then
+            wget https://archives.boost.io/release/1.${{ matrix.plat.boost_version }}.0/source/boost_1_${{ matrix.plat.boost_version }}_0.tar.gz
+          fi
+          tar -xzf boost_1_${{ matrix.plat.boost_version }}_0.tar.gz
+      - name: Build ALPS
+        env:
+          CC:  ${{ matrix.plat.c_compiler }}-${{ matrix.plat.c_version }}
+          CXX: ${{ matrix.plat.cxx_compiler }}-${{ matrix.plat.c_version }}
+        run: |
+          cmake -S $GITHUB_WORKSPACE -B build \
+                -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+                -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+                -DBoost_ROOT_DIR=`pwd`/boost_1_${{ matrix.plat.boost_version }}_0 \
+                -DCMAKE_CXX_STANDARD=${{ matrix.plat.cxx_standard || '17' }} \
+                -DCMAKE_CXX_FLAGS="-fpermissive -DBOOST_NO_AUTO_PTR -DBOOST_FILESYSTEM_NO_CXX20_ATOMIC_REF -DBOOST_TIMER_ENABLE_DEPRECATED"
+          cmake --build build -j $(nproc)
+          ccache -s
+      - name: Run tests
+        run: ctest --test-dir build --output-on-failure
+      - name: Upload test logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-logs-linux-${{ matrix.plat.label }}-${{ github.run_id }}
+          path: build/Testing/Temporary/**
+
+  macos-build:
+    name: macOS ${{ matrix.plat.label }}
+    needs: matrix
+    runs-on: ${{ matrix.plat.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        plat: ${{ fromJSON(needs.matrix.outputs.macos) }}
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_MAXSIZE: 500M
+    steps:
+      - uses: actions/checkout@v7
+      - name: Cache Boost sources
+        uses: actions/cache@v6
+        with:
+          path: boost_1_${{ matrix.plat.boost_version }}_0.tar.gz
+          key: boost-src-1.${{ matrix.plat.boost_version }}.0
+      - name: Cache compiled objects (ccache)
+        uses: actions/cache@v6
+        with:
+          path: ${{ github.workspace }}/.ccache
+          key: ccache-${{ matrix.plat.label }}-${{ github.run_id }}
+          restore-keys: |
+            ccache-${{ matrix.plat.label }}-
+      - name: Install dependencies
+        run: |
+          brew install ccache python@${{ matrix.plat.py_version }} gfortran
+          pip${{ matrix.plat.py_version }} install "numpy>=1.26" "scipy>=1.13" --break-system-packages
+          brew install openmpi hdf5
+          if [[ -n "${{ matrix.plat.comp_pack }}" ]]; then
+            brew install ${{ matrix.plat.comp_pack }}
+          fi
+          if [[ ! -f boost_1_${{ matrix.plat.boost_version }}_0.tar.gz ]]; then
+            wget https://archives.boost.io/release/1.${{ matrix.plat.boost_version }}.0/source/boost_1_${{ matrix.plat.boost_version }}_0.tar.gz
+          fi
+          tar -xzf boost_1_${{ matrix.plat.boost_version }}_0.tar.gz
+          ln -sf $(brew --prefix)/bin/python${{ matrix.plat.py_version }} $(brew --prefix)/bin/python
+      - name: Build ALPS
+        env:
+          FC: gfortran
+        run: |
+          cmake -S $GITHUB_WORKSPACE -B build \
+                -DCMAKE_C_COMPILER=${{ matrix.plat.c_compiler }} \
+                -DCMAKE_CXX_COMPILER=${{ matrix.plat.cxx_compiler }} \
+                -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+                -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+                -DBoost_ROOT_DIR=`pwd`/boost_1_${{ matrix.plat.boost_version }}_0 \
+                -DCMAKE_CXX_STANDARD=${{ matrix.plat.cxx_standard || '17' }} \
+                -DCMAKE_CXX_FLAGS="${{ matrix.plat.cxx_stdlib }} -fpermissive -DBOOST_NO_AUTO_PTR -DBOOST_FILESYSTEM_NO_CXX20_ATOMIC_REF -DBOOST_TIMER_ENABLE_DEPRECATED" \
+                -DPython_ROOT_DIR=`$(brew --prefix)/bin/python${{ matrix.plat.py_version }} -c "import sys, os; print(os.path.dirname(os.path.dirname(str(sys.executable))));"` \
+                -DCMAKE_Fortran_COMPILER=gfortran
+          cmake --build build -j $(sysctl -n hw.ncpu)
+          ccache -s
+      - name: Run tests
+        run: ctest --test-dir build --output-on-failure
+      - name: Upload test logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-logs-macos-${{ matrix.plat.label }}-${{ github.run_id }}
+          path: build/Testing/Temporary/**
