@@ -196,13 +196,24 @@ IF (PYTHON_FOUND)
       # libraries which must be linked in when embedding
       #
       if(NOT DEFINED PYTHON_EXTRA_LIBS)
-      if(PYTHON_VERSION VERSION_LESS "3.11")
-        EXEC_PYTHON_SCRIPT ("${PYFUNC_NORMALIZE_FLAGS}from distutils.sysconfig import * ;print( normalize_flags( str(get_config_var('LOCALMODLIBS')) + ' ' + str(get_config_var('LIBS')) + ' ' + str(get_config_var('LDFLAGS')) ))"
-                  PYTHON_EXTRA_LIBS)
-      else()
-        EXEC_PYTHON_SCRIPT ("${PYFUNC_NORMALIZE_FLAGS}from sysconfig import * ;print( normalize_flags( str(get_config_var('LOCALMODLIBS')) + ' ' + str(get_config_var('LIBS')) + ' ' + str(get_config_var('LDFLAGS')) ))"
-                  PYTHON_EXTRA_LIBS)
-      endif()
+        set(_alps_python_link_flags
+            "str(get_config_var('LOCALMODLIBS')) + ' ' + str(get_config_var('LIBS'))")
+        # setup-python uses a universal2 Python on arm64 macOS and advertises
+        # both architectures in LDFLAGS. CMake owns architecture selection;
+        # forwarding those build-time flags breaks links to arm64-only
+        # Homebrew libraries.
+        if(NOT APPLE)
+          string(APPEND _alps_python_link_flags
+                 " + ' ' + str(get_config_var('LDFLAGS'))")
+        endif()
+        if(PYTHON_VERSION VERSION_LESS "3.11")
+          EXEC_PYTHON_SCRIPT ("${PYFUNC_NORMALIZE_FLAGS}from distutils.sysconfig import * ;print( normalize_flags( ${_alps_python_link_flags} ))"
+                    PYTHON_EXTRA_LIBS)
+        else()
+          EXEC_PYTHON_SCRIPT ("${PYFUNC_NORMALIZE_FLAGS}from sysconfig import * ;print( normalize_flags( ${_alps_python_link_flags} ))"
+                    PYTHON_EXTRA_LIBS)
+        endif()
+        unset(_alps_python_link_flags)
       endif()
       MESSAGE(STATUS "PYTHON_EXTRA_LIBS =${PYTHON_EXTRA_LIBS}" )
       mark_as_advanced(PYTHON_EXTRA_LIBS)
