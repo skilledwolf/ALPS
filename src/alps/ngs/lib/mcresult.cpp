@@ -185,13 +185,13 @@ namespace alps {
         return impl_->operator!= (rhs.impl_);
     }
 
-    mcresult & mcresult::operator+() {
-        impl_->operator-();
+    mcresult mcresult::operator+() const {
         return *this;
     }
-    mcresult & mcresult::operator-() {
-        impl_->operator-();
-        return *this;
+    mcresult mcresult::operator-() const {
+        mcresult lhs;
+        lhs.ref_cnt_[lhs.impl_ = impl_->neg()] = 1;
+        return lhs;
     }
 
     void mcresult::construct(Observable const * obs) {

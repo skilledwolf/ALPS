@@ -160,8 +160,7 @@ namespace alps {
                 virtual bool operator==(mcresult_impl_base const * rhs) const = 0;
                 virtual bool operator!=(mcresult_impl_base const * rhs) const = 0;
 
-                virtual void operator+() = 0;
-                virtual void operator-() = 0;
+                virtual mcresult_impl_base * neg() const = 0;
 
                 virtual mcresult_impl_base * sin() const = 0;
                 virtual mcresult_impl_base * cos() const = 0;

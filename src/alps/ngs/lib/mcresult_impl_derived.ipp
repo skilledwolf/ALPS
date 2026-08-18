@@ -302,11 +302,8 @@ namespace alps {
                     ;
                 }
 
-                void operator+() {
-                    +static_cast<alea::mcdata<T> &>(*this);
-                }
-                void operator-() {
-                    -static_cast<alea::mcdata<T> &>(*this);
+                B * neg() const {
+                    return new mcresult_impl_derived<B, T>(-static_cast<alea::mcdata<T> const &>(*this));
                 }
 
                 #define ALPS_NGS_MCRESULT_IMPL_DERIVED_FREE_UNITARY_FUN(FUN_NAME)                                                 \
