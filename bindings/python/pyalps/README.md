@@ -10,7 +10,7 @@ python -m pip install pyalps
 Install `pyalps[plot]` to use the Matplotlib plotting helpers.
 
 The bindings are built as a standalone `scikit-build-core` project using
-nanobind. A source build requires Python 3.10 or newer, CMake 3.21 or newer,
+nanobind. A source build requires Python 3.10 or newer, CMake 3.22 or newer,
 Ninja, a C++17 compiler, BLAS/LAPACK, HDF5, and an installed ALPS C++ SDK.
 Point `ALPS_DIR` at the SDK's `share/alps` package directory.
 
