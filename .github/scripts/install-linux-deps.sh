@@ -27,7 +27,7 @@ sudo apt-get install -y --no-install-recommends \
   ca-certificates ccache curl libblas-dev libhdf5-serial-dev liblapack-dev libopenmpi-dev
 
 python -m pip install --upgrade pip
-python -m pip install "numpy>=1.26" "scipy>=1.13"
+python -m pip install "${NUMPY_SPEC:-numpy>=1.26}" "scipy>=1.13"
 
 if [[ "$C_COMPILER" == "clang" ]] && (( C_VERSION >= 19 )); then
   key_file="${RUNNER_TEMP:-/tmp}/apt.llvm.org.asc"

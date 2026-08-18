@@ -9,6 +9,7 @@
     "cxx_compiler": "g++",
     "c_version": 11,
     "py_version": "3.10",
+    "numpy_spec": "numpy>=1.26,<2",
     "boost_version": 76,
     "boost_sha256": "7bd7ddceec1a1dfdcbdb3e609b60d01739c38390a5f956385a12f3122049f0ca",
     "cxx_standard": 17,

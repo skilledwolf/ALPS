@@ -18,6 +18,8 @@ without independently useful signal.
 Every Boost entry includes the SHA-256 published beside the archive on
 `archives.boost.io`. The build passes the extracted directory as
 `Boost_SRC_DIR`, which is the variable consumed by `FindBoostForALPS.cmake`.
+The all-minimums combination constrains NumPy below 2 because Boost releases
+before 1.87 do not support the NumPy 2 C API.
 
 Only quick entries set `remote_cache: true`. Their ccache archives are restored
 on pull requests but saved only from `master`, with one immutable generation per

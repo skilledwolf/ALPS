@@ -24,6 +24,7 @@ pip install pyalps
   - MPI
   - Python >= 3.10
     - Python 3.13 and newer require Boost version 1.87 or later
+    - Boost versions before 1.87 require NumPy version 1.x
     - Earlier versions maybe also work but unsupported
   - C++ compiler with C++17 support (CI covers GCC 11 through 15, Clang 14 through 22, and AppleClang)
   - GNU Make or Ninja build system

@@ -66,6 +66,7 @@ jobs:
       CXX_COMPILER: ${{ matrix.plat.cxx_compiler }}
       C_VERSION: ${{ matrix.plat.c_version }}
       CXX_STANDARD: ${{ matrix.plat.cxx_standard }}
+      NUMPY_SPEC: ${{ matrix.plat.numpy_spec }}
       BOOST_VERSION: ${{ matrix.plat.boost_version }}
       BOOST_SHA256: ${{ matrix.plat.boost_sha256 }}
       SANITIZE: ${{ matrix.plat.sanitize }}
