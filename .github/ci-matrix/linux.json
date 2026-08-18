@@ -31,5 +31,13 @@
   { "label": "cxx20",            "tier": "full",  "os": "ubuntu-24.04", "comp_pack": "gcc-14 g++-14", "c_compiler": "gcc",   "cxx_compiler": "g++",     "c_version": 14, "py_version": "3.14", "boost_version": 91, "cxx_standard": 20 },
   { "label": "cxx23",            "tier": "quick", "os": "ubuntu-24.04", "comp_pack": "gcc-14 g++-14", "c_compiler": "gcc",   "cxx_compiler": "g++",     "c_version": 14, "py_version": "3.14", "boost_version": 91, "cxx_standard": 23 },
 
-  { "label": "minimums",         "tier": "quick", "os": "ubuntu-24.04", "comp_pack": "gcc-14 g++-14", "c_compiler": "gcc",   "cxx_compiler": "g++",     "c_version": 14, "py_version": "3.10", "boost_version": 76, "cxx_standard": 17 }
+  { "label": "minimums",         "tier": "quick", "os": "ubuntu-24.04", "comp_pack": "gcc-14 g++-14", "c_compiler": "gcc",   "cxx_compiler": "g++",     "c_version": 14, "py_version": "3.10", "boost_version": 76, "cxx_standard": 17 },
+
+  { "label": "arm64-gcc-14",     "tier": "full",  "os": "ubuntu-24.04-arm", "comp_pack": "gcc-14 g++-14", "c_compiler": "gcc", "cxx_compiler": "g++",   "c_version": 14, "py_version": "3.14", "boost_version": 91 },
+
+  { "label": "ubsan",            "tier": "quick", "os": "ubuntu-24.04", "comp_pack": "gcc-14 g++-14", "c_compiler": "gcc",   "cxx_compiler": "g++",     "c_version": 14, "py_version": "3.14", "boost_version": 91, "sanitize": "undefined", "experimental": true },
+  { "label": "asan-ubsan",       "tier": "full",  "os": "ubuntu-24.04", "comp_pack": "gcc-14 g++-14", "c_compiler": "gcc",   "cxx_compiler": "g++",     "c_version": 14, "py_version": "3.14", "boost_version": 91, "sanitize": "address,undefined", "experimental": true },
+
+  { "label": "py-next-canary",   "tier": "full",  "os": "ubuntu-24.04", "comp_pack": "gcc-14 g++-14", "c_compiler": "gcc",   "cxx_compiler": "g++",     "c_version": 14, "py_version": "3.15-dev", "boost_version": 91, "experimental": true },
+  { "label": "no-fpermissive",   "tier": "full",  "os": "ubuntu-24.04", "comp_pack": "gcc-14 g++-14", "c_compiler": "gcc",   "cxx_compiler": "g++",     "c_version": 14, "py_version": "3.14", "boost_version": 91, "permissive": false, "experimental": true }
 ]

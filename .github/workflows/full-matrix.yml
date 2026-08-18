@@ -12,6 +12,9 @@ on:
     - cron: '30 5 * * 1'   # 05:30 UTC every Monday
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 concurrency:
   group: full-matrix-${{ github.ref }}
   cancel-in-progress: false

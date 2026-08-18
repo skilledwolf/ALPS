@@ -17,6 +17,9 @@ on:
       - '.github/ISSUE_TEMPLATE/**'
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 concurrency:
   group: wheels-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -37,6 +40,7 @@ jobs:
             # Full matrix for tags / manual dispatch.
             full='[
               {"os":"ubuntu-latest","target":"","arch":"x86_64","homebrew":"","cibw_build":"cp310-* cp311-* cp312-* cp313-*"},
+              {"os":"ubuntu-24.04-arm","target":"","arch":"aarch64","homebrew":"","cibw_build":"cp310-* cp311-* cp312-* cp313-*"},
               {"os":"macos-15","target":"15.0","arch":"arm64","homebrew":"/opt/homebrew","cibw_build":"cp310-* cp311-* cp312-* cp313-*"},
               {"os":"macos-26","target":"26.0","arch":"arm64","homebrew":"/opt/homebrew","cibw_build":"cp310-* cp311-* cp312-* cp313-*"}
             ]'
@@ -52,21 +56,24 @@ jobs:
       matrix:
         plat: ${{ fromJSON(needs.matrix.outputs.plat) }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       # Install Fortran compiler based on OS
       - name: Install dependencies
         run: |
-          if [ "${{ matrix.plat.os }}" = "ubuntu-latest" ]; then
-            sudo apt-get update
-            sudo apt-get install -y gfortran
-          else
-            brew update
-            brew install gfortran
-          fi
+          case "${{ matrix.plat.os }}" in
+            ubuntu-*)
+              sudo apt-get update
+              sudo apt-get install -y gfortran
+              ;;
+            *)
+              brew update
+              brew install gfortran
+              ;;
+          esac
 
       - name: Build wheels
-        uses: pypa/cibuildwheel@v2.22.0
+        uses: pypa/cibuildwheel@ee63bf16da6cddfb925f542f2c7b59ad50e93969 # v2.22.0
         env:
           CIBW_BUILD: ${{ matrix.plat.cibw_build }}
           CIBW_ARCHS: ${{ matrix.plat.arch }}
@@ -81,7 +88,7 @@ jobs:
             MACOSX_DEPLOYMENT_TARGET=${{ matrix.plat.target }}
             CXXFLAGS="-stdlib=libc++"
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: cibw-wheels-${{ matrix.plat.os }}-${{ strategy.job-index }}
           path: ./wheelhouse/*.whl
@@ -91,12 +98,12 @@ jobs:
     name: Build source distribution
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Build sdist
         run: pipx run build --sdist
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: cibw-sdist
           path: dist/*.tar.gz
@@ -110,11 +117,11 @@ jobs:
       id-token: write
     if: startsWith(github.ref, 'refs/tags/v')  || github.event_name == 'release'
     steps:
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           # unpacks all CIBW artifacts into dist/
           pattern: cibw-*
           path: dist
           merge-multiple: true
 
-      - uses: pypa/gh-action-pypi-publish@release/v1
+      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1

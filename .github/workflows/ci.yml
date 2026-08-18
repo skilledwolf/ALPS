@@ -1,6 +1,6 @@
 name: CI
 
-# PR gate: the "quick" tier of the build matrix (~8 jobs covering the
+# PR gate: the "quick" tier of the build matrix (~9 jobs covering the
 # boundaries of every axis). The exhaustive sweep runs weekly and on demand
 # via full-matrix.yml. See .github/ci-matrix/README.md.
 #
@@ -19,6 +19,10 @@ on:
     paths-ignore:
       - '**.md'
       - '.github/ISSUE_TEMPLATE/**'
+  merge_group:
+
+permissions:
+  contents: read
 
 # A force-push to a PR branch cancels the superseded run instead of letting
 # it occupy runners for another hour. Runs on master are never cancelled.
@@ -27,6 +31,17 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  lint-workflows:
+    name: Lint workflows
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: actionlint
+        uses: docker://rhysd/actionlint:1.7.7
+        with:
+          args: -color
+
   build:
     name: Build
     uses: ./.github/workflows/build-alps.yml

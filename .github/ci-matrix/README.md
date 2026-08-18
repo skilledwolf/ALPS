@@ -26,5 +26,18 @@ Entry fields: `label` (job name + ccache key — keep unique), `tier`, `os`,
 (e.g. `91` = Boost 1.91.0), optional `cxx_standard` (defaults to 17, the
 floor; passed to CMake as -DCMAKE_CXX_STANDARD).
 
+Optional per-entry extras (Linux only):
+
+- `"sanitize": "undefined"` or `"address,undefined"` — build and test with
+  GCC sanitizers (-fno-sanitize-recover=all, so findings fail tests).
+- `"permissive": false` — drop -fpermissive; the canary tracking its removal.
+- `"experimental": true` — the job reports failures without failing the run
+  (continue-on-error). Used for sanitizers and canaries while their findings
+  are being burned down; flip to strict once green.
+
+Canary entries (`py-next-canary`, `no-fpermissive`) live in the full tier to
+catch ecosystem drift early: a yellow weekly job instead of a red release
+week. When a Boost beta is available, add a canary entry for it the same way.
+
 Axis sweeps hold everything else at the baseline: ubuntu-24.04, gcc-14,
 Python 3.14, Boost 1.91, C++17.

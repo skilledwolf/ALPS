@@ -21,7 +21,7 @@ jobs:
       linux: ${{ steps.pick.outputs.linux }}
       macos: ${{ steps.pick.outputs.macos }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           sparse-checkout: .github/ci-matrix
       - id: pick
@@ -39,6 +39,9 @@ jobs:
     # Worst observed healthy job is ~60 min cold; a hang otherwise burns the
     # 6-hour GitHub default.
     timeout-minutes: 90
+    # Experimental entries (sanitizers, canaries, no-fpermissive) report
+    # failures without failing the run.
+    continue-on-error: ${{ matrix.plat.experimental || false }}
     strategy:
       fail-fast: false
       matrix:
@@ -47,18 +50,18 @@ jobs:
       CCACHE_DIR: ${{ github.workspace }}/.ccache
       CCACHE_MAXSIZE: 500M
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Set up Python
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: ${{ matrix.plat.py_version }}
       - name: Cache Boost sources
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: boost_1_${{ matrix.plat.boost_version }}_0.tar.gz
           key: boost-src-1.${{ matrix.plat.boost_version }}.0
       - name: Cache compiled objects (ccache)
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ${{ github.workspace }}/.ccache
           key: ccache-${{ matrix.plat.label }}-${{ github.run_id }}
@@ -90,22 +93,50 @@ jobs:
           CC:  ${{ matrix.plat.c_compiler }}-${{ matrix.plat.c_version }}
           CXX: ${{ matrix.plat.cxx_compiler }}-${{ matrix.plat.c_version }}
         run: |
+          # Per-entry extras: sanitizers, and the no-fpermissive canary.
+          EXTRA_CXX=""
+          LINKER=""
+          if [[ -n "${{ matrix.plat.sanitize }}" ]]; then
+            EXTRA_CXX="-fsanitize=${{ matrix.plat.sanitize }} -fno-sanitize-recover=all -fno-omit-frame-pointer"
+            LINKER="-fsanitize=${{ matrix.plat.sanitize }}"
+          fi
+          PERMISSIVE="-fpermissive"
+          if [[ "${{ matrix.plat.permissive }}" == "false" ]]; then
+            PERMISSIVE=""
+          fi
           cmake -S $GITHUB_WORKSPACE -B build \
                 -DCMAKE_C_COMPILER_LAUNCHER=ccache \
                 -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
                 -DBoost_ROOT_DIR=`pwd`/boost_1_${{ matrix.plat.boost_version }}_0 \
                 -DCMAKE_CXX_STANDARD=${{ matrix.plat.cxx_standard || '17' }} \
-                -DCMAKE_CXX_FLAGS="-fpermissive -DBOOST_NO_AUTO_PTR -DBOOST_FILESYSTEM_NO_CXX20_ATOMIC_REF -DBOOST_TIMER_ENABLE_DEPRECATED"
+                -DCMAKE_CXX_FLAGS="$PERMISSIVE -DBOOST_NO_AUTO_PTR -DBOOST_FILESYSTEM_NO_CXX20_ATOMIC_REF -DBOOST_TIMER_ENABLE_DEPRECATED $EXTRA_CXX" \
+                -DCMAKE_EXE_LINKER_FLAGS="$LINKER" \
+                -DCMAKE_SHARED_LINKER_FLAGS="$LINKER" \
+                -DCMAKE_MODULE_LINKER_FLAGS="$LINKER"
           cmake --build build -j $(nproc)
           ccache -s
       - name: Run tests
-        run: ctest --test-dir build --output-on-failure
+        run: |
+          if [[ "${{ matrix.plat.sanitize }}" == *address* ]]; then
+            # Sanitized extension modules loaded by an unsanitized python
+            # need the ASan runtime preloaded. Leak detection is off until
+            # the (large) existing leak backlog is triaged.
+            export LD_PRELOAD=$(${{ matrix.plat.c_compiler }}-${{ matrix.plat.c_version }} -print-file-name=libasan.so)
+            export ASAN_OPTIONS=detect_leaks=0
+          fi
+          export UBSAN_OPTIONS=print_stacktrace=1
+          ctest --test-dir build --output-on-failure --output-junit junit.xml
+      - name: Test summary
+        if: always()
+        run: python3 .github/scripts/junit-summary.py build/junit.xml >> "$GITHUB_STEP_SUMMARY"
       - name: Upload test logs on failure
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: test-logs-linux-${{ matrix.plat.label }}-${{ github.run_id }}
-          path: build/Testing/Temporary/**
+          path: |
+            build/Testing/Temporary/**
+            build/junit.xml
 
   macos-build:
     name: macOS ${{ matrix.plat.label }}
@@ -113,6 +144,7 @@ jobs:
     runs-on: ${{ matrix.plat.os }}
     # Intel runners are slow and variable; worst observed healthy job ~85 min.
     timeout-minutes: 120
+    continue-on-error: ${{ matrix.plat.experimental || false }}
     strategy:
       fail-fast: false
       matrix:
@@ -121,14 +153,14 @@ jobs:
       CCACHE_DIR: ${{ github.workspace }}/.ccache
       CCACHE_MAXSIZE: 500M
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Cache Boost sources
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: boost_1_${{ matrix.plat.boost_version }}_0.tar.gz
           key: boost-src-1.${{ matrix.plat.boost_version }}.0
       - name: Cache compiled objects (ccache)
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ${{ github.workspace }}/.ccache
           key: ccache-${{ matrix.plat.label }}-${{ github.run_id }}
@@ -164,10 +196,15 @@ jobs:
           cmake --build build -j $(sysctl -n hw.ncpu)
           ccache -s
       - name: Run tests
-        run: ctest --test-dir build --output-on-failure
+        run: ctest --test-dir build --output-on-failure --output-junit junit.xml
+      - name: Test summary
+        if: always()
+        run: python3 .github/scripts/junit-summary.py build/junit.xml >> "$GITHUB_STEP_SUMMARY"
       - name: Upload test logs on failure
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: test-logs-macos-${{ matrix.plat.label }}-${{ github.run_id }}
-          path: build/Testing/Temporary/**
+          path: |
+            build/Testing/Temporary/**
+            build/junit.xml
