@@ -68,7 +68,13 @@ jobs:
           restore-keys: |
             ccache-${{ matrix.plat.label }}-
       - name: Install dependencies
+        # A wedged mirror must fail the step in minutes, not hang the job to
+        # its 90-minute cap (observed multi-hour stalls in this step).
+        timeout-minutes: 20
         run: |
+          # Bound every apt network operation: 30 s socket timeout, 3 retries.
+          printf 'Acquire::Retries "3";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\n' \
+            | sudo tee /etc/apt/apt.conf.d/99ci-timeouts > /dev/null
           sudo apt-get update
           python -m pip install --upgrade pip
           pip install "numpy>=1.26" "scipy>=1.13"
@@ -76,7 +82,8 @@ jobs:
           # Clang >= 19: not in Ubuntu's default apt repos; use apt.llvm.org.
           # GCC >= 15: not in Ubuntu's default apt repos; use ubuntu-toolchain-r PPA.
           if [[ "${{ matrix.plat.c_compiler }}" == "clang" && "${{ matrix.plat.c_version }}" -ge 19 ]]; then
-            wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s -- ${{ matrix.plat.c_version }} all
+            wget -nv --tries=3 --timeout=60 -O /tmp/llvm.sh https://apt.llvm.org/llvm.sh
+            sudo bash /tmp/llvm.sh ${{ matrix.plat.c_version }} all
           else
             if [[ "${{ matrix.plat.c_compiler }}" == "gcc" && "${{ matrix.plat.c_version }}" -ge 15 ]]; then
               sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
@@ -167,6 +174,7 @@ jobs:
           restore-keys: |
             ccache-${{ matrix.plat.label }}-
       - name: Install dependencies
+        timeout-minutes: 30
         run: |
           brew install ccache python@${{ matrix.plat.py_version }} gfortran
           pip${{ matrix.plat.py_version }} install "numpy>=1.26" "scipy>=1.13" --break-system-packages
