@@ -24,7 +24,7 @@ fi
 
 sudo timeout 300 apt-get update
 sudo apt-get install -y --no-install-recommends \
-  ca-certificates ccache curl libblas-dev libhdf5-serial-dev liblapack-dev libopenmpi-dev
+  ca-certificates ccache curl libhdf5-serial-dev liblapack-dev libopenblas-dev libopenmpi-dev
 
 python -m pip install --upgrade pip
 python -m pip install "${NUMPY_SPEC:-numpy>=1.26}" "scipy>=1.13"

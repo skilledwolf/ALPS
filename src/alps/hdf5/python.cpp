@@ -229,7 +229,7 @@ namespace alps {
                 std::size_t len = std::accumulate(extent.begin(), extent.end(), std::size_t(1), std::multiplies<std::size_t>());
                 value = alps::python::numpy::from_pyobject(boost::python::object(boost::python::handle<>(PyArray_SimpleNew(npextent.size(), &npextent.front(), type))));
                 if (len) {
-                    boost::scoped_ptr<T> raw(new T[len]);
+                    boost::scoped_array<T> raw(new T[len]);
                     std::pair<T *, std::vector<std::size_t> > data(raw.get(), extent);
                     load(ar, path, data, chunk, offset);
                     PyArrayObject * ptr = (PyArrayObject *)value.ptr();

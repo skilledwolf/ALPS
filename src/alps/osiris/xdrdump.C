@@ -34,7 +34,9 @@
 
 #include <boost/throw_exception.hpp>
 #include <boost/static_assert.hpp>
+#include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <stdexcept>
 #include <string>
 
@@ -96,13 +98,19 @@ bool xdr_hyper(XDR *xdrs, long long *llp)
   unsigned long t2;
 #endif
   if (xdrs->x_op == XDR_ENCODE) {
-    t1 = (long)((*llp) >> 32);
-    t2 = (unsigned long)(*llp - (((long long) t1) << 32));
+    std::uint64_t bits;
+    std::memcpy(&bits, llp, sizeof(bits));
+    t1 = static_cast<decltype(t1)>(
+      static_cast<std::int32_t>(bits >> 32));
+    t2 = static_cast<decltype(t2)>(
+      static_cast<std::uint32_t>(bits));
     return (::xdr_long(xdrs, &t1) && ::xdr_u_long(xdrs, &t2));
   } else if (xdrs->x_op == XDR_DECODE) {
     if (!::xdr_long(xdrs, &t1) || !::xdr_u_long(xdrs, &t2)) return false;
-    *llp = ((long long) t1) << 32;
-    *llp |= t2;
+    std::uint64_t bits =
+      (static_cast<std::uint64_t>(static_cast<std::uint32_t>(t1)) << 32) |
+      static_cast<std::uint32_t>(t2);
+    std::memcpy(llp, &bits, sizeof(bits));
     return true;
   } else if (xdrs->x_op == XDR_FREE) {
     return true;
