@@ -1,6 +1,8 @@
 name: ALPS Python Packaging CI/CD
 
 on:
+  # TEST ONLY (drop before upstreaming): allow manual runs on this fork branch.
+  workflow_dispatch:
   push:
     branches:
       - master    # the default branch
