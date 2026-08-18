@@ -35,6 +35,7 @@ else (NOT_ALPS_BUILD_PYTHON)
 endif (NOT_ALPS_BUILD_PYTHON)
 
 option(ALPS_BUILD_DEVELOPER_TOOLS "Build tools used by developers to maintain ALPS" OFF)
+option(ALPS_ENABLE_LEGACY_PERMISSIVE "Allow legacy C++ constructs rejected by supported compilers" ON)
 option(ALPS_ENABLE_OPENMP "Enable OpenMP parallelization" OFF)
 option(ALPS_ENABLE_OPENMP_WORKER "Enable OpenMP worker support" OFF)
 option(ALPS_BUILD_ON_CRAY "Build ALPS for cray" OFF)
@@ -104,7 +105,15 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 execute_process(COMMAND ${CMAKE_CXX_COMPILER} --version COMMAND head -n1 OUTPUT_VARIABLE ALPS_COMPILER_VERSION OUTPUT_STRIP_TRAILING_WHITESPACE)
 message(STATUS "Compiler version: ${ALPS_COMPILER_VERSION}")
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fpermissive -DBOOST_NO_AUTO_PTR -DBOOST_FILESYSTEM_NO_CXX20_ATOMIC_REF -DBOOST_TIMER_ENABLE_DEPRECATED")
+if(ALPS_ENABLE_LEGACY_PERMISSIVE)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fpermissive")
+endif()
+
+add_compile_definitions(
+  BOOST_NO_AUTO_PTR
+  BOOST_FILESYSTEM_NO_CXX20_ATOMIC_REF
+  BOOST_TIMER_ENABLE_DEPRECATED
+)
 
 
 # set convenient warning flags for clang

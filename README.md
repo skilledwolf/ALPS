@@ -1,4 +1,5 @@
-[![ALPS CI/CD](https://github.com/ALPSim/legacy/actions/workflows/build.yml/badge.svg)](https://github.com/ALPSim/legacy/actions/workflows/build.yml)
+[![CI](https://github.com/skilledwolf/ALPS/actions/workflows/ci.yml/badge.svg)](https://github.com/skilledwolf/ALPS/actions/workflows/ci.yml)
+[![Compatibility](https://github.com/skilledwolf/ALPS/actions/workflows/full-matrix.yml/badge.svg)](https://github.com/skilledwolf/ALPS/actions/workflows/full-matrix.yml)
 
 ## Algorithms and Libraries for Physics Simulations (ALPS)
 

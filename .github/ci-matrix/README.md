@@ -1,43 +1,29 @@
 # CI build matrix
 
-`linux.json` and `macos.json` are the single source of truth for the ALPS build
-matrix. They are consumed by the reusable workflow
-[`build-alps.yml`](../workflows/build-alps.yml), which filters entries by tier:
+`linux.json` and `macos.json` are the single source of truth for source-build
+coverage. The reusable workflow combines both files and filters entries by tier.
 
-- **`"tier": "quick"`** — runs on every pull request and push to master
-  ([`ci.yml`](../workflows/ci.yml)). These entries cover the *boundaries* of each
-  axis: oldest/newest GCC, oldest/newest Clang, newest C++ standard, a combined
-  all-minimums job (oldest Boost + oldest Python + the C++17 floor), and one
-  macOS arm64 + one macOS x86_64 job.
-- **`"tier": "full"`** — additionally runs in the weekly sweep and on manual
-  dispatch ([`full-matrix.yml`](../workflows/full-matrix.yml)): the interior of
-  each version axis (intermediate compilers, Boost, Python, C++ standards) plus
-  extra macOS targets. The full tier is a superset — it includes the quick
-  entries too.
+- **`quick`** is the pull-request gate: one all-minimums Linux build, current
+  GCC, current Clang with the newest C++ mode, and current macOS arm64.
+- **`full`** runs weekly and on demand. It adds the supported Clang floor,
+  next compilers, Linux arm64, macOS Intel/current-OS canaries, sanitizers,
+  next Python, and a real build without legacy permissive mode.
 
-Rationale: intermediate versions almost never break independently — if the
-oldest and newest compiler both pass, the ones in between failing alone is
-rare. Boundaries gate PRs; the exhaustive sweep catches ecosystem drift
-(new compiler/Boost/Python releases) on a schedule instead of taxing every PR.
+The quick tier contains four builds; the full tier contains fourteen. We test
+support boundaries and meaningful platform combinations rather than every
+interior compiler, Boost, Python, and C++ version. Interior versions share the
+same language and ABI boundaries and previously consumed most runner capacity
+without independently useful signal.
 
-Entry fields: `label` (job name + ccache key — keep unique), `tier`, `os`,
-`comp_pack` (apt/brew package spec), `c_compiler`/`cxx_compiler`, `c_version`
-(Linux only), `cxx_stdlib` (macOS only), `py_version`, `boost_version`
-(e.g. `91` = Boost 1.91.0), optional `cxx_standard` (defaults to 17, the
-floor; passed to CMake as -DCMAKE_CXX_STANDARD).
+Every Boost entry includes the SHA-256 published beside the archive on
+`archives.boost.io`. The build passes the extracted directory as
+`Boost_SRC_DIR`, which is the variable consumed by `FindBoostForALPS.cmake`.
 
-Optional per-entry extras (Linux only):
+Only quick entries set `remote_cache: true`. Their ccache archives are restored
+on pull requests but saved only from `master`, with one immutable generation per
+ISO week. Scheduled compatibility entries intentionally build cold, preventing
+the full matrix from creating dozens of disposable caches per run.
 
-- `"sanitize": "undefined"` or `"address,undefined"` — build and test with
-  GCC sanitizers (-fno-sanitize-recover=all, so findings fail tests).
-- `"permissive": false` — drop -fpermissive; the canary tracking its removal.
-- `"experimental": true` — the job reports failures without failing the run
-  (continue-on-error). Used for sanitizers and canaries while their findings
-  are being burned down; flip to strict once green.
-
-Canary entries (`py-next-canary`, `no-fpermissive`) live in the full tier to
-catch ecosystem drift early: a yellow weekly job instead of a red release
-week. When a Boost beta is available, add a canary entry for it the same way.
-
-Axis sweeps hold everything else at the baseline: ubuntu-24.04, gcc-14,
-Python 3.14, Boost 1.91, C++17.
+Canaries are strict. A scheduled sanitizer, next-toolchain, next-Python, or
+no-permissive failure fails the compatibility workflow so it cannot remain a
+silent yellow result.

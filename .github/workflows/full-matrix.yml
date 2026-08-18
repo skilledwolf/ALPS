@@ -1,27 +1,21 @@
-name: Full build matrix
-
-# The exhaustive sweep: every compiler, Boost, Python, and C++ standard in
-# .github/ci-matrix/*.json (~39 jobs). Runs weekly to catch ecosystem drift
-# (new compiler/Boost/Python releases) and on demand for risky changes —
-# trigger it on any branch with:
-#   gh workflow run full-matrix.yml --ref <branch>
-# PRs are gated by the small "quick" tier in ci.yml instead.
+name: Compatibility
 
 on:
   schedule:
-    - cron: '30 5 * * 1'   # 05:30 UTC every Monday
+    - cron: '30 5 * * 1'
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: full-matrix-${{ github.ref }}
-  cancel-in-progress: false
+  group: compatibility-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
-    name: Build
+    name: Compatibility builds
     uses: ./.github/workflows/build-alps.yml
     with:
       tier: full
+      max_parallel: 6
