@@ -36,6 +36,9 @@ jobs:
     name: Linux ${{ matrix.plat.label }}
     needs: matrix
     runs-on: ${{ matrix.plat.os }}
+    # Worst observed healthy job is ~60 min cold; a hang otherwise burns the
+    # 6-hour GitHub default.
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
@@ -79,7 +82,7 @@ jobs:
             sudo apt install ${{ matrix.plat.comp_pack }}
           fi
           if [[ ! -f boost_1_${{ matrix.plat.boost_version }}_0.tar.gz ]]; then
-            wget https://archives.boost.io/release/1.${{ matrix.plat.boost_version }}.0/source/boost_1_${{ matrix.plat.boost_version }}_0.tar.gz
+            wget -nv --tries=3 --timeout=60 --waitretry=10 https://archives.boost.io/release/1.${{ matrix.plat.boost_version }}.0/source/boost_1_${{ matrix.plat.boost_version }}_0.tar.gz
           fi
           tar -xzf boost_1_${{ matrix.plat.boost_version }}_0.tar.gz
       - name: Build ALPS
@@ -108,6 +111,8 @@ jobs:
     name: macOS ${{ matrix.plat.label }}
     needs: matrix
     runs-on: ${{ matrix.plat.os }}
+    # Intel runners are slow and variable; worst observed healthy job ~85 min.
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
@@ -138,7 +143,7 @@ jobs:
             brew install ${{ matrix.plat.comp_pack }}
           fi
           if [[ ! -f boost_1_${{ matrix.plat.boost_version }}_0.tar.gz ]]; then
-            wget https://archives.boost.io/release/1.${{ matrix.plat.boost_version }}.0/source/boost_1_${{ matrix.plat.boost_version }}_0.tar.gz
+            wget -nv --tries=3 --timeout=60 --waitretry=10 https://archives.boost.io/release/1.${{ matrix.plat.boost_version }}.0/source/boost_1_${{ matrix.plat.boost_version }}_0.tar.gz
           fi
           tar -xzf boost_1_${{ matrix.plat.boost_version }}_0.tar.gz
           ln -sf $(brew --prefix)/bin/python${{ matrix.plat.py_version }} $(brew --prefix)/bin/python
