@@ -24,11 +24,12 @@ on:
 permissions:
   contents: read
 
-# A force-push to a PR branch cancels the superseded run instead of letting
-# it occupy runners for another hour. Runs on master are never cancelled.
+# Newest wins: a superseded run tests a stale commit, so cancel it — on PR
+# branches and master alike. (An expression here is a trap: it yields the
+# string "false", which GitHub treats as truthy.)
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: true
 
 jobs:
   lint-workflows:

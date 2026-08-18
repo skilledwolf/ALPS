@@ -20,9 +20,12 @@ on:
 permissions:
   contents: read
 
+# Newest wins (note: an expression here yields a string, which GitHub
+# treats as truthy — use literal booleans only). Tag builds are safe: each
+# tag is its own group.
 concurrency:
   group: wheels-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: true
 
 jobs:
   matrix:
