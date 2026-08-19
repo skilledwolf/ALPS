@@ -416,10 +416,10 @@ std::pair<typename average_type<typename TimeseriesType::value_type >::type, typ
   typedef typename average_type<typename TimeseriesType::value_type >::type average_type;
   using std::exp;
 
-  if (from < 0) from = from + size(autocorrelation);
-  if (to < 0) to = to + size(autocorrelation);
+  if (from < 0) from = from + alps::size(autocorrelation);
+  if (to < 0) to = to + alps::size(autocorrelation);
 
-  mctimeseries_view<average_type> autocorrelation_view = cut_head_distance(cut_tail_distance(autocorrelation, size(autocorrelation) - to), from - 1);
+  mctimeseries_view<average_type> autocorrelation_view = cut_head_distance(cut_tail_distance(autocorrelation, alps::size(autocorrelation) - to), from - 1);
 
   std::pair<average_type, average_type> OUT( alps::numeric::exponential_timeseries_fit(autocorrelation_view.begin(), autocorrelation_view.end()) );
   OUT.first *= exp((-1.) * OUT.second * (from - 1));
@@ -462,7 +462,7 @@ typename average_type< typename TimeseriesType::value_type >::type integrated_au
 
   return_type OUT = std::accumulate(autocorrelation.begin(), autocorrelation.end(), 0.);
 
-  OUT -= (tau.first / tau.second) * std::exp(tau.second * (size(autocorrelation) + 0.5));
+  OUT -= (tau.first / tau.second) * std::exp(tau.second * (alps::size(autocorrelation) + 0.5));
 
   return OUT;
 }
