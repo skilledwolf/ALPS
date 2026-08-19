@@ -32,9 +32,9 @@
 // handed out as a distinct nb::class_<std::vector<T>> carrying the
 // vector_indexing_suite. nanobind's built-in STL caster auto-
 // converts std::vector<T> ↔ Python list for us, so those
-// registrations are retired; any code that wrote
-// `dwa_c.std_vector_double(...)` now just passes / receives a Python
-// list directly.
+// registrations are retired. Their public names remain aliases of Python's
+// list so old construction and isinstance patterns keep working while DWA
+// accepts and returns ordinary Python sequences.
 #include <nanobind/nanobind.h>
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/vector.h>
@@ -45,6 +45,12 @@ namespace nb = nanobind;
 #include <vector>
 NB_MODULE(dwa_c, m) {
     m.doc() = "ALPS DWA (directed worm algorithm) Python bindings.";
+    nb::object list_type = nb::module_::import_("builtins").attr("list");
+    m.attr("std_vector_double") = list_type;
+    m.attr("std_vector_unsigned_int") = list_type;
+    m.attr("std_vector_unsigned_short") = list_type;
+    m.attr("std_vector_std_vector_double") = list_type;
+    m.attr("std_vector_std_vector_unsigned_short") = list_type;
     nb::class_<kink>(m, "kink")
         .def(nb::init<unsigned int>(), nb::arg("siteindicator"))
         .def(nb::init<unsigned int, double, unsigned short>(),
@@ -61,9 +67,9 @@ NB_MODULE(dwa_c, m) {
         .def("load", static_cast<void (worldlines::*)(std::string const &)>(&worldlines::load))
         .def("save", static_cast<void (worldlines::*)(std::string const &) const>(&worldlines::save))
         .def("open_worldlines", &worldlines::open_worldlines)
-        // The four sequence accessors below return snapshots (nanobind's
-        // STL caster copies); mutating the returned list does not touch
-        // the worldline, unlike the old vector_indexing_suite proxies.
+        // These accessors have always returned snapshots. nanobind represents
+        // each copied vector as an ordinary list instead of a mutable C++
+        // vector proxy; mutating either form does not touch the worldline.
         .def("worldlines_siteindicator", &worldlines::worldlines_siteindicator,
              "Returns a copy; mutating it does not affect the worldline.")
         .def("worldlines_time",          &worldlines::worldlines_time,
