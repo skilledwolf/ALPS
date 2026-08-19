@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - master    # the default branch
+      - WIP/pr-107-compat-completion-ci  # fork-only audit trigger
     tags:
       - 'v*'    # this triggers the workflow when a tag starting with 'v' is pushed
   pull_request:

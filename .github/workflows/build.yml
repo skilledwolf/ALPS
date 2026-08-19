@@ -1,6 +1,10 @@
 name: ALPS CI/CD
 
-on: [push, pull_request]
+on:
+  push:
+    branches-ignore:
+      - WIP/pr-107-compat-completion-ci
+  pull_request:
 
 jobs:
   linux-build:
