@@ -21,8 +21,6 @@ jobs:
         plat:
         #- { os: macos-13, target: "13.0" , arch: x86_64 } #DEPRECATED. Too old.
         - { os: ubuntu-latest, target: "", arch: x86_64 }
-        - { os: macos-15, target: "15.0" , arch: arm64 }
-        - { os: macos-26, target: "26.0", arch: arm64 }
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -42,6 +40,7 @@ jobs:
           # The wheel build is configured in [tool.cibuildwheel] in
           # bindings/python/pyalps/pyproject.toml and the wheel-deps preset in
           # CMakePresets.json; only matrix-derived values live here.
+          CIBW_BUILD: cp314-*
           CIBW_ARCHS: ${{ matrix.plat.arch }}
           MACOSX_DEPLOYMENT_TARGET: ${{ matrix.plat.target }}
 
@@ -90,8 +89,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-15, macos-26]
-        python: ["3.10", "3.14"]
+        os: [ubuntu-latest]
+        python: ["3.14"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
