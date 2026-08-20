@@ -761,6 +761,45 @@ def test_params_mapping_equality_and_value_ladder():
             pass
 
 
+def test_params_mapping_mixins_handle_none_getitem():
+    """get/pop/setdefault must honour their contracts on params.
+
+    params.__getitem__ returns None for an undefined key rather than raising
+    KeyError, so MutableMapping's mixins -- which are written against the
+    KeyError contract -- silently misbehaved: get() ignored its default,
+    setdefault() returned None and stored nothing, and pop() surfaced the C++
+    "key does not exist" error instead of KeyError or the default.
+    """
+    from pyalps import ngs
+
+    p = ngs.params({"a": 1})
+
+    assert p["absent"] is None          # the preserved legacy quirk
+    assert p.get("a") == 1
+    assert p.get("absent") is None
+    assert p.get("absent", 9) == 9
+
+    assert p.setdefault("a", 5) == 1 and p["a"] == 1
+    assert p.setdefault("new", 4) == 4
+    assert "new" in p and p["new"] == 4
+
+    assert p.pop("new") == 4 and "new" not in p
+    assert p.pop("absent", 7) == 7
+    with pytest.raises(KeyError):
+        p.pop("absent")
+
+    # observables and results raise KeyError natively, so get() is fine there,
+    # but pop() needs the same replacement: MutableMapping.pop reads
+    # self._MutableMapping__marker, which a copied method cannot resolve.
+    obs = ngs.observables()
+    obs.createRealObservable("x")
+    assert obs.get("absent", 3) == 3
+    assert obs.pop("absent", 3) == 3
+    with pytest.raises(KeyError):
+        obs.pop("absent")
+    assert obs.pop("x") is not None and "x" not in obs
+
+
 def test_params_native_bool_vector_hdf5_roundtrip(tmp_path):
     from pyalps import hdf5, ngs
 
@@ -958,6 +997,7 @@ if __name__ == "__main__":
         test_accumulator_surface,
         test_optional_application_extension_surface,
         test_params_mapping_equality_and_value_ladder,
+        test_params_mapping_mixins_handle_none_getitem,
         test_observable_lshift_chains,
         test_standalone_observables_accept_samples,
         test_observables_item_deletion,
