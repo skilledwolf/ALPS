@@ -747,6 +747,54 @@ def test_observables_item_deletion():
     assert len(observables) == 0
 
 
+def test_mapping_views_are_set_like():
+    """keys/values/items must be MutableMapping views, not one-shot iterators.
+
+    Boost.Python's map_indexing_suite defined none of the three, so on the
+    legacy build they resolved through MutableMapping to KeysView/ValuesView/
+    ItemsView: sized, re-iterable and set-like. The nanobind port must keep
+    that, which means NOT defining them natively in C++ -- pyalps/ngs.py only
+    grafts a mixin onto names the extension type leaves alone.
+    """
+    from collections.abc import MutableMapping
+
+    from pyalps import ngs
+
+    observables = ngs.observables()
+    observables.createRealObservable("a")
+    observables.createRealObservable("b")
+
+    for mapping in (observables, ngs.params({"a": 1, "b": 2})):
+        keys = mapping.keys()
+        # sized, and re-iterable (a nanobind iterator is exhausted after one pass)
+        assert len(keys) == 2
+        assert sorted(keys) == ["a", "b"]
+        assert sorted(keys) == ["a", "b"]
+        # set-like
+        assert keys & {"a"} == {"a"}
+        assert keys | {"c"} == {"a", "b", "c"}
+
+        items = mapping.items()
+        assert len(items) == 2
+        assert sorted(k for k, _ in items) == ["a", "b"]
+        assert sorted(k for k, _ in items) == ["a", "b"]
+
+        values = mapping.values()
+        assert len(values) == 2
+        assert len(list(values)) == 2
+        assert len(list(values)) == 2
+
+    # `results` is the third mapping type and goes through the same shim, but
+    # it is deliberately not constructible from Python -- master bound it with
+    # boost::python::no_init and the port binds no nb::init<> either -- so the
+    # view semantics are asserted here only through the two types that are.
+    for _name in ("keys", "values", "items"):
+        assert getattr(ngs.results, _name) is getattr(MutableMapping, _name), (
+            "results.%s must come from the MutableMapping mixin, not a native "
+            "one-shot nanobind iterator" % _name
+        )
+
+
 def test_mcbase_save_load_overrides_reach_cpp_dispatch():
     from pyalps import ngs
     from pyalps.cxx import pyngshdf5_c
@@ -836,6 +884,7 @@ if __name__ == "__main__":
         test_params_mapping_equality_and_value_ladder,
         test_observable_lshift_chains,
         test_observables_item_deletion,
+        test_mapping_views_are_set_like,
         test_mcbase_save_load_overrides_reach_cpp_dispatch,
         test_accumulator_result_inplace_identity,
     ):
