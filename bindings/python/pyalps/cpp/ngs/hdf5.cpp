@@ -362,9 +362,42 @@ namespace alps {
         std::string python_hdf5_get_filename(alps::hdf5::archive & ar) {
             return ar.get_filename();
         }
+        // Does `data` expose a save() written in Python (as opposed to one
+        // inherited from a bound C++ type)?  The legacy build dispatched to
+        // obj.save(archive) here, but gated it on the bound method's type
+        // name being "instancemethod" -- a Python 2 spelling, so the branch
+        // was dead on Python 3 and `ar["/"] = simulation` raised
+        // "Unsupported type" instead of checkpointing the object. Gate on
+        // types.MethodType instead, which is the Python 3 equivalent and,
+        // like the original, does not match nanobind's own method objects --
+        // so registered extension types keep their native save path.
+        bool has_python_save_method(nb::handle data) {
+            if (!nb::hasattr(data, "save"))
+                return false;
+            nb::object attr = nb::getattr(data, "save");
+            // A bound method defined in Python has tp_name "method"; the
+            // legacy code compared against "instancemethod", the Python 2
+            // spelling. Compare the type name rather than calling
+            // PyMethod_Check: nanobind links extensions against a restricted
+            // CPython symbol list that does not export PyMethod_Type. This
+            // also matches the is_ndarray() check above.
+            return std::strcmp(Py_TYPE(attr.ptr())->tp_name, "method") == 0;
+        }
         void python_hdf5_save(alps::hdf5::archive & ar,
                               std::string const & path,
                               nb::handle data) {
+            if (has_python_save_method(data)) {
+                std::string context = ar.get_context();
+                ar.set_context(ar.complete_path(path));
+                try {
+                    nb::getattr(data, "save")(nb::cast(&ar, nb::rv_policy::reference));
+                } catch (...) {
+                    ar.set_context(context);
+                    throw;
+                }
+                ar.set_context(context);
+                return;
+            }
             hdf5_save_py11_visitor visitor{ar, path};
             extract_from_pyobject_py11(visitor, data);
         }
