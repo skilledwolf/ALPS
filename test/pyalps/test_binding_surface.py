@@ -309,6 +309,55 @@ def test_ctqmc_solvers_restore_python_signal_handlers(tmp_path, monkeypatch):
     assert len(calls) == 4
 
 
+def test_maxent_restores_python_signal_handlers(tmp_path, monkeypatch):
+    """MaxEnt must hand SIGINT back to Python, like cthyb and ctint do.
+
+    Note the assertion style: signal.getsignal() is NOT a valid check here.
+    ALPS installs its handler with sigaction() behind CPython's back, so
+    getsignal() keeps reporting the Python handler while the OS-level
+    disposition belongs to ALPS -- an unguarded run passes a getsignal()
+    check and still swallows Ctrl-C, printing "Received signal 2" instead.
+    Only actually raising the signal and observing whether the Python
+    handler runs detects it.
+    """
+    maxent = pytest.importorskip("pyalps.maxent_c")
+
+    monkeypatch.chdir(tmp_path)
+
+    ndat = 6
+    parms = {
+        "BETA": 2.0, "NDAT": ndat, "NFREQ": 20, "N_ALPHA": 2,
+        "ALPHA_MIN": 0.1, "ALPHA_MAX": 1.0, "MAX_IT": 2,
+        "OMEGA_MAX": 4.0, "FREQUENCY_GRID": "linear", "KERNEL": "fermionic",
+        "DATASPACE": "time", "TEXT_OUTPUT": 0, "VERBOSE": 0,
+        "PARTICLE_HOLE_SYMMETRY": 1, "NORM": 1.0, "MAX_TIME": 1,
+        "BASENAME": str(tmp_path / "maxent-signal"),
+    }
+    for index in range(ndat):
+        parms["X_%d" % index] = -0.5
+        parms["SIGMA_%d" % index] = 0.01
+
+    calls = []
+
+    def python_sigint_handler(signum, frame):
+        calls.append(signum)
+
+    previous_handler = signal.signal(signal.SIGINT, python_sigint_handler)
+    try:
+        # Twice: restoring once is not enough if ALPS' own handlers are not
+        # reinstalled for the next embedded call.
+        for _ in range(2):
+            maxent.AnalyticContinuation(parms)
+            signal.raise_signal(signal.SIGINT)
+    finally:
+        signal.signal(signal.SIGINT, previous_handler)
+
+    assert calls == [signal.SIGINT, signal.SIGINT], (
+        "SIGINT was not handed back to Python after AnalyticContinuation; "
+        "ALPS still owns the OS-level handler"
+    )
+
+
 def test_mpi4py_compatibility_surface():
     pytest.importorskip("mpi4py")
     import operator
