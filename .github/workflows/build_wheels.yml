@@ -49,7 +49,7 @@ jobs:
       # only Python code and extension modules.
       - name: Split shared runtime from ABI wheels
         run: >-
-          python .github/scripts/split_pyalps_runtime_wheels.py
+          python3 .github/scripts/split_pyalps_runtime_wheels.py
           wheelhouse release-wheelhouse
 
       - uses: actions/upload-artifact@v7
