@@ -784,6 +784,33 @@ def test_observable_lshift_chains():
     assert ngs.observable2result(observable).count == 2
 
 
+def test_standalone_observables_accept_samples():
+    """ngs.createRealObservable() handles must accept measurements.
+
+    They stopped doing so under nanobind: extensions are compiled with
+    -fvisibility=hidden, so instantiating a libalps class template inside a
+    binding TU emits a hidden vtable/type_info that cannot merge with
+    libalps' copy, and the dynamic_cast<RecordableObservable<T>*> in
+    Observable::add then fails with "Cannot add measurement to observable".
+    The fix keeps construction on the libalps side; this pins it.
+    """
+    import numpy as np
+
+    from pyalps import ngs
+
+    scalar = ngs.createRealObservable("Energy")
+    scalar << 1.0
+    scalar << 2.0
+
+    vector = ngs.createRealVectorObservable("Correlations")
+    vector << np.array([1.0, 2.0, 3.0])
+
+    # the container-held equivalents must keep working too
+    observables = ngs.observables()
+    observables.createRealObservable("Energy")
+    observables["Energy"] << 1.5
+
+
 def test_observables_item_deletion():
     from pyalps import ngs
 
@@ -932,6 +959,7 @@ if __name__ == "__main__":
         test_optional_application_extension_surface,
         test_params_mapping_equality_and_value_ladder,
         test_observable_lshift_chains,
+        test_standalone_observables_accept_samples,
         test_observables_item_deletion,
         test_mapping_views_are_set_like,
         test_mcbase_save_load_overrides_reach_cpp_dispatch,
