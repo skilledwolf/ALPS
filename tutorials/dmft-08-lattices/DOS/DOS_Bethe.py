@@ -21,7 +21,7 @@ print("Description:")
 print("This program produces file containing the density of states for the Bethe lattice (in infinitely many dimensions) to be read as input by ALPS application DMFT (with option DOSFILE).")
 print("by Jakub Imriska\n")
 print("Enter the discretization of the density of states (recommended divisible by 2, for Simpson integration later):")
-BINS = eval(raw_input('--> '))
+BINS = eval(input('--> '))
 print("  (the output file will have ",BINS+1," rows, at the ends there are halves of bins)")
 
 # The DOS of Bethe lattice is semicircular, thus the normalized DOS is simply
@@ -78,12 +78,12 @@ plt.title('DOS of the Bethe lattice')
 plt.show()
 
 print("Do you wish to save the histogram [y/n] ?")
-answer = raw_input('--> ')
+answer = input('--> ')
 
 if answer[0]=='y':
   # write into file
   print("Set the name for the histogram output file:")
-  file_name = raw_input('--> ')
+  file_name = input('--> ')
   file_out = open(file_name,'w')
   for j in range(0, BINS+1):
     file_out.write(str(energies[j]))

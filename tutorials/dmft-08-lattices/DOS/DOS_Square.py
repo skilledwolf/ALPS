@@ -21,10 +21,10 @@ print("Description:")
 print("This program produces histogram of the density of states for square lattice in the tight-binding approximation, with nearest-neighbor hopping amplitude taken to be t=1.")
 print("by Jakub Imriska\n")
 print("Enter the linear discretization GRID (cost: GRID^2/2):")
-GRID = eval(raw_input('--> '))
+GRID = eval(input('--> '))
 print("  (the histogram will be computed on a grid of ", 2*GRID,' x ',2*GRID,' k-points in the Brillouin zone; the program makes use of the symmetries)')
 print("Enter the number of bins of the histogram (recommended divisible by 4, for Simpson integration later):")
-BINS = eval(raw_input('--> '))
+BINS = eval(input('--> '))
 print("  (the output file will have ",BINS+1," rows, at the ends there are halves of bins)")
 
 # dispersion relation is given by:
@@ -119,12 +119,12 @@ plt.title('DOS of the square lattice')
 plt.show()
 
 print("Do you wish to save the histogram [y/n] ?")
-answer = raw_input('--> ')
+answer = input('--> ')
 
 if answer[0]=='y':
   # write into file
   print("Set the name for the histogram output file:")
-  file_name = raw_input('--> ')
+  file_name = input('--> ')
   file_out = open(file_name,'w')
   for j in range(0, BINS+1):
     file_out.write(str(energies[j]))
