@@ -36,6 +36,17 @@ speed up rebuilds.
 DWA, CT-HYB, and CT-INT extension modules. Set it to `OFF` through CMake
 configuration for a smaller core-only developer build.
 
+`PYALPS_BUNDLE_APPLICATIONS=ON` is the default and copies the ALPS
+application executables (`spinmc`, `dmrg`, `sparsediag`, `loop`, `qwl`, ...)
+from the SDK into `pyalps/bin`, together with the SDK's shared libraries in
+`pyalps/lib` that their `../lib` RPATH resolves against. `pyalps.tools`
+prepends `pyalps/bin` to `PATH`, so this is what makes
+`pyalps.runApplication('spinmc', ...)` work from a wheel install — the
+`wheel-deps` preset therefore builds the applications. Configure with
+`-DPYALPS_BUNDLE_APPLICATIONS=OFF` for a bindings-only wheel; the
+`runApplication` helpers then require the executables on `PATH` by other
+means.
+
 ## Free-threading and stable-ABI policy
 
 pyalps ships per-version wheels (CPython 3.10–3.14) and deliberately opts

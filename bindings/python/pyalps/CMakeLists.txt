@@ -171,6 +171,49 @@ configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/pyalps/pyalps_config.py.in"
   "${CMAKE_CURRENT_BINARY_DIR}/pyalps_config.py" @ONLY)
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/pyalps_config.py" DESTINATION pyalps)
 
+# The ALPS application executables ship inside the package (pyalps/bin), as
+# the legacy ALPS_PYTHON_WHEEL build did -- it set ALPS_BUILD_APPLICATIONS=ON
+# and installed every application with RUNTIME DESTINATION pyalps/bin.
+# pyalps.tools.check_existence() still prepends <pyalps>/bin to PATH, so
+# without these files runApplication('spinmc', ...) fails on a wheel install
+# with "There is no spinmc on the path!" -- the fallback it tries instead,
+# pyalps_config.ALPS_BIN_INSTALL_DIR, is the build machine's SDK path.
+#
+# The programs are copied from the SDK rather than rebuilt here. The root
+# CMakeLists gives every installed target an RPATH of @loader_path/../lib
+# (APPLE) or $ORIGIN/../lib, so they resolve libalps out of pyalps/lib below
+# without any post-install patching.
+option(PYALPS_BUNDLE_APPLICATIONS
+  "Bundle the ALPS application executables into pyalps/bin" ON)
+
+if(PYALPS_BUNDLE_APPLICATIONS)
+  set(_alps_bin_dir "${ALPS_ROOT_DIR}/bin")
+  file(GLOB _alps_programs LIST_DIRECTORIES FALSE "${_alps_bin_dir}/*")
+  # alpsvars.sh/.csh set environment variables for a prefix install; they are
+  # meaningless inside a wheel and are not executables.
+  list(FILTER _alps_programs EXCLUDE REGEX "/alpsvars\\.(c?sh)$")
+  if(NOT _alps_programs)
+    message(FATAL_ERROR
+      "PYALPS_BUNDLE_APPLICATIONS is ON but no executables were found in "
+      "${_alps_bin_dir}. Build the ALPS SDK with -DALPS_BUILD_APPLICATIONS=ON "
+      "(the wheel-deps preset does this), or configure with "
+      "-DPYALPS_BUNDLE_APPLICATIONS=OFF for a bindings-only wheel -- in which "
+      "case pyalps.runApplication() will not work.")
+  endif()
+  list(LENGTH _alps_programs _alps_program_count)
+  message(STATUS "pyalps: bundling ${_alps_program_count} ALPS programs into pyalps/bin")
+  install(PROGRAMS ${_alps_programs} DESTINATION pyalps/bin)
+
+  # The bundled programs resolve libalps through their ../lib RPATH, so the
+  # SDK's shared libraries have to travel with them. This is independent of
+  # the auditwheel/delocate copies made for the extension modules.
+  install(DIRECTORY "${ALPS_ROOT_DIR}/lib/" DESTINATION pyalps/lib
+    FILES_MATCHING
+      PATTERN "*.dylib"
+      PATTERN "*.so"
+      PATTERN "*.so.*")
+endif()
+
 # The ALPS XML/XSL library ships inside the package (pyalps/xml), as the
 # legacy wheel build did: the stylesheets plus the lattice and model
 # libraries that parameter files reference by default.
