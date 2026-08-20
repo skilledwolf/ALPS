@@ -51,11 +51,11 @@ def cyclic_shift(array, by):
   return array;
 
 def addToObservable(h5_outfile, RealObservable=None, RealVectorObservable=None, measurement=None):
-  if measurement == None:
+  if measurement is None:
     return;
-  if RealObservable == None and RealVectorObservable == None:
+  if RealObservable is None and RealVectorObservable is None:
     return;
-  if RealObservable != None and RealVectorObservable != None:
+  if RealObservable is not None and RealVectorObservable is not None:
     return;
 
   ar = pyalps.hdf5.archive(h5_outfile, 'w');
@@ -63,11 +63,11 @@ def addToObservable(h5_outfile, RealObservable=None, RealVectorObservable=None, 
   measurements.load(ar, '/simulation/results');
   
   ar.set_context('/simulation/results');
-  if RealObservable != None:
+  if RealObservable is not None:
     if not ar.is_group(RealObservable):
       measurements.createRealObservable(RealObservable);
     measurements[RealObservable] << measurement;
-  elif RealVectorObservable != None: 
+  elif RealVectorObservable is not None: 
     if not ar.is_group(RealVectorObservable):
       measurements.createRealVectorObservable(RealVectorObservable);
     measurements[RealVectorObservable] << measurement;
@@ -176,7 +176,7 @@ def extract_worldlines(infile, outfile=None):
   wl = worldlines()
   wl.load(infile);
 
-  if outfile != None:
+  if outfile is not None:
     wl.save(outfile);
     return;
   else:
@@ -185,17 +185,17 @@ def extract_worldlines(infile, outfile=None):
 def show_worldlines(wl=None, reshape=None, at=None, scatter_plot=False, Nmax=20, linewidth=2, linespace=0.1):
   import matplotlib.pyplot as plt
 
-  if wl == None:
+  if wl is None:
     return;
 
   wl_idx = numpy.array(range(wl.num_sites()));
   [wl_siteindicator, wl_time, wl_state] = [numpy.array(wl.worldlines_siteindicator()), numpy.array(wl.worldlines_time()), numpy.array(wl.worldlines_state())];
 
-  if reshape != None:
+  if reshape is not None:
     wl_idx = wl_idx.reshape(reshape);
     [wl_siteindicator, wl_time, wl_state] = [wl_siteindicator.reshape(reshape), wl_time.reshape(reshape), wl_state.reshape(reshape)];
 
-    if at == None:
+    if at is None:
       raise Exception('We could visualize only "at" some particular dimension.');
     else:
       wl_idx = eval('wl_idx'+at);
@@ -289,29 +289,29 @@ def recursiveRun(cmd, cmd_lang='command_line', follow_up_script=None, end_script
   ###
 
   # set absolute path for current path
-  if batch_run_directory == None:
+  if batch_run_directory is None:
     batch_run_directory = os.getcwd();
 
   # Format string 
-  if loc != None:
+  if loc is not None:
     locals().update(loc);
     cmd = format_string(cmd, loc);
-    if follow_up_script != None:
+    if follow_up_script is not None:
       follow_up_script = format_string(follow_up_script, loc);
-    if end_script != None:
+    if end_script is not None:
       end_script = format_string(end_script, loc);
-    if break_if != None:
+    if break_if is not None:
       break_if = format_string(break_if, loc);
-    if break_elseif != None:
+    if break_elseif is not None:
       break_elseif = format_string(break_elseif, loc);
-    if write_status != None:
+    if write_status is not None:
       write_status = format_string(write_status, loc);
     batch_run_script = format_string(batch_run_script, loc);
-    if batch_next_run_script != None:
+    if batch_next_run_script is not None:
       batch_next_run_script = format_string(batch_next_run_script, loc);
     return recursiveRun(cmd, cmd_lang=cmd_lang, follow_up_script=follow_up_script, end_script=end_script, n=n, break_if=break_if, break_elseif=break_elseif, write_status=write_status, loc0=loc, batch_submit=batch_submit, batch_cmd_prefix=batch_cmd_prefix, batch_run_directory=batch_run_directory, batch_run_script=batch_run_script, batch_next_run_script=batch_next_run_script, batch_run_now=batch_run_now, batch_noRun=batch_noRun);
 
-  if loc0 != None:
+  if loc0 is not None:
     locals().update(loc0);
 
   # preparing batch run script 
@@ -323,26 +323,26 @@ def recursiveRun(cmd, cmd_lang='command_line', follow_up_script=None, end_script
       batch_cmd +=   'import pyalps;\n';
       batch_cmd +=   'import pyalps.dwa\n\n';
       batch_cmd +=   'pyalps.dwa.recursiveRun(' + str_quote(cmd);
-      if cmd_lang != None: 
+      if cmd_lang is not None: 
         batch_cmd += ', cmd_lang = ' + str_quote(cmd_lang);
-      if follow_up_script != None:
+      if follow_up_script is not None:
         batch_cmd += ', \n\tfollow_up_script = ' + str_quote(follow_up_script);
-      if end_script != None:
+      if end_script is not None:
         batch_cmd += ', \n\tend_script = ' + str_quote(end_script);
-      if n != None:
+      if n is not None:
         batch_cmd += ', \n\tn = ' + str(n);
-      if break_if != None:
+      if break_if is not None:
         batch_cmd += ', \n\tbreak_if = ' + str_quote(break_if);
-      if break_elseif != None:
+      if break_elseif is not None:
         batch_cmd += ', \n\tbreak_elseif = ' + str_quote(break_elseif);
-      if write_status != None:
+      if write_status is not None:
         batch_cmd += ', \n\twrite_status = ' + str_quote(write_status);
       batch_cmd += ', \n\tbatch_submit = ' + str(batch_submit);
-      if batch_cmd_prefix != None:
+      if batch_cmd_prefix is not None:
         batch_cmd += ', \n\tbatch_cmd_prefix = ' + str_quote(batch_cmd_prefix);
       batch_cmd += ', \n\tbatch_run_directory = ' + str_quote(batch_run_directory);
       batch_cmd += ', \n\tbatch_run_script = ' + str_quote(batch_run_script);
-      if batch_next_run_script != None:
+      if batch_next_run_script is not None:
         batch_cmd += ', \n\tbatch_next_run_script = ' + str_quote(batch_next_run_script);
       batch_cmd += ', \n\tbatch_run_now = True';
       batch_cmd +=   ');\n\n';
@@ -355,7 +355,7 @@ def recursiveRun(cmd, cmd_lang='command_line', follow_up_script=None, end_script
         return;
 
       command = [];
-      if batch_cmd_prefix != None:
+      if batch_cmd_prefix is not None:
         command += batch_cmd_prefix.split();
       command += ['./' + batch_run_script];
       return pyalps.executeCommand(command);
@@ -368,20 +368,20 @@ def recursiveRun(cmd, cmd_lang='command_line', follow_up_script=None, end_script
     print("Error: The options for cmd_lang are 1) 'command_line' (default), or 2) 'python'.")
     return;
 
-  if follow_up_script != None:  
+  if follow_up_script is not None:  
     exec(follow_up_script);
 
-  if write_status != None:
+  if write_status is not None:
     eval(write_status);
 
-  if n != None:             # if n exists
+  if n is not None:             # if n exists
     if isinstance(n, int):  # if n is a python integer
       if n <= 1:
-        if end_script != None:
+        if end_script is not None:
           eval(end_script);
-        if batch_next_run_script != None:
+        if batch_next_run_script is not None:
           command = [];
-          if batch_cmd_prefix != None:
+          if batch_cmd_prefix is not None:
             command += batch_cmd_prefix.split();
           command += ['./' + batch_next_run_script];
           return pyalps.executeCommand(command);
@@ -390,26 +390,26 @@ def recursiveRun(cmd, cmd_lang='command_line', follow_up_script=None, end_script
       else:
         return recursiveRun(cmd, cmd_lang=cmd_lang, follow_up_script=follow_up_script, end_script=end_script, n=n-1, write_status=write_status, loc0=loc0, batch_submit=batch_submit, batch_cmd_prefix=batch_cmd_prefix, batch_run_directory=batch_run_directory, batch_run_script=batch_run_script, batch_next_run_script=batch_next_run_script, batch_run_now=False); 
 
-  elif break_if != None:    # otherwise, if break_if exists
+  elif break_if is not None:    # otherwise, if break_if exists
     if eval(break_if):
-      if end_script != None:
+      if end_script is not None:
         eval(end_script);
-      if batch_next_run_script != None:
+      if batch_next_run_script is not None:
         command = [];
-        if batch_cmd_prefix != None:
+        if batch_cmd_prefix is not None:
           command += batch_cmd_prefix.split();
         command += ['./' + batch_next_run_script];
         return pyalps.executeCommand(command);
       else:
         return;
     else:
-      if break_elseif != None:   # otherotherwise, if break_elseif exists
+      if break_elseif is not None:   # otherotherwise, if break_elseif exists
         if eval(break_elseif):
-          if end_script != None:
+          if end_script is not None:
             eval(end_script);
-          if batch_next_run_script != None:
+          if batch_next_run_script is not None:
             command = [];
-            if batch_cmd_prefix != None:
+            if batch_cmd_prefix is not None:
               command += batch_cmd_prefix.split();
             command += ['./' + batch_next_run_script];
             return pyalps.executeCommand(command);
@@ -421,11 +421,11 @@ def recursiveRun(cmd, cmd_lang='command_line', follow_up_script=None, end_script
         return recursiveRun(cmd, cmd_lang=cmd_lang, follow_up_script=follow_up_script, end_script=end_script, break_if=break_if, write_status=write_status, loc0=loc0, batch_submit=batch_submit, batch_cmd_prefix=batch_cmd_prefix, batch_run_script=batch_run_script, batch_run_directory=batch_run_directory, batch_next_run_script=batch_next_run_script, batch_run_now=False);
 
   else:                     # otherwise, recursiveRun only runs once
-    if end_script != None:
+    if end_script is not None:
       eval(end_script);
-    if batch_next_run_script != None:
+    if batch_next_run_script is not None:
       command = [];
-      if batch_cmd_prefix != None:
+      if batch_cmd_prefix is not None:
         command += batch_cmd_prefix.split();
       command += ['./' + batch_next_run_script];
       return pyalps.executeCommand(command);
@@ -434,13 +434,13 @@ def recursiveRun(cmd, cmd_lang='command_line', follow_up_script=None, end_script
 
 def startRunScript(batch_run_script, batch_cmd_prefix=None, loc=None):
   # Format string 
-  if loc != None:
+  if loc is not None:
     locals().update(loc);
     batch_run_script = format_string(batch_run_script, loc);
     return startRunScript(batch_run_script, batch_cmd_prefix=batch_cmd_prefix);
 
   command = [];
-  if batch_cmd_prefix != None:
+  if batch_cmd_prefix is not None:
     command += batch_cmd_prefix.split();
   command += ['./' + batch_run_script];
   
@@ -463,9 +463,9 @@ def trappingFrequency(mass, wavelength, VT=None, omega=None):
   
   coefficient = (2. * mass * amu * math.pi*math.pi / 1.38) * 1e-13;
   
-  if omega != None:
+  if omega is not None:
     return (coefficient * omega*omega * wavelength*wavelength);
-  if VT != None:
+  if VT is not None:
     return numpy.sqrt(VT / (coefficient * wavelength*wavelength));
   return;
 

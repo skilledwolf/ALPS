@@ -135,10 +135,10 @@ def runApplication(appname, parmfiles, T=None, Tmin=None, Tmax=None, writexml=Fa
 
     for parmfile in parmfiles:
       cmdline = []
-      if MPI != None:
+      if MPI is not None:
           cmdline += [mpirun,'-np',str(MPI)]
       cmdline += [appname]
-      if MPI != None:
+      if MPI is not None:
           cmdline += ['--mpi']
           if appname in ['sparsediag','fulldiag','dmrg']:
               cmdline += ['--Nmax','1']
@@ -239,13 +239,13 @@ def evaluateFulldiagVersusT(infiles, appname='fulldiag_evaluate', DELTA_T=None, 
         This function returns a list of lists of DataSet objects, for the various properties evaluated for each of the input files.
     """
     cmdline = [appname]
-    if DELTA_T != None:
+    if DELTA_T is not None:
       cmdline += ['--DELTA_T',str(DELTA_T)]
-    if T_MIN != None:
+    if T_MIN is not None:
       cmdline += ['--T_MIN',str(T_MIN)]
-    if T_MAX != None:
+    if T_MAX is not None:
       cmdline += ['--T_MAX',str(T_MAX)]
-    if H != None:
+    if H is not None:
       cmdline += ['--H',str(H)]
     cmdline += make_list(infiles)
     res = executeCommand(cmdline)
@@ -273,13 +273,13 @@ def evaluateFulldiagVersusH(infiles, appname='fulldiag_evaluate', DELTA_H=None, 
         This function returns a list of lists of DataSet objects, for the various properties evaluated for each of the input files.
     """
     cmdline = [appname,'--versus', 'h']
-    if DELTA_H != None:
+    if DELTA_H is not None:
       cmdline += ['--DELTA_H',str(DELTA_H)]
-    if H_MIN != None:
+    if H_MIN is not None:
       cmdline += ['--H_MIN',str(H_MIN)]
-    if H_MAX != None:
+    if H_MAX is not None:
       cmdline += ['--H_MAX',str(H_MAX)]
-    if T != None:
+    if T is not None:
       cmdline += ['--T',str(T)]
     cmdline += make_list(infiles)
     res = executeCommand(cmdline)
@@ -400,7 +400,7 @@ def writeInputFiles(fname,parms, baseseed=None):
       n //= 2
       bits -= 1
 
-    if baseseed == None:
+    if baseseed is None:
       baseseed = generateSeed()
      
     count = 0
@@ -487,11 +487,11 @@ def getResultFiles(dirname='.',pattern=None,prefix=None,format=None):
         
         The function returns a list of filenames
     """
-    if prefix!= None and pattern != None:
+    if prefix is not None and pattern is not None:
       raise Exception("Cannot define both prefix and pattern")
-    if prefix == None: prefix = '*'
-    if pattern == None:
-      if format == None:
+    if prefix is None: prefix = '*'
+    if pattern is None:
+      if format is None:
         pattern = prefix+'.task*.out.xml'
         res=recursiveGlob(dirname, pattern)
         if len(res)==0:
@@ -541,7 +541,7 @@ def getMeasurements(outfiles_, observable=None, includeLog=False):
   return measurements;
 
 def checkSteadyState(sets=None, outfile=None, observable=None, confidenceInterval=0.6827, includeLog=False):
-  if sets != None:
+  if sets is not None:
     results = []
     for iset in flatten(sets):
       iset.props['checkSteadyState'] = checkSteadyState(outfile=iset.props['filename'], observable=iset.props['observable'], confidenceInterval=confidenceInterval, includeLog=True);
@@ -586,9 +586,9 @@ def sendmail(recipients, sender=None, message='', subject='', attachment=None):
   subject = 'Automatic email message from ALPS. ' + str(subject); 
 
   command = ['echo', message, '|', 'mail', '-s', subject];
-  if sender != None:
+  if sender is not None:
     command += ['-r', sender];
-  if attachment != None:
+  if attachment is not None:
     command += ['-a', attachment]; 
   command += [recipients];
 

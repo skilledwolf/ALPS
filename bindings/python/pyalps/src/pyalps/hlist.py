@@ -50,7 +50,7 @@ def flatten(sl, fdepth = None):
         The parameters are the hierachical list, and optionally a depth at which the flattening should happen, to keep, e.g. the top-most structure.
     """
     
-    if fdepth == None:
+    if fdepth is None:
         fdepth = depth(list(sl))
     return HList(list(sl), fdepth)
 
@@ -65,13 +65,13 @@ def copy_structure(sl):
         return 1
 
 def happly(functor, sl, fdepth = None, params = None):
-    if fdepth == None:
+    if fdepth is None:
         fdepth = depth(sl)
     hl = HList(sl, fdepth)
     hl.apply(functor, params)
 
 def hmap(functor, sl, fdepth = None, params = None):
-    if fdepth == None:
+    if fdepth is None:
         fdepth = depth(sl)
     hl = HList(sl, fdepth)
     return hl.map(functor, params)
@@ -83,7 +83,7 @@ class HList:
         self.data_ = init
         self.indices_ = []
         
-        if fdepth == None:
+        if fdepth is None:
             fdepth = depth(self.data_)
         if fdepth < 0:
             fdepth = depth(self.data_) + fdepth
@@ -121,7 +121,7 @@ class HList:
     
     def apply(self, functor, params = None):
         for idx in self.indices_:
-            if params == None:
+            if params is None:
                 self[idx] = functor(self[idx])
             else:
                 self[idx] = functor(self[idx], params)
@@ -130,7 +130,7 @@ class HList:
         ret = copy_structure(self.data_)
         rethl = HList(ret)
         for idx in self.indices_:
-            if params == None:
+            if params is None:
                 rethl[idx] = functor(self[idx])
             else:
                 rethl[idx] = functor(self[idx], params)
