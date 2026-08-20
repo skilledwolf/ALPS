@@ -1,6 +1,12 @@
 name: ALPS CI/CD
 
-on: [push, pull_request]
+# Fork-only audit harness. The active full-matrix run already covers the
+# product changes; subsequent pushes to this branch only need packaging CI.
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
 
 jobs:
   linux-build:
