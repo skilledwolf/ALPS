@@ -27,6 +27,29 @@ import pytest
 import pyalps
 
 
+EXPECTED_BUNDLED_PROGRAMS = {
+    "checksign",
+    "dirloop_sse",
+    "dmft",
+    "dmrg",
+    "dwa",
+    "fulldiag",
+    "fulldiag_evaluate",
+    "hirschfye",
+    "hybridization",
+    "interaction",
+    "loop",
+    "qwl",
+    "qwl_evaluate",
+    "simplemc",
+    "sparsediag",
+    "spinmc",
+    "spinmc_evaluate",
+    "worm",
+    "worm_evaluate",
+}
+
+
 def _package_dir() -> Path:
     return Path(pyalps.__file__).resolve().parent
 
@@ -87,6 +110,7 @@ def test_every_bundled_program_can_be_loaded():
 
     programs = sorted(p for p in bin_dir.iterdir() if p.is_file())
     assert programs, f"{bin_dir} exists but is empty"
+    assert {p.name for p in programs} == EXPECTED_BUNDLED_PROGRAMS
 
     # Signatures the dynamic loader emits when a dependency cannot be resolved
     # from inside the installed package.  A program is free to reject --help

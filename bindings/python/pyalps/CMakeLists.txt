@@ -201,8 +201,9 @@ configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/pyalps/pyalps_config.py.in"
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/pyalps_config.py" DESTINATION pyalps)
 
 # The ALPS application executables ship inside the package (pyalps/bin), as
-# the legacy ALPS_PYTHON_WHEEL build did -- it set ALPS_BUILD_APPLICATIONS=ON
-# and installed every application with RUNTIME DESTINATION pyalps/bin.
+# the legacy ALPS_PYTHON_WHEEL build did. Keep this list explicit: the SDK's
+# bin directory also contains conversion and plotting tools whose relative
+# data paths assume a prefix install rather than the wheel layout.
 # pyalps.tools.check_existence() still prepends <pyalps>/bin to PATH, so
 # without these files runApplication('spinmc', ...) fails on a wheel install
 # with "There is no spinmc on the path!" -- the fallback it tries instead,
@@ -215,15 +216,40 @@ install(FILES "${CMAKE_CURRENT_BINARY_DIR}/pyalps_config.py" DESTINATION pyalps)
 # modules point at, so one copy of each library serves both.
 if(PYALPS_BUNDLE_APPLICATIONS)
   set(_alps_bin_dir "${ALPS_ROOT_DIR}/bin")
-  file(GLOB _alps_programs LIST_DIRECTORIES FALSE "${_alps_bin_dir}/*")
-  # alpsvars.sh/.csh set environment variables for a prefix install; they are
-  # meaningless inside a wheel and are not executables.
-  list(FILTER _alps_programs EXCLUDE REGEX "/alpsvars\\.(c?sh)$")
-  if(NOT _alps_programs)
+  set(_alps_application_names
+    checksign
+    dirloop_sse
+    dmft
+    dmrg
+    dwa
+    fulldiag
+    fulldiag_evaluate
+    hirschfye
+    hybridization
+    interaction
+    loop
+    qwl
+    qwl_evaluate
+    simplemc
+    sparsediag
+    spinmc
+    spinmc_evaluate
+    worm
+    worm_evaluate)
+  set(_alps_programs "")
+  set(_alps_missing_programs "")
+  foreach(_program IN LISTS _alps_application_names)
+    if(EXISTS "${_alps_bin_dir}/${_program}")
+      list(APPEND _alps_programs "${_alps_bin_dir}/${_program}")
+    else()
+      list(APPEND _alps_missing_programs "${_program}")
+    endif()
+  endforeach()
+  if(_alps_missing_programs)
     message(FATAL_ERROR
-      "PYALPS_BUNDLE_APPLICATIONS is ON but no executables were found in "
-      "${_alps_bin_dir}. Build the ALPS SDK with -DALPS_BUILD_APPLICATIONS=ON "
-      "(the wheel-deps preset does this), or configure with "
+      "PYALPS_BUNDLE_APPLICATIONS is ON but the wheel SDK is missing these "
+      "legacy wheel applications: ${_alps_missing_programs}. Build the ALPS "
+      "SDK with the wheel-deps preset, or configure with "
       "-DPYALPS_BUNDLE_APPLICATIONS=OFF for a bindings-only wheel -- in which "
       "case pyalps.runApplication() will not work.")
   endif()
