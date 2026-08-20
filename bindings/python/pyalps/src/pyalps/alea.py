@@ -23,8 +23,6 @@ This module contains classes for the evaluation of Monte Carlo measurements:
 - MCScalarTimeseriesView
 - MCVectorTimeseriesView
 """
-from __future__ import print_function
-from __future__ import absolute_import
 
 from .cxx.pymcdata_c import *
 from .cxx.pyalea_c import RealObservable, RealVectorObservable, RealTimeSeriesObservable, RealVectorTimeSeriesObservable

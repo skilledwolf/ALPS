@@ -1,4 +1,3 @@
-from __future__ import absolute_import
 # ****************************************************************************
 # 
 # ALPS Project: Algorithms and Libraries for Physics Simulations
@@ -972,7 +971,7 @@ def saveMeasurements(measurements,outfile,respath='/simulation/results'):
         elif isinstance(m.y,np.ndarray) and isinstance(m.y[0],alea.MCScalarData):
             m.y[0].save(outfile,path)
         elif isinstance(m.y,FloatWithError):
-            h5f = h5.archive(fn, 'w')
+            h5f = h5.archive(outfile, 'w')
             h5f[path+'/mean/value'] = np.array(m.y.mean)
             h5f[path+'/mean/error'] = np.array(m.y.error)
             try:
