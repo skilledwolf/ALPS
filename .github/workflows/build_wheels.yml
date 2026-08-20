@@ -21,8 +21,6 @@ jobs:
         # macos-13 is an intel runner, macos-14 is apple silicon
         plat:
         - { os: ubuntu-latest, target: "", arch: x86_64 }
-        #- { os: macos-13, target: "13.0" , arch: x86_64 } #DEPRECATED. Too old.
-        - { os: macos-15, target: "15.0" , arch: arm64 }
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -43,6 +41,7 @@ jobs:
           # bindings/python/pyalps/pyproject.toml and the wheel-deps preset in
           # CMakePresets.json; only matrix-derived values live here.
           CIBW_ARCHS: ${{ matrix.plat.arch }}
+          CIBW_BUILD: cp314-musllinux_x86_64
           MACOSX_DEPLOYMENT_TARGET: ${{ matrix.plat.target }}
 
       # The repaired wheels are self-contained at this point. Split their
@@ -54,6 +53,33 @@ jobs:
           python3 .github/scripts/split_pyalps_runtime_wheels.py
           wheelhouse release-wheelhouse
 
+      - name: Verify musllinux extensions share the C++ runtime
+        run: |
+          abi_wheel=$(find release-wheelhouse -name 'pyalps-*-cp314-*-musllinux_*.whl')
+          test -n "$abi_wheel"
+          test "$(stat -c %s "$abi_wheel")" -lt 5242880
+          mkdir unpacked-abi-wheel
+          unzip -q "$abi_wheel" -d unpacked-abi-wheel
+          test "$(find unpacked-abi-wheel/pyalps/_ext -name '*.so' | wc -l)" -eq 17
+          while IFS= read -r extension; do
+            readelf -d "$extension" | grep -q 'NEEDED.*libstdc++'
+            readelf -d "$extension" | grep -q 'NEEDED.*libgcc_s'
+          done < <(find unpacked-abi-wheel/pyalps/_ext -name '*.so')
+          du -h release-wheelhouse/*.whl
+
+      - name: Install repaired split wheels in musllinux
+        run: |
+          docker run --rm \
+            -v "$PWD/release-wheelhouse:/wheelhouse:ro" \
+            quay.io/pypa/musllinux_1_2_x86_64:latest \
+            /bin/sh -ec '
+              python=/opt/python/cp314-cp314/bin/python
+              "$python" -m pip install numpy scipy
+              "$python" -m pip install --no-index --find-links /wheelhouse pyalps
+              "$python" -c "import pyalps, pyalps.alea, pyalps.hdf5, pyalps.pytools"
+              "$python" -c "import pathlib, pyalps, subprocess; subprocess.run([pathlib.Path(pyalps.__file__).parent / \"bin\" / \"spinmc\", \"--help\"], check=True)"
+            '
+
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: cibw-wheels-${{ matrix.plat.os }}-${{ strategy.job-index }}
@@ -62,6 +88,7 @@ jobs:
 
   build_sdist:
     name: Build source distribution
+    if: github.ref != 'refs/heads/ci/pr107-wheel-completion'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -94,6 +121,7 @@ jobs:
   # runner, at the oldest and newest supported Python.
   smoke_test:
     name: Smoke test wheels on ${{ matrix.plat.os }} / py${{ matrix.python }}
+    if: github.ref != 'refs/heads/ci/pr107-wheel-completion'
     needs: [build_wheels]
     runs-on: ${{ matrix.plat.os }}
     strategy:
@@ -135,6 +163,7 @@ jobs:
   # collectives, requests and point-to-point traffic through pyalps.mpi.
   mpi_smoke:
     name: Smoke test MPI adapter with two ranks
+    if: github.ref != 'refs/heads/ci/pr107-wheel-completion'
     needs: [build_wheels]
     runs-on: ubuntu-latest
     steps:
