@@ -77,10 +77,8 @@ def hmap(functor, sl, fdepth = None, params = None):
     return hl.map(functor, params)
 
 class HList:
-    def __init__(self):
-        self.data_ = []
-        self.indices_ = []
-    
+    # NB: a second, argument-less __init__ used to be defined above this one
+    # and was silently shadowed by it, so HList() never worked.
     def __init__(self,init,fdepth = None):
         self.data_ = init
         self.indices_ = []
