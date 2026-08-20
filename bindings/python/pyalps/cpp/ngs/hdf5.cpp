@@ -15,12 +15,23 @@
 #include <nanobind/nanobind.h>
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/vector.h>
+// nanobind builds extensions with -fvisibility=hidden
+// (CXX_VISIBILITY_PRESET hidden). A hidden type_info cannot be merged with
+// libalps' own copy, and a catch clause only matches when the two agree --
+// so the register_exception_translator below silently failed to catch any
+// alps::hdf5::* exception and every archive failure reached Python as a bare
+// RuntimeError carrying the whole ALPS_STACKTRACE, with
+// pyalps.hdf5.ArchiveNotFound and friends never raised. The legacy
+// Boost.Python modules were built with default visibility, which is why the
+// same translator worked there. Give ALPS' types default visibility here.
+#pragma GCC visibility push(default)
 #include <alps/hdf5/archive.hpp>
 #include <alps/hdf5/pair.hpp>
 #include <alps/hdf5/pointer.hpp>
 #include <alps/hdf5/vector.hpp>
 #include <alps/hdf5/complex.hpp>
 #include <alps/ngs/stacktrace.hpp>
+#pragma GCC visibility pop
 #include "extract_from_pyobject.hpp"
 #include "../numpy_compat.hpp"
 #include <array>
