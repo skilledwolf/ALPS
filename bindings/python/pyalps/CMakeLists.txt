@@ -10,6 +10,28 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# The CPython toolchains in the musllinux images initialize CMake's module
+# linker flags with -static-libstdc++ and -static-libgcc.  That embeds another
+# copy of both runtimes into every extension (17 copies in a full pyalps
+# wheel).  The bundled ALPS programs already use the shared runtimes, which
+# auditwheel vendors into pyalps.libs once, so leave GCC's dynamic defaults in
+# effect for extension modules as well.  GCC has no -shared-libstdc++ inverse;
+# the static flags must be removed from the toolchain-provided values.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND
+   CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+  foreach(_linker_kind IN ITEMS MODULE SHARED)
+    foreach(_config IN ITEMS "" _DEBUG _RELEASE _RELWITHDEBINFO _MINSIZEREL)
+      set(_flags_var "CMAKE_${_linker_kind}_LINKER_FLAGS${_config}")
+      if(DEFINED ${_flags_var})
+        string(REPLACE "-static-libstdc++" "" _flags "${${_flags_var}}")
+        string(REPLACE "-static-libgcc" "" _flags "${_flags}")
+        string(STRIP "${_flags}" _flags)
+        set(${_flags_var} "${_flags}")
+      endif()
+    endforeach()
+  endforeach()
+endif()
+
 find_package(ALPS REQUIRED CONFIG)
 find_package(Python 3.10 REQUIRED COMPONENTS Interpreter Development.Module)
 
@@ -179,19 +201,6 @@ foreach(_target IN LISTS _pyalps_targets)
     ${ALPS_EXTRA_INCLUDE_DIRS})
   target_link_libraries(${_target} PRIVATE ${_pyalps_link_libraries})
   target_link_options(${_target} PRIVATE ${_pyalps_link_options})
-
-  # The CPython builds in the musllinux images put -static-libstdc++ and
-  # -static-libgcc in the module linker flags.  Without an explicit override,
-  # every extension embeds another copy of both runtimes (17 copies in a full
-  # pyalps wheel).  The bundled ALPS programs already use the shared runtimes,
-  # which auditwheel vendors into pyalps.libs once; keep the extensions on the
-  # same shared copies.  This is also harmless on manylinux, where shared is
-  # already the compiler default.
-  if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND
-     CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-    target_link_options(${_target} PRIVATE -shared-libstdc++ -shared-libgcc)
-  endif()
-
   set_target_properties(${_target} PROPERTIES
     INSTALL_RPATH "${_pyalps_install_rpath}")
 endforeach()
