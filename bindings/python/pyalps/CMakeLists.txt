@@ -1,7 +1,7 @@
 # Copyright (C) 2026 by the ALPS collaboration
 # SPDX-License-Identifier: MIT
 
-cmake_minimum_required(VERSION 3.21)
+cmake_minimum_required(VERSION 3.22)
 project(pyalps LANGUAGES CXX)
 
 option(PYALPS_BUILD_APPLICATIONS "Build optional ALPS application bindings" ON)
