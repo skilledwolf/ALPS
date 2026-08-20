@@ -179,6 +179,19 @@ foreach(_target IN LISTS _pyalps_targets)
     ${ALPS_EXTRA_INCLUDE_DIRS})
   target_link_libraries(${_target} PRIVATE ${_pyalps_link_libraries})
   target_link_options(${_target} PRIVATE ${_pyalps_link_options})
+
+  # The CPython builds in the musllinux images put -static-libstdc++ and
+  # -static-libgcc in the module linker flags.  Without an explicit override,
+  # every extension embeds another copy of both runtimes (17 copies in a full
+  # pyalps wheel).  The bundled ALPS programs already use the shared runtimes,
+  # which auditwheel vendors into pyalps.libs once; keep the extensions on the
+  # same shared copies.  This is also harmless on manylinux, where shared is
+  # already the compiler default.
+  if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND
+     CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    target_link_options(${_target} PRIVATE -shared-libstdc++ -shared-libgcc)
+  endif()
+
   set_target_properties(${_target} PROPERTIES
     INSTALL_RPATH "${_pyalps_install_rpath}")
 endforeach()
