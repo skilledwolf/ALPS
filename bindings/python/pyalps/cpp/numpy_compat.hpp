@@ -63,17 +63,6 @@ namespace alps {
             }
             return mod;
         }
-        // Fully-qualified runtime type name without dereferencing
-        // PyTypeObject. The latter is opaque when compiling against the
-        // Python limited API (abi3).
-        inline std::string qualified_python_type_name(nb_::handle value) {
-            nb_::object type = nb_::steal<nb_::object>(PyObject_Type(value.ptr()));
-            if (!type.is_valid())
-                throw nb_::python_error();
-            std::string const name = nb_::cast<std::string>(type.attr("__name__"));
-            std::string const module = nb_::cast<std::string>(type.attr("__module__"));
-            return module == "builtins" ? name : module + "." + name;
-        }
         // Allocates numpy.empty(shape, dtype=numpy_dtype<T>::name) and
         // memcpy's `data` (length = product(shape)) into it. Returns
         // a writable numpy.ndarray.

@@ -49,8 +49,8 @@ means.
 
 ## Free-threading and stable-ABI policy
 
-pyalps ships ordinary CPython 3.10 and 3.11 wheels plus one CPython 3.12
-stable-ABI wheel that also serves 3.13 and 3.14:
+pyalps ships per-version wheels (CPython 3.10–3.14) and deliberately opts
+into neither of nanobind's special ABI modes:
 
 - **Free-threading (3.13t/3.14t):** the extension modules do not declare
   free-threading support, so importing pyalps on a free-threaded
@@ -60,8 +60,8 @@ stable-ABI wheel that also serves 3.13 and 3.14:
   singleton, `mcdata`'s lazily-computed statistics). Do not add
   `FREE_THREADED` to `nanobind_add_module` without first making that
   state thread-safe.
-- **Stable ABI (abi3):** nanobind's linked stable-ABI mode requires Python
-  3.12 or newer. CI therefore tags the 3.12 build `cp312-abi3`; Python 3.10
-  and 3.11 keep their ordinary version-specific wheels. A local source build
-  remains an ordinary wheel by default. To reproduce the stable-ABI build,
-  pass `-Cwheel.py-api=cp312` to `python -m build --wheel`.
+- **Stable ABI (abi3):** not enabled. Nanobind isolates stable-ABI and
+  ordinary extensions from each other. ALPS supports downstream nanobind
+  modules that derive from pyalps types, so an abi3 pyalps wheel would force
+  every such consumer to use the limited API too. Per-version wheels preserve
+  ordinary downstream extension interoperability.

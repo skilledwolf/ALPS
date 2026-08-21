@@ -11,8 +11,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 find_package(ALPS REQUIRED CONFIG)
-find_package(Python 3.10 REQUIRED COMPONENTS
-  Interpreter Development.Module ${SKBUILD_SABI_COMPONENT})
+find_package(Python 3.10 REQUIRED COMPONENTS Interpreter Development.Module)
 
 execute_process(
   COMMAND "${Python_EXECUTABLE}" -m nanobind --cmake_dir
@@ -57,19 +56,14 @@ set(_pyalps_targets
   pyngsrandom01_c
   pyngsaccumulator_c)
 
-# Do not add FREE_THREADED: libalps relies on the GIL as its lock around
-# shared state. wheel.py-api is set only for the CPython 3.12 wheel; that one
-# wheel also serves newer ordinary (GIL-enabled) CPython versions.
+# Policy (see README "Free-threading and stable-ABI policy"): do NOT
+# add FREE_THREADED (libalps relies on the GIL as its lock around
+# shared state) and do not add STABLE_ABI without revisiting the wheel
+# matrix — per-version wheels are deliberate.
 # NB_STATIC keeps nanobind's core private to each extension. On musllinux,
 # MUSL_DYNAMIC_LIBCPP prevents nanobind from also embedding libstdc++ and
 # libgcc into every module; auditwheel vendors those shared runtimes once.
 set(_pyalps_nanobind_options NB_STATIC MUSL_DYNAMIC_LIBCPP)
-if(SKBUILD_SABI_COMPONENT)
-  if(Python_VERSION VERSION_LESS 3.12)
-    message(FATAL_ERROR "nanobind's stable ABI requires Python 3.12 or newer")
-  endif()
-  list(APPEND _pyalps_nanobind_options STABLE_ABI)
-endif()
 
 nanobind_add_module(pyalea_c ${_pyalps_nanobind_options} "${_bindings}/pyalea.cpp")
 nanobind_add_module(pymcdata_c ${_pyalps_nanobind_options} "${_bindings}/pymcdata.cpp")
