@@ -15,7 +15,6 @@
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/vector.h>
 #include <complex>
-#include <cstring>
 #include <limits>
 #include <string>
 #include <vector>
@@ -32,11 +31,9 @@ enum class scalar_kind {
 };
 
 inline bool is_bool_like(PyObject * raw) {
-    // plain bool, or a numpy bool scalar (numpy.bool_ / numpy.bool),
-    // which does NOT subclass bool and would otherwise slip through
-    // the numeric ladder as 0.0/1.0
-    return PyBool_Check(raw)
-        || std::strncmp(Py_TYPE(raw)->tp_name, "numpy.bool", 10) == 0;
+    // NumPy bool scalars do not subclass bool; classify_scalar handles them
+    // immediately below through dtype.kind.
+    return PyBool_Check(raw);
 }
 inline bool is_numpy_array(nb::handle value) {
     // isinstance, rather than an exact tp_name comparison, keeps ndarray
@@ -122,10 +119,11 @@ inline std::complex<double> complex_value(nb::handle value,
     scalar_kind const kind = classify_scalar(value);
     if (kind == scalar_kind::integer || kind == scalar_kind::real)
         return std::complex<double>(real_value(value, key), 0.0);
-    Py_complex const converted = PyComplex_AsCComplex(value.ptr());
-    if (PyErr_Occurred())
-        throw nb::python_error();
-    return std::complex<double>(converted.real, converted.imag);
+    // Attribute access works for Python and NumPy complex scalars and avoids
+    // PyComplex_AsCComplex, which is outside the Python limited API.
+    return std::complex<double>(
+        nb::cast<double>(value.attr("real")),
+        nb::cast<double>(value.attr("imag")));
 }
 
 inline std::string string_value(nb::handle value) {

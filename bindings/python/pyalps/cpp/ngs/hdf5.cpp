@@ -135,8 +135,9 @@ namespace alps {
                     } else if (PyComplex_CheckExact(raw)) {
                         if (!accept(leaf_kind::cplx))
                             return false;
-                        Py_complex c = PyComplex_AsCComplex(raw);
-                        cplxs.emplace_back(c.real, c.imag);
+                        cplxs.emplace_back(
+                            nb::cast<double>(item.attr("real")),
+                            nb::cast<double>(item.attr("imag")));
                     } else if (PyUnicode_Check(raw)) {
                         if (!accept(leaf_kind::text))
                             return false;
@@ -258,10 +259,11 @@ namespace alps {
                     extract_from_pyobject_py11(child_visitor, item);
                 }
             }
-            static bool is_ndarray(PyObject * raw) {
-                return std::strcmp(Py_TYPE(raw)->tp_name, "numpy.ndarray") == 0;
+            static bool is_ndarray(nb::handle value) {
+                return alps::python::qualified_python_type_name(value)
+                    == "numpy.ndarray";
             }
-            static bool is_numpy_scalar(PyObject * raw) {
+            static bool is_numpy_scalar(nb::handle value) {
                 static std::array<char const *, 16> const scalar_types{{
                     "numpy.str_", "numpy.str", "numpy.bool_", "numpy.bool",
                     "numpy.int8", "numpy.int16", "numpy.int32", "numpy.int64",
@@ -269,8 +271,10 @@ namespace alps {
                     "numpy.float32", "numpy.float64",
                     "numpy.complex64", "numpy.complex128",
                 }};
+                std::string const type_name =
+                    alps::python::qualified_python_type_name(value);
                 for (char const * scalar_type : scalar_types)
-                    if (std::strcmp(Py_TYPE(raw)->tp_name, scalar_type) == 0)
+                    if (type_name == scalar_type)
                         return true;
                 return false;
             }
@@ -280,25 +284,26 @@ namespace alps {
                 bool has_other_scalar = false;
                 bool has_bool_leaf = false;
                 bool homogeneous_numpy_scalars = true;
-                PyTypeObject * numpy_scalar_type = nullptr;
+                std::string numpy_scalar_type;
             };
             static void scan_tree(nb::handle node, tree_scan & scan) {
                 std::size_t const n = nb::len(node);
                 for (std::size_t i = 0; i < n; ++i) {
                     nb::object item = node[i];
                     PyObject * raw = item.ptr();
-                    if (is_ndarray(raw)) {
+                    if (is_ndarray(item)) {
                         scan.has_ndarray = true;
                     } else if (PyList_Check(raw) || PyTuple_Check(raw)) {
                         scan_tree(item, scan);
-                    } else if (is_numpy_scalar(raw)) {
+                    } else if (is_numpy_scalar(item)) {
                         scan.has_numpy_scalar = true;
-                        PyTypeObject * scalar_type = Py_TYPE(raw);
-                        if (!scan.numpy_scalar_type)
+                        std::string const scalar_type =
+                            alps::python::qualified_python_type_name(item);
+                        if (scan.numpy_scalar_type.empty())
                             scan.numpy_scalar_type = scalar_type;
                         else if (scan.numpy_scalar_type != scalar_type)
                             scan.homogeneous_numpy_scalars = false;
-                        if (std::strncmp(Py_TYPE(raw)->tp_name, "numpy.bool", 10) == 0)
+                        if (scalar_type.compare(0, 10, "numpy.bool") == 0)
                             scan.has_bool_leaf = true;
                     } else {
                         scan.has_other_scalar = true;
@@ -317,25 +322,26 @@ namespace alps {
             // to 0/1. Pure-list trees never reach (b) — their
             // exact-type handling stays with list_vectorizer.
             static bool numpy_stackable(nb::list const & l) {
-                char const * first_scalar = nullptr;
+                std::string first_scalar;
                 bool scalars_only = true;
                 bool sequences_only = true;
                 for (auto item : l) {
                     PyObject * raw = item.ptr();
-                    char const * tp = Py_TYPE(raw)->tp_name;
-                    if (is_ndarray(raw) || PyList_Check(raw) || PyTuple_Check(raw)) {
+                    std::string const type_name =
+                        alps::python::qualified_python_type_name(item);
+                    if (is_ndarray(item) || PyList_Check(raw) || PyTuple_Check(raw)) {
                         scalars_only = false;
                         continue;
                     }
                     sequences_only = false;
-                    if (std::strncmp(tp, "numpy.", 6) != 0)
+                    if (type_name.compare(0, 6, "numpy.") != 0)
                         return false;
-                    if (!first_scalar)
-                        first_scalar = tp;
-                    else if (std::strcmp(tp, first_scalar) != 0)
+                    if (first_scalar.empty())
+                        first_scalar = type_name;
+                    else if (type_name != first_scalar)
                         return false;
                 }
-                if (scalars_only && first_scalar)
+                if (scalars_only && !first_scalar.empty())
                     return true;
                 if (!sequences_only)
                     return false;
@@ -386,13 +392,7 @@ namespace alps {
             if (!nb::hasattr(data, "save"))
                 return false;
             nb::object attr = nb::getattr(data, "save");
-            // A bound method defined in Python has tp_name "method"; the
-            // legacy code compared against "instancemethod", the Python 2
-            // spelling. Compare the type name rather than calling
-            // PyMethod_Check: nanobind links extensions against a restricted
-            // CPython symbol list that does not export PyMethod_Type. This
-            // also matches the is_ndarray() check above.
-            return std::strcmp(Py_TYPE(attr.ptr())->tp_name, "method") == 0;
+            return alps::python::qualified_python_type_name(attr) == "method";
         }
         void python_hdf5_save(alps::hdf5::archive & ar,
                               std::string const & path,
