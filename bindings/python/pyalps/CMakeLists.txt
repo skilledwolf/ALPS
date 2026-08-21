@@ -10,28 +10,6 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# The CPython toolchains in the musllinux images initialize CMake's module
-# linker flags with -static-libstdc++ and -static-libgcc.  That embeds another
-# copy of both runtimes into every extension (17 copies in a full pyalps
-# wheel).  The bundled ALPS programs already use the shared runtimes, which
-# auditwheel vendors into pyalps.libs once, so leave GCC's dynamic defaults in
-# effect for extension modules as well.  GCC has no -shared-libstdc++ inverse;
-# the static flags must be removed from the toolchain-provided values.
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND
-   CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-  foreach(_linker_kind IN ITEMS MODULE SHARED)
-    foreach(_config IN ITEMS "" _DEBUG _RELEASE _RELWITHDEBINFO _MINSIZEREL)
-      set(_flags_var "CMAKE_${_linker_kind}_LINKER_FLAGS${_config}")
-      if(DEFINED ${_flags_var})
-        string(REPLACE "-static-libstdc++" "" _flags "${${_flags_var}}")
-        string(REPLACE "-static-libgcc" "" _flags "${_flags}")
-        string(STRIP "${_flags}" _flags)
-        set(${_flags_var} "${_flags}")
-      endif()
-    endforeach()
-  endforeach()
-endif()
-
 find_package(ALPS REQUIRED CONFIG)
 find_package(Python 3.10 REQUIRED COMPONENTS Interpreter Development.Module)
 
@@ -82,19 +60,24 @@ set(_pyalps_targets
 # add FREE_THREADED (libalps relies on the GIL as its lock around
 # shared state) and do not add STABLE_ABI without revisiting the wheel
 # matrix — per-version wheels are deliberate.
-nanobind_add_module(pyalea_c NB_STATIC "${_bindings}/pyalea.cpp")
-nanobind_add_module(pymcdata_c NB_STATIC "${_bindings}/pymcdata.cpp")
-nanobind_add_module(pytools_c NB_STATIC "${_bindings}/pytools.cpp")
-nanobind_add_module(pyngsparams_c NB_STATIC "${_bindings}/ngs/params.cpp")
-nanobind_add_module(pyngshdf5_c NB_STATIC "${_bindings}/ngs/hdf5.cpp")
-nanobind_add_module(pyngsbase_c NB_STATIC "${_bindings}/ngs/mcbase.cpp")
-nanobind_add_module(pyngsobservable_c NB_STATIC "${_bindings}/ngs/observable.cpp")
-nanobind_add_module(pyngsobservables_c NB_STATIC "${_bindings}/ngs/observables.cpp")
-nanobind_add_module(pyngsresult_c NB_STATIC "${_bindings}/ngs/result.cpp")
-nanobind_add_module(pyngsresults_c NB_STATIC "${_bindings}/ngs/results.cpp")
-nanobind_add_module(pyngsapi_c NB_STATIC "${_bindings}/ngs/api.cpp")
-nanobind_add_module(pyngsrandom01_c NB_STATIC "${_bindings}/ngs/random01.cpp")
-nanobind_add_module(pyngsaccumulator_c NB_STATIC "${_bindings}/ngs/accumulator.cpp")
+# NB_STATIC keeps nanobind's core private to each extension. On musllinux,
+# MUSL_DYNAMIC_LIBCPP prevents nanobind from also embedding libstdc++ and
+# libgcc into every module; auditwheel vendors those shared runtimes once.
+set(_pyalps_nanobind_options NB_STATIC MUSL_DYNAMIC_LIBCPP)
+
+nanobind_add_module(pyalea_c ${_pyalps_nanobind_options} "${_bindings}/pyalea.cpp")
+nanobind_add_module(pymcdata_c ${_pyalps_nanobind_options} "${_bindings}/pymcdata.cpp")
+nanobind_add_module(pytools_c ${_pyalps_nanobind_options} "${_bindings}/pytools.cpp")
+nanobind_add_module(pyngsparams_c ${_pyalps_nanobind_options} "${_bindings}/ngs/params.cpp")
+nanobind_add_module(pyngshdf5_c ${_pyalps_nanobind_options} "${_bindings}/ngs/hdf5.cpp")
+nanobind_add_module(pyngsbase_c ${_pyalps_nanobind_options} "${_bindings}/ngs/mcbase.cpp")
+nanobind_add_module(pyngsobservable_c ${_pyalps_nanobind_options} "${_bindings}/ngs/observable.cpp")
+nanobind_add_module(pyngsobservables_c ${_pyalps_nanobind_options} "${_bindings}/ngs/observables.cpp")
+nanobind_add_module(pyngsresult_c ${_pyalps_nanobind_options} "${_bindings}/ngs/result.cpp")
+nanobind_add_module(pyngsresults_c ${_pyalps_nanobind_options} "${_bindings}/ngs/results.cpp")
+nanobind_add_module(pyngsapi_c ${_pyalps_nanobind_options} "${_bindings}/ngs/api.cpp")
+nanobind_add_module(pyngsrandom01_c ${_pyalps_nanobind_options} "${_bindings}/ngs/random01.cpp")
+nanobind_add_module(pyngsaccumulator_c ${_pyalps_nanobind_options} "${_bindings}/ngs/accumulator.cpp")
 
 if(PYALPS_BUILD_APPLICATIONS)
   if(NOT EXISTS "${_alps_source_root}/tool/maxent.cpp")
@@ -105,13 +88,13 @@ if(PYALPS_BUILD_APPLICATIONS)
 
   set(_dmft "${_alps_source_root}/applications/dmft/qmc")
 
-  nanobind_add_module(maxent_c NB_STATIC
+  nanobind_add_module(maxent_c ${_pyalps_nanobind_options}
     "${_alps_source_root}/tool/maxent.cpp"
     "${_alps_source_root}/tool/maxent_helper.cpp"
     "${_alps_source_root}/tool/maxent_simulation.cpp"
     "${_alps_source_root}/tool/maxent_parms.cpp")
 
-  nanobind_add_module(cthyb NB_STATIC
+  nanobind_add_module(cthyb ${_pyalps_nanobind_options}
     "${_dmft}/hybridization/hybmain.cpp"
     "${_dmft}/hybridization/hybsim.cpp"
     "${_dmft}/hybridization/hyblocal.cpp"
@@ -125,7 +108,7 @@ if(PYALPS_BUILD_APPLICATIONS)
     "${_dmft}/hybridization/hybevaluate.cpp"
     "${_dmft}/hybridization/hybmeasurements.cpp")
 
-  nanobind_add_module(ctint NB_STATIC
+  nanobind_add_module(ctint ${_pyalps_nanobind_options}
     "${_dmft}/interaction_expansion2/main.cpp"
     "${_dmft}/fouriertransform.C"
     "${_dmft}/interaction_expansion2/auxiliary.cpp"
@@ -139,7 +122,7 @@ if(PYALPS_BUILD_APPLICATIONS)
     "${_dmft}/interaction_expansion2/measurements.cpp"
     "${_dmft}/interaction_expansion2/model.cpp")
 
-  nanobind_add_module(dwa_c NB_STATIC "${_bindings}/apps/dwa.cpp")
+  nanobind_add_module(dwa_c ${_pyalps_nanobind_options} "${_bindings}/apps/dwa.cpp")
 
   list(APPEND _pyalps_targets maxent_c cthyb ctint dwa_c)
   foreach(_target IN ITEMS maxent_c cthyb ctint)
