@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - master    # the default branch
+      - 'ci/pr107-abi3' # fork-only validation branch
     tags:
       - 'v*'    # this triggers the workflow when a tag starting with 'v' is pushed
   pull_request:
