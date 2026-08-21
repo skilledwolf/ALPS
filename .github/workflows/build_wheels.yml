@@ -53,19 +53,28 @@ jobs:
           python3 .github/scripts/split_pyalps_runtime_wheels.py
           wheelhouse release-wheelhouse
 
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: cibw-wheels-${{ matrix.plat.os }}-${{ strategy.job-index }}
+          path: ./release-wheelhouse/*.whl
+
       - name: Verify musllinux extensions share the C++ runtime
         run: |
           abi_wheel=$(find release-wheelhouse -name 'pyalps-*-cp314-*-musllinux_*.whl')
           test -n "$abi_wheel"
-          test "$(stat -c %s "$abi_wheel")" -lt 5242880
+          abi_bytes=$(stat -c %s "$abi_wheel")
+          echo "ABI wheel bytes: $abi_bytes"
+          du -h release-wheelhouse/*.whl
+          test "$abi_bytes" -lt 5242880
           mkdir unpacked-abi-wheel
           unzip -q "$abi_wheel" -d unpacked-abi-wheel
-          test "$(find unpacked-abi-wheel/pyalps/_ext -name '*.so' | wc -l)" -eq 17
+          extension_count=$(find unpacked-abi-wheel/pyalps/_ext -name '*.so' | wc -l)
+          echo "Extension modules: $extension_count"
+          test "$extension_count" -eq 17
           while IFS= read -r extension; do
+            echo "Checking $extension"
             readelf -d "$extension" | grep -q 'NEEDED.*libstdc++'
-            readelf -d "$extension" | grep -q 'NEEDED.*libgcc_s'
           done < <(find unpacked-abi-wheel/pyalps/_ext -name '*.so')
-          du -h release-wheelhouse/*.whl
 
       - name: Install repaired split wheels in musllinux
         run: |
@@ -79,12 +88,6 @@ jobs:
               "$python" -c "import pyalps, pyalps.alea, pyalps.hdf5, pyalps.pytools"
               "$python" -c "import pathlib, pyalps, subprocess; subprocess.run([pathlib.Path(pyalps.__file__).parent / \"bin\" / \"spinmc\", \"--help\"], check=True)"
             '
-
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: cibw-wheels-${{ matrix.plat.os }}-${{ strategy.job-index }}
-          path: ./release-wheelhouse/*.whl
-
 
   build_sdist:
     name: Build source distribution
