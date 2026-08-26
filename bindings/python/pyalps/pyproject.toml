@@ -81,6 +81,10 @@ ALPS_DIR = { env = "ALPS_DIR" }
 # requirement because the downstream-export test configures a consumer
 # extension via `python -m nanobind --cmake_dir`.
 build = ["cp310-*"]
+# nanobind-backend publishes no musllinux wheels (and no sdist), so a
+# split-mode pyalps wheel cannot resolve its runtime backend on Alpine.
+# Re-enable musllinux when the backend ships musl wheels.
+skip = ["*-musllinux_*"]
 manylinux-x86_64-image = "manylinux_2_28"
 test-requires = ["pytest", "nanobind>=3.0,<4"]
 test-command = "pytest -q {project}/test/pyalps"

@@ -55,6 +55,10 @@ Consequences:
   (e.g. `mcbase` subclasses) must also build in split mode against the
   same backend module — see `tutorials/ngs/5_export_python`. Extensions
   only share nanobind type bindings when they share a backend.
+- **musllinux (Alpine):** not shipped for now — nanobind-backend
+  publishes no musl wheels (and no sdist), so a split-mode wheel could
+  not resolve its backend there. Re-enable in `[tool.cibuildwheel]`
+  once the backend covers musl.
 - **Free-threading (3.13t/3.14t):** still deliberately unsupported; abi3
   wheels do not install on free-threaded interpreters. The ALPS C++
   library relies on the GIL as its lock around shared state
