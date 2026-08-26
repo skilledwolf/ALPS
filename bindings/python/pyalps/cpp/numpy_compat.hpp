@@ -63,6 +63,28 @@ namespace alps {
             }
             return mod;
         }
+        // Name of `obj`'s type, matching what Py_TYPE(obj)->tp_name
+        // reports for the types the bindings dispatch on: builtins stay
+        // bare ("int", "list") and NumPy's static C types keep their
+        // dotted names ("numpy.float64", "numpy.ndarray"). tp_name
+        // itself is unreachable under the limited API (PyTypeObject is
+        // opaque), so reconstruct it from __module__ and __qualname__.
+        // (Heap types defined in Python get "pkg.Class" where tp_name
+        // would be bare "Class"; every caller only compares against
+        // builtin or numpy names, where both spellings miss alike.)
+        inline std::string type_fullname(nb_::handle obj) {
+            nb_::handle tp = obj.type();
+            std::string name =
+                nb_::cast<std::string>(nb_::str(tp.attr("__qualname__")));
+            nb_::object mod = nb_::getattr(tp, "__module__", nb_::none());
+            if (!mod.is_none()) {
+                std::string const mod_name =
+                    nb_::cast<std::string>(nb_::str(mod));
+                if (mod_name != "builtins")
+                    return mod_name + "." + name;
+            }
+            return name;
+        }
         // Allocates numpy.empty(shape, dtype=numpy_dtype<T>::name) and
         // memcpy's `data` (length = product(shape)) into it. Returns
         // a writable numpy.ndarray.

@@ -11,7 +11,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 find_package(ALPS REQUIRED CONFIG)
-find_package(Python 3.10 REQUIRED COMPONENTS Interpreter Development.Module)
+find_package(Python 3.10 REQUIRED COMPONENTS Interpreter Development.Module
+  OPTIONAL_COMPONENTS Development.SABIModule)
 
 execute_process(
   COMMAND "${Python_EXECUTABLE}" -m nanobind --cmake_dir
@@ -19,7 +20,7 @@ execute_process(
   OUTPUT_STRIP_TRAILING_WHITESPACE
   COMMAND_ERROR_IS_FATAL ANY)
 list(PREPEND CMAKE_PREFIX_PATH "${_nanobind_cmake_dir}")
-find_package(nanobind 2.10 CONFIG REQUIRED)
+find_package(nanobind 3.0 CONFIG REQUIRED)
 
 get_filename_component(_repo_root "${CMAKE_CURRENT_SOURCE_DIR}/../../.." ABSOLUTE)
 set(_alps_source_root "${_repo_root}")
@@ -56,23 +57,24 @@ set(_pyalps_targets
   pyngsrandom01_c
   pyngsaccumulator_c)
 
-# Policy (see README "Free-threading and stable-ABI policy"): do NOT
-# add FREE_THREADED (libalps relies on the GIL as its lock around
-# shared state) and do not add STABLE_ABI without revisiting the wheel
-# matrix — per-version wheels are deliberate.
-nanobind_add_module(pyalea_c NB_STATIC "${_bindings}/pyalea.cpp")
-nanobind_add_module(pymcdata_c NB_STATIC "${_bindings}/pymcdata.cpp")
-nanobind_add_module(pytools_c NB_STATIC "${_bindings}/pytools.cpp")
-nanobind_add_module(pyngsparams_c NB_STATIC "${_bindings}/ngs/params.cpp")
-nanobind_add_module(pyngshdf5_c NB_STATIC "${_bindings}/ngs/hdf5.cpp")
-nanobind_add_module(pyngsbase_c NB_STATIC "${_bindings}/ngs/mcbase.cpp")
-nanobind_add_module(pyngsobservable_c NB_STATIC "${_bindings}/ngs/observable.cpp")
-nanobind_add_module(pyngsobservables_c NB_STATIC "${_bindings}/ngs/observables.cpp")
-nanobind_add_module(pyngsresult_c NB_STATIC "${_bindings}/ngs/result.cpp")
-nanobind_add_module(pyngsresults_c NB_STATIC "${_bindings}/ngs/results.cpp")
-nanobind_add_module(pyngsapi_c NB_STATIC "${_bindings}/ngs/api.cpp")
-nanobind_add_module(pyngsrandom01_c NB_STATIC "${_bindings}/ngs/random01.cpp")
-nanobind_add_module(pyngsaccumulator_c NB_STATIC "${_bindings}/ngs/accumulator.cpp")
+# Policy (see README "Free-threading and stable-ABI policy"): the
+# modules build in nanobind split mode (BACKEND_MODULE), which targets
+# the stable ABI with a Python 3.10 floor — one abi3 wheel per platform.
+# Binding code must stay limited-API clean. Do NOT add FREE_THREADED:
+# libalps relies on the GIL as its lock around shared state.
+nanobind_add_module(pyalea_c BACKEND_MODULE nanobind_backend "${_bindings}/pyalea.cpp")
+nanobind_add_module(pymcdata_c BACKEND_MODULE nanobind_backend "${_bindings}/pymcdata.cpp")
+nanobind_add_module(pytools_c BACKEND_MODULE nanobind_backend "${_bindings}/pytools.cpp")
+nanobind_add_module(pyngsparams_c BACKEND_MODULE nanobind_backend "${_bindings}/ngs/params.cpp")
+nanobind_add_module(pyngshdf5_c BACKEND_MODULE nanobind_backend "${_bindings}/ngs/hdf5.cpp")
+nanobind_add_module(pyngsbase_c BACKEND_MODULE nanobind_backend "${_bindings}/ngs/mcbase.cpp")
+nanobind_add_module(pyngsobservable_c BACKEND_MODULE nanobind_backend "${_bindings}/ngs/observable.cpp")
+nanobind_add_module(pyngsobservables_c BACKEND_MODULE nanobind_backend "${_bindings}/ngs/observables.cpp")
+nanobind_add_module(pyngsresult_c BACKEND_MODULE nanobind_backend "${_bindings}/ngs/result.cpp")
+nanobind_add_module(pyngsresults_c BACKEND_MODULE nanobind_backend "${_bindings}/ngs/results.cpp")
+nanobind_add_module(pyngsapi_c BACKEND_MODULE nanobind_backend "${_bindings}/ngs/api.cpp")
+nanobind_add_module(pyngsrandom01_c BACKEND_MODULE nanobind_backend "${_bindings}/ngs/random01.cpp")
+nanobind_add_module(pyngsaccumulator_c BACKEND_MODULE nanobind_backend "${_bindings}/ngs/accumulator.cpp")
 
 if(PYALPS_BUILD_APPLICATIONS)
   if(NOT EXISTS "${_alps_source_root}/tool/maxent.cpp")
@@ -83,13 +85,13 @@ if(PYALPS_BUILD_APPLICATIONS)
 
   set(_dmft "${_alps_source_root}/applications/dmft/qmc")
 
-  nanobind_add_module(maxent_c NB_STATIC
+  nanobind_add_module(maxent_c BACKEND_MODULE nanobind_backend
     "${_alps_source_root}/tool/maxent.cpp"
     "${_alps_source_root}/tool/maxent_helper.cpp"
     "${_alps_source_root}/tool/maxent_simulation.cpp"
     "${_alps_source_root}/tool/maxent_parms.cpp")
 
-  nanobind_add_module(cthyb NB_STATIC
+  nanobind_add_module(cthyb BACKEND_MODULE nanobind_backend
     "${_dmft}/hybridization/hybmain.cpp"
     "${_dmft}/hybridization/hybsim.cpp"
     "${_dmft}/hybridization/hyblocal.cpp"
@@ -103,7 +105,7 @@ if(PYALPS_BUILD_APPLICATIONS)
     "${_dmft}/hybridization/hybevaluate.cpp"
     "${_dmft}/hybridization/hybmeasurements.cpp")
 
-  nanobind_add_module(ctint NB_STATIC
+  nanobind_add_module(ctint BACKEND_MODULE nanobind_backend
     "${_dmft}/interaction_expansion2/main.cpp"
     "${_dmft}/fouriertransform.C"
     "${_dmft}/interaction_expansion2/auxiliary.cpp"
@@ -117,7 +119,7 @@ if(PYALPS_BUILD_APPLICATIONS)
     "${_dmft}/interaction_expansion2/measurements.cpp"
     "${_dmft}/interaction_expansion2/model.cpp")
 
-  nanobind_add_module(dwa_c NB_STATIC "${_bindings}/apps/dwa.cpp")
+  nanobind_add_module(dwa_c BACKEND_MODULE nanobind_backend "${_bindings}/apps/dwa.cpp")
 
   list(APPEND _pyalps_targets maxent_c cthyb ctint dwa_c)
   foreach(_target IN ITEMS maxent_c cthyb ctint)

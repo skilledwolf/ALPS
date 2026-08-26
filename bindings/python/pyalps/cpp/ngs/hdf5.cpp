@@ -124,8 +124,11 @@ namespace alps {
                     } else if (PyComplex_CheckExact(raw)) {
                         if (!accept(leaf_kind::cplx))
                             return false;
-                        Py_complex c = PyComplex_AsCComplex(raw);
-                        cplxs.emplace_back(c.real, c.imag);
+                        // Py_complex / PyComplex_AsCComplex sit outside
+                        // the limited API; the component getters don't.
+                        double const re = PyComplex_RealAsDouble(raw);
+                        double const im = PyComplex_ImagAsDouble(raw);
+                        cplxs.emplace_back(re, im);
                     } else if (PyUnicode_Check(raw)) {
                         if (!accept(leaf_kind::text))
                             return false;
@@ -248,7 +251,7 @@ namespace alps {
                 }
             }
             static bool is_ndarray(PyObject * raw) {
-                return std::strcmp(Py_TYPE(raw)->tp_name, "numpy.ndarray") == 0;
+                return alps::python::type_fullname(raw) == "numpy.ndarray";
             }
             static bool is_numpy_scalar(PyObject * raw) {
                 static std::array<char const *, 16> const scalar_types{{
@@ -258,8 +261,9 @@ namespace alps {
                     "numpy.float32", "numpy.float64",
                     "numpy.complex64", "numpy.complex128",
                 }};
+                std::string const name = alps::python::type_fullname(raw);
                 for (char const * scalar_type : scalar_types)
-                    if (std::strcmp(Py_TYPE(raw)->tp_name, scalar_type) == 0)
+                    if (name == scalar_type)
                         return true;
                 return false;
             }
@@ -287,7 +291,8 @@ namespace alps {
                             scan.numpy_scalar_type = scalar_type;
                         else if (scan.numpy_scalar_type != scalar_type)
                             scan.homogeneous_numpy_scalars = false;
-                        if (std::strncmp(Py_TYPE(raw)->tp_name, "numpy.bool", 10) == 0)
+                        if (alps::python::type_fullname(raw)
+                                .compare(0, 10, "numpy.bool") == 0)
                             scan.has_bool_leaf = true;
                     } else {
                         scan.has_other_scalar = true;
@@ -306,25 +311,25 @@ namespace alps {
             // to 0/1. Pure-list trees never reach (b) — their
             // exact-type handling stays with list_vectorizer.
             static bool numpy_stackable(nb::list const & l) {
-                char const * first_scalar = nullptr;
+                std::string first_scalar;
                 bool scalars_only = true;
                 bool sequences_only = true;
                 for (auto item : l) {
                     PyObject * raw = item.ptr();
-                    char const * tp = Py_TYPE(raw)->tp_name;
                     if (is_ndarray(raw) || PyList_Check(raw) || PyTuple_Check(raw)) {
                         scalars_only = false;
                         continue;
                     }
                     sequences_only = false;
-                    if (std::strncmp(tp, "numpy.", 6) != 0)
+                    std::string const tp = alps::python::type_fullname(raw);
+                    if (tp.compare(0, 6, "numpy.") != 0)
                         return false;
-                    if (!first_scalar)
+                    if (first_scalar.empty())
                         first_scalar = tp;
-                    else if (std::strcmp(tp, first_scalar) != 0)
+                    else if (tp != first_scalar)
                         return false;
                 }
-                if (scalars_only && first_scalar)
+                if (scalars_only && !first_scalar.empty())
                     return true;
                 if (!sequences_only)
                     return false;

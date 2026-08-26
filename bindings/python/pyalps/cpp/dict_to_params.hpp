@@ -36,7 +36,7 @@ inline bool is_bool_like(PyObject * raw) {
     // which does NOT subclass bool and would otherwise slip through
     // the numeric ladder as 0.0/1.0
     return PyBool_Check(raw)
-        || std::strncmp(Py_TYPE(raw)->tp_name, "numpy.bool", 10) == 0;
+        || alps::python::type_fullname(raw).compare(0, 10, "numpy.bool") == 0;
 }
 inline bool is_numpy_array(nb::handle value) {
     // isinstance, rather than an exact tp_name comparison, keeps ndarray
@@ -122,10 +122,19 @@ inline std::complex<double> complex_value(nb::handle value,
     scalar_kind const kind = classify_scalar(value);
     if (kind == scalar_kind::integer || kind == scalar_kind::real)
         return std::complex<double>(real_value(value, key), 0.0);
-    Py_complex const converted = PyComplex_AsCComplex(value.ptr());
-    if (PyErr_Occurred())
-        throw nb::python_error();
-    return std::complex<double>(converted.real, converted.imag);
+    // Py_complex / PyComplex_AsCComplex sit outside the limited API.
+    // nanobind's caster performs the same __complex__-aware conversion
+    // through its backend. (PyComplex_RealAsDouble would NOT be
+    // equivalent: before CPython 3.13 its non-complex fallback is
+    // float(), which rejects numpy complex scalars.)
+    std::complex<double> converted;
+    if (!nb::try_cast<std::complex<double>>(nb::borrow(value), converted)) {
+        if (PyErr_Occurred())
+            throw nb::python_error();
+        throw nb::type_error(("parameter '" + key
+            + "' is not convertible to complex").c_str());
+    }
+    return converted;
 }
 
 inline std::string string_value(nb::handle value) {

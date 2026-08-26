@@ -31,7 +31,11 @@ try:
     from ._ext import pyngsresult_c
     from ._ext import pyngsresults_c
     from ._ext import pytools_c
-except ImportError:
+# Only a missing pyalps._ext package means "legacy flat layout" (build
+# tree on PYTHONPATH). Any other ImportError — a missing shared library,
+# or split-mode's "pip install nanobind-backend" advice — must surface
+# as-is rather than be masked by the fallback's own failure.
+except ModuleNotFoundError:
     import pyalea_c
     import pymcdata_c
     import pyngsbase_c

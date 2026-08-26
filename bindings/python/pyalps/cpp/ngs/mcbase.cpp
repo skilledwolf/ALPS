@@ -59,12 +59,11 @@ namespace alps {
     // Trampoline: holds Python overrides for pure-virtuals.
     class PyMCBase : public mcbase {
         public:
-            // Slot count = the number of NB_OVERRIDE* calls below.
             // mcbase (src/alps/mcbase.hpp) declares five virtuals:
             // update / measure / fraction_completed (pure) and
             // save(archive&) / load(archive&); all five must be
             // forwarded so Python overrides are seen by C++ callers.
-            NB_TRAMPOLINE(mcbase, 5);
+            NB_TRAMPOLINE(mcbase);
             PyMCBase(nb::dict const & arg,
                      std::size_t seed_offset = 42,
                      nb::handle /*communicator*/ = nb::none())

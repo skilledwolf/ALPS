@@ -105,7 +105,7 @@ jobs:
       - name: Smoke test downstream nanobind simulation extension
         if: matrix.plat.os == 'ubuntu-24.04' && matrix.plat.c_compiler == 'gcc' && matrix.plat.c_version == 14 && matrix.plat.py_version == '3.14' && matrix.plat.boost_version == 91 && matrix.plat.cxx_standard == null
         run: |
-          python -m pip install "nanobind>=2.10,<3"
+          python -m pip install "nanobind>=3.0,<4"
           cmake --install build
           cmake -S tutorials/ngs/5_export_python -B downstream-export-build \
                 -DALPS_DIR="$PWD/build/install/share/alps" \

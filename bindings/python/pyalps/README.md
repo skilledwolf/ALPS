@@ -38,19 +38,27 @@ configuration for a smaller core-only developer build.
 
 ## Free-threading and stable-ABI policy
 
-pyalps ships per-version wheels (CPython 3.10–3.14) and deliberately opts
-into neither of nanobind's special ABI modes:
+pyalps ships **one stable-ABI (`cp310-abi3`) wheel per platform** that
+covers CPython 3.10 and newer. The extension modules build in nanobind's
+split mode (`BACKEND_MODULE nanobind_backend`): they contain only the
+tiny nanobind frontend, compile under `Py_LIMITED_API` (3.10 floor), and
+resolve the compiled nanobind runtime at import time from the
+`nanobind-backend` package, which is a runtime dependency of pyalps.
+Consequences:
 
-- **Free-threading (3.13t/3.14t):** the extension modules do not declare
-  free-threading support, so importing pyalps on a free-threaded
-  interpreter re-enables the GIL for the process. That is intentional:
-  the ALPS C++ library relies on the GIL as its lock around shared state
+- **Binding code must stay limited-API clean.** In particular,
+  `PyTypeObject` is opaque — type-name dispatch goes through
+  `alps::python::type_fullname()` (cpp/numpy_compat.hpp) instead of
+  `tp_name`. Violations fail at compile time, so a successful CI build
+  is the enforcement.
+- **Downstream extensions** that need bound-type identity with pyalps
+  (e.g. `mcbase` subclasses) must also build in split mode against the
+  same backend module — see `tutorials/ngs/5_export_python`. Extensions
+  only share nanobind type bindings when they share a backend.
+- **Free-threading (3.13t/3.14t):** still deliberately unsupported; abi3
+  wheels do not install on free-threaded interpreters. The ALPS C++
+  library relies on the GIL as its lock around shared state
   (`mcobservable`'s reference-count table, the `alps::ngs::signal`
   singleton, `mcdata`'s lazily-computed statistics). Do not add
   `FREE_THREADED` to `nanobind_add_module` without first making that
   state thread-safe.
-- **Stable ABI (abi3):** not enabled or currently supported. Some binding
-  paths still inspect CPython type internals (`tp_name`), and no abi3 build
-  runs in CI. Per-version wheels are deliberate; do not add `STABLE_ABI`
-  until the code is limited-API clean and CI compiles and imports the
-  resulting extensions.

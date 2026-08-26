@@ -46,7 +46,7 @@
             /// `visitor(T const*, std::vector<std::size_t>)` for each
             /// supported native numpy element type.
             template<typename T> void extract_from_pyobject_py11(T & visitor, nb_::handle data) {
-                std::string dtype = data.ptr()->ob_type->tp_name;
+                std::string dtype = alps::python::type_fullname(data);
                 if (dtype == "bool") visitor(nb_::cast<bool>(data));
                 else if (dtype == "int") visitor(nb_::cast<int>(data));
                 else if (dtype == "long") visitor(nb_::cast<long>(data));
