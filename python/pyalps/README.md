@@ -76,6 +76,17 @@ Free-threaded CPython builds are unsupported: these `abi3` wheels target GIL-ena
 
 Parameters created from Python retain their Python values. NumPy arrays keep array arithmetic, and changes through a list, array, or shared reference are visible to subsequent Python and C++ reads. A C++ consumer converts the current value to its requested scalar or one-dimensional vector type; incompatible metadata and out-of-range conversions raise an exception. Python metadata may use other shapes and containers supported by the HDF5 writer. Objects such as `None` can be held in memory but have no ALPS HDF5 representation.
 
+Native C++ numeric and Boolean vectors become NumPy arrays when accessed from
+Python. Native string vectors become lists so names can be replaced with longer
+strings or appended without NumPy's fixed-width string truncation. These
+materialized objects retain mutations for subsequent Python and C++ reads.
+Explicitly supplied Python lists and NumPy arrays keep their original types.
+
+Integer conversion from text is range checked in the C++ SDK, including when
+parameters originate outside Python. Negative text converted to an unsigned
+integer now raises an exception instead of wrapping; replace negative textual
+sentinels with an explicit value in the target type's range.
+
 The C++ SDK remains independent of Python and nanobind. Python-owned values and their checkpoint decoder are supplied by the bindings. Rebuild downstream C++ extensions against the SDK from the same source revision as the wheel; the parameter layout changed during this migration.
 
 New HDF5 writes distinguish Boolean and signed-byte values with an `__alps_type__` attribute while retaining the existing numeric storage format. Unmarked signed-byte data from old ALPS files retains the legacy Boolean interpretation. The old format cannot distinguish an unmarked `int8` array from a Boolean mask; use a typed reader such as h5py when an old dataset is known to contain signed bytes.
@@ -83,6 +94,11 @@ New HDF5 writes distinguish Boolean and signed-byte values with an `__alps_type_
 Rectangular mixtures of numeric rows are stored as a single array when every integer remains exact in the common dtype. If mixing integer widths or mixing integers with floating-point or complex rows would round a value, the archive stores the rows separately and reads them back as a list. For example, a `uint64` row containing `2**63 + 1` alongside an `int64` row retains its exact integer values instead of silently converting them to `float64`.
 
 `pyalps.mpi` receives Python objects using matched probes, so asynchronous receives and the wait/test helpers can handle messages larger than mpi4py's default object receive buffer. This adapter exchanges mpi4py messages; Boost.MPI's C++ serialization protocol and skeleton/content API are not wire compatible. Communicating processes must use the same protocol.
+
+Communicator wrappers compare equal when their underlying mpi4py communicators
+compare equal. They are intentionally unhashable, matching mpi4py. Unlike the
+old Boost.MPI wrappers, they cannot be used as dictionary keys or set members;
+applications needing such associations should use explicit application keys.
 
 ## Versioning
 
