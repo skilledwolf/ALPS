@@ -30,9 +30,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           release=$(jq -r .release .github/dependencies.json)
-          echo "release=$release" >> "$GITHUB_OUTPUT"
-          echo "image=$(jq -r .manylinux_image .github/dependencies.json)" >> "$GITHUB_OUTPUT"
-          echo "boost=$(jq -r .boost_default .github/ci-matrix.json)" >> "$GITHUB_OUTPUT"
+          {
+            echo "release=$release"
+            echo "image=$(jq -r .manylinux_image .github/dependencies.json)"
+            echo "boost=$(jq -r .boost_default .github/ci-matrix.json)"
+          } >> "$GITHUB_OUTPUT"
           if gh release view "$release" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo 'exists=true' >> "$GITHUB_OUTPUT"
             echo 'This dependency release already exists. Choose a new tag to refresh it.'
@@ -124,6 +126,9 @@ jobs:
     name: Windows dependencies / ${{ matrix.architecture }}
     runs-on: ${{ matrix.architecture == 'arm64' && 'windows-11-arm' || 'windows-latest' }}
     timeout-minutes: 90
+    defaults:
+      run:
+        shell: pwsh
     strategy:
       fail-fast: false
       matrix:
