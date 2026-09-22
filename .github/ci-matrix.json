@@ -8,7 +8,7 @@
   },
   "builds": [
     {"id": "gcc-minimum", "quick": true, "os": "ubuntu-22.04", "cc": "gcc-11", "cxx": "g++-11", "packages": "gcc-11 g++-11", "boost": "1.76.0"},
-    {"id": "gcc-extras", "quick": true, "os": "ubuntu-24.04", "cc": "gcc-14", "cxx": "g++-14", "packages": "gcc-14 g++-14", "extras": true},
+    {"id": "gcc-extras", "quick": true, "python": true, "os": "ubuntu-24.04", "cc": "gcc-14", "cxx": "g++-14", "packages": "gcc-14 g++-14", "extras": true},
     {"id": "clang-cxx23", "quick": true, "os": "ubuntu-24.04", "cc": "clang-18", "cxx": "clang++-18", "packages": "clang-18", "standard": 23},
     {"id": "macos-arm64", "quick": true, "os": "macos-15", "cc": "/usr/bin/clang", "cxx": "/usr/bin/clang++"},
     {"id": "gcc-latest", "os": "ubuntu-24.04", "cc": "gcc-15", "cxx": "g++-15", "packages": "gcc-15 g++-15", "repository": "gcc"},

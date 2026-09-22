@@ -6,6 +6,7 @@ Release notes and migration guidance for ALPS. Changes awaiting release are coll
 
 ### Added
 
+- A managed developer setup: `pixi run --locked dev` on Linux/macOS and `python tools/dev.py` on Windows download binary dependencies, build the SDK, and install editable Python bindings with persistent build directories.
 - Native Windows x64 and ARM64 builds with CMake presets, pinned vcpkg dependencies, and SDK installation containing the required runtime DLLs.
 - A relocatable CMake SDK with `ALPS::alps`, `ALPS::headers`, and `ALPS::fortran`. Builds with applications also export executable targets and the solver libraries `ALPS::maxent`, `ALPS::cthyb`, and `ALPS::ctint`.
 - The Unix `alps-xml` command for plot rendering, result conversion, and data extraction, including Python 3 Matplotlib output.
@@ -17,7 +18,7 @@ Release notes and migration guidance for ALPS. Changes awaiting release are coll
 - Source and wheel CI cache ALPS compilation with ccache, including MSVC Debug builds. Normal Linux and Windows jobs use four compiler processes; macOS and memory-heavy jobs retain two. Job summaries report phase timings and actual cache hits separately from cache restoration.
 - Python requires GIL-enabled CPython 3.12 or newer. Native wheels use the CPython 3.12 stable ABI (`cp312-abi3`), with one build per platform/architecture tested across Python 3.12–3.14. Downstream nanobind extensions exchanging ALPS objects must also enable `STABLE_ABI` and be rebuilt. Free-threaded Python is unsupported.
 - Source builds require CMake 4.3 or newer and C++17. Dependencies and compiler requirements propagate through exported CMake targets.
-- Source CI uses four routine Unix configurations and fourteen weekly, release-tag, or manually requested Unix configurations, including sanitizer coverage, alongside Windows x64 Debug. Python packaging CI owns Windows x64/ARM64 Release SDK builds and wheels; each SDK is built and tested once before its wheel is built. All platforms share installed-wheel validation and release publication, with Windows stable-ABI audits required before upload.
+- CI selects a smaller PR tier from coarse change categories, keeps stable aggregate checks for documentation-only changes, and retains broader merge, weekly, and release coverage. The primary Linux build reuses its SDK for Python and downstream tests. PyPI publication now waits for full source validation and a wheel rebuilt from the actual release sdist. All-hit builds avoid duplicate compiler-cache uploads.
 - MPI is opt-in. Embedded builds default to the library alone. `BUILD_TESTING` controls the tests; `ALPS_BUILD_APPLICATIONS` controls applications and CLI tools; `ALPS_BUILD_EXTENSIVE_TESTS` adds the expensive graph and HDF5 tests. C++ examples are opt-in, and tutorials are a separate installation component.
 - BLAS and LAPACK are required and use one LP64 ABI: 32-bit integers and lowercase symbols with a trailing underscore.
 - Python bindings build as a separate `scikit-build-core` project against an installed C++ SDK. Python extensions reuse the SDK's solver libraries.

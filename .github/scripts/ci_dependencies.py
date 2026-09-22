@@ -28,7 +28,10 @@ def download(package, destination, repository, manifest):
     if destination.exists():
         raise ValueError(f"Dependency destination must be new: {destination}")
     url = f"https://github.com/{repository}/releases/download/{release}/{package}.tar.gz"
-    with tempfile.TemporaryDirectory(prefix="alps-dependencies-") as temporary:
+    # Extract beside the destination so the final rename stays on one volume
+    # and the installed tree inherits the workspace's filesystem permissions.
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix=".alps-dependencies-", dir=destination.parent) as temporary:
         archive = Path(temporary) / "package.tar.gz"
         digest = hashlib.sha256()
         print(f"Downloading {url}", flush=True)

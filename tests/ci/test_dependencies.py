@@ -71,3 +71,17 @@ def test_pins_cover_every_source_and_packaging_platform():
     manifest = json.loads((ROOT / ".github/dependencies.json").read_text())
     assert manifest["sha256"].keys() == required
     assert all(re.fullmatch(r"[a-f0-9]{64}", checksum) for checksum in manifest["sha256"].values())
+
+
+def test_checksum_import_rejects_partial_or_ambiguous_releases(monkeypatch):
+    monkeypatch.syspath_prepend(str(ROOT / ".github/scripts"))
+    import pin_ci_dependencies
+    checksum = "a" * 64
+    valid = f"{checksum}  ./windows-x64.tar.gz\n"
+    assert pin_ci_dependencies.parse_checksums(valid, {"windows-x64"}) == {"windows-x64": checksum}
+    with pytest.raises(ValueError, match="Incomplete"):
+        pin_ci_dependencies.parse_checksums(valid, {"windows-x64", "windows-arm64"})
+    with pytest.raises(ValueError, match="Duplicate"):
+        pin_ci_dependencies.parse_checksums(valid + valid, {"windows-x64"})
+    with pytest.raises(ValueError, match="Invalid"):
+        pin_ci_dependencies.parse_checksums(f"{checksum}  ../archive.tar.gz", {"archive"})

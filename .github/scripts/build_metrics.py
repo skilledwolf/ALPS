@@ -74,6 +74,14 @@ def summarize(directory, restored_key=""):
     return "\n".join(lines) + "\n"
 
 
+def cache_changed(directory):
+    """A restored cache needs no new immutable snapshot on an all-hit run."""
+    phases = directory / "phases.jsonl"
+    return phases.exists() and any(
+        json.loads(line).get("misses", 0) > 0 for line in phases.read_text().splitlines()
+    )
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="operation", required=True)
@@ -82,7 +90,15 @@ def main():
     execute.add_argument("label")
     execute.add_argument("command", nargs=argparse.REMAINDER)
     commands.add_parser("summary")
+    commands.add_parser("cache-policy")
     args = parser.parse_args()
+    if args.operation == "cache-policy":
+        value = str(cache_changed(DIRECTORY)).lower()
+        print(f"Compiler cache contains new objects: {value}")
+        if output := os.environ.get("GITHUB_OUTPUT"):
+            with Path(output).open("a", encoding="utf-8") as stream:
+                stream.write(f"changed={value}\n")
+        return
     if args.operation == "run":
         if not args.command:
             parser.error("run requires a command")

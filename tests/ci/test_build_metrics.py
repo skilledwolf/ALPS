@@ -69,3 +69,13 @@ def test_actual_ccache_counters_are_reported_per_phase(tmp_path, monkeypatch):
     row = json.loads((tmp_path / "phases.jsonl").read_text())
     assert row["hits"] == 6
     assert row["misses"] == 1
+
+
+def test_all_hit_run_does_not_save_a_duplicate_cache(tmp_path):
+    assert not metrics.cache_changed(tmp_path)
+    phases = tmp_path / "phases.jsonl"
+    phases.write_text(json.dumps({"hits": 800, "misses": 0}) + "\n")
+    assert not metrics.cache_changed(tmp_path)
+    with phases.open("a") as stream:
+        stream.write(json.dumps({"hits": 0, "misses": 1}) + "\n")
+    assert metrics.cache_changed(tmp_path)

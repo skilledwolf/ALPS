@@ -8,6 +8,8 @@ on:
       - 'v*'
   pull_request:
   merge_group:
+  schedule:
+    - cron: '43 4 * * 1'
   workflow_dispatch:
 
 permissions:
@@ -17,7 +19,7 @@ env:
   PIP_ONLY_BINARY: ':all:'
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  group: packaging-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -25,20 +27,29 @@ jobs:
     name: Check release version
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    outputs:
+      packaging: ${{ steps.policy.outputs.packaging }}
+      wheel_matrix: ${{ steps.policy.outputs.wheel_matrix }}
+      smoke_matrix: ${{ steps.policy.outputs.smoke_matrix }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
+          fetch-depth: 0
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: '3.13'
       - run: python -m pip install packaging pytest "scikit-build-core>=1.0" "cmake>=4.3" ninja
       - name: Test release validation
         run: python -m pytest tests/packaging -q
+      - name: Select packaging coverage
+        id: policy
+        run: python .github/scripts/ci_policy.py
       - name: Check package, SDK, and tag versions
         run: python .github/scripts/check_release_version.py
 
   build_wheels:
+    if: needs.check_version.outputs.packaging != 'none'
     name: Build wheels / ${{ matrix.plat.family }}
     needs: [check_version]
     runs-on: ${{ matrix.plat.os }}
@@ -47,11 +58,7 @@ jobs:
       CMAKE_BUILD_PARALLEL_LEVEL: ${{ matrix.plat.family == 'macos' && '2' || '4' }}
     strategy:
       fail-fast: false
-      matrix:
-        plat:
-        - { os: ubuntu-latest, target: "", arch: x86_64, family: manylinux, build: 'cp312-manylinux*' }
-        - { os: ubuntu-latest, target: "", arch: x86_64, family: musllinux, build: 'cp312-musllinux*' }
-        - { os: macos-15, target: "15.0", arch: arm64, family: macos, build: 'cp312-macosx*' }
+      matrix: ${{ fromJSON(needs.check_version.outputs.wheel_matrix) }}
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -105,8 +112,12 @@ jobs:
           CIBW_CONTAINER_ENGINE: 'docker; create_args: --volume "${{ github.workspace }}/_build/ccache:/project/_build/ccache" --volume "${{ github.workspace }}/_build/metrics:/project/_build/metrics"'
           MACOSX_DEPLOYMENT_TARGET: ${{ matrix.plat.target }}
 
+      - name: Check whether compiler cache changed
+        id: cache-policy
+        if: always()
+        run: python .github/scripts/build_metrics.py cache-policy
       - name: Save compiler cache
-        if: ${{ !cancelled() && steps.compiler-cache.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.compiler-cache.outcome == 'success' && steps.cache-policy.outputs.changed == 'true' }}
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: _build/ccache
@@ -126,13 +137,14 @@ jobs:
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: cibw-wheels-${{ matrix.plat.os }}-${{ strategy.job-index }}
+          name: cibw-wheels-${{ matrix.plat.family }}
           path: ./wheelhouse/*.whl
 
 
   windows_wheels:
+    if: needs.check_version.outputs.packaging == 'full'
     name: Windows ${{ matrix.architecture }} wheel
-    needs: check_version
+    needs: [check_version, build_sdist]
     strategy:
       fail-fast: false
       matrix:
@@ -142,8 +154,10 @@ jobs:
       architecture: ${{ matrix.architecture }}
       configuration: Release
       wheel: true
+      sdist: ${{ matrix.architecture == 'x64' }}
 
   build_sdist:
+    if: needs.check_version.outputs.packaging != 'none'
     name: Build source distribution
     needs: [check_version]
     runs-on: ubuntu-latest
@@ -186,22 +200,14 @@ jobs:
   # repaired, uploaded-and-downloaded wheel installed with pip on a clean
   # runner, using the same abi3 wheel on every supported Python version.
   smoke_test:
+    if: ${{ !cancelled() && needs.build_wheels.result == 'success' && (needs.windows_wheels.result == 'success' || needs.windows_wheels.result == 'skipped') }}
     name: Smoke test wheels on ${{ matrix.plat.os }} / py${{ matrix.python }}
-    needs: [build_wheels, windows_wheels]
+    needs: [check_version, build_wheels, windows_wheels]
     runs-on: ${{ matrix.plat.os }}
     timeout-minutes: 30
     strategy:
       fail-fast: false
-      matrix:
-        plat:
-          - { os: ubuntu-latest, architecture: x64, artifact: cibw-wheels-ubuntu-latest-* }
-          - { os: macos-15, architecture: arm64, artifact: cibw-wheels-macos-15-* }
-          # The macOS 15 deployment target is forward-compatible; test that
-          # wheel on the newest runner rather than publishing a second copy.
-          - { os: macos-26, architecture: arm64, artifact: cibw-wheels-macos-15-* }
-          - { os: windows-latest, architecture: x64, artifact: cibw-wheels-windows-x64 }
-          - { os: windows-11-arm, architecture: arm64, artifact: cibw-wheels-windows-arm64 }
-        python: ["3.12", "3.13", "3.14"]
+      matrix: ${{ fromJSON(needs.check_version.outputs.smoke_matrix) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -246,8 +252,9 @@ jobs:
   # installs one consistent Open MPI stack and verifies real inter-rank
   # collectives, requests and point-to-point traffic through pyalps.mpi.
   mpi_smoke:
+    if: needs.check_version.outputs.packaging == 'full'
     name: Smoke test MPI adapter with two ranks
-    needs: [build_wheels]
+    needs: [check_version, build_wheels]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -261,7 +268,7 @@ jobs:
 
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
-          pattern: cibw-wheels-ubuntu-latest-*
+          pattern: cibw-wheels-manylinux
           path: wheelhouse
           merge-multiple: true
 
@@ -278,8 +285,38 @@ jobs:
       - name: Run two-rank compatibility surface
         run: mpiexec -n 2 python -m pytest -q tests/pyalps/test_binding_surface.py::test_mpi4py_compatibility_surface tests/pyalps/test_mpi_requests.py
 
+  packaging-status:
+    name: Packaging CI
+    if: always()
+    needs: [check_version, build_wheels, windows_wheels, build_sdist, smoke_test, mpi_smoke]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require every selected packaging check
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          python - <<'PY'
+          import json, os
+          jobs = json.loads(os.environ['RESULTS'])
+          assert jobs['check_version']['result'] == 'success', jobs
+          tier = jobs['check_version']['outputs']['packaging']
+          for name, job in jobs.items():
+              if name == 'check_version':
+                  continue
+              required = tier == 'full' or (tier == 'quick' and name not in {'windows_wheels', 'mpi_smoke'})
+              assert job['result'] == ('success' if required else 'skipped'), (name, job)
+          PY
+
+  release-source:
+    name: Release source validation
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    uses: ./.github/workflows/build.yml
+    with:
+      tier: full
+
   upload_pypi:
-    needs: [build_wheels, windows_wheels, build_sdist, smoke_test, mpi_smoke]
+    needs: [packaging-status, release-source]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: pypi

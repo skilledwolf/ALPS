@@ -1,4 +1,4 @@
-"""Select the routine or full source-build matrix from one manifest."""
+"""Select the quick, routine, or full source-build matrix from one manifest."""
 
 import argparse
 import json
@@ -25,7 +25,7 @@ def select_matrix(manifest, tier):
     defaults = {
         "quick": False, "boost": manifest["boost_default"], "standard": 17,
         "packages": "", "repository": "", "extras": False, "sanitizer": False,
-        "extensive": False,
+        "extensive": False, "python": False,
     }
     builds = []
     identifiers = set()
@@ -40,8 +40,10 @@ def select_matrix(manifest, tier):
             raise ValueError(f"Invalid Boost checksum for {identifier}")
         build["boost_sha256"] = checksum
         build["dependency"] = boost_package(build["boost"], build["os"])
-        build["mpi"] = "OFF" if build["sanitizer"] else "ON"
-        if tier == "full" or build["quick"]:
+        build["mpi"] = "OFF" if build["sanitizer"] or build["python"] else "ON"
+        if tier == "quick":
+            build["extras"] = False
+        if tier == "full" or (tier == "routine" and build["quick"]) or (tier == "quick" and build["python"]):
             builds.append(build)
     if not builds:
         raise ValueError(f"Empty {tier} matrix")
@@ -49,21 +51,24 @@ def select_matrix(manifest, tier):
 
 
 def main():
+    from ci_policy import current, emit
+
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--tier", choices=("auto", "quick", "full"), default="auto")
+    parser.add_argument("--tier", choices=("auto", "quick", "routine", "full"), default="auto")
     args = parser.parse_args()
     tier = args.tier
     if tier == "auto":
         periodic = os.environ.get("GITHUB_EVENT_NAME") == "schedule"
         release = os.environ.get("GITHUB_REF", "").startswith("refs/tags/v")
-        tier = "full" if periodic or release else "quick"
+        tier = "full" if periodic or release else (
+            "quick" if os.environ.get("GITHUB_EVENT_NAME") in {"pull_request", "merge_group"}
+            else "routine")
     manifest = json.loads((Path(__file__).resolve().parents[1] / "ci-matrix.json").read_text())
     matrix = select_matrix(manifest, tier)
-    serialized = json.dumps(matrix, separators=(",", ":"))
-    print(serialized)
-    if output := os.environ.get("GITHUB_OUTPUT"):
-        with Path(output).open("a", encoding="utf-8") as stream:
-            stream.write(f"matrix={serialized}\n")
+    policy = current()
+    changed_build_setup = os.environ.get("GITHUB_EVENT_NAME") in {"pull_request", "merge_group"} and policy["packaging"] == "full"
+    emit({"matrix": matrix, "source": policy["source"],
+          "developer": tier == "full" or changed_build_setup})
     if summary := os.environ.get("GITHUB_STEP_SUMMARY"):
         with Path(summary).open("a", encoding="utf-8") as stream:
             stream.write(f"Source matrix: **{tier}**, {len(matrix['include'])} builds.\n")

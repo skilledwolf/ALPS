@@ -12,6 +12,9 @@ on:
       wheel:
         type: boolean
         default: false
+      sdist:
+        type: boolean
+        default: false
 permissions:
   contents: read
 jobs:
@@ -113,8 +116,31 @@ jobs:
           $env:PYALPS_TEST_DOWNSTREAM_EXPORT = '1'
           $env:ALPS_TEST_CMAKE_ARGS = @('-G', 'Ninja', "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake", "-DVCPKG_INSTALLED_DIR=$env:VCPKG_ROOT/installed", '-DVCPKG_MANIFEST_MODE=OFF', '-DVCPKG_TARGET_TRIPLET=${{ inputs.architecture }}-windows') | ConvertTo-Json -Compress
           python .github/scripts/build_metrics.py run --timeout 900 'Wheel and downstream tests' python -m pytest tests/pyalps tests/cmake -q --junitxml=_build/windows-${{ inputs.architecture }}/pytest.xml
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        if: inputs.sdist
+        with:
+          name: cibw-sdist
+          path: _build/release-sdist
+      - name: Build and import the release sdist with the existing SDK
+        if: inputs.sdist
+        shell: pwsh
+        run: |
+          $env:ALPS_DIR = "$pwd/_build/windows-${{ inputs.architecture }}/install/share/alps"
+          $env:CMAKE_GENERATOR = 'Ninja'
+          $archives = @(Get-ChildItem _build/release-sdist/*.tar.gz)
+          if ($archives.Count -ne 1) { throw 'Expected one release sdist' }
+          python .github/scripts/build_metrics.py run --timeout 900 'Release sdist rebuild' python .github/scripts/check_sdist.py $archives[0].FullName `
+            --config-setting "cmake.define.CMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
+            --config-setting "cmake.define.VCPKG_INSTALLED_DIR=$env:VCPKG_ROOT/installed" `
+            --config-setting cmake.define.VCPKG_MANIFEST_MODE=OFF `
+            --config-setting cmake.define.VCPKG_TARGET_TRIPLET=${{ inputs.architecture }}-windows
+          if ($LASTEXITCODE) { throw 'Release sdist rebuild failed' }
+      - name: Check whether compiler cache changed
+        id: cache-policy
+        if: always()
+        run: python .github/scripts/build_metrics.py cache-policy
       - name: Save compiler cache
-        if: ${{ !cancelled() && steps.compiler-cache.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.compiler-cache.outcome == 'success' && steps.cache-policy.outputs.changed == 'true' }}
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: _build/ccache

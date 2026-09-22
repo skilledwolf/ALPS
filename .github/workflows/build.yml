@@ -3,24 +3,28 @@ name: ALPS source CI
 on:
   push:
     branches: [master]
-    tags: ['v*']
   pull_request:
   merge_group:
   schedule:
     - cron: '23 4 * * 1'
+  workflow_call:
+    inputs:
+      tier:
+        type: string
+        default: full
   workflow_dispatch:
     inputs:
       tier:
         description: Source-build coverage
         type: choice
-        options: [quick, full]
+        options: [quick, routine, full]
         default: quick
 
 permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  group: source-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 defaults:
@@ -38,10 +42,13 @@ jobs:
     timeout-minutes: 10
     outputs:
       matrix: ${{ steps.matrix.outputs.matrix }}
+      source: ${{ steps.matrix.outputs.source }}
+      developer: ${{ steps.matrix.outputs.developer }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
+          fetch-depth: 0
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: '3.12'
@@ -74,6 +81,7 @@ jobs:
 
   build:
     name: Source / ${{ matrix.id }}
+    if: needs.prepare.outputs.source == 'true'
     needs: prepare
     runs-on: ${{ matrix.os }}
     timeout-minutes: 120
@@ -173,6 +181,20 @@ jobs:
           ASAN_OPTIONS: detect_leaks=0:allocator_may_return_null=1
           UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
         run: python .github/scripts/build_metrics.py run 'SDK tests' ctest --test-dir _build/ci --output-on-failure --output-junit ctest.xml --no-tests=error
+      - name: Test bindings and installed SDK with the primary build
+        if: matrix.python
+        env:
+          ALPS_DIR: ${{ github.workspace }}/_build/ci/install/share/alps
+          CMAKE_PREFIX_PATH: ${{ github.workspace }}/_build/boost-install
+          CMAKE_GENERATOR: Ninja
+          PYALPS_TEST_DOWNSTREAM_EXPORT: '1'
+        run: |
+          cmake --install _build/ci
+          python -m pip install build 'nanobind>=2.10,<3' 'scikit-build-core>=1.0' numpy scipy matplotlib h5py patchelf
+          python .github/scripts/build_metrics.py run 'Editable bindings' python -m pip install --no-build-isolation --no-deps -e python/pyalps \
+            --config-settings "build-dir=$PWD/_build/ci-python"
+          python .github/scripts/build_metrics.py run --timeout 900 'Bindings and SDK contracts' \
+            python -m pytest tests/pyalps tests/cmake -q --junitxml=_build/ci/python.xml
       - name: Test installed XML tools after relocation
         if: matrix.extras
         env:
@@ -203,8 +225,12 @@ jobs:
             python .github/scripts/build_metrics.py run "Tutorial ${source#"$tutorials/"}" cmake --build "$output"
             ctest --test-dir "$output" --output-on-failure --output-junit ctest.xml
           done
+      - name: Check whether compiler cache changed
+        id: cache-policy
+        if: always()
+        run: python .github/scripts/build_metrics.py cache-policy
       - name: Save compiler cache
-        if: ${{ !cancelled() && steps.compiler-cache.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.compiler-cache.outcome == 'success' && steps.cache-policy.outputs.changed == 'true' }}
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: _build/ccache
@@ -216,7 +242,7 @@ jobs:
         run: python .github/scripts/build_metrics.py summary
       - name: Summarize test results
         if: always()
-        run: python .github/scripts/junit_summary.py '_build/**/ctest.xml' _build/ci/cli.xml
+        run: python .github/scripts/junit_summary.py '_build/**/ctest.xml' _build/ci/cli.xml _build/ci/python.xml
       - name: Retain test and configure evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
@@ -225,11 +251,13 @@ jobs:
           path: |
             _build/**/ctest.xml
             _build/ci/cli.xml
+            _build/ci/python.xml
             _build/**/Testing/Temporary/**
             _build/**/CMakeFiles/CMakeConfigureLog.yaml
             _build/metrics/**
 
   windows-debug:
+    if: needs.prepare.outputs.source == 'true'
     name: Windows Debug
     needs: prepare
     uses: ./.github/workflows/windows.yml
@@ -237,16 +265,51 @@ jobs:
       architecture: x64
       configuration: Debug
 
+  developer-setup:
+    name: Developer setup / ${{ matrix.os }}
+    needs: prepare
+    if: needs.prepare.outputs.developer == 'true'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: prefix-dev/setup-pixi@d3f436a425481402e6a95a1d1fc10331c708cd9e # v0.10.2
+        with:
+          pixi-version: v0.81.0
+          cache: false
+      - name: Build and test the documented developer environment
+        run: pixi run --locked python tools/dev.py --jobs 2 test
+
   source-status:
     name: Source CI
     if: always()
-    needs: [prepare, build, windows-debug]
+    needs: [prepare, build, windows-debug, developer-setup]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - name: Require successful validation and builds
         env:
+          DEVELOPER_REQUIRED: ${{ needs.prepare.outputs.developer }}
+          DEVELOPER_RESULT: ${{ needs.developer-setup.result }}
+          SOURCE_REQUIRED: ${{ needs.prepare.outputs.source }}
           PREPARE_RESULT: ${{ needs.prepare.result }}
           BUILD_RESULT: ${{ needs.build.result }}
           WINDOWS_RESULT: ${{ needs.windows-debug.result }}
-        run: test "$PREPARE_RESULT" = success && test "$BUILD_RESULT" = success && test "$WINDOWS_RESULT" = success
+        run: |
+          test "$PREPARE_RESULT" = success
+          if [[ "$DEVELOPER_REQUIRED" == true ]]; then
+            test "$DEVELOPER_RESULT" = success
+          else
+            test "$DEVELOPER_RESULT" = skipped
+          fi
+          if [[ "$SOURCE_REQUIRED" == true ]]; then
+            test "$BUILD_RESULT" = success && test "$WINDOWS_RESULT" = success
+          else
+            test "$BUILD_RESULT" = skipped && test "$WINDOWS_RESULT" = skipped
+          fi
