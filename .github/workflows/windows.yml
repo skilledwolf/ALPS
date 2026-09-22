@@ -87,6 +87,7 @@ jobs:
         run: |
           $env:ALPS_DIR = "$pwd/_build/windows-${{ inputs.architecture }}/install/share/alps"
           python .github/scripts/build_metrics.py run 'Wheel build' python -m build --wheel --no-isolation --outdir _build/python-wheel python/pyalps `
+            --config-setting "build-dir=$pwd/_build/python-wheel-build" `
             --config-setting "cmake.define.CMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
             --config-setting "cmake.define.VCPKG_INSTALLED_DIR=$env:VCPKG_ROOT/installed" `
             --config-setting cmake.define.VCPKG_MANIFEST_MODE=OFF `
