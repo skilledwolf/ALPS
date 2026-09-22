@@ -74,7 +74,7 @@ ALPS_DIR = { env = "ALPS_DIR" }
 build = ["cp312-*"]
 manylinux-x86_64-image = "manylinux_2_28"
 test-requires = ["pytest", "nanobind>=2.10,<3", "scikit-build-core>=1.0"]
-test-command = "pytest -q {project}/tests/pyalps {project}/tests/cmake"
+test-command = "pytest -v -o faulthandler_timeout=300 {project}/tests/pyalps {project}/tests/cmake"
 
 # The ALPS C++ SDK is built once per platform in before-all via the distribution
 # CMake preset; ALPS_DIR points every wheel build at that install. The ccache

@@ -20,7 +20,6 @@ jobs:
     runs-on: ${{ inputs.architecture == 'arm64' && 'windows-11-arm' || 'windows-latest' }}
     timeout-minutes: 120
     env:
-      VCPKG_ROOT: ${{ github.workspace }}/_build/dependencies
       CMAKE_BUILD_PARALLEL_LEVEL: 2
       CTEST_PARALLEL_LEVEL: 2
       PIP_ONLY_BINARY: ':all:'
@@ -36,7 +35,12 @@ jobs:
         with:
           arch: ${{ inputs.architecture }}
       - name: Download pinned dependency SDK
-        run: python .github/scripts/ci_dependencies.py windows-${{ inputs.architecture }} _build/dependencies
+        shell: pwsh
+        run: |
+          python .github/scripts/ci_dependencies.py windows-${{ inputs.architecture }} _build/dependencies
+          if ($LASTEXITCODE) { throw 'Dependency download failed' }
+          # MSVC activation sets VCPKG_ROOT to Visual Studio's bundled checkout.
+          "VCPKG_ROOT=$env:GITHUB_WORKSPACE/_build/dependencies" >> $env:GITHUB_ENV
       - name: Configure SDK
         shell: pwsh
         run: |
