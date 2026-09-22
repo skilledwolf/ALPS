@@ -45,6 +45,10 @@ def run(label, command, timeout=None):
             stream.write(json.dumps(record) + "\n")
         if after:
             stats = subprocess.run(["ccache", "--show-stats", "--verbose"], capture_output=True, text=True)
+            if stats.returncode:
+                # The manylinux system package reports full statistics without
+                # supporting the newer --verbose option.
+                stats = subprocess.run(["ccache", "--show-stats"], capture_output=True, text=True)
             if stats.returncode == 0:
                 (DIRECTORY / "ccache.txt").write_text(stats.stdout, encoding="utf-8")
         print(f"{label}: {elapsed:.1f}s, exit {code}, {record['hits']} cache hits, {record['misses']} misses", flush=True)
