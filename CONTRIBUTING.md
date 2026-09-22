@@ -139,7 +139,16 @@ Dependencies are discovered through their CMake packages. Set `CMAKE_PREFIX_PATH
 
 ### Native Windows (MSVC)
 
-Install Visual Studio 2022's **Desktop development with C++** workload, [CMake ≥ 4.3](#install-cmake-and-ninja), Git, and [vcpkg](https://github.com/microsoft/vcpkg). Set `VCPKG_ROOT` to its checkout. Use the preset matching your native architecture. On Windows x64, run in PowerShell:
+Install Visual Studio 2022 or newer with the **Desktop development with C++** workload, [CMake ≥ 4.3 and Ninja](#install-cmake-and-ninja), Git, and [vcpkg](https://github.com/microsoft/vcpkg). Open a Visual Studio developer PowerShell with the compiler targeting your native architecture (`x64` or `arm64`), and set `VCPKG_ROOT` to a dedicated vcpkg checkout. From the ALPS repository, fetch and bootstrap the revision pinned by the manifest:
+
+```powershell
+$revision = (Get-Content -Raw vcpkg.json | ConvertFrom-Json).'builtin-baseline'
+git -C $env:VCPKG_ROOT fetch origin
+git -C $env:VCPKG_ROOT checkout --detach $revision
+& "$env:VCPKG_ROOT/bootstrap-vcpkg.bat" -disableMetrics
+```
+
+Use a full vcpkg clone: resolving port versions requires historical Git trees. The Windows presets use Ninja Multi-Config with the active MSVC environment, so they work across Visual Studio versions. Use a fresh build directory when switching from a Visual Studio generator. On Windows x64:
 
 ```powershell
 cmake --preset windows-x64
@@ -161,7 +170,7 @@ cmake --install _build/windows-arm64 --config Release
 
 This preset uses `arm64-windows` dependencies and a [small numerical-package overlay](cmake/vcpkg-arm64-overlay/README.md) for the official OpenBLAS ARM64 binaries, including LAPACK 3.12.0. The overlay supplies compatible BLAS/LAPACK interfaces, needs no separate Fortran compiler, and uses the upstream Release C-ABI DLL for both Release and Debug consumers. Use Python and dependencies matching the target architecture: x64 for `windows-x64`, ARM64 for `windows-arm64`. The install contains the required non-system DLLs in `bin`. Keep separate dependency install directories for x64 and ARM64: vcpkg manifest installation synchronizes its directory to the requested target and removes packages for other targets.
 
-For a Ninja build, start a matching Visual Studio developer shell and pass the vcpkg toolchain and triplet explicitly. Build outputs use `bin` for executables/DLLs and `lib` for link libraries; multi-configuration generators add their configuration subdirectory automatically.
+Build outputs use `bin` for executables/DLLs and `lib` for link libraries, with a configuration subdirectory for Release or Debug.
 
 Keep machine-specific paths, job limits and disk preferences in an untracked `CMakeUserPresets.json`. To reclaim dependency intermediates automatically, set `VCPKG_INSTALL_OPTIONS` to `--clean-buildtrees-after-build;--clean-packages-after-build`. On machines with limited disk space, setting the Debug executable/shared/module linker flags to `/DEBUG /INCREMENTAL:NO` retains symbols without large incremental-link caches.
 
@@ -300,6 +309,8 @@ The source workflow runs its full fourteen-configuration matrix weekly and on re
 To request the full matrix before merging, open **Actions → ALPS source CI → Run workflow**, select the branch and the `full` tier. The single manifest [`.github/ci-matrix.json`](.github/ci-matrix.json) defines both tiers and pins the Boost archive checksums. The `Source CI` check aggregates matrix results and is suitable as a required branch check. Workflow linting and CI-helper tests run before compilation; native and installed-wheel jobs retain test reports and display result counts in their job summaries. Manual packaging runs build and test artifacts; only a pushed release tag can publish to PyPI.
 
 ## Preparing a release
+
+Windows x64 and ARM64 `cp312-abi3` wheels are currently CI artifacts. Adding them to PyPI releases remains follow-up work: reuse the validated Windows wheel build in the packaging workflow and require its stable-ABI audit and Python 3.12–3.14 compatibility checks before publication.
 
 Review the Unreleased entries in [CHANGELOG.md](CHANGELOG.md), group related changes, and check the migration guidance. At release time, give the section the release version and date, then start a new Unreleased section for subsequent work.
 

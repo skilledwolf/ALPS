@@ -50,6 +50,8 @@ Release notes and migration guidance for ALPS. Changes awaiting release are coll
 
 ### Fixed
 
+- Windows CI fetches and bootstraps the manifest's pinned vcpkg revision, including its port history. Windows presets use Ninja Multi-Config with an activated MSVC environment instead of requiring a particular Visual Studio generator.
+
 - Default observable data initializes its thermalization state. Integer ranges retain valid bounds across the entire integer domain; `size()` returns `std::uintmax_t` and throws `std::overflow_error` when the count cannot fit that type.
 - Simulation-help issues route Worm and SSE to their respective maintainers without an external form parser. DMFT startup notices preserve scientific credit while removing duplicate citation requests and mandatory-citation wording.
 - Windows ARM64 numerical builds use a compatible BLAS/LAPACK provider instead of mixing incompatible CLAPACK and OpenBLAS return conventions.

@@ -13,7 +13,7 @@ jobs:
   msvc:
     name: MSVC ${{ matrix.arch }} ${{ matrix.config }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 90
+    timeout-minutes: 120
     env:
       VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/.cache/vcpkg
       CMAKE_BUILD_PARALLEL_LEVEL: 2
@@ -43,11 +43,33 @@ jobs:
       - uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: ${{ matrix.arch }}
+      - name: Read pinned vcpkg revision
+        id: vcpkg
+        shell: pwsh
+        run: |
+          $revision = (Get-Content -Raw vcpkg.json | ConvertFrom-Json).'builtin-baseline'
+          if ($revision -notmatch '^[0-9a-f]{40}$') { throw 'Invalid vcpkg baseline' }
+          "revision=$revision" >> $env:GITHUB_OUTPUT
+      - uses: actions/checkout@v7
+        with:
+          repository: microsoft/vcpkg
+          ref: ${{ steps.vcpkg.outputs.revision }}
+          path: _build/vcpkg
+          # Port versions can refer to trees older than the pinned baseline.
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Bootstrap pinned vcpkg
+        shell: pwsh
+        run: |
+          $vcpkgRoot = Join-Path $env:GITHUB_WORKSPACE '_build/vcpkg'
+          & "$vcpkgRoot/bootstrap-vcpkg.bat" -disableMetrics
+          if ($LASTEXITCODE) { throw 'vcpkg bootstrap failed' }
+          "VCPKG_ROOT=$vcpkgRoot" >> $env:GITHUB_ENV
       - name: Configure SDK
         shell: pwsh
         run: |
-          python -m pip install "cmake>=4.3"
-          $env:VCPKG_ROOT = $env:VCPKG_INSTALLATION_ROOT
+          python -m pip install "cmake>=4.3" ninja
+          if ($LASTEXITCODE) { throw 'Build tool installation failed' }
           cmake --preset windows-${{ matrix.arch }}
       - name: Build SDK
         run: cmake --build --preset windows-${{ matrix.arch }} --config ${{ matrix.config }}
@@ -64,7 +86,7 @@ jobs:
         run: |
           $env:ALPS_DIR = "$pwd/_build/windows-${{ matrix.arch }}/install/share/alps"
           python -m build --wheel --no-isolation --outdir _build/python-wheel python/pyalps `
-            --config-setting "cmake.define.CMAKE_TOOLCHAIN_FILE=$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" `
+            --config-setting "cmake.define.CMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
             --config-setting "cmake.define.VCPKG_INSTALLED_DIR=$pwd/_build/windows-${{ matrix.arch }}/vcpkg_installed" `
             --config-setting cmake.define.VCPKG_MANIFEST_MODE=OFF `
             --config-setting cmake.define.VCPKG_TARGET_TRIPLET=${{ matrix.arch }}-windows
@@ -87,7 +109,7 @@ jobs:
         run: |
           $env:ALPS_DIR = "$pwd/_build/windows-${{ matrix.arch }}/install/share/alps"
           $env:PYALPS_TEST_DOWNSTREAM_EXPORT = '1'
-          $env:ALPS_TEST_CMAKE_ARGS = @('-G', 'Ninja', "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake", "-DVCPKG_INSTALLED_DIR=$pwd/_build/windows-${{ matrix.arch }}/vcpkg_installed", '-DVCPKG_MANIFEST_MODE=OFF', '-DVCPKG_TARGET_TRIPLET=${{ matrix.arch }}-windows') | ConvertTo-Json -Compress
+          $env:ALPS_TEST_CMAKE_ARGS = @('-G', 'Ninja', "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake", "-DVCPKG_INSTALLED_DIR=$pwd/_build/windows-${{ matrix.arch }}/vcpkg_installed", '-DVCPKG_MANIFEST_MODE=OFF', '-DVCPKG_TARGET_TRIPLET=${{ matrix.arch }}-windows') | ConvertTo-Json -Compress
           python -m pytest tests/pyalps tests/cmake -q --junitxml=_build/windows-${{ matrix.arch }}/pytest.xml
       - uses: actions/upload-artifact@v7
         if: matrix.config == 'Release'
@@ -104,6 +126,8 @@ jobs:
           path: |
             _build/windows-${{ matrix.arch }}/Testing/Temporary/**
             _build/windows-${{ matrix.arch }}/CMakeFiles/CMakeConfigureLog.yaml
+            _build/windows-${{ matrix.arch }}/vcpkg-manifest-install.log
+            _build/vcpkg/buildtrees/**/*.log
             _build/windows-${{ matrix.arch }}/ctest.xml
             _build/windows-${{ matrix.arch }}/pytest.xml
 
