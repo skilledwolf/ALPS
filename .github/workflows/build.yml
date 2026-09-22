@@ -39,10 +39,10 @@ jobs:
     outputs:
       matrix: ${{ steps.matrix.outputs.matrix }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: '3.12'
       - name: Lint workflows and shell helpers
@@ -66,7 +66,7 @@ jobs:
       - name: Summarize helper tests
         if: always()
         run: python .github/scripts/junit_summary.py ci-tests.xml
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: always()
         with:
           name: ci-helper-tests
@@ -94,10 +94,10 @@ jobs:
       SANITIZER: ${{ matrix.sanitizer }}
       CXX_STANDARD: ${{ matrix.standard }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: '3.12'
       - name: Install CMake and test tools
@@ -197,7 +197,7 @@ jobs:
         run: python .github/scripts/junit_summary.py '_build/**/ctest.xml' _build/ci/cli.xml
       - name: Retain test and configure evidence
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: source-${{ matrix.id }}-reports
           path: |
