@@ -1,4 +1,5 @@
 {
+  "boost_default": "1.91.0",
   "boost": {
     "1.76.0": "7bd7ddceec1a1dfdcbdb3e609b60d01739c38390a5f956385a12f3122049f0ca",
     "1.81.0": "205666dea9f6a7cfed87c7a6dfbeb52a2c1b9de55712c9c1a87735d7181452b6",

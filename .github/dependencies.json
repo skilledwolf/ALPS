@@ -1,5 +1,18 @@
 {
+  "repository": "skilledwolf/ALPS",
   "release": "ci-dependencies-2026-09-22-1",
   "manylinux_image": "quay.io/pypa/manylinux_2_28_x86_64@sha256:012f4a50472412f18bb2b450c1cce7158434cfae4ae878591c2748a13a30c2be",
-  "sha256": {}
+  "musllinux_image": "quay.io/pypa/musllinux_1_2_x86_64@sha256:f130bd3e3aebb39abcdec28a89f987f0d31b52d74bac5852318303698e9a5033",
+  "sha256": {
+    "boost-1.76.0-linux-x64": "f60bb364d01c196c0ab356eff34a9202870e7729923fdfcd994b60b21c45c09a",
+    "boost-1.81.0-linux-x64": "0dca8308872f4855f17fd8cb41ba0d4430beec4fb718485504ef71582b621adc",
+    "boost-1.86.0-linux-x64": "c555e20d3ce03276861f3b11d0ebf3d723310c60b80a312eca84ccd606776578",
+    "boost-1.91.0-linux-arm64": "b7c7e9f9e0d682d147b600f6f045759601bf4643dbec7467db5813a85fc3a34c",
+    "boost-1.91.0-linux-x64": "33b6eb0d5d8e39a0e2adfcb21413b1f00b0da165c9cffe3cb07c32a82f1e77f6",
+    "boost-1.91.0-macos-arm64": "6aee482fa2827d079ff31fab5af33c7c2c0b27b14ea12071b9a1b312b34ec65f",
+    "boost-1.91.0-macos-x64": "3ec0fe61622c7cb1da5e337f0f7e7b32ae51933efe06fa6d107b52d038c8a06a",
+    "boost-1.91.0-manylinux-x64": "a15dc9df55a7def1556fc77f152111661694c80c2ff4778d763a92567ea70833",
+    "windows-arm64": "154a15282064dd45bce2a382ec6e6bb30fc1ae73d0c59ed0d59c49473434ec60",
+    "windows-x64": "706891068c464ff3681e5d80bc9e2bb2c30b2b6d6212358efdb15d61de4489df"
+  }
 }

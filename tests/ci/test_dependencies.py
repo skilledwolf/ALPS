@@ -3,8 +3,10 @@
 import hashlib
 import importlib.util
 import io
+import json
 from pathlib import Path
 import tarfile
+import re
 
 import pytest
 
@@ -56,3 +58,16 @@ def test_missing_pin_fails_without_network(tmp_path, monkeypatch):
     with pytest.raises(ValueError, match="No pinned binary"):
         dependencies.download("missing", tmp_path / "installed", "owner/repository",
                               {"release": "ci-dependencies-test", "sha256": {}})
+
+
+def test_pins_cover_every_source_and_packaging_platform():
+    spec = importlib.util.spec_from_file_location("ci_matrix", ROOT / ".github/scripts/ci_matrix.py")
+    matrix = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(matrix)
+    source = json.loads((ROOT / ".github/ci-matrix.json").read_text())
+    builds = matrix.select_matrix(source, "full")
+    required = {build["dependency"] for build in builds["include"]}
+    required.update(("windows-x64", "windows-arm64", f"boost-{source['boost_default']}-manylinux-x64"))
+    manifest = json.loads((ROOT / ".github/dependencies.json").read_text())
+    assert manifest["sha256"].keys() == required
+    assert all(re.fullmatch(r"[a-f0-9]{64}", checksum) for checksum in manifest["sha256"].values())

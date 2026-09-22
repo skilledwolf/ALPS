@@ -3,7 +3,6 @@
 import argparse
 import hashlib
 import json
-import os
 from pathlib import Path
 import re
 import shutil
@@ -51,10 +50,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("package")
     parser.add_argument("destination", type=Path)
-    parser.add_argument("--repository", default=os.environ.get("GITHUB_REPOSITORY", ""))
+    parser.add_argument("--repository", help="Override the manifest's binary repository")
     args = parser.parse_args()
     manifest = json.loads((ROOT / ".github/dependencies.json").read_text())
-    download(args.package, args.destination, args.repository, manifest)
+    download(args.package, args.destination, args.repository or manifest["repository"], manifest)
 
 
 if __name__ == "__main__":

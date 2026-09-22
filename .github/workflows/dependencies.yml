@@ -3,9 +3,6 @@ name: Publish CI dependencies
 # Maintenance only. Ordinary source and wheel jobs cannot compile dependencies.
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - '.github/workflows/dependencies.yml'
 
 permissions:
   contents: read
@@ -21,6 +18,7 @@ jobs:
     outputs:
       release: ${{ steps.config.outputs.release }}
       image: ${{ steps.config.outputs.image }}
+      boost: ${{ steps.config.outputs.boost }}
       exists: ${{ steps.config.outputs.exists }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -34,6 +32,7 @@ jobs:
           release=$(jq -r .release .github/dependencies.json)
           echo "release=$release" >> "$GITHUB_OUTPUT"
           echo "image=$(jq -r .manylinux_image .github/dependencies.json)" >> "$GITHUB_OUTPUT"
+          echo "boost=$(jq -r .boost_default .github/ci-matrix.json)" >> "$GITHUB_OUTPUT"
           if gh release view "$release" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo 'exists=true' >> "$GITHUB_OUTPUT"
             echo 'This dependency release already exists. Choose a new tag to refresh it.'
@@ -54,11 +53,11 @@ jobs:
           - {os: ubuntu-22.04, platform: linux-x64, version: '1.76.0'}
           - {os: ubuntu-22.04, platform: linux-x64, version: '1.81.0'}
           - {os: ubuntu-22.04, platform: linux-x64, version: '1.86.0'}
-          - {os: ubuntu-22.04, platform: linux-x64, version: '1.91.0'}
-          - {os: ubuntu-24.04-arm, platform: linux-arm64, version: '1.91.0'}
-          - {os: macos-15, platform: macos-arm64, version: '1.91.0'}
-          - {os: macos-15-intel, platform: macos-x64, version: '1.91.0'}
-          - {os: ubuntu-24.04, platform: manylinux-x64, version: '1.91.0'}
+          - {os: ubuntu-22.04, platform: linux-x64, version: '${{ needs.prepare.outputs.boost }}'}
+          - {os: ubuntu-24.04-arm, platform: linux-arm64, version: '${{ needs.prepare.outputs.boost }}'}
+          - {os: macos-15, platform: macos-arm64, version: '${{ needs.prepare.outputs.boost }}'}
+          - {os: macos-15-intel, platform: macos-x64, version: '${{ needs.prepare.outputs.boost }}'}
+          - {os: ubuntu-24.04, platform: manylinux-x64, version: '${{ needs.prepare.outputs.boost }}'}
     env:
       BOOST_VERSION: ${{ matrix.version }}
       PACKAGE: boost-${{ matrix.version }}-${{ matrix.platform }}

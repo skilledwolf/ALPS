@@ -23,7 +23,7 @@ def boost_package(version, runner):
 
 def select_matrix(manifest, tier):
     defaults = {
-        "quick": False, "boost": "1.91.0", "standard": 17,
+        "quick": False, "boost": manifest["boost_default"], "standard": 17,
         "packages": "", "repository": "", "extras": False, "sanitizer": False,
         "extensive": False,
     }
