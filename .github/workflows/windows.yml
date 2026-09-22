@@ -80,6 +80,9 @@ jobs:
         run: python -m pip install build "nanobind>=2.10,<3" numpy scipy matplotlib h5py pytest "scikit-build-core>=1.0" abi3audit
       - name: Build and audit Python wheel
         if: inputs.wheel
+        env:
+          # CMake compiler launchers are supported by Ninja, not Visual Studio.
+          CMAKE_GENERATOR: Ninja
         shell: pwsh
         run: |
           $env:ALPS_DIR = "$pwd/_build/windows-${{ inputs.architecture }}/install/share/alps"
