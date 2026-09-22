@@ -75,11 +75,11 @@ def test_sdk_exports_solver_libraries(tmp_path):
 def test_relocated_sdk(tmp_path):
     prefix = Path(os.environ["ALPS_DIR"]).resolve().parents[1]
     relocated = tmp_path / "relocated"
-    # Only copy SDK artifacts, not application programs or dependency caches.
-    libdir = os.environ.get("ALPS_TEST_INSTALL_LIBDIR", "lib")
+    # Preserve the installed layout, including platforms that use lib64.
+    # Application programs are unnecessary for this library-consumer check.
     bindir = os.environ.get("ALPS_TEST_INSTALL_BINDIR", "bin")
-    for directory in ("include", libdir, "share/alps"):
-        shutil.copytree(prefix / directory, relocated / directory, symlinks=True)
+    shutil.copytree(prefix, relocated, symlinks=True,
+                    ignore=lambda directory, names: [bindir] if Path(directory) == prefix else [])
     if os.name == "nt":
         (relocated / bindir).mkdir(parents=True)
         for library in (prefix / bindir).glob("*.dll"):

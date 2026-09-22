@@ -73,8 +73,8 @@ ALPS_DIR = { env = "ALPS_DIR" }
 [tool.cibuildwheel]
 build = ["cp312-*"]
 manylinux-x86_64-image = "manylinux_2_28"
-test-requires = ["pytest", "nanobind>=2.10,<3", "scikit-build-core>=1.0"]
-test-command = "pytest -v -o faulthandler_timeout=300 {project}/tests/pyalps {project}/tests/cmake"
+test-requires = ["pytest", "pytest-timeout", "nanobind>=2.10,<3", "scikit-build-core>=1.0"]
+test-command = "pytest -v --timeout=600 -o faulthandler_timeout=300 {project}/tests/pyalps {project}/tests/cmake"
 
 # The ALPS C++ SDK is built once per platform in before-all via the distribution
 # CMake preset; ALPS_DIR points every wheel build at that install. The ccache
@@ -100,7 +100,9 @@ before-all = [
 ]
 repair-wheel-command = [
   "python -m pip install wheel",
-  "auditwheel repair -w {dest_dir} {wheel}",
+  # Boost's transitive libraries need the same search path as its direct ones.
+  # Scope this to repair so installed-wheel tests cannot use the build prefix.
+  'LD_LIBRARY_PATH="$(pwd)/_build/boost-install/lib" auditwheel repair -w {dest_dir} {wheel}',
   "python {project}/python/pyalps/_build_support/runtime_manifest.py --wheel {dest_dir}/*.whl",
   "auditwheel show {dest_dir}/*.whl",
 ]
@@ -114,7 +116,8 @@ before-all = [
 ]
 repair-wheel-command = [
   "python -m pip install wheel",
-  "delocate-wheel --require-archs {delocate_archs} -w {dest_dir} -v {wheel}",
+  # Invoke the Python module directly: a shell shebang can strip DYLD variables.
+  'DYLD_LIBRARY_PATH="$(pwd)/_build/boost-install/lib" python -m delocate.cmd.delocate_wheel --require-archs {delocate_archs} -w {dest_dir} -v {wheel}',
   "python {project}/python/pyalps/_build_support/runtime_manifest.py --wheel {dest_dir}/*.whl",
   "delocate-listdeps --all {dest_dir}/*.whl",
 ]

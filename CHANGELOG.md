@@ -54,7 +54,7 @@ Release notes and migration guidance for ALPS. Changes awaiting release are coll
 
 - Linux wheels give copied SDK programs the wheel's library lookup path even when the SDK uses `lib64` or a custom library directory. Installed SDKs retain lookup paths for imported dependencies staged inside the project tree.
 
-- Windows CI fetches and bootstraps the manifest's pinned vcpkg revision, including its port history. Windows presets use Ninja Multi-Config with an activated MSVC environment instead of requiring a particular Visual Studio generator.
+- Windows dependency publication fetches and bootstraps the manifest's pinned vcpkg revision, including its port history. Windows presets use Ninja Multi-Config with an activated MSVC environment instead of requiring a particular Visual Studio generator.
 - GitHub Actions use verified full commit pins, allowing the workflows to run in repositories that require immutable action references.
 - Windows shared-library builds copy runtime dependencies using their imported CMake configurations, including the Release OpenBLAS DLL needed by ARM64 Debug applications and tests.
 
