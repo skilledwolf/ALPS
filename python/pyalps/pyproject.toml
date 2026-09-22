@@ -73,8 +73,9 @@ ALPS_DIR = { env = "ALPS_DIR" }
 [tool.cibuildwheel]
 build = ["cp312-*"]
 manylinux-x86_64-image = "manylinux_2_28"
-test-requires = ["pytest", "pytest-timeout", "nanobind>=2.10,<3", "scikit-build-core>=1.0"]
-test-command = "pytest -v --timeout=600 -o faulthandler_timeout=300 {project}/tests/pyalps {project}/tests/cmake"
+test-requires = ["pytest", "ninja>=1.12", "nanobind>=2.10,<3", "scikit-build-core>=1.0"]
+# An external watchdog can stop native code even while it holds Python's GIL.
+test-command = 'python -c "import subprocess, sys; subprocess.run(sys.argv[1:], check=True, timeout=900)" pytest -v -o faulthandler_timeout=300 "{project}/tests/pyalps" "{project}/tests/cmake"'
 
 # The ALPS C++ SDK is built once per platform in before-all via the distribution
 # CMake preset; ALPS_DIR points every wheel build at that install. The ccache
@@ -92,8 +93,8 @@ PYALPS_TEST_DOWNSTREAM_EXPORT = "1"
 [tool.cibuildwheel.linux]
 environment-pass = ["GITHUB_REF", "ALPS_VERSION_PRERELEASE"]
 before-all = [
-  "if command -v dnf >/dev/null 2>&1; then dnf install -y ccache hdf5-devel lapack-devel ninja-build; else apk add --no-cache boost-dev ccache ninja-is-really-ninja hdf5-dev lapack-dev; export CXXFLAGS=-DALPS_NGS_NO_STACKTRACE; fi",
-  "python -m pip install 'cmake>=4.3'",
+  "if command -v dnf >/dev/null 2>&1; then dnf install -y ccache hdf5-devel lapack-devel; else apk add --no-cache boost-dev ccache hdf5-dev lapack-dev; export CXXFLAGS=-DALPS_NGS_NO_STACKTRACE; fi",
+  "python -m pip install 'cmake>=4.3' 'ninja>=1.12'",
   "cd {project}",
   "cmake --preset distribution -DCMAKE_CXX_COMPILER_LAUNCHER=ccache",
   "cmake --build --preset distribution -j2",

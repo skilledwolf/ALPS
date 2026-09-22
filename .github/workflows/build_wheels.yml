@@ -98,6 +98,9 @@ jobs:
           # CMakePresets.json; only matrix-derived values live here.
           CIBW_ARCHS: ${{ matrix.plat.arch }}
           CIBW_BUILD: ${{ matrix.plat.build }}
+          # cibuildwheel copies /project; mount the compiler cache explicitly
+          # so Linux builds update the directory that Actions saves afterward.
+          CIBW_CONTAINER_ENGINE: 'docker; create_args: --volume "${{ github.workspace }}/_build/ccache:/project/_build/ccache"'
           MACOSX_DEPLOYMENT_TARGET: ${{ matrix.plat.target }}
 
       - name: Save compiler cache
