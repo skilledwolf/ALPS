@@ -20,8 +20,12 @@ jobs:
     runs-on: ${{ inputs.architecture == 'arm64' && 'windows-11-arm' || 'windows-latest' }}
     timeout-minutes: 120
     env:
-      CMAKE_BUILD_PARALLEL_LEVEL: 2
+      CMAKE_BUILD_PARALLEL_LEVEL: 4
       CTEST_PARALLEL_LEVEL: 2
+      CMAKE_C_COMPILER_LAUNCHER: ccache
+      CMAKE_CXX_COMPILER_LAUNCHER: ccache
+      CCACHE_DIR: ${{ github.workspace }}/_build/ccache
+      CCACHE_MAXSIZE: 1G
       PIP_ONLY_BINARY: ':all:'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -34,10 +38,22 @@ jobs:
       - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1
         with:
           arch: ${{ inputs.architecture }}
+      - name: Install native compiler cache
+        shell: pwsh
+        run: .github/scripts/install-ccache.ps1 -Architecture ${{ inputs.architecture }} -Destination _build/ccache-tool
+      - name: Restore compiler cache
+        id: compiler-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: _build/ccache
+          key: ccache-windows-${{ inputs.architecture }}-${{ inputs.configuration }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: ccache-windows-${{ inputs.architecture }}-${{ inputs.configuration }}-
+      - name: Reset compiler cache counters
+        run: ccache --zero-stats
       - name: Download pinned dependency SDK
         shell: pwsh
         run: |
-          python .github/scripts/ci_dependencies.py windows-${{ inputs.architecture }} _build/dependencies
+          python .github/scripts/build_metrics.py run 'Dependency download' python .github/scripts/ci_dependencies.py windows-${{ inputs.architecture }} _build/dependencies
           if ($LASTEXITCODE) { throw 'Dependency download failed' }
           # MSVC activation sets VCPKG_ROOT to Visual Studio's bundled checkout.
           "VCPKG_ROOT=$env:GITHUB_WORKSPACE/_build/dependencies" >> $env:GITHUB_ENV
@@ -48,12 +64,15 @@ jobs:
           if ($LASTEXITCODE) { throw 'Build tool installation failed' }
           # Executables share one DLL directory; serialize vcpkg's app-local
           # copy steps to avoid concurrent writes while keeping compilation parallel.
-          cmake --preset windows-${{ inputs.architecture }} -DVCPKG_MANIFEST_MODE=OFF -DX_VCPKG_APPLOCAL_DEPS_SERIALIZED=ON `
+          # Embed Debug information in each object so it can be cached independently.
+          python .github/scripts/build_metrics.py run 'SDK configure' cmake --preset windows-${{ inputs.architecture }} `
+            '-DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=$<$<CONFIG:Debug,RelWithDebInfo>:Embedded>' `
+            -DVCPKG_MANIFEST_MODE=OFF -DX_VCPKG_APPLOCAL_DEPS_SERIALIZED=ON `
             "-DVCPKG_INSTALLED_DIR=$env:VCPKG_ROOT/installed"
       - name: Build SDK
-        run: cmake --build --preset windows-${{ inputs.architecture }} --config ${{ inputs.configuration }}
+        run: python .github/scripts/build_metrics.py run 'SDK build' cmake --build --preset windows-${{ inputs.architecture }} --config ${{ inputs.configuration }}
       - name: Test SDK
-        run: ctest --preset windows-${{ inputs.architecture }} -C ${{ inputs.configuration }} --output-junit ctest.xml --no-tests=error
+        run: python .github/scripts/build_metrics.py run 'SDK tests' ctest --preset windows-${{ inputs.architecture }} -C ${{ inputs.configuration }} --output-junit ctest.xml --no-tests=error
       - name: Install SDK
         run: cmake --install _build/windows-${{ inputs.architecture }} --config ${{ inputs.configuration }}
       - name: Install Python build requirements
@@ -64,7 +83,7 @@ jobs:
         shell: pwsh
         run: |
           $env:ALPS_DIR = "$pwd/_build/windows-${{ inputs.architecture }}/install/share/alps"
-          python -m build --wheel --no-isolation --outdir _build/python-wheel python/pyalps `
+          python .github/scripts/build_metrics.py run 'Wheel build' python -m build --wheel --no-isolation --outdir _build/python-wheel python/pyalps `
             --config-setting "cmake.define.CMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
             --config-setting "cmake.define.VCPKG_INSTALLED_DIR=$env:VCPKG_ROOT/installed" `
             --config-setting cmake.define.VCPKG_MANIFEST_MODE=OFF `
@@ -89,7 +108,18 @@ jobs:
           $env:ALPS_DIR = "$pwd/_build/windows-${{ inputs.architecture }}/install/share/alps"
           $env:PYALPS_TEST_DOWNSTREAM_EXPORT = '1'
           $env:ALPS_TEST_CMAKE_ARGS = @('-G', 'Ninja', "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake", "-DVCPKG_INSTALLED_DIR=$env:VCPKG_ROOT/installed", '-DVCPKG_MANIFEST_MODE=OFF', '-DVCPKG_TARGET_TRIPLET=${{ inputs.architecture }}-windows') | ConvertTo-Json -Compress
-          python -m pytest tests/pyalps tests/cmake -q --junitxml=_build/windows-${{ inputs.architecture }}/pytest.xml
+          python .github/scripts/build_metrics.py run --timeout 900 'Wheel and downstream tests' python -m pytest tests/pyalps tests/cmake -q --junitxml=_build/windows-${{ inputs.architecture }}/pytest.xml
+      - name: Save compiler cache
+        if: ${{ !cancelled() && steps.compiler-cache.outcome == 'success' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: _build/ccache
+          key: ${{ steps.compiler-cache.outputs.cache-primary-key }}
+      - name: Summarize build performance
+        if: always()
+        env:
+          CCACHE_RESTORED_KEY: ${{ steps.compiler-cache.outputs.cache-matched-key }}
+        run: python .github/scripts/build_metrics.py summary
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: inputs.wheel
         with:
@@ -107,3 +137,4 @@ jobs:
             _build/windows-${{ inputs.architecture }}/CMakeFiles/CMakeConfigureLog.yaml
             _build/windows-${{ inputs.architecture }}/ctest.xml
             _build/windows-${{ inputs.architecture }}/pytest.xml
+            _build/metrics/**

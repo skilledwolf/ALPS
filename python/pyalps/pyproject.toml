@@ -75,7 +75,7 @@ build = ["cp312-*"]
 manylinux-x86_64-image = "manylinux_2_28"
 test-requires = ["pytest", "ninja>=1.12", "nanobind>=2.10,<3", "scikit-build-core>=1.0"]
 # An external watchdog can stop native code even while it holds Python's GIL.
-test-command = 'python -c "import subprocess, sys; subprocess.run(sys.argv[1:], check=True, timeout=900)" pytest -v -o faulthandler_timeout=300 "{project}/tests/pyalps" "{project}/tests/cmake"'
+test-command = 'python {project}/.github/scripts/build_metrics.py run --timeout 900 "Wheel and downstream tests" python -m pytest -v -o faulthandler_timeout=300 "{project}/tests/pyalps" "{project}/tests/cmake"'
 
 # The ALPS C++ SDK is built once per platform in before-all via the distribution
 # CMake preset; ALPS_DIR points every wheel build at that install. The ccache
@@ -83,21 +83,25 @@ test-command = 'python -c "import subprocess, sys; subprocess.run(sys.argv[1:], 
 [tool.cibuildwheel.environment]
 PIP_ONLY_BINARY = ":all:"
 ALPS_DIR = "$(pwd)/_build/distribution/install/share/alps"
+ALPS_CI_METRICS = "$(pwd)/_build/metrics"
 CMAKE_PREFIX_PATH = "$(pwd)/_build/boost-install"
 CCACHE_DIR = "$(pwd)/_build/ccache"
 CCACHE_NAMESPACE = "pyalps-wheel"
-CMAKE_ARGS = "-DCMAKE_CXX_COMPILER_LAUNCHER=ccache"
+CCACHE_MAXSIZE = "1G"
+CMAKE_C_COMPILER_LAUNCHER = "ccache"
+CMAKE_CXX_COMPILER_LAUNCHER = "ccache"
 PYALPS_TEST_DOWNSTREAM_EXPORT = "1"
 
 # The bundled XDR implementation uses portable C11 on glibc and musl.
 [tool.cibuildwheel.linux]
-environment-pass = ["GITHUB_REF", "ALPS_VERSION_PRERELEASE"]
+environment-pass = ["GITHUB_REF", "ALPS_VERSION_PRERELEASE", "CMAKE_BUILD_PARALLEL_LEVEL"]
 before-all = [
   "if command -v dnf >/dev/null 2>&1; then dnf install -y ccache hdf5-devel lapack-devel; else apk add --no-cache boost-dev ccache hdf5-dev lapack-dev; export CXXFLAGS=-DALPS_NGS_NO_STACKTRACE; fi",
   "python -m pip install 'cmake>=4.3' 'ninja>=1.12'",
   "cd {project}",
-  "cmake --preset distribution -DCMAKE_CXX_COMPILER_LAUNCHER=ccache",
-  "cmake --build --preset distribution -j2",
+  "ccache --zero-stats",
+  "python .github/scripts/build_metrics.py run 'SDK configure' cmake --preset distribution",
+  "python .github/scripts/build_metrics.py run 'SDK build and install' cmake --build --preset distribution -j4",
 ]
 repair-wheel-command = [
   "python -m pip install wheel",
@@ -112,8 +116,9 @@ repair-wheel-command = [
 before-all = [
   "brew install --force-bottle ccache cmake hdf5 ninja zstd xz",
   "cd {project}",
-  "cmake --preset distribution -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DHDF5_ROOT=$(brew --prefix hdf5)",
-  "cmake --build --preset distribution -j2",
+  "ccache --zero-stats",
+  "python .github/scripts/build_metrics.py run 'SDK configure' cmake --preset distribution -DHDF5_ROOT=$(brew --prefix hdf5)",
+  "python .github/scripts/build_metrics.py run 'SDK build and install' cmake --build --preset distribution -j2",
 ]
 repair-wheel-command = [
   "python -m pip install wheel",

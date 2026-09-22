@@ -14,7 +14,7 @@ Release notes and migration guidance for ALPS. Changes awaiting release are coll
 ### Changed
 
 - Ordinary source and wheel CI consume checksum-pinned dependency binaries. A separate maintenance workflow publishes Boost archives and standalone Windows dependency SDKs only when needed; missing binaries fail instead of triggering source builds.
-
+- Source and wheel CI cache ALPS compilation with ccache, including MSVC Debug builds. Normal Linux and Windows jobs use four compiler processes; macOS and memory-heavy jobs retain two. Job summaries report phase timings and actual cache hits separately from cache restoration.
 - Python requires GIL-enabled CPython 3.12 or newer. Native wheels use the CPython 3.12 stable ABI (`cp312-abi3`), with one build per platform/architecture tested across Python 3.12–3.14. Downstream nanobind extensions exchanging ALPS objects must also enable `STABLE_ABI` and be rebuilt. Free-threaded Python is unsupported.
 - Source builds require CMake 4.3 or newer and C++17. Dependencies and compiler requirements propagate through exported CMake targets.
 - Source CI uses four routine Unix configurations and fourteen weekly, release-tag, or manually requested Unix configurations, including sanitizer coverage, alongside Windows x64 Debug. Python packaging CI owns Windows x64/ARM64 Release SDK builds and wheels; each SDK is built and tested once before its wheel is built. All platforms share installed-wheel validation and release publication, with Windows stable-ABI audits required before upload.

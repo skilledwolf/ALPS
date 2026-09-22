@@ -28,7 +28,6 @@ defaults:
     shell: bash
 
 env:
-  CMAKE_BUILD_PARALLEL_LEVEL: 2
   CTEST_PARALLEL_LEVEL: 2
   PIP_ONLY_BINARY: ':all:'
 
@@ -83,6 +82,12 @@ jobs:
       max-parallel: 4
       matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
     env:
+      # Keep the small macOS runners and memory-heavy jobs at two compilers.
+      CMAKE_BUILD_PARALLEL_LEVEL: ${{ (startsWith(matrix.os, 'macos-') || matrix.sanitizer || matrix.extensive) && '2' || '4' }}
+      CMAKE_C_COMPILER_LAUNCHER: ccache
+      CMAKE_CXX_COMPILER_LAUNCHER: ccache
+      CCACHE_DIR: ${{ github.workspace }}/_build/ccache
+      CCACHE_MAXSIZE: 1G
       CC: ${{ matrix.cc }}
       CXX: ${{ matrix.cxx }}
       ALPS_BOOST_MPI: ${{ matrix.mpi }}
@@ -119,17 +124,26 @@ jobs:
           fi
           sudo apt-get update
           read -r -a compiler_packages <<< "$COMPILER_PACKAGES"
-          sudo apt-get install -y liblapack-dev libblas-dev libopenmpi-dev libhdf5-dev \
+          sudo apt-get install -y ccache liblapack-dev libblas-dev libopenmpi-dev libhdf5-dev \
             libbz2-dev zlib1g-dev liblzma-dev libzstd-dev "${compiler_packages[@]}"
           if [[ "$EXTRAS" == true ]]; then sudo apt-get install -y gfortran xsltproc; fi
       - name: Install macOS dependencies
         if: runner.os == 'macOS'
         timeout-minutes: 30
-        run: brew install --force-bottle open-mpi hdf5 zstd xz
+        run: brew install --force-bottle ccache open-mpi hdf5 zstd xz
+      - name: Restore compiler cache
+        id: compiler-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: _build/ccache
+          key: ccache-source-${{ matrix.id }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: ccache-source-${{ matrix.id }}-
+      - name: Reset compiler cache counters
+        run: ccache --zero-stats
       - name: Download pinned Boost binaries
         timeout-minutes: 10
-        run: python .github/scripts/ci_dependencies.py "$DEPENDENCY" _build/boost-install
-      - name: Configure and build SDK
+        run: python .github/scripts/build_metrics.py run 'Dependency download' python .github/scripts/ci_dependencies.py "$DEPENDENCY" _build/boost-install
+      - name: Configure SDK
         run: |
           extra_args=()
           if [[ "$EXTRAS" == true ]]; then
@@ -143,13 +157,14 @@ jobs:
                          "-DCMAKE_C_FLAGS=$flags" "-DCMAKE_CXX_FLAGS=$flags"
                          "-DCMAKE_EXE_LINKER_FLAGS=$flags" "-DCMAKE_SHARED_LINKER_FLAGS=$flags")
           fi
-          cmake -S . -B _build/ci -G Ninja \
+          python .github/scripts/build_metrics.py run 'SDK configure' cmake -S . -B _build/ci -G Ninja \
             -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON \
             "-DALPS_ENABLE_MPI=$ALPS_BOOST_MPI" \
             "-DCMAKE_PREFIX_PATH=$PWD/_build/boost-install" \
             "-DCMAKE_INSTALL_PREFIX=$PWD/_build/ci/install" \
             "-DCMAKE_CXX_STANDARD=$CXX_STANDARD" "${extra_args[@]}"
-          cmake --build _build/ci
+      - name: Build SDK
+        run: python .github/scripts/build_metrics.py run 'SDK build' cmake --build _build/ci
       - name: Test SDK
         env:
           # Allocation-limit tests deliberately request impossible allocations.
@@ -157,7 +172,7 @@ jobs:
           # the address and undefined-behavior checks in this job.
           ASAN_OPTIONS: detect_leaks=0:allocator_may_return_null=1
           UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
-        run: ctest --test-dir _build/ci --output-on-failure --output-junit ctest.xml --no-tests=error
+        run: python .github/scripts/build_metrics.py run 'SDK tests' ctest --test-dir _build/ci --output-on-failure --output-junit ctest.xml --no-tests=error
       - name: Test installed XML tools after relocation
         if: matrix.extras
         env:
@@ -174,7 +189,7 @@ jobs:
             cmake -S "$source" -B "$output" -G Ninja \
               "-DALPS_DIR=$PWD/_build/ci/install/share/alps" \
               "-DCMAKE_PREFIX_PATH=$PWD/_build/boost-install"
-            cmake --build "$output"
+            python .github/scripts/build_metrics.py run "Tutorial ${source#"$tutorials/"}" cmake --build "$output"
             ctest --test-dir "$output" --output-on-failure --output-junit ctest.xml --no-tests=error
           done
           find "$tutorials" -mindepth 1 -path "$tutorials/examples" -prune -o -name CMakeLists.txt -print0 | while IFS= read -r -d '' file; do
@@ -185,9 +200,20 @@ jobs:
             cmake -S "$source" -B "$output" -G Ninja \
               "-DALPS_DIR=$PWD/_build/ci/install/share/alps" \
               "-DCMAKE_PREFIX_PATH=$PWD/_build/boost-install"
-            cmake --build "$output"
+            python .github/scripts/build_metrics.py run "Tutorial ${source#"$tutorials/"}" cmake --build "$output"
             ctest --test-dir "$output" --output-on-failure --output-junit ctest.xml
           done
+      - name: Save compiler cache
+        if: ${{ !cancelled() && steps.compiler-cache.outcome == 'success' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: _build/ccache
+          key: ${{ steps.compiler-cache.outputs.cache-primary-key }}
+      - name: Summarize build performance
+        if: always()
+        env:
+          CCACHE_RESTORED_KEY: ${{ steps.compiler-cache.outputs.cache-matched-key }}
+        run: python .github/scripts/build_metrics.py summary
       - name: Summarize test results
         if: always()
         run: python .github/scripts/junit_summary.py '_build/**/ctest.xml' _build/ci/cli.xml
@@ -201,6 +227,7 @@ jobs:
             _build/ci/cli.xml
             _build/**/Testing/Temporary/**
             _build/**/CMakeFiles/CMakeConfigureLog.yaml
+            _build/metrics/**
 
   windows-debug:
     name: Windows Debug
