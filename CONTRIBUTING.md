@@ -302,15 +302,17 @@ For substantial changes — new simulation applications, new libraries, signific
 
 ## CI coverage
 
-Pull requests against any branch, merge-queue entries, and pushes to `master` run four source configurations: GCC 11 with the minimum Boost 1.76, GCC 14 with installed examples and XML tools, Clang 18 with C++23, and Apple Clang on macOS ARM64. The separate Windows workflow retains x64 Release/Debug and ARM64 Release builds. Packaging workflows test the same `cp312-abi3` wheel across Python 3.12–3.14, including native Windows and macOS forward compatibility.
+Pull requests against any branch, merge-queue entries, and pushes to `master` run four Unix source configurations: GCC 11 with the minimum Boost 1.76, GCC 14 with installed examples and XML tools, Clang 18 with C++23, and Apple Clang on macOS ARM64. The source workflow also builds and tests Windows x64 Debug. The Python packaging workflow owns Windows x64 and ARM64 Release builds: each job builds and tests the C++ SDK once, then builds and audits its wheel using that installed SDK. The shared `windows.yml` implementation has no independent triggers.
 
-The source workflow runs its full fourteen-configuration matrix weekly and on release tags. The full tier adds GCC 15, Clang 14 and 22, Linux ARM64, macOS Intel and macOS 26, representative intermediate Boost releases, C++20 with the extensive graph and HDF5 tests, and AddressSanitizer plus UndefinedBehaviorSanitizer. Sanitizer runs disable MPI and dependency leak detection; address and undefined-behavior errors fail the job. This tests supported boundaries and representative combinations without rebuilding every compiler/Boost permutation on every pull request.
+The packaging workflow tests the same `cp312-abi3` wheel across Python 3.12–3.14 on Linux x64, Windows x64/ARM64, and macOS ARM64. The macOS wheel is also tested on a newer macOS release. Clean-runner tests download the built wheels without rebuilding the SDK or bindings. Release tags publish those same tested artifacts.
+
+The source workflow runs its full fourteen-configuration Unix matrix weekly and on release tags, alongside Windows Debug. The full tier adds GCC 15, Clang 14 and 22, Linux ARM64, macOS Intel and macOS 26, representative intermediate Boost releases, C++20 with the extensive graph and HDF5 tests, and AddressSanitizer plus UndefinedBehaviorSanitizer. Sanitizer runs disable MPI and dependency leak detection; address and undefined-behavior errors fail the job. This tests supported boundaries and representative combinations without rebuilding every compiler/Boost permutation on every pull request.
 
 To request the full matrix before merging, open **Actions → ALPS source CI → Run workflow**, select the branch and the `full` tier. The single manifest [`.github/ci-matrix.json`](.github/ci-matrix.json) defines both tiers and pins the Boost archive checksums. The `Source CI` check aggregates matrix results and is suitable as a required branch check. Workflow linting and CI-helper tests run before compilation; native and installed-wheel jobs retain test reports and display result counts in their job summaries. Manual packaging runs build and test artifacts; only a pushed release tag can publish to PyPI.
 
 ## Preparing a release
 
-Windows x64 and ARM64 `cp312-abi3` wheels are currently CI artifacts. Adding them to PyPI releases remains follow-up work: reuse the validated Windows wheel build in the packaging workflow and require its stable-ABI audit and Python 3.12–3.14 compatibility checks before publication.
+Windows x64 and ARM64 wheels are part of the Python packaging workflow and release artifact set. Publication requires successful SDK tests, stable-ABI audits, and Python 3.12–3.14 installed-wheel checks, along with the Linux/macOS wheel checks, MPI adapter tests, and source distribution validation. Manual workflow runs validate artifacts without publishing.
 
 Review the Unreleased entries in [CHANGELOG.md](CHANGELOG.md), group related changes, and check the migration guidance. At release time, give the section the release version and date, then start a new Unreleased section for subsequent work.
 

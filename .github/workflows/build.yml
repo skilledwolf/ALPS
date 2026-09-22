@@ -206,10 +206,18 @@ jobs:
             _build/**/Testing/Temporary/**
             _build/**/CMakeFiles/CMakeConfigureLog.yaml
 
+  windows-debug:
+    name: Windows Debug
+    needs: prepare
+    uses: ./.github/workflows/windows.yml
+    with:
+      architecture: x64
+      configuration: Debug
+
   source-status:
     name: Source CI
     if: always()
-    needs: [prepare, build]
+    needs: [prepare, build, windows-debug]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -217,4 +225,5 @@ jobs:
         env:
           PREPARE_RESULT: ${{ needs.prepare.result }}
           BUILD_RESULT: ${{ needs.build.result }}
-        run: test "$PREPARE_RESULT" = success && test "$BUILD_RESULT" = success
+          WINDOWS_RESULT: ${{ needs.windows-debug.result }}
+        run: test "$PREPARE_RESULT" = success && test "$BUILD_RESULT" = success && test "$WINDOWS_RESULT" = success
