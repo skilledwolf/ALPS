@@ -1,0 +1,202 @@
+name: Publish CI dependencies
+
+# Maintenance only. Ordinary source and wheel jobs cannot compile dependencies.
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/dependencies.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-dependencies-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      release: ${{ steps.config.outputs.release }}
+      image: ${{ steps.config.outputs.image }}
+      exists: ${{ steps.config.outputs.exists }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Read dependency release
+        id: config
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          release=$(jq -r .release .github/dependencies.json)
+          echo "release=$release" >> "$GITHUB_OUTPUT"
+          echo "image=$(jq -r .manylinux_image .github/dependencies.json)" >> "$GITHUB_OUTPUT"
+          if gh release view "$release" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo 'exists=true' >> "$GITHUB_OUTPUT"
+            echo 'This dependency release already exists. Choose a new tag to refresh it.'
+          else
+            echo 'exists=false' >> "$GITHUB_OUTPUT"
+          fi
+
+  boost:
+    needs: prepare
+    if: needs.prepare.outputs.exists != 'true'
+    name: Boost ${{ matrix.version }} / ${{ matrix.platform }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: ubuntu-22.04, platform: linux-x64, version: '1.76.0'}
+          - {os: ubuntu-22.04, platform: linux-x64, version: '1.81.0'}
+          - {os: ubuntu-22.04, platform: linux-x64, version: '1.86.0'}
+          - {os: ubuntu-22.04, platform: linux-x64, version: '1.91.0'}
+          - {os: ubuntu-24.04-arm, platform: linux-arm64, version: '1.91.0'}
+          - {os: macos-15, platform: macos-arm64, version: '1.91.0'}
+          - {os: macos-15-intel, platform: macos-x64, version: '1.91.0'}
+          - {os: ubuntu-24.04, platform: manylinux-x64, version: '1.91.0'}
+    env:
+      BOOST_VERSION: ${{ matrix.version }}
+      PACKAGE: boost-${{ matrix.version }}-${{ matrix.platform }}
+      PLATFORM: ${{ matrix.platform }}
+      MANYLINUX_IMAGE: ${{ needs.prepare.outputs.image }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: '3.12'
+      - name: Install MPI and compression development packages
+        if: matrix.platform != 'manylinux-x64'
+        shell: bash
+        run: |
+          if [[ "$RUNNER_OS" == Linux ]]; then
+            sudo apt-get update
+            sudo apt-get install -y libopenmpi-dev libbz2-dev zlib1g-dev liblzma-dev libzstd-dev
+          else
+            brew install --force-bottle open-mpi zstd xz
+          fi
+      - name: Download verified Boost sources
+        shell: bash
+        run: |
+          checksum=$(python -c 'import json, os; print(json.load(open(".github/ci-matrix.json"))["boost"][os.environ["BOOST_VERSION"]])')
+          archive="$RUNNER_TEMP/boost.tar.gz"
+          curl --fail --location --retry 3 --connect-timeout 30 --max-time 600 \
+            "https://archives.boost.io/release/$BOOST_VERSION/source/boost_${BOOST_VERSION//./_}.tar.gz" -o "$archive"
+          printf '%s  %s\n' "$checksum" "$archive" | shasum -a 256 --check
+          mkdir -p _build/boost-source
+          tar -xzf "$archive" --strip-components=1 -C _build/boost-source
+      - name: Build once and archive the installed dependency
+        shell: bash
+        run: |
+          if [[ "$PLATFORM" == manylinux-x64 ]]; then
+            docker run --rm -v "$PWD:/project" -w /project "$MANYLINUX_IMAGE" \
+              bash -c 'ALPS_BOOST_MPI=OFF bash .github/scripts/build-boost.sh _build/boost-source _build/boost-install'
+          else
+            if [[ "$RUNNER_OS" == macOS ]]; then export CXX=clang++; fi
+            bash .github/scripts/build-boost.sh _build/boost-source _build/boost-install
+          fi
+          cp _build/boost-source/LICENSE_1_0.txt _build/boost-install/
+          mkdir -p _build/dependency-assets
+          tar -czf "_build/dependency-assets/$PACKAGE.tar.gz" -C _build/boost-install .
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: dependency-${{ env.PACKAGE }}
+          path: _build/dependency-assets/*.tar.gz
+          compression-level: 0
+          retention-days: 7
+
+  windows:
+    needs: prepare
+    if: needs.prepare.outputs.exists != 'true'
+    name: Windows dependencies / ${{ matrix.architecture }}
+    runs-on: ${{ matrix.architecture == 'arm64' && 'windows-11-arm' || 'windows-latest' }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        architecture: [x64, arm64]
+    env:
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/.cache/vcpkg
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Create binary cache directory
+        run: New-Item -ItemType Directory -Force $env:VCPKG_DEFAULT_BINARY_CACHE
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: .cache/vcpkg
+          key: windows-${{ matrix.architecture }}-vcpkg-${{ hashFiles('vcpkg.json', 'CMakePresets.json', 'cmake/vcpkg*/**') }}
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: '3.13'
+          architecture: ${{ matrix.architecture }}
+      - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1
+        with:
+          arch: ${{ matrix.architecture }}
+      - name: Read pinned vcpkg revision
+        id: vcpkg
+        run: |
+          $revision = (Get-Content -Raw vcpkg.json | ConvertFrom-Json).'builtin-baseline'
+          if ($revision -notmatch '^[0-9a-f]{40}$') { throw 'Invalid vcpkg baseline' }
+          "revision=$revision" >> $env:GITHUB_OUTPUT
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: microsoft/vcpkg
+          ref: ${{ steps.vcpkg.outputs.revision }}
+          path: _build/vcpkg
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Restore or build dependencies and export the SDK
+        run: |
+          $env:VCPKG_ROOT = "$pwd/_build/vcpkg"
+          & "$env:VCPKG_ROOT/bootstrap-vcpkg.bat" -disableMetrics
+          if ($LASTEXITCODE) { throw 'vcpkg bootstrap failed' }
+          python -m pip install --only-binary=:all: "cmake>=4.3" ninja
+          if ($LASTEXITCODE) { throw 'Build tool installation failed' }
+          cmake --preset windows-${{ matrix.architecture }}
+          if ($LASTEXITCODE) { throw 'Dependency preparation failed' }
+          & "$env:VCPKG_ROOT/vcpkg.exe" export --raw --output=dependencies --output-dir=_build/export `
+            --x-install-root=_build/windows-${{ matrix.architecture }}/vcpkg_installed
+          if ($LASTEXITCODE) { throw 'Dependency export failed' }
+          New-Item -ItemType Directory -Force _build/dependency-assets
+          tar -czf _build/dependency-assets/windows-${{ matrix.architecture }}.tar.gz -C _build/export/dependencies .
+          if ($LASTEXITCODE) { throw 'Dependency archive failed' }
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: dependency-windows-${{ matrix.architecture }}
+          path: _build/dependency-assets/*.tar.gz
+          compression-level: 0
+          retention-days: 7
+
+  publish:
+    needs: [prepare, boost, windows]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: dependency-*
+          path: assets
+          merge-multiple: true
+      - name: Publish a complete dependency set
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE: ${{ needs.prepare.outputs.release }}
+        run: |
+          cd assets
+          sha256sum ./*.tar.gz > SHA256SUMS
+          printf 'CI dependency binaries built from commit %s.\n\nRefresh only when dependency inputs change. Download checksums into .github/dependencies.json before using this set.\n' "$GITHUB_SHA" > notes.md
+          gh release create "$RELEASE" ./*.tar.gz SHA256SUMS --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" --title "CI dependencies ($RELEASE)" --notes-file notes.md \
+            --prerelease --latest=false --draft
+          gh release edit "$RELEASE" --repo "$GITHUB_REPOSITORY" --draft=false
+          cat SHA256SUMS >> "$GITHUB_STEP_SUMMARY"
