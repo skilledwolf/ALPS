@@ -7,6 +7,20 @@ from pathlib import Path
 import re
 
 
+def boost_package(version, runner):
+    # GCC 11/libstdc++ and Open MPI 4 binaries also serve newer Ubuntu runners
+    # and Clang with libstdc++; the full matrix checks this compatibility.
+    platform = {
+        "ubuntu-22.04": "linux-x64",
+        "ubuntu-24.04": "linux-x64",
+        "ubuntu-24.04-arm": "linux-arm64",
+        "macos-15": "macos-arm64",
+        "macos-26": "macos-arm64",
+        "macos-15-intel": "macos-x64",
+    }[runner]
+    return f"boost-{version}-{platform}"
+
+
 def select_matrix(manifest, tier):
     defaults = {
         "quick": False, "boost": "1.91.0", "standard": 17,
@@ -25,6 +39,7 @@ def select_matrix(manifest, tier):
         if not re.fullmatch(r"[a-f0-9]{64}", checksum):
             raise ValueError(f"Invalid Boost checksum for {identifier}")
         build["boost_sha256"] = checksum
+        build["dependency"] = boost_package(build["boost"], build["os"])
         build["mpi"] = "OFF" if build["sanitizer"] else "ON"
         if tier == "full" or build["quick"]:
             builds.append(build)

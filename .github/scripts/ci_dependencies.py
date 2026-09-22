@@ -15,22 +15,9 @@ import urllib.request
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def boost_package(version, runner):
-    # GCC 11/libstdc++ and Open MPI 4 binaries also serve newer Ubuntu runners
-    # and Clang with libstdc++; the full source matrix checks this compatibility.
-    platform = {
-        "ubuntu-22.04": "linux-x64",
-        "ubuntu-24.04": "linux-x64",
-        "ubuntu-24.04-arm": "linux-arm64",
-        "macos-15": "macos-arm64",
-        "macos-26": "macos-arm64",
-        "macos-15-intel": "macos-x64",
-        "manylinux": "manylinux-x64",
-    }[runner]
-    return f"boost-{version}-{platform}"
-
-
 def download(package, destination, repository, manifest):
+    if not re.fullmatch(r"[A-Za-z0-9_.-]+", package):
+        raise ValueError("Invalid dependency package name")
     if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository):
         raise ValueError("Expected a GitHub owner/repository")
     release = manifest["release"]

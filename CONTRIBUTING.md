@@ -310,6 +310,14 @@ The source workflow runs its full fourteen-configuration Unix matrix weekly and 
 
 To request the full matrix before merging, open **Actions → ALPS source CI → Run workflow**, select the branch and the `full` tier. The single manifest [`.github/ci-matrix.json`](.github/ci-matrix.json) defines both tiers and pins the Boost archive checksums. The `Source CI` check aggregates matrix results and is suitable as a required branch check. Workflow linting and CI-helper tests run before compilation; native and installed-wheel jobs retain test reports and display result counts in their job summaries. Manual packaging runs build and test artifacts; only a pushed release tag can publish to PyPI.
 
+### CI dependency binaries
+
+Source and packaging CI download checksum-pinned dependency archives from the repository's GitHub Releases. Missing archives or checksum mismatches fail immediately; ordinary CI has no dependency-build fallback. Unix system libraries still come from apt or Homebrew bottles. Linux wheels use Boost built in the same pinned manylinux image as the wheel. Windows jobs consume a standalone vcpkg export containing both Release and Debug libraries, without checking out vcpkg, running its installer, or downloading its build tools. Local Windows presets retain the usual vcpkg developer workflow.
+
+The separate **Publish CI dependencies** workflow prepares missing public binary variants once, using the existing Boost build script and vcpkg manifest. Compatible Linux compiler jobs share GCC 11/libstdc++ binaries; macOS 15 and newer share one archive per architecture. There is no additional package server or custom container image to maintain. Dependency releases are prereleases with a `ci-dependencies-` tag, never product release tags or the repository's latest release.
+
+To refresh dependencies, choose a new release tag in [`.github/dependencies.json`](.github/dependencies.json), update the relevant Boost checksums, vcpkg baseline/overlays, or manylinux image, and run **Publish CI dependencies** on that branch. Once all archives are published, copy the release's `SHA256SUMS` entries into the manifest's `sha256` map, using archive names without `.tar.gz` as keys. Run full source CI and packaging CI before merging the new pins. Published dependency sets are never overwritten. Forks publish and consume their own sets; a newly initialized fork must prepare its dependency release before running source or packaging CI.
+
 ## Preparing a release
 
 Windows x64 and ARM64 wheels are part of the Python packaging workflow and release artifact set. Publication requires successful SDK tests, stable-ABI audits, and Python 3.12–3.14 installed-wheel checks, along with the Linux/macOS wheel checks, MPI adapter tests, and source distribution validation. Manual workflow runs validate artifacts without publishing.

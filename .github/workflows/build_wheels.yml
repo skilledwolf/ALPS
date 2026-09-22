@@ -52,6 +52,21 @@ jobs:
         with:
           persist-credentials: false
 
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: '3.12'
+      - name: Download pinned Boost binaries
+        shell: bash
+        run: |
+          if [[ "$RUNNER_OS" == Linux ]]; then
+            platform=manylinux-x64
+            image=$(python -c 'import json; print(json.load(open(".github/dependencies.json"))["manylinux_image"])')
+            echo "CIBW_MANYLINUX_X86_64_IMAGE=$image" >> "$GITHUB_ENV"
+          else
+            platform=macos-arm64
+          fi
+          python .github/scripts/ci_dependencies.py "boost-1.91.0-$platform" _build/boost-install
+
       - name: Restore compiler cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:

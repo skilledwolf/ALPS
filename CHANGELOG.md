@@ -13,6 +13,8 @@ Release notes and migration guidance for ALPS. Changes awaiting release are coll
 
 ### Changed
 
+- Ordinary source and wheel CI consume checksum-pinned dependency binaries. A separate maintenance workflow publishes Boost archives and standalone Windows dependency SDKs only when needed; missing binaries fail instead of triggering source builds.
+
 - Python requires GIL-enabled CPython 3.12 or newer. Native wheels use the CPython 3.12 stable ABI (`cp312-abi3`), with one build per platform/architecture tested across Python 3.12–3.14. Downstream nanobind extensions exchanging ALPS objects must also enable `STABLE_ABI` and be rebuilt. Free-threaded Python is unsupported.
 - Source builds require CMake 4.3 or newer and C++17. Dependencies and compiler requirements propagate through exported CMake targets.
 - Source CI uses four routine Unix configurations and fourteen weekly, release-tag, or manually requested Unix configurations, including sanitizer coverage, alongside Windows x64 Debug. Python packaging CI owns Windows x64/ARM64 Release SDK builds and wheels; each SDK is built and tested once before its wheel is built. All platforms share installed-wheel validation and release publication, with Windows stable-ABI audits required before upload.
@@ -49,6 +51,8 @@ Release notes and migration guidance for ALPS. Changes awaiting release are coll
 - Obsolete application-test scaffolding, the unused SSE2 tutorial, a committed editor cache, and the generated hybridization PDF. The active XML CLI fixture now lives beside its test.
 
 ### Fixed
+
+- Linux wheels give copied SDK programs the wheel's library lookup path even when the SDK uses `lib64` or a custom library directory. Installed SDKs retain lookup paths for imported dependencies staged inside the project tree.
 
 - Windows CI fetches and bootstraps the manifest's pinned vcpkg revision, including its port history. Windows presets use Ninja Multi-Config with an activated MSVC environment instead of requiring a particular Visual Studio generator.
 - GitHub Actions use verified full commit pins, allowing the workflows to run in repositories that require immutable action references.

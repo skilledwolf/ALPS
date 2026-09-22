@@ -93,6 +93,17 @@ endif()
 if(PYALPS_BUNDLE_APPLICATIONS)
   install(IMPORTED_RUNTIME_ARTIFACTS ${ALPS_APPLICATION_TARGETS}
     RUNTIME_DEPENDENCY_SET pyalps_runtime RUNTIME DESTINATION pyalps/bin)
+  if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    find_program(PYALPS_PATCHELF patchelf REQUIRED)
+    # Imported programs retain their SDK RPATH (which may name lib64 or a
+    # custom libdir). Resolve our bundled runtime before wheel repair scans them.
+    foreach(application IN LISTS ALPS_APPLICATION_TARGETS)
+      install(CODE "execute_process(COMMAND \"${PYALPS_PATCHELF}\"
+        --add-rpath \"\$ORIGIN/../lib\"
+        \"\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/pyalps/bin/$<TARGET_FILE_NAME:${application}>\"
+        COMMAND_ERROR_IS_FATAL ANY)")
+    endforeach()
+  endif()
 endif()
 if(WIN32)
   install(RUNTIME_DEPENDENCY_SET pyalps_runtime

@@ -157,6 +157,21 @@ set_target_properties(
              SOVERSION ${PROJECT_VERSION_MAJOR}
              INSTALL_RPATH "${ALPS_LOADER_ORIGIN}")
 
+if(ALPS_LOADER_ORIGIN)
+  # CMake's automatic install RPATH omits dependency prefixes inside the source
+  # or build tree. Imported shared libraries still need to be found after the
+  # SDK is installed, including when CI extracts its dependencies in _build/.
+  get_target_property(dependencies alps LINK_LIBRARIES)
+  foreach(dependency IN LISTS dependencies)
+    if(TARGET "${dependency}")
+      get_target_property(dependency_type "${dependency}" TYPE)
+      if(dependency_type MATCHES "^(SHARED|UNKNOWN)_LIBRARY$")
+        set_property(TARGET alps APPEND PROPERTY INSTALL_RPATH "$<TARGET_FILE_DIR:${dependency}>")
+      endif()
+    endif()
+  endforeach()
+endif()
+
 if(WIN32 AND BUILD_SHARED_LIBS)
   # Follow imported configurations: a Debug consumer may use a Release C-ABI
   # dependency that vcpkg's configuration-specific DLL search does not find.

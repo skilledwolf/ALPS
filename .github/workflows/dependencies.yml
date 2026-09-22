@@ -71,8 +71,14 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: '3.12'
+      - name: Reuse an unchanged Boost package
+        id: cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: _build/dependency-assets
+          key: dependency-${{ env.PACKAGE }}-${{ needs.prepare.outputs.image }}-${{ hashFiles('.github/scripts/build-boost.sh', '.github/ci-matrix.json') }}
       - name: Install MPI and compression development packages
-        if: matrix.platform != 'manylinux-x64'
+        if: steps.cache.outputs.cache-hit != 'true' && matrix.platform != 'manylinux-x64'
         shell: bash
         run: |
           if [[ "$RUNNER_OS" == Linux ]]; then
@@ -82,6 +88,7 @@ jobs:
             brew install --force-bottle open-mpi zstd xz
           fi
       - name: Download verified Boost sources
+        if: steps.cache.outputs.cache-hit != 'true'
         shell: bash
         run: |
           checksum=$(python -c 'import json, os; print(json.load(open(".github/ci-matrix.json"))["boost"][os.environ["BOOST_VERSION"]])')
@@ -92,10 +99,11 @@ jobs:
           mkdir -p _build/boost-source
           tar -xzf "$archive" --strip-components=1 -C _build/boost-source
       - name: Build once and archive the installed dependency
+        if: steps.cache.outputs.cache-hit != 'true'
         shell: bash
         run: |
           if [[ "$PLATFORM" == manylinux-x64 ]]; then
-            docker run --rm -v "$PWD:/project" -w /project "$MANYLINUX_IMAGE" \
+            docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/project" -w /project "$MANYLINUX_IMAGE" \
               bash -c 'ALPS_BOOST_MPI=OFF bash .github/scripts/build-boost.sh _build/boost-source _build/boost-install'
           else
             if [[ "$RUNNER_OS" == macOS ]]; then export CXX=clang++; fi

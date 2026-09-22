@@ -2,7 +2,7 @@
 # nanobind is capped below the next major: all extension modules in one
 # process must agree on the nanobind ABI, and its API/ABI may break at
 # major versions. Bump the cap deliberately, with a full test run.
-requires = ["scikit-build-core>=1.0", "nanobind>=2.10,<3"]
+requires = ["scikit-build-core>=1.0", "nanobind>=2.10,<3", "patchelf>=0.14; sys_platform == 'linux'"]
 build-backend = "scikit_build_core.build"
 
 [project]
@@ -81,6 +81,7 @@ test-command = "pytest -q {project}/tests/pyalps {project}/tests/cmake"
 # in _build/ccache spans the SDK and all wheel builds (cached across CI runs).
 [tool.cibuildwheel.environment]
 ALPS_DIR = "$(pwd)/_build/distribution/install/share/alps"
+CMAKE_PREFIX_PATH = "$(pwd)/_build/boost-install"
 CCACHE_DIR = "$(pwd)/_build/ccache"
 CCACHE_NAMESPACE = "pyalps-wheel"
 CMAKE_ARGS = "-DCMAKE_CXX_COMPILER_LAUNCHER=ccache"
@@ -93,10 +94,6 @@ before-all = [
   "if command -v dnf >/dev/null 2>&1; then dnf install -y ccache curl hdf5-devel lapack-devel ninja-build; else apk add --no-cache ccache curl ninja-is-really-ninja hdf5-dev lapack-dev; export CXXFLAGS=-DALPS_NGS_NO_STACKTRACE; fi",
   "python -m pip install 'cmake>=4.3'",
   "cd {project}",
-  "curl --fail --location --retry 3 https://archives.boost.io/release/1.91.0/source/boost_1_91_0.tar.gz -o /tmp/alps-boost.tar.gz",
-  "echo '5734305f40a76c30f951c9abd409a45a2a19fb546efe4162119250bbe4d3a463  /tmp/alps-boost.tar.gz' | sha256sum -c -",
-  "tar -xzf /tmp/alps-boost.tar.gz -C /tmp",
-  "ALPS_BOOST_MPI=OFF bash .github/scripts/build-boost.sh /tmp/boost_1_91_0 /usr/local",
   "cmake --preset distribution -DCMAKE_CXX_COMPILER_LAUNCHER=ccache",
   "cmake --build --preset distribution -j2",
 ]
@@ -109,7 +106,7 @@ repair-wheel-command = [
 
 [tool.cibuildwheel.macos]
 before-all = [
-  "brew install boost ccache cmake hdf5 ninja",
+  "brew install --force-bottle ccache cmake hdf5 ninja zstd xz",
   "cd {project}",
   "cmake --preset distribution -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DHDF5_ROOT=$(brew --prefix hdf5)",
   "cmake --build --preset distribution -j2",
