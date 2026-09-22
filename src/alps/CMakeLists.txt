@@ -156,6 +156,17 @@ set_target_properties(
   PROPERTIES VERSION ${PROJECT_VERSION}
              SOVERSION ${PROJECT_VERSION_MAJOR}
              INSTALL_RPATH "${ALPS_LOADER_ORIGIN}")
+
+if(WIN32 AND BUILD_SHARED_LIBS)
+  # Follow imported configurations: a Debug consumer may use a Release C-ABI
+  # dependency that vcpkg's configuration-specific DLL search does not find.
+  set(runtime_copy_script "${CMAKE_CURRENT_BINARY_DIR}/copy-runtime-$<CONFIG>.cmake")
+  file(GENERATE OUTPUT "${runtime_copy_script}" CONTENT
+    "set(dlls \"$<TARGET_RUNTIME_DLLS:alps>\")\nfile(COPY \${dlls} DESTINATION \"$<TARGET_FILE_DIR:alps>\")\n")
+  add_custom_command(TARGET alps POST_BUILD
+    COMMAND "${CMAKE_COMMAND}" -P "${runtime_copy_script}"
+    VERBATIM)
+endif()
 target_sources(alps_headers INTERFACE
   FILE_SET HEADERS
   BASE_DIRS "${PROJECT_BINARY_DIR}/src"

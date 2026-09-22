@@ -52,6 +52,7 @@ Release notes and migration guidance for ALPS. Changes awaiting release are coll
 
 - Windows CI fetches and bootstraps the manifest's pinned vcpkg revision, including its port history. Windows presets use Ninja Multi-Config with an activated MSVC environment instead of requiring a particular Visual Studio generator.
 - GitHub Actions use verified full commit pins, allowing the workflows to run in repositories that require immutable action references.
+- Windows shared-library builds copy runtime dependencies using their imported CMake configurations, including the Release OpenBLAS DLL needed by ARM64 Debug applications and tests.
 
 - Default observable data initializes its thermalization state. Integer ranges retain valid bounds across the entire integer domain; `size()` returns `std::uintmax_t` and throws `std::overflow_error` when the count cannot fit that type.
 - Simulation-help issues route Worm and SSE to their respective maintainers without an external form parser. DMFT startup notices preserve scientific credit while removing duplicate citation requests and mandatory-citation wording.
