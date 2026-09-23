@@ -38,7 +38,15 @@ int main(int argc, char** argv) {
   bool ngs = std::string(argv[1]) == "ngs";
   --argc;
   ++argv;
-  if (ngs) return alps::ngs_parapack::start<ngs_worker>(argc, argv);
-  alps::parapack::worker_factory::instance()->register_worker<classic_worker>("test");
-  return alps::parapack::start(argc, argv);
+  int result;
+  if (ngs) {
+    result = alps::ngs_parapack::start<ngs_worker>(argc, argv);
+  } else {
+    alps::parapack::worker_factory::instance()->register_worker<classic_worker>("test");
+    result = alps::parapack::start(argc, argv);
+  }
+  // Check the API result before the OS maps negative process exit codes.
+  if (argc == 2 && (std::string(argv[1]) == "--invalid-option" || std::string(argv[1]) == "missing.xml"))
+    return result == (ngs ? -1 : 127) ? 0 : 1;
+  return result;
 }

@@ -407,7 +407,7 @@ int start_mpi(int argc, char** argv) {
                 << "  number of processes              : " << world.size() << std::endl;
     return Runtime::error_code;
   }
-  
+
   }
   BOOST_FOREACH(std::string const& file_str, opt.jobfiles) {
     process_helper_mpi
@@ -525,7 +525,7 @@ int start_mpi(int argc, char** argv) {
 
     // vmusage will be checked in all the processes
     if constexpr (Runtime::reports_vmusage) check_queue.push(next_vmusage(opt.vmusage_interval / 10));
-    
+
 #if defined(_OPENMP) && defined(__APPLE_CC__) && __GNUC__ == 4 && __GNUC_MINOR__ == 2
     // g++ on Mac OS X Snow Leopard requires the following OpenMP directive
     omp_set_nested(true);

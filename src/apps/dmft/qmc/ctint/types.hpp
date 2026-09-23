@@ -165,4 +165,3 @@ private:
   std::vector<annihilator> annihilators_; //an array of to annihilation operators c corresponding to the column of the matrix
   std::vector<double> alpha_;             //an array of doubles corresponding to the alphas of Rubtsov for the c, cdaggers at the same index.
 };
-
