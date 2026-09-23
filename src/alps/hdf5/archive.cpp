@@ -62,10 +62,6 @@ namespace alps {
 
         namespace detail {
 
-            herr_t noop(hid_t) { 
-                return 0; 
-            }
-
             template<typename T> struct native_ptr_converter {
                 native_ptr_converter(std::size_t) {}
                 inline T const * apply(T const * v) {
@@ -113,16 +109,23 @@ namespace alps {
 
             };
 
-            template<herr_t(*F)(hid_t)> class resource {
+            hid_t check_error(hid_t id) {
+                if (id < 0)
+                    throw archive_error(error().invoke(id) + ALPS_STACKTRACE);
+                return id;
+            }
+
+            template<herr_t(*F)(hid_t)> class resource : boost::noncopyable {
                 public:
                     resource(): _id(-1) {}
-                    resource(hid_t id): _id(id) {
-                        if (_id < 0)
-                            throw archive_error(error().invoke(_id) + ALPS_STACKTRACE);
-                    }
+                    resource(hid_t id): _id(check_error(id)) {}
 
-                    ~resource() {
-                        if(_id < 0 || (_id = F(_id)) < 0) {
+                    ~resource() { reset(); }
+
+                    // reset also accepts a failed optional lookup; construction
+                    // and assignment require successful acquisition.
+                    void reset(hid_t id = -1) {
+                        if (_id >= 0 && F(_id) < 0) {
                             std::cerr << "Error in " 
                                       << __FILE__ 
                                       << " on " 
@@ -135,6 +138,7 @@ namespace alps {
                                       << std::endl;
                             std::abort();
                         }
+                        _id = id;
                     }
 
                     operator hid_t() const {
@@ -142,9 +146,14 @@ namespace alps {
                     }
 
                     resource<F> & operator=(hid_t id) {
-                        if ((_id = id) < 0) 
-                            throw archive_error(error().invoke(_id) + ALPS_STACKTRACE);
+                        reset(check_error(id));
                         return *this;
+                    }
+
+                    hid_t release() {
+                        hid_t id = _id;
+                        _id = -1;
+                        return id;
                     }
 
                 private:
@@ -157,15 +166,11 @@ namespace alps {
             typedef resource<H5Sclose> space_type;
             typedef resource<H5Tclose> type_type;
             typedef resource<H5Pclose> property_type;
-            typedef resource<noop> error_type;
+            typedef resource<H5Oclose> object_type;
 
             hid_t check_group(hid_t id) { group_type unused(id); return unused; }
             hid_t check_data(hid_t id) { data_type unused(id); return unused; }
             hid_t check_attribute(hid_t id) { attribute_type unused(id); return unused; }
-            hid_t check_space(hid_t id) { space_type unused(id); return unused; }
-            hid_t check_type(hid_t id) { type_type unused(id); return unused; }
-            hid_t check_property(hid_t id) { property_type unused(id); return unused; }
-            hid_t check_error(hid_t id) { error_type unused(id); return unused; }
 
             hid_t get_native_type(char) { return H5Tcopy(H5T_NATIVE_CHAR); }
             hid_t get_native_type(signed char) { return H5Tcopy(H5T_NATIVE_SCHAR); }
@@ -183,9 +188,9 @@ namespace alps {
             hid_t get_native_type(long double) { return H5Tcopy(H5T_NATIVE_LDOUBLE); }
             hid_t get_native_type(bool) { return H5Tcopy(H5T_NATIVE_SCHAR); }
             hid_t get_native_type(std::string) {
-                hid_t type_id = H5Tcopy(H5T_C_S1);
+                type_type type_id(H5Tcopy(H5T_C_S1));
                 detail::check_error(H5Tset_size(type_id, H5T_VARIABLE));
-                return type_id;
+                return type_id.release();
             }
 
             // bool and signed char historically share H5T_NATIVE_SCHAR.
@@ -216,6 +221,13 @@ namespace alps {
                 if ((path = ar.complete_path(path)).find_last_of('@') == std::string::npos)
                     throw invalid_path("no attribute path: " + path + ALPS_STACKTRACE);
                 return H5Aopen_by_name(file_id, path.substr(0, path.find_last_of('@') - 1).c_str(), path.substr(path.find_last_of('@') + 1).c_str(), H5P_DEFAULT, H5P_DEFAULT);
+            }
+
+            hid_t open_attribute_parent(archive const & ar, hid_t file_id, std::string const & path) {
+                std::string parent = path.substr(0, path.find_last_of('@') - 1);
+                if (!ar.is_group(parent) && !ar.is_data(parent))
+                    throw path_not_found("unknown path: " + parent + ALPS_STACKTRACE);
+                return H5Oopen(file_id, parent.c_str(), H5P_DEFAULT);
             }
 
             herr_t list_children_visitor(hid_t, char const * n, const H5L_info_t *, void * d) {
@@ -549,10 +561,10 @@ namespace alps {
         }
     
         bool archive::is_scalar(std::string path) const {
-            hid_t space_id;
             if (context_ == NULL)
                 throw archive_closed("the archive is closed" + ALPS_STACKTRACE);
             ALPS_HDF5_FAKE_THREADSAFETY
+            detail::space_type space_id;
             if ((path = complete_path(path)).find_last_of('@') != std::string::npos && is_attribute(path)) {
                 detail::attribute_type attr_id(detail::open_attribute(*this, context_->file_id_, path));
                 space_id = H5Aget_space(attr_id);
@@ -566,17 +578,16 @@ namespace alps {
                     throw path_not_found("error reading path " + path + ALPS_STACKTRACE);
                 #endif
             H5S_class_t type = H5Sget_simple_extent_type(space_id);
-            detail::check_space(space_id);
             if (type == H5S_NO_CLASS)
                 throw archive_error("error reading class " + path + ALPS_STACKTRACE);
             return type == H5S_SCALAR;
         }
 
         bool archive::is_null(std::string path) const {
-            hid_t space_id;
             if (context_ == NULL)
                 throw archive_closed("the archive is closed" + ALPS_STACKTRACE);
             ALPS_HDF5_FAKE_THREADSAFETY
+            detail::space_type space_id;
             if ((path = complete_path(path)).find_last_of('@') != std::string::npos) {
                 detail::attribute_type attr_id(detail::open_attribute(*this, context_->file_id_, path));
                 space_id = H5Aget_space(attr_id);
@@ -585,7 +596,6 @@ namespace alps {
                 space_id = H5Dget_space(data_id);
             }
             H5S_class_t type = H5Sget_simple_extent_type(space_id);
-            detail::check_space(space_id);
             if (type == H5S_NO_CLASS)
                 throw archive_error("error reading class " + path + ALPS_STACKTRACE);
             return type == H5S_NULL;
@@ -648,8 +658,8 @@ namespace alps {
             else if (is_scalar(path))
                 return std::vector<std::size_t>(1, 1);
             std::vector<hsize_t> buffer(dimensions(path), 0);
-            hid_t space_id;
             ALPS_HDF5_FAKE_THREADSAFETY
+            detail::space_type space_id;
             if (path.find_last_of('@') != std::string::npos) {
                 detail::attribute_type attr_id(detail::open_attribute(*this, context_->file_id_, path));
                 space_id = H5Aget_space(attr_id);
@@ -658,7 +668,6 @@ namespace alps {
                 space_id = H5Dget_space(data_id);
             }
             detail::check_error(H5Sget_simple_extent_dims(space_id, &buffer.front(), NULL));
-            detail::check_space(space_id);
             std::vector<std::size_t> extent(buffer.begin(), buffer.end());
             return extent;
         }
@@ -928,14 +937,7 @@ namespace alps {
                             throw path_not_found("the path does not exist: " + path + ALPS_STACKTRACE);                                                                 \
                         if (is_scalar(path))                                                                                                                            \
                             throw wrong_type("scalar - vector conflict in path: " + path + ALPS_STACKTRACE);                                                            \
-                        hid_t parent_id;                                                                                                                                \
-                        if (is_group(path.substr(0, path.find_last_of('@') - 1)))                                                                                       \
-                            parent_id = detail::check_error(H5Gopen2(context_->file_id_, path.substr(0, path.find_last_of('@') - 1).c_str(), H5P_DEFAULT));             \
-                        else if (is_data(path.substr(0, path.find_last_of('@') - 1)))                                                                                   \
-                            parent_id = detail::check_error(H5Dopen2(context_->file_id_, path.substr(0, path.find_last_of('@') - 1).c_str(), H5P_DEFAULT));             \
-                        else                                                                                                                                            \
-                            throw path_not_found("unknown path: " + path.substr(0, path.find_last_of('@') - 1) + ALPS_STACKTRACE);                                      \
-                        detail::attribute_type attribute_id(H5Aopen(parent_id, path.substr(path.find_last_of('@') + 1).c_str(), H5P_DEFAULT));                          \
+                        detail::attribute_type attribute_id(detail::open_attribute(*this, context_->file_id_, path));                                                               \
                         detail::type_type type_id(H5Aget_type(attribute_id));                                                                                           \
                         detail::type_type native_id(H5Tget_native_type(type_id, H5T_DIR_ASCEND));                                                                       \
                         if (H5Tget_class(native_id) == H5T_STRING && !detail::check_error(H5Tis_variable_str(type_id)))                                                 \
@@ -951,16 +953,8 @@ namespace alps {
                             } else                                                                                                                                      \
                                 throw std::logic_error("non continous multidimensional dataset as attributes are not implemented (" + path + ")" + ALPS_STACKTRACE);    \
                             detail::check_error(H5Dvlen_reclaim(type_id, detail::space_type(H5Aget_space(attribute_id)), H5P_DEFAULT, raw.get()));                      \
-                        } else if (H5Tget_class(native_id) == H5T_STRING) {                                                                                             \
-                            char ** raw = NULL;                                                                                                                         \
-                            detail::check_error(H5Aread(attribute_id, native_id, raw));                                                                                 \
-                            throw std::logic_error("multidimensional dataset of variable len string datas is not implemented (" + path + ")" + ALPS_STACKTRACE);        \
                         ALPS_NGS_HDF5_FOREACH_NATIVE_TYPE_INTEGRAL(ALPS_NGS_HDF5_READ_VECTOR_ATTRIBUTE_HELPER, T)                                                       \
                         } else throw wrong_type("invalid type" + ALPS_STACKTRACE);                                                                                      \
-                        if (is_group(path.substr(0, path.find_last_of('@') - 1)))                                                                                       \
-                            detail::check_group(parent_id);                                                                                                             \
-                        else                                                                                                                                            \
-                            detail::check_data(parent_id);                                                                                                              \
                     }                                                                                                                                                   \
                 }                                                                                                                                                       \
             }
@@ -975,28 +969,19 @@ namespace alps {
                     throw archive_closed("the archive is closed" + ALPS_STACKTRACE);                                                                                    \
                 if (!context_->write_)                                                                                                                                  \
                     throw archive_error("the archive is not writeable" + ALPS_STACKTRACE);                                                                              \
-                hid_t data_id;                                                                                                                                          \
                 if ((path = complete_path(path)).find_last_of('@') == std::string::npos) {                                                                              \
                     if (is_group(path))                                                                                                                                 \
                         delete_group(path);                                                                                                                             \
-                    data_id = H5Dopen2(context_->file_id_, path.c_str(), H5P_DEFAULT);                                                                                  \
+                    detail::data_type data_id;                                                                                                                                      \
+                    data_id.reset(H5Dopen2(context_->file_id_, path.c_str(), H5P_DEFAULT));                                                                                         \
                     if (data_id < 0) {                                                                                                                                  \
                         if (path.find_last_of('/') < std::string::npos && path.find_last_of('/') > 0)                                                                   \
                             create_group(path.substr(0, path.find_last_of('/')));                                                                                       \
                     } else {                                                                                                                                            \
-                        H5S_class_t class_type;                                                                                                                         \
-                        {                                                                                                                                               \
-                            detail::space_type current_space_id(H5Dget_space(data_id));                                                                                 \
-                            class_type = H5Sget_simple_extent_type(current_space_id);                                                                                   \
-                        }                                                                                                                                               \
+                        H5S_class_t class_type = H5Sget_simple_extent_type(detail::space_type(H5Dget_space(data_id)));                                                              \
                         if (class_type != H5S_SCALAR || !is_datatype<T>(path)) {                                                                                        \
-                            detail::check_data(data_id);                                                                                                                \
-                            if (path.find_last_of('/') < std::string::npos && path.find_last_of('/') > 0) {                                                             \
-                                detail::group_type group_id(H5Gopen2(context_->file_id_, path.substr(0, path.find_last_of('/')).c_str(), H5P_DEFAULT));                 \
-                                detail::check_error(H5Ldelete(group_id, path.substr(path.find_last_of('/') + 1).c_str(), H5P_DEFAULT));                                 \
-                            } else                                                                                                                                      \
-                               detail::check_error(H5Ldelete(context_->file_id_, path.c_str(), H5P_DEFAULT));                                                           \
-                            data_id = -1;                                                                                                                               \
+                            data_id.reset();                                                                                                                                        \
+                            detail::check_error(H5Ldelete(context_->file_id_, path.c_str(), H5P_DEFAULT));                                                                          \
                         }                                                                                                                                               \
                     }                                                                                                                                                   \
                     detail::type_type type_id(detail::get_native_type(alps::detail::type_wrapper< T >::type()));                                                        \
@@ -1015,26 +1000,15 @@ namespace alps {
                     }                                                                                                                                                   \
                     detail::native_ptr_converter<boost::remove_cv<boost::remove_reference<T>::type>::type> converter(1);                                                \
                     detail::check_error(H5Dwrite(data_id, type_id, H5S_ALL, H5S_ALL, H5P_DEFAULT, converter.apply(&value)));                                            \
-                    detail::check_data(data_id);                                                                                                                        \
                 } else {                                                                                                                                                \
-                    hid_t parent_id;                                                                                                                                    \
-                    if (is_group(path.substr(0, path.find_last_of('@') - 1)))                                                                                           \
-                        parent_id = detail::check_error(H5Gopen2(context_->file_id_, path.substr(0, path.find_last_of('@') - 1).c_str(), H5P_DEFAULT));                 \
-                    else if (is_data(path.substr(0, path.find_last_of('@') - 1)))                                                                                       \
-                        parent_id = detail::check_error(H5Dopen2(context_->file_id_, path.substr(0, path.find_last_of('@') - 1).c_str(), H5P_DEFAULT));                 \
-                    else                                                                                                                                                \
-                        throw path_not_found("unknown path: " + path.substr(0, path.find_last_of('@') - 1) + ALPS_STACKTRACE);                                          \
-                    hid_t data_id = H5Aopen(parent_id, path.substr(path.find_last_of('@') + 1).c_str(), H5P_DEFAULT);                                                   \
+                    detail::object_type parent_id(detail::open_attribute_parent(*this, context_->file_id_, path));                                                                  \
+                    detail::attribute_type data_id;                                                                                                                                 \
+                    data_id.reset(H5Aopen(parent_id, path.substr(path.find_last_of('@') + 1).c_str(), H5P_DEFAULT));                                                                \
                     if (data_id >= 0) {                                                                                                                                 \
-                        H5S_class_t class_type;                                                                                                                         \
-                        {                                                                                                                                               \
-                            detail::space_type current_space_id(H5Aget_space(data_id));                                                                                 \
-                            class_type = H5Sget_simple_extent_type(current_space_id);                                                                                   \
-                        }                                                                                                                                               \
+                        H5S_class_t class_type = H5Sget_simple_extent_type(detail::space_type(H5Aget_space(data_id)));                                                              \
                         if (class_type != H5S_SCALAR || !is_datatype<T>(path)) {                                                                                        \
-                            detail::check_attribute(data_id);                                                                                                           \
+                            data_id.reset();                                                                                                                                        \
                             detail::check_error(H5Adelete(parent_id, path.substr(path.find_last_of('@') + 1).c_str()));                                                 \
-                            data_id = -1;                                                                                                                               \
                         }                                                                                                                                               \
                     }                                                                                                                                                   \
                     detail::type_type type_id(detail::get_native_type(alps::detail::type_wrapper< T >::type()));                                                        \
@@ -1049,11 +1023,6 @@ namespace alps {
                         );                                                                                                                                              \
                     detail::native_ptr_converter<boost::remove_cv<boost::remove_reference<T>::type>::type> converter(1);                                                \
                     detail::check_error(H5Awrite(data_id, type_id, converter.apply(&value)));                                                                           \
-                    detail::attribute_type attr_id(data_id);                                                                                                            \
-                    if (is_group(path.substr(0, path.find_last_of('@') - 1)))                                                                                           \
-                        detail::check_group(parent_id);                                                                                                                 \
-                    else                                                                                                                                                \
-                        detail::check_data(parent_id);                                                                                                                  \
                 }                                                                                                                                                       \
                 detail::mark_signed_byte(*this, path, static_cast<T *>(nullptr)); \
             }
@@ -1075,29 +1044,24 @@ namespace alps {
                     offset = std::vector<std::size_t>(size.size(), 0);                                                                                                  \
                 if (size.size() != offset.size())                                                                                                                       \
                     throw archive_error("wrong chunk or offset passed for path: " + path + ALPS_STACKTRACE);                                                            \
-                hid_t data_id;                                                                                                                                          \
                 if ((path = complete_path(path)).find_last_of('@') == std::string::npos) {                                                                              \
                     if (is_group(path))                                                                                                                                 \
                         delete_group(path);                                                                                                                             \
-                    data_id = H5Dopen2(context_->file_id_, path.c_str(), H5P_DEFAULT);                                                                                  \
+                    detail::data_type data_id;                                                                                                                                      \
+                    data_id.reset(H5Dopen2(context_->file_id_, path.c_str(), H5P_DEFAULT));                                                                                         \
                     if (data_id < 0) {                                                                                                                                  \
                         if (path.find_last_of('/') < std::string::npos && path.find_last_of('/') > 0)                                                                   \
                             create_group(path.substr(0, path.find_last_of('/')));                                                                                       \
                     } else {                                                                                                                                            \
-                        H5S_class_t class_type;                                                                                                                         \
-                        {                                                                                                                                               \
-                            detail::space_type current_space_id(H5Dget_space(data_id));                                                                                 \
-                            class_type = H5Sget_simple_extent_type(current_space_id);                                                                                   \
-                        }                                                                                                                                               \
+                        H5S_class_t class_type = H5Sget_simple_extent_type(detail::space_type(H5Dget_space(data_id)));                                                              \
                         if (                                                                                                                                            \
                                class_type == H5S_SCALAR                                                                                                                 \
                             || dimensions(path) != size.size()                                                                                                          \
                             || !std::equal(size.begin(), size.end(), extent(path).begin())                                                                              \
                             || !is_datatype<T>(path)                                                                                                                    \
                         ) {                                                                                                                                             \
-                            detail::check_data(data_id);                                                                                                                \
+                            data_id.reset();                                                                                                                                        \
                             detail::check_error(H5Ldelete(context_->file_id_, path.c_str(), H5P_DEFAULT));                                                              \
-                            data_id = -1;                                                                                                                               \
                         }                                                                                                                                               \
                     }                                                                                                                                                   \
                     detail::type_type type_id(detail::get_native_type(alps::detail::type_wrapper< T >::type()));                                                        \
@@ -1114,8 +1078,7 @@ namespace alps {
                                 , prop_id                                                                                                                               \
                                 , H5P_DEFAULT                                                                                                                           \
                             ));                                                                                                                                         \
-                        } else                                                                                                                                          \
-                            detail::check_data(data_id);                                                                                                                \
+                        }                                                                                                                                                           \
                     } else {                                                                                                                                            \
                         std::vector<hsize_t> size_hid(size.begin(), size.end())                                                                                         \
                                            , offset_hid(offset.begin(), offset.end())                                                                                   \
@@ -1123,23 +1086,11 @@ namespace alps {
                         if (data_id < 0) {                                                                                                                              \
                             detail::property_type prop_id(H5Pcreate(H5P_DATASET_CREATE));                                                                               \
                             detail::check_error(H5Pset_attr_creation_order(prop_id, (H5P_CRT_ORDER_TRACKED | H5P_CRT_ORDER_INDEXED)));                                  \
-                            if (boost::is_same< T , std::string>::value)                                                                                                \
-                                detail::check_error(data_id = H5Dcreate2(                                                                                               \
-                                      context_->file_id_                                                                                                                \
-                                    , path.c_str()                                                                                                                      \
-                                    , type_id                                                                                                                           \
-                                    , detail::space_type(H5Screate_simple(static_cast<int>(size_hid.size()), &size_hid.front(), NULL))                                  \
-                                    , H5P_DEFAULT                                                                                                                       \
-                                    , prop_id                                                                                                                           \
-                                    , H5P_DEFAULT                                                                                                                       \
-                                ));                                                                                                                                     \
-                            else {                                                                                                                                      \
+                            if (!boost::is_same< T , std::string>::value) {                                                                                             \
                                 detail::check_error(H5Pset_fill_time(prop_id, H5D_FILL_TIME_NEVER));                                                                    \
                                 std::size_t dataset_size = std::accumulate(size.begin(), size.end(), std::size_t(sizeof( T )), std::multiplies<std::size_t>());         \
                                 if (dataset_size < ALPS_HDF5_SZIP_BLOCK_SIZE * sizeof( T ))                                                                             \
                                     detail::check_error(H5Pset_layout(prop_id, H5D_COMPACT));                                                                           \
-                                else if (false && dataset_size < (1ULL<<32))                                                                                                     \
-                                    detail::check_error(H5Pset_layout(prop_id, H5D_CONTIGUOUS));                                                                        \
                                 else {                                                                                                                                  \
                                     detail::check_error(H5Pset_layout(prop_id, H5D_CHUNKED));                                                                           \
                                     std::vector<hsize_t> max_chunk(size_hid);                                                                                           \
@@ -1158,48 +1109,31 @@ namespace alps {
                                 }                                                                                                                                       \
                                 if (context_->compress_ && dataset_size > ALPS_HDF5_SZIP_BLOCK_SIZE * sizeof( T ))                                                      \
                                     detail::check_error(H5Pset_szip(prop_id, H5_SZIP_NN_OPTION_MASK, ALPS_HDF5_SZIP_BLOCK_SIZE));                                       \
-                                detail::check_error(H5Pset_attr_creation_order(prop_id, (H5P_CRT_ORDER_TRACKED | H5P_CRT_ORDER_INDEXED)));                              \
-                                detail::check_error(data_id = H5Dcreate2(                                                                                               \
-                                      context_->file_id_                                                                                                                \
-                                    , path.c_str()                                                                                                                      \
-                                    , type_id                                                                                                                           \
-                                    , detail::space_type(H5Screate_simple(static_cast<int>(size_hid.size()), &size_hid.front(), NULL))                                  \
-                                    , H5P_DEFAULT                                                                                                                       \
-                                    , prop_id                                                                                                                           \
-                                    , H5P_DEFAULT                                                                                                                       \
-                                ));                                                                                                                                     \
                             }                                                                                                                                           \
+                            data_id = H5Dcreate2(context_->file_id_, path.c_str(), type_id,                                                                             \
+                                detail::space_type(H5Screate_simple(static_cast<int>(size_hid.size()), &size_hid.front(), NULL)),                                       \
+                                H5P_DEFAULT, prop_id, H5P_DEFAULT);                                                                                                     \
                         }                                                                                                                                               \
-                        detail::data_type raii_id(data_id);                                                                                                             \
                         detail::native_ptr_converter<T> converter(std::accumulate(chunk.begin(), chunk.end(), std::size_t(1), std::multiplies<std::size_t>()));         \
                         if (std::equal(chunk.begin(), chunk.end(), size.begin()))                                                                                       \
-                            detail::check_error(H5Dwrite(raii_id, type_id, H5S_ALL, H5S_ALL, H5P_DEFAULT, converter.apply(value)));                                     \
+                            detail::check_error(H5Dwrite(data_id, type_id, H5S_ALL, H5S_ALL, H5P_DEFAULT, converter.apply(value)));                                                 \
                         else {                                                                                                                                          \
-                            detail::space_type space_id(H5Dget_space(raii_id));                                                                                         \
+                            detail::space_type space_id(H5Dget_space(data_id));                                                                                                     \
                             detail::check_error(H5Sselect_hyperslab(space_id, H5S_SELECT_SET, &offset_hid.front(), NULL, &chunk_hid.front(), NULL));                    \
-                            detail::space_type mem_id(detail::space_type(H5Screate_simple(static_cast<int>(chunk_hid.size()), &chunk_hid.front(), NULL)));              \
-                            detail::check_error(H5Dwrite(raii_id, type_id, mem_id, space_id, H5P_DEFAULT, converter.apply(value)));                                     \
+                            detail::space_type mem_id(H5Screate_simple(static_cast<int>(chunk_hid.size()), &chunk_hid.front(), NULL));                                              \
+                            detail::check_error(H5Dwrite(data_id, type_id, mem_id, space_id, H5P_DEFAULT, converter.apply(value)));                                                 \
                         }                                                                                                                                               \
                     }                                                                                                                                                   \
                 } else {                                                                                                                                                \
-                    hid_t parent_id;                                                                                                                                    \
-                    if (is_group(path.substr(0, path.find_last_of('@') - 1)))                                                                                           \
-                        parent_id = detail::check_error(H5Gopen2(context_->file_id_, path.substr(0, path.find_last_of('@') - 1).c_str(), H5P_DEFAULT));                 \
-                    else if (is_data(path.substr(0, path.find_last_of('@') - 1)))                                                                                       \
-                        parent_id = detail::check_error(H5Dopen2(context_->file_id_, path.substr(0, path.find_last_of('@') - 1).c_str(), H5P_DEFAULT));                 \
-                    else                                                                                                                                                \
-                        throw path_not_found("unknown path: " + path.substr(0, path.find_last_of('@') - 1) + ALPS_STACKTRACE);                                          \
-                    hid_t data_id = H5Aopen(parent_id, path.substr(path.find_last_of('@') + 1).c_str(), H5P_DEFAULT);                                                   \
+                    detail::object_type parent_id(detail::open_attribute_parent(*this, context_->file_id_, path));                                                                  \
+                    detail::attribute_type data_id;                                                                                                                                 \
+                    data_id.reset(H5Aopen(parent_id, path.substr(path.find_last_of('@') + 1).c_str(), H5P_DEFAULT));                                                                \
                     if (data_id >= 0) {                                                                                                                                 \
-                        H5S_class_t class_type;                                                                                                                         \
-                        {                                                                                                                                               \
-                            detail::space_type current_space_id(H5Aget_space(data_id));                                                                                 \
-                            class_type = H5Sget_simple_extent_type(current_space_id);                                                                                   \
-                        }                                                                                                                                               \
-                        if (class_type != H5S_SCALAR) {                                                                                                                 \
-                            detail::check_attribute(data_id);                                                                                                           \
+                        H5S_class_t class_type = H5Sget_simple_extent_type(detail::space_type(H5Aget_space(data_id)));                                                              \
+                        if (class_type == H5S_SCALAR || dimensions(path) != size.size()                                                                                             \
+                            || !std::equal(size.begin(), size.end(), extent(path).begin()) || !is_datatype<T>(path)) {                                                              \
+                            data_id.reset();                                                                                                                                        \
                             detail::check_error(H5Adelete(parent_id, path.substr(path.find_last_of('@') + 1).c_str()));                                                 \
-                            data_id = -1;                                                                                                                               \
                         }                                                                                                                                               \
                     }                                                                                                                                                   \
                     detail::type_type type_id(detail::get_native_type(alps::detail::type_wrapper< T >::type()));                                                        \
@@ -1213,8 +1147,6 @@ namespace alps {
                                 , H5P_DEFAULT                                                                                                                           \
                                 , H5P_DEFAULT                                                                                                                           \
                             ));                                                                                                                                         \
-                        else                                                                                                                                            \
-                            detail::check_attribute(data_id);                                                                                                           \
                     } else {                                                                                                                                            \
                         std::vector<hsize_t> size_hid(size.begin(), size.end())                                                                                         \
                                            , offset_hid(offset.begin(), offset.end())                                                                                   \
@@ -1228,21 +1160,14 @@ namespace alps {
                                 , H5P_DEFAULT                                                                                                                           \
                                 , H5P_DEFAULT                                                                                                                           \
                             ));                                                                                                                                         \
-                        {                                                                                                                                               \
-                            detail::attribute_type raii_id(data_id);                                                                                                    \
-                            if (std::equal(chunk.begin(), chunk.end(), size.begin())) {                                                                                 \
-                                detail::native_ptr_converter<T> converter(                                                                                              \
-                                   std::accumulate(chunk.begin(), chunk.end(), std::size_t(1), std::multiplies<std::size_t>())                                          \
-                                );                                                                                                                                      \
-                                detail::check_error(H5Awrite(raii_id, type_id, converter.apply(value)));                                                                \
-                            } else                                                                                                                                      \
-                                throw std::logic_error("Not Implemented, path: " + path + ALPS_STACKTRACE);                                                             \
-                        }                                                                                                                                               \
+                        if (std::equal(chunk.begin(), chunk.end(), size.begin())) {                                                                                     \
+                            detail::native_ptr_converter<T> converter(                                                                                                  \
+                               std::accumulate(chunk.begin(), chunk.end(), std::size_t(1), std::multiplies<std::size_t>())                                              \
+                            );                                                                                                                                          \
+                            detail::check_error(H5Awrite(data_id, type_id, converter.apply(value)));                                                                    \
+                        } else                                                                                                                                          \
+                            throw std::logic_error("Not Implemented, path: " + path + ALPS_STACKTRACE);                                                                 \
                     }                                                                                                                                                   \
-                    if (is_group(path.substr(0, path.find_last_of('@') - 1)))                                                                                           \
-                        detail::check_group(parent_id);                                                                                                                 \
-                    else                                                                                                                                                \
-                        detail::check_data(parent_id);                                                                                                                  \
                 }                                                                                                                                                       \
                 detail::mark_signed_byte(*this, path, static_cast<T *>(nullptr)); \
             }
@@ -1314,7 +1239,7 @@ namespace alps {
         #define ALPS_NGS_HDF5_IS_DATATYPE_IMPL_IMPL(T)                                                                                                                  \
             bool archive::is_datatype_impl(std::string path, T) const {                                                                                                 \
                 ALPS_HDF5_FAKE_THREADSAFETY                                                                                                                             \
-                hid_t type_id;                                                                                                                                          \
+                detail::type_type type_id;                                                                                                                                          \
                 path = complete_path(path);                                                                                                                             \
                 if (context_ == NULL)                                                                                                                                   \
                     throw archive_closed("the archive is closed" + ALPS_STACKTRACE);                                                                                    \
@@ -1327,7 +1252,6 @@ namespace alps {
                 } else                                                                                                                                                  \
                     throw path_not_found("no valid path: " + path + ALPS_STACKTRACE);                                                                                   \
                 detail::type_type native_id(H5Tget_native_type(type_id, H5T_DIR_ASCEND));                                                                               \
-                detail::check_type(type_id);                                                                                                                            \
                 {                                                                                                                                                       \
                     ALPS_HDF5_LOCK_MUTEX                                                                                                                                \
                     return detail::is_datatype_impl_compare< T >::apply(native_id);                                                                                     \
