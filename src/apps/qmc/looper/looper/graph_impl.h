@@ -14,7 +14,7 @@
 
 #include "graph.h"
 #include "location_impl.h"
-#include "random_choice.h"
+#include <alps/random/random_choice.hpp>
 
 #include <alps/numeric/is_nonzero.hpp>
 #include <boost/array.hpp>
@@ -483,7 +483,7 @@ public:
   double weight() const { return weight_; }
 
 private:
-  random_choice_walker_d<> dist_graph_;
+  alps::random_choice<double> dist_graph_;
   double weight_;
   std::vector<local_graph_t> graph_;
   std::vector<typename bond_graph_t::diagonal_choice_helper> diag_;
