@@ -16,6 +16,10 @@
 #ifndef DMFT_QMC_WEAK_COUPLING_OPERATOR_H
 #define DMFT_QMC_WEAK_COUPLING_OPERATOR_H
 
+#include "../types.h"
+#include <cassert>
+#include <cmath>
+#include <cstring>
 
 
 extern "C" void vdsin_(const int *n, const double *a, double *y);
@@ -25,9 +29,11 @@ extern "C" void vrda_sincos_(const int *n, const double *a, double *s, double *c
 
 
 
+namespace alps { class Parameters; class params; }
+
 /*creation and annihilation operator class*/
 typedef class c_or_cdagger   //represents a creation operator or an annihilation operator
-{ 
+{
 public:
   c_or_cdagger( const spin_t z,const site_t s, const itime_t t, const frequency_t n_matsubara)
   {
@@ -38,17 +44,17 @@ public:
     exp_computed_ = false;
     exp_iomegat_ = 0;
   }
-  
-  
-  
+
+
+
   ~c_or_cdagger()
   {
     if(exp_computed_)
       delete [] exp_iomegat_;
   }
-  
-  
-  
+
+
+
   const c_or_cdagger & operator=(const c_or_cdagger &c)
   {
     if(this != &c){
@@ -70,19 +76,19 @@ public:
         }
       }
       nm_=c.nm_;
-      exp_computed_=c.exp_computed_;          
+      exp_computed_=c.exp_computed_;
     }
     return *this;
   }
-  
-  
-  
+
+
+
   c_or_cdagger(const c_or_cdagger & c)
   {
     exp_computed_=false;
     operator=(c);
   }
-  
+
 
 
   inline const spin_t &flavor() const {return z_;}
@@ -92,26 +98,27 @@ public:
   inline const site_t &s() const {return s_;}
   inline void flavor(spin_t z){z_=z;}
   inline void s(site_t s){s_=s;}
-  inline const std::complex<double> * exp_iomegat() const {return exp_iomegat_;} 
+  inline const std::complex<double> * exp_iomegat() const {return exp_iomegat_;}
   //contains exp(iomegat) if its a creator, exp(-iomegat) if it's an annihilator.
   static void initialize_simulation(const alps::Parameters &p);
-  
-  
-  static const std::complex<double> *exp_iomegan_tau(const double &tau) 
+  static void initialize_simulation(const alps::params &p);
+
+
+  static const std::complex<double> *exp_iomegan_tau(const double &tau)
   {
-    int taun=(int)(tau*ntau_/beta_); 
+    int taun=(int)(tau*ntau_/beta_);
     return &(exp_iomegan_tau_[taun*2*nm_]);
   }
-  
 
-  static const std::complex<double> *exp_min_iomegan_tau(const double &tau) 
+
+  static const std::complex<double> *exp_min_iomegan_tau(const double &tau)
   {
     int taun=(int)(tau*ntau_/beta_);
     return &(exp_iomegan_tau_[taun*2*nm_ + nm_]);
   }
-  
-  
-  
+
+
+
 private:
   site_t s_;      //this vertex's site
   itime_t t_;     //its imaginary time point
@@ -128,7 +135,7 @@ private:
 
 
 public:
-  
+
 
   void compute_exp(const frequency_t n_matsubara, const int sign)
   {
@@ -144,7 +151,7 @@ public:
         memcpy(arg_array, omegan_, n_matsubara*sizeof(double));
         dscal_(&n_matsubara, &t_, arg_array, &one);
         vrda_sincos_(&nm, arg_array, sin_array, cos_array);
-#else 
+#else
         //MKL vector functions
 #ifdef MKL
         int one=1;
@@ -161,7 +168,7 @@ public:
           sin_array[o]=sin(omegan_[o]*t_);
         }
 #endif
-#endif    
+#endif
         exp_iomegat_=new std::complex<double>[n_matsubara];
         for(frequency_t o=0;o<n_matsubara;++o)
           exp_iomegat_[o] = std::complex<double>(cos_array[o], sign*sin_array[o]);
@@ -172,7 +179,7 @@ public:
     } else { //use static exp
       int taun=(int)(t_*ntau_/beta_);
       assert(taun<ntau_);
-      if(sign==1) 
+      if(sign==1)
         exp_iomegat_=&(exp_iomegan_tau_[taun*2*nm_]);
       else
         exp_iomegat_=&(exp_iomegan_tau_[taun*2*nm_ + nm_]);
@@ -184,4 +191,3 @@ public:
 } creator, annihilator;
 
 #endif
-

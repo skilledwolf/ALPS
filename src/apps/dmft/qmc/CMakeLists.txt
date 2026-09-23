@@ -81,6 +81,11 @@ target_link_libraries(hybridization PRIVATE ALPS::cthyb)
 target_link_libraries(interaction PRIVATE ALPS::ctint)
 
 if(ALPS_BUILD_TESTING)
+  add_executable(dmft_ctint_update_kernel ctint/update_kernel_test.cpp)
+  target_link_libraries(dmft_ctint_update_kernel PRIVATE ALPS::alps)
+  alps_add_test(dmft_ctint_update_kernel)
+  set_property(TEST dmft_ctint_update_kernel PROPERTY LABELS dmft)
+
   # Regression tests for the shared DMFT QMC infrastructure.
   add_executable(dmft_fouriertransform_offdiag_numeric dmft_fouriertransform_offdiag_numeric.C)
   target_link_libraries(dmft_fouriertransform_offdiag_numeric PRIVATE dmft_qmc_impl)

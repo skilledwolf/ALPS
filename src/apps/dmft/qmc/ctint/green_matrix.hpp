@@ -13,7 +13,11 @@
 *
 *****************************************************************************/
 
-#include<fstream>
+#pragma once
+
+#include <cstring>
+#include <fstream>
+#include <boost/numeric/bindings/blas/level1/swap.hpp>
 
 //this keeps track of values for the bare green's function at times
 //tau_A-tau_i, where i is a vertex and A is a measuring point for the imag
@@ -36,7 +40,7 @@ public:
   {
     delete[] values_;
   }
-        
+
   const green_matrix& operator=(const green_matrix &g)
   {
     memory_size_=g.memory_size_;
@@ -45,23 +49,23 @@ public:
     memcpy(values_, g.values_, memory_size_*nt_*sizeof(double));
     return *this;
   }
-  
+
   green_matrix(const green_matrix &g)
   {
     values_=new double[g.memory_size_*g.nt_];
     operator=(g);
   }
-  
+
   inline double &operator()(const int tau, const int op)
   {
     return *(values_+op*nt_+tau);
   }
-  
-  inline const double &operator()(const int tau, const int op) const 
+
+  inline const double &operator()(const int tau, const int op) const
   {
     return *(values_+(op*nt_+tau));
   }
-  
+
   void resize(const unsigned int new_nop)
   {
     if(new_nop<=(unsigned int)nop_){ //down is easy
@@ -78,13 +82,13 @@ public:
       memory_size_=new_nop;
     }
   }
-  
+
   inline void swap_vertices(unsigned int p, unsigned int q)
   {
     fortran_int_t inc=1;
     FORTRAN_ID(dswap)(&nt_, values_+p*nt_, &inc, values_+q*nt_, &inc);
   }
-  
+
   inline double* values(){return values_;}
   inline int memory_size(){return memory_size_;}
 
