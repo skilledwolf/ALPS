@@ -15,6 +15,7 @@
 
 #pragma once
 
+#include <iosfwd>
 #include <alps/numeric/matrix.hpp>
 #include "../types.h"
 #include "operator.hpp"
@@ -165,3 +166,9 @@ private:
   std::vector<annihilator> annihilators_; //an array of to annihilation operators c corresponding to the column of the matrix
   std::vector<double> alpha_;             //an array of doubles corresponding to the alphas of Rubtsov for the c, cdaggers at the same index.
 };
+
+std::ostream& operator<<(std::ostream&, vertex_array const&);
+std::ostream& operator<<(std::ostream&, vertex const&);
+std::ostream& operator<<(std::ostream&, c_or_cdagger const&);
+std::ostream& operator<<(std::ostream&, simple_hist const&);
+std::ostream& operator<<(std::ostream&, inverse_m_matrix const&);

@@ -12,6 +12,7 @@ set(DMFT_QMC_SOURCE
 add_library(dmft_qmc_impl STATIC ${DMFT_QMC_SOURCE})
 
 set(DMFT_QMC_INTERACTION_EXPANSION_SOURCE
+    ctint/diagnostics.cpp
     interaction_expansion/auxiliary.cpp
     interaction_expansion/observables.cpp
     interaction_expansion/fastupdate.cpp
@@ -39,7 +40,7 @@ add_library(alps_cthyb STATIC
 add_library(alps_ctint STATIC
     interaction_expansion2/run.cpp
     fouriertransform.C
-    interaction_expansion2/auxiliary.cpp
+    ctint/diagnostics.cpp
     interaction_expansion2/observables.cpp
     interaction_expansion2/fastupdate.cpp
     interaction_expansion2/selfenergy.cpp
@@ -81,6 +82,14 @@ target_link_libraries(hybridization PRIVATE ALPS::cthyb)
 target_link_libraries(interaction PRIVATE ALPS::ctint)
 
 if(ALPS_BUILD_TESTING)
+  foreach(runtime IN ITEMS interaction_expansion_impl alps_ctint)
+    add_executable(ctint_diagnostics_${runtime} ctint/diagnostics_test.cpp)
+    target_link_libraries(ctint_diagnostics_${runtime} PRIVATE ${runtime} dmft_qmc_impl)
+    target_include_directories(ctint_diagnostics_${runtime} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+    add_test(NAME ctint_diagnostics_${runtime} COMMAND ctint_diagnostics_${runtime})
+    set_property(TEST ctint_diagnostics_${runtime} PROPERTY LABELS dmft)
+  endforeach()
+
   add_executable(dmft_ctint_update_kernel ctint/update_kernel_test.cpp)
   target_link_libraries(dmft_ctint_update_kernel PRIVATE ALPS::alps)
   alps_add_test(dmft_ctint_update_kernel)

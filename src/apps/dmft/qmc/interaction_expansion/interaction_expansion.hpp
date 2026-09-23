@@ -38,11 +38,6 @@
 
 namespace alps { namespace ctint { struct update_kernel; struct measurement_kernel; } }
 
-
-std::ostream & operator<<(std::ostream &os, inverse_m_matrix const& M);
-
-
-
 class InteractionExpansionSim: public alps::scheduler::MCSimulation, public alps::MatsubaraImpurityTask
 {
 public:
@@ -194,15 +189,6 @@ protected:
   clock_t measurement_time;
 
 };
-
-
-
-/*aux functions*/
-std::ostream& operator << (std::ostream& os, const std::vector<double>& v);
-std::ostream& operator << (std::ostream &os, const vertex_array &vertices);
-std::ostream& operator << (std::ostream &os, const vertex &v);
-std::ostream& operator << (std::ostream &os, const c_or_cdagger &c);
-std::ostream& operator << (std::ostream& os, const simple_hist &h);
 
 
 
