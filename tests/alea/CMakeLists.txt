@@ -10,6 +10,7 @@ foreach(
   signed
   simpleobseval
   simpleobs_initialization
+  simplebinning
   testobservableset
   observableset_hdf5
   observableset_xml
