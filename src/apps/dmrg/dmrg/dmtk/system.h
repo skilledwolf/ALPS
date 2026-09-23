@@ -17,6 +17,7 @@
 // This version of the system class works only on symmetric systems
 //*******************************************************************
  
+#include <array>
 #include <iostream>
 #include <iosfwd>
 #include <list>
@@ -146,6 +147,30 @@ class System
 {
   protected:
     typedef typename dmtk::Block<T> B;
+
+    struct site_location {
+      B const* block;
+      size_t index;
+      int local;
+    };
+    site_location locate_site(int site) const;
+
+    Term<T> term_on_blocks(Term<T> const& term, int block_mask) const {
+      Term<T> piece;
+      for (auto const& op : term) {
+        auto position = block(op.site());
+        if (position != BLOCK_NONE && (block_mask & mask(position))) piece *= op;
+      }
+      return piece;
+    }
+
+    // A single operator keeps its own metadata; a product derives it from the term.
+    static BasicOp<T> term_operator(Term<T> const& term) {
+      BasicOp<T> op;
+      if (term.size() == 1) op = term[0];
+      else op = term;
+      return op;
+    }
 
     Lattice _lattice;
 
@@ -2717,11 +2742,7 @@ System<T>::rotate_terms(int position, Block<T> &b, Basis &basis, Basis &rho_basi
          doit = true;
 
       if(doit){ // we found a piece of a composite operator
-        BasicOp<T> top1;
-        if(aux_term.size() == 1) // the piece contains a single operator
-          top1 = aux_term[0];
-        else
-          top1 = aux_term; // the piece contains more than one operator
+        BasicOp<T> top1 = term_operator(aux_term);
 
         const BasicOp<T>* op1 = operator()(top1);
 
@@ -2845,6 +2866,13 @@ System<T>::rotate_corr(int position, Block<T> &b, Basis &basis, Basis &rho_basis
     the_block = BLOCK4;
   }
 
+  auto operator_blocks = [&](Term<T> const& term) {
+    int blocks = 0;
+    for (auto const& op : term)
+      if (!op.is_hami()) blocks |= mask(block(op.site()));
+    return blocks;
+  };
+
   CTimer clock;
   clock.Start();
 
@@ -2864,32 +2892,13 @@ System<T>::rotate_corr(int position, Block<T> &b, Basis &basis, Basis &rho_basis
       if(t.size() == 1 && (!_store_products && !t[0].is_hami())) continue;
  
       bool found = false; 
-      typename Term<T>::const_iterator oiter;
-      int bmask = 0;
-      for(oiter = t.begin(); oiter != t.end(); oiter++){
-        if(!oiter->is_hami()) {
-          bmask |= mask(block(oiter->site()));
-        } else {
-          continue;
-        }
-      }
+      int bmask = operator_blocks(t);
       if(position == LEFT && (bmask & MASK_BLOCK2) && !(bmask & MASK_BLOCK1)) found = true;
       if(position == RIGHT && (bmask & MASK_BLOCK3) && !(bmask & MASK_BLOCK4)) found = true;
   
       if(found){
-        Term<T> aux_term;
-        BasicOp<T> top2;
-        for(int i = 0; i < t.size(); i++){
-          BasicOp<T> top = t[i];
-          if(block(top.site()) == site_block){
-            aux_term *= top;
-          }
-        }
-        BasicOp<T> top1;
-        if(aux_term.size() == 1) // the piece contains a single operator
-          top1 = aux_term[0];
-        else
-          top1 = aux_term; // the piece contains more than one operator
+        auto aux_term = term_on_blocks(t, mask(site_block));
+        BasicOp<T> top1 = term_operator(aux_term);
   
         const BasicOp<T>* _op = operator()(top1);
   
@@ -2950,21 +2959,10 @@ System<T>::rotate_corr(int position, Block<T> &b, Basis &basis, Basis &rho_basis
     if(position == RIGHT && (bmask & MASK_BLOCK3) && !(bmask & MASK_BLOCK4)) found = true;
 
     if(found){
-      Term<T> aux_term;
-      BasicOp<T> top2;
-      for(int i = 0; i < t.size(); i++){
-        BasicOp<T> top = t[i];
-        if(block(top.site()) == site_block){
-          aux_term *= top;
-        }
-      }
+      auto aux_term = term_on_blocks(t, mask(site_block));
       if(aux_term.size() == t.size()) aux_term.coef() = t.coef();
 
-      BasicOp<T> top1;
-      if(aux_term.size() == 1) // the piece contains a single operator
-        top1 = aux_term[0];
-      else
-        top1 = aux_term; // the piece contains more than one operator
+      BasicOp<T> top1 = term_operator(aux_term);
 
       const BasicOp<T>* _op = operator()(top1);
 
@@ -3004,34 +3002,15 @@ System<T>::rotate_corr(int position, Block<T> &b, Basis &basis, Basis &rho_basis
 
       if(t.size() == 1 && (!_store_products && !t[0].is_hami())) continue;
   
-      typename Term<T>::const_iterator oiter;
-      int bmask = 0;
-      for(oiter = t.begin(); oiter != t.end(); oiter++){
-        if(!oiter->is_hami()) {
-          bmask |= mask(block(oiter->site()));
-        } else {
-          continue;
-        }
-      }
+      int bmask = operator_blocks(t);
       if(position == LEFT && (bmask & MASK_BLOCK1) && !(bmask & MASK_BLOCK2)) found = true;
       if(position == RIGHT && (bmask & MASK_BLOCK4) && !(bmask & MASK_BLOCK3)) found = true;
   
       if(found){ // we found a piece of a composite operator
-        Term<T> aux_term;
-        BasicOp<T> top2;
-        for(int i = 0; i < t.size(); i++){
-          BasicOp<T> top = t[i];
-          if(block(top.site()) == the_block){
-            aux_term *= top;
-          }
-        }
+        auto aux_term = term_on_blocks(t, mask(the_block));
         if(aux_term.size() == t.size()) aux_term.coef() = t.coef();
   
-        BasicOp<T> top1;
-        if(aux_term.size() == 1) // the piece contains a single operator
-          top1 = aux_term[0];
-        else
-          top1 = aux_term; // the piece contains more than one operator
+        BasicOp<T> top1 = term_operator(aux_term);
   
         const BasicOp<T>* _op = operator()(top1);
   
@@ -3071,33 +3050,14 @@ cout << "NEW MEAS. OPERATOR " << t.name() << " " << new_op.name() << endl;
     if(t.size() == 1 && (!_store_products && !t[0].is_hami())) continue;
     bool found = false;
 
-    typename Term<T>::const_iterator oiter;
-    int bmask = 0;
-    for(oiter = t.begin(); oiter != t.end(); oiter++){
-      if(!oiter->is_hami()) {
-        bmask |= mask(block(oiter->site()));
-      } else {
-        continue;
-      }
-    }
+    int bmask = operator_blocks(t);
     if(position == LEFT && (bmask & MASK_BLOCK1) && !(bmask & MASK_BLOCK2)) found = true;
     if(position == RIGHT && (bmask & MASK_BLOCK4) && !(bmask & MASK_BLOCK3)) found = true;
 
     if(found){ // we found a piece of a composite operator
-      Term<T> aux_term;
-      BasicOp<T> top2;
-      for(int i = 0; i < t.size(); i++){
-        BasicOp<T> top = t[i];
-        if(block(top.site()) == the_block){
-          aux_term *= top;
-        }
-      }
+      auto aux_term = term_on_blocks(t, mask(the_block));
 
-      BasicOp<T> top1;
-      if(aux_term.size() == 1) // the piece contains a single operator
-        top1 = aux_term[0];
-      else
-        top1 = aux_term; // the piece contains more than one operator
+      BasicOp<T> top1 = term_operator(aux_term);
 
       const BasicOp<T>* _op = operator()(top1);
 
@@ -3130,31 +3090,12 @@ cout << "NEW MEAS. OPERATOR " << t.name() << " " << new_op.name() << endl;
   if(_store_products){
     for(titer = _h.begin(); titer != _h.end(); titer++){
       const Term<T>& t = (*titer);
-      bool found1 = false;
-      bool found2 = false;
       if(t.type() == TERM_PRODUCT && t.size() >= 2){
-        Term<T> aux_term1, aux_term2;
-        for(int i = 0; i < t.size(); i++){
-          BasicOp<T> top = t[i];
-          if(block(top.site()) == pos1){
-            aux_term1 *= top;
-            found1 = true;
-          }
-          if(block(top.site()) == pos2){
-            aux_term2 *= top;
-            found2 = true;
-          }
-        } 
-        if(found1 && found2){ // we have a new composite operator
-          BasicOp<T> top1, top2;
-          if(aux_term1.size() == 1) // the piece contains a single operator
-            top1 = aux_term1[0];
-          else
-            top1 = aux_term1; // the piece contains more than one operator
-          if(aux_term2.size() == 1) // the piece contains a single operator
-            top2 = aux_term2[0];
-          else
-            top2 = aux_term2; // the piece contains more than one operator
+        auto aux_term1 = term_on_blocks(t, mask(pos1));
+        auto aux_term2 = term_on_blocks(t, mask(pos2));
+        if(!aux_term1.empty() && !aux_term2.empty()){
+          auto top1 = term_operator(aux_term1);
+          auto top2 = term_operator(aux_term2);
           const BasicOp<T>* op1 = operator()(top1);
           const BasicOp<T>* op2 = operator()(top2);
   
@@ -3167,13 +3108,7 @@ cout << "NEW MEAS. OPERATOR " << t.name() << " " << new_op.name() << endl;
             continue;
           }
  
-          Term<T> new_term; 
-          for(int i = 0; i < t.size(); i++){
-            BasicOp<T> top = t[i];
-            if(block(top.site()) == pos1 || block(top.site()) == pos2){
-              new_term *= top;
-            }
-          }
+          auto new_term = term_on_blocks(t, mask(pos1) | mask(pos2));
 
           BasicOp<T> new_op(new_term); 
           new_op.dqn = op1->dqn + op2->dqn;
@@ -4495,72 +4430,44 @@ init_term_composite(System<T> &ss, const AuxTerm<T> &auxt, const Term<T> &t, con
 }
 
 
-template <class T>
-size_t 
-System<T>::block(int site) const
+template<class T>
+typename System<T>::site_location
+System<T>::locate_site(int site) const
 {
-  typename Lattice::const_iterator iter;
-  std::vector<const Block<T>* > b(4);
-  std::vector<int> offset(4);
-  b[0] = _b1;
-  b[1] = _b2;
-  b[2] = _b3;
-  b[3] = _b4;
-  offset[0] = _in_warmup && _grow_symmetric && _grow_outward && size() < h.lattice().size() ? h.lattice().size()/2 - _b1->lattice().size() - _b2->lattice().size() : 0;
-  offset[1] = _in_warmup && _grow_symmetric && _grow_outward && size() < h.lattice().size() ? offset[0] + _b1->lattice().size() : _b1->lattice().size();
-  offset[2] = offset[1] + _b2->lattice().size();
-  offset[3] = offset[2] + _b3->lattice().size();
-
-  if(_in_warmup && _grow_symmetric && size() < h.lattice().size() && !_grow_outward){
+  std::array<B const*, 4> blocks{_b1, _b2, _b3, _b4};
+  std::array<int, 4> offset{};
+  bool growing = _in_warmup && _grow_symmetric && size() < h.lattice().size();
+  if (growing && _grow_outward)
+    offset[0] = h.lattice().size()/2 - _b1->lattice().size() - _b2->lattice().size();
+  for (size_t i = 1; i < blocks.size(); ++i)
+    offset[i] = offset[i-1] + blocks[i-1]->lattice().size();
+  if (growing && !_grow_outward) {
     offset[3] = h.lattice().size() - _b4->lattice().size();
     offset[2] = offset[3] - _b3->lattice().size();
   }
-
-  for(size_t i = 0; i < 4; i++){
-    const Lattice &l = b[i]->lattice();
-    int n = 0;
-    for(iter = l.begin(); iter != l.end(); iter++){
-        if((n++)+offset[i] == site){
-           return (size_t)(i+1); 
-        }
-    }
+  // Site numbers are positions within each block, independent of lattice labels.
+  for (size_t i = 0; i < blocks.size(); ++i) {
+    auto local = static_cast<long long>(site) - offset[i];
+    if (local >= 0 && static_cast<size_t>(local) < blocks[i]->lattice().size())
+      return {blocks[i], i+1, static_cast<int>(local)};
   }
-  return BLOCK_NONE;
+  return {nullptr, BLOCK_NONE, 0};
 }
 
 template<class T>
-const BasicOp<T>* 
-System<T>::operator()(const BasicOp<T>& op) const
+size_t System<T>::block(int site) const
 {
-  typename Lattice::const_iterator iter;
-  std::vector<const Block<T>* > b(4);
-  std::vector<int> offset(4);
-  b[0] = _b1;
-  b[1] = _b2;
-  b[2] = _b3;
-  b[3] = _b4;
-  offset[0] = _in_warmup && _grow_symmetric && _grow_outward && size() < h.lattice().size() ? h.lattice().size()/2 - _b1->lattice().size() - _b2->lattice().size() : 0;
-  offset[1] = _in_warmup && _grow_symmetric && _grow_outward && size() < h.lattice().size() ? offset[0] + _b1->lattice().size() : _b1->lattice().size();
-  offset[2] = offset[1] + _b2->lattice().size();
-  offset[3] = offset[2] + _b3->lattice().size();
+  return locate_site(site).index;
+}
 
-  if(_in_warmup && _grow_symmetric && size() < h.lattice().size() && !_grow_outward){
-    offset[3] = h.lattice().size() - _b4->lattice().size();
-    offset[2] = offset[3] - _b3->lattice().size();
-  }
-  for(int i = 0; i < 4; i++){
-    const Lattice &l = b[i]->lattice();
-    int n = 0;
-    for(iter = l.begin(); iter != l.end(); iter++){
-        if((n++)+offset[i] == op.site()){
-           BasicOp<T> _op(op);
-           if(b[i]->single_site()) _op.set_site(op.site() - offset[i]);
-           
-           return (b[i]->operator()(_op));
-        }
-    }
-  }
-  return 0;
+template<class T>
+const BasicOp<T>* System<T>::operator()(const BasicOp<T>& op) const
+{
+  auto location = locate_site(op.site());
+  if (!location.block) return nullptr;
+  BasicOp<T> local_op(op);
+  if (location.block->single_site()) local_op.set_site(location.local);
+  return (*location.block)(local_op);
 }
 
 //////////////////////////////////////////////////////////////////
