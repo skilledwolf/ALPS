@@ -49,81 +49,11 @@
 #endif
 
 #include <alps/parapack/scheduler_workflow.hpp>
+#include <alps/parapack/detail/job_workflow.hpp>
 
 namespace alps {
 
 namespace parapack {
-
-int start(int argc, char **argv) {
-  #ifndef BOOST_NO_EXCEPTIONS
-  try {
-  #endif
-
-    option opt(argc, argv, /* for_evaluate = */ false);
-    if (!opt.valid) {
-      std::cerr << "Error: unknown command line option(s)\n";
-      opt.print(std::cerr);
-      return 127;
-    }
-    int ret;
-    if (opt.jobfiles.size() == 0) {
-      if (!opt.use_mpi) {
-        if (opt.show_help) {
-          opt.print(std::cout);
-          return 0;
-        }
-        if (opt.show_license) {
-          print_copyright(std::cout);
-          print_license(std::cout);
-          return 0;
-        }
-        ret = run_sequential(argc, argv);
-      } else {
-#ifdef ALPS_HAVE_MPI
-        if (opt.show_help || opt.show_license) {
-          boost::mpi::environment env(argc, argv);
-          boost::mpi::communicator world;
-          if (world.rank() == 0) {
-            if (opt.show_help) {
-              opt.print(std::cout);
-            } else {
-              print_copyright(std::cout);
-              print_license(std::cout);
-            }
-          }
-          return 0;
-        }
-        ret = run_sequential_mpi(argc, argv);
-#else
-        std::cerr << "ERROR: MPI is not supported\n";
-        return 127;
-#endif
-      }
-    } else {
-      if (!opt.use_mpi) {
-        ret = start_sgl(argc, argv);
-      } else {
-#ifdef ALPS_HAVE_MPI
-        ret = start_mpi(argc, argv);
-#else
-        std::cerr << "ERROR: MPI is not supported\n";
-        return 127;
-#endif
-      }
-    }
-    return ret;
-
-  #ifndef BOOST_NO_EXCEPTIONS
-  }
-  catch (const std::exception& excp) {
-    std::cerr << excp.what() << std::endl;
-  }
-  catch (...) {
-    std::cerr << "Unknown exception occurred!" << std::endl;
-  }
-  return 127;
-  #endif
-}
 
 int evaluate(int argc, char **argv) {
   #ifndef BOOST_NO_EXCEPTIONS
@@ -212,50 +142,7 @@ std::string alps_version() {
 
 void print_taskinfo(std::ostream& os, std::vector<alps::task> const& tasks,
   task_range_t const& task_range) {
-  uint32_t num_new = 0;
-  uint32_t num_running = 0;
-  uint32_t num_continuing = 0;
-  uint32_t num_suspended = 0;
-  uint32_t num_finished = 0;
-  uint32_t num_completed = 0;
-  uint32_t num_skipped = 0;
-  BOOST_FOREACH(alps::task const& t, tasks) {
-    if (!task_range.valid() || task_range.is_included(t.task_id()+1)) {
-      switch (t.status()) {
-      case alps::task_status::NotStarted :
-        ++num_new;
-        break;
-      case alps::task_status::Running :
-        ++num_running;
-        break;
-      case alps::task_status::Continuing :
-        ++num_continuing;
-        break;
-      case alps::task_status::Suspended :
-        ++num_suspended;
-        break;
-      case alps::task_status::Finished :
-        ++num_finished;
-        break;
-      case alps::task_status::Completed :
-        ++num_completed;
-        break;
-      default :
-        break;
-      }
-    } else {
-      ++num_skipped;
-    }
-  }
-  os << logger::header() << "task status: "
-     << "total number of tasks = " << tasks.size() << std::endl
-     << "  new = " << num_new
-     << ", running = " << num_running
-     << ", continuing = " << num_continuing
-     << ", suspended = " << num_suspended
-     << ", finished = " << num_finished
-     << ", completed = " << num_completed
-     << ", skipped = " << num_skipped << std::endl;
+  alps::parapack::detail::print_taskinfo(os, tasks, task_range);
 }
 
 int load_filename(boost::filesystem::path const& file, std::string& file_in_str,
@@ -283,57 +170,13 @@ void load_version(boost::filesystem::path const& file,
 void load_tasks(boost::filesystem::path const& file_in, boost::filesystem::path const& file_out,
   boost::filesystem::path const& basedir, std::string& simname, std::vector<alps::task>& tasks,
   bool check_parameter, alps::parapack::option const& opt) {
-  tasks.clear();
-  if (!exists(file_out)) {
-    alps::job_tasks_xml_handler handler(simname, tasks, basedir);
-    alps::XMLParser parser(handler);
-    parser.parse(file_in);
-  } else {
-    alps::job_tasks_xml_handler handler_out(simname, tasks, basedir);
-    alps::XMLParser parser_out(handler_out);
-    parser_out.parse(file_out);
-
-    if (check_parameter) {
-      std::vector<alps::task> tasks_in;
-      alps::job_tasks_xml_handler handler_in(simname, tasks_in, basedir);
-      alps::XMLParser parser_in(handler_in);
-      parser_in.parse(file_in);
-
-      int nc = std::min BOOST_PREVENT_MACRO_SUBSTITUTION (tasks_in.size(), tasks.size());
-      for (int i = 0; i < nc; ++i) {
-        if (tasks_in[i].file_in_str() != tasks[i].file_in_str() ||
-            tasks_in[i].file_out_str() != tasks[i].file_out_str()) {
-          std::cout << "Info: input/output XML filename of " << logger::task(i)
-                    << " has been modified" << std::endl;
-          tasks[i] = tasks_in[i];
-        }
-        tasks[i].check_parameter(opt);
-      }
-      if (tasks_in.size() > tasks.size()) {
-        std::cout << "Info: number of parameter sets has been increased from " << tasks.size()
-                  << " to " << tasks_in.size() << std::endl;
-        for (int i = tasks.size(); i < tasks_in.size(); ++i) tasks.push_back(tasks_in[i]);
-      } else if (tasks_in.size() < tasks.size()) {
-        std::cout << "Info: number of parameter sets has been decreased from " << tasks.size()
-                  << " to " << tasks_in.size() << std::endl;
-        tasks.resize(tasks_in.size());
-      }
-    }
-  }
+  alps::parapack::detail::load_tasks(file_in, file_out, basedir, simname, tasks,
+    check_parameter, opt);
 }
 
 void load_tasks(boost::filesystem::path const& file_in, boost::filesystem::path const& file_out,
   boost::filesystem::path const& basedir, std::string& simname, std::vector<alps::task>& tasks) {
-  tasks.clear();
-  if (!exists(file_out)) {
-    alps::job_tasks_xml_handler handler(simname, tasks, basedir);
-    alps::XMLParser parser(handler);
-    parser.parse(file_in);
-  } else {
-    alps::job_tasks_xml_handler handler_out(simname, tasks, basedir);
-    alps::XMLParser parser_out(handler_out);
-    parser_out.parse(file_out);
-  }
+  alps::parapack::detail::load_tasks(file_in, file_out, basedir, simname, tasks);
 }
 
 void save_tasks(boost::filesystem::path const& file, std::string const& simname,
@@ -414,6 +257,12 @@ int run_sequential(int argc, char **argv) {
 
 namespace {
 struct scheduler_runtime {
+  static constexpr auto start_sgl = &alps::parapack::start_sgl;
+  static constexpr auto run_sequential = &alps::parapack::run_sequential;
+#ifdef ALPS_HAVE_MPI
+  static constexpr auto start_mpi = &alps::parapack::start_mpi;
+  static constexpr auto run_sequential_mpi = &alps::parapack::run_sequential_mpi;
+#endif
   using task_type = alps::task;
   using clone_type = alps::clone;
   static constexpr int error_code = 127;
@@ -460,6 +309,10 @@ struct scheduler_runtime {
 #endif
 };
 } // namespace
+
+int start(int argc, char** argv) {
+  return alps::parapack::detail::start<scheduler_runtime>(argc, argv);
+}
 
 int start_sgl(int argc, char** argv) {
   return alps::parapack::detail::start_sgl<scheduler_runtime>(argc, argv);

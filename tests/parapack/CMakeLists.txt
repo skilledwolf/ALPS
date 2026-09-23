@@ -75,6 +75,11 @@ target_link_libraries(task_state PRIVATE ALPS::alps)
 add_test(NAME task_state COMMAND task_state)
 set_property(TEST task_state PROPERTY LABELS parapack)
 
+add_executable(job_workflow job_workflow.cpp)
+target_link_libraries(job_workflow PRIVATE ALPS::alps)
+add_test(NAME job_workflow COMMAND job_workflow)
+set_property(TEST job_workflow PROPERTY LABELS parapack)
+
 add_executable(clone_lifecycle clone_lifecycle.cpp)
 target_link_libraries(clone_lifecycle PRIVATE ALPS::alps)
 add_test(NAME clone_lifecycle COMMAND clone_lifecycle)

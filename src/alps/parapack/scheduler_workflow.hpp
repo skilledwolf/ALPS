@@ -21,6 +21,55 @@ namespace alps { namespace parapack { namespace detail {
 // Runtime adapters provide task/clone APIs and supported capabilities. The
 // dispatch, checkpoint, signal, and shutdown workflows are maintained once.
 template<class Runtime>
+int start(int argc, char** argv) {
+#ifndef BOOST_NO_EXCEPTIONS
+  try {
+#endif
+    option opt(argc, argv, /* for_evaluate = */ false);
+    if (!opt.valid) {
+      std::cerr << "Error: unknown command line option(s)\n";
+      opt.print(std::cerr);
+      return Runtime::error_code;
+    }
+    auto print_options = [&] {
+      if (opt.show_help) opt.print(std::cout);
+      else {
+        Runtime::print_copyright(std::cout);
+        Runtime::print_license(std::cout);
+      }
+    };
+    if (!opt.use_mpi) {
+      if (!opt.jobfiles.empty()) return Runtime::start_sgl(argc, argv);
+      if (opt.show_help || opt.show_license) {
+        print_options();
+        return 0;
+      }
+      return Runtime::run_sequential(argc, argv);
+    }
+#ifdef ALPS_HAVE_MPI
+    if (!opt.jobfiles.empty()) return Runtime::start_mpi(argc, argv);
+    if (opt.show_help || opt.show_license) {
+      boost::mpi::environment env(argc, argv);
+      boost::mpi::communicator world;
+      if (world.rank() == 0) print_options();
+      return 0;
+    }
+    return Runtime::run_sequential_mpi(argc, argv);
+#else
+    std::cerr << "ERROR: MPI is not supported\n";
+    return Runtime::error_code;
+#endif
+#ifndef BOOST_NO_EXCEPTIONS
+  } catch (std::exception const& excp) {
+    std::cerr << excp.what() << std::endl;
+  } catch (...) {
+    std::cerr << "Unknown exception occurred!" << std::endl;
+  }
+  return Runtime::error_code;
+#endif
+}
+
+template<class Runtime>
 int start_sgl(int argc, char** argv) {
   using task = typename Runtime::task_type;
   using clone = typename Runtime::clone_type;
