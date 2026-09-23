@@ -37,12 +37,11 @@
 #include <boost/filesystem/operations.hpp>
 #include <boost/foreach.hpp>
 #include <boost/regex.hpp>
-#include <boost/timer.hpp>
 
+#include <ctime>
 #include <iostream>
 #include <string>
 #include <vector>
-#include <time.h>
 
 
 #ifdef _OPENMP
@@ -359,11 +358,11 @@ int run_sequential(int argc, char **argv) {
 
   for (std::size_t i = 0; i < parameterlist.size(); ++i) {
     alps::Parameters p = parameterlist[i];
-    boost::timer tm;
+    const std::clock_t tm = std::clock();
     if (!p.defined("DIR_NAME")) p["DIR_NAME"] = ".";
     if (!p.defined("BASE_NAME")) p["BASE_NAME"] = "task" + boost::lexical_cast<std::string>(i+1);
     if (!p.defined("CLONE_ID")) p["CLONE_ID"] = 1;
-    if (!p.defined("SEED")) p["SEED"] = static_cast<unsigned int>(time(0));
+    if (!p.defined("SEED")) p["SEED"] = static_cast<unsigned int>(std::time(0));
     p["WORKER_SEED"] = p["SEED"];
     p["DISORDER_SEED"] = p["SEED"];
     std::cout << "[input parameters]\n" << p << std::flush;
@@ -385,7 +384,8 @@ int run_sequential(int argc, char **argv) {
       evaluator = evaluator_factory::make_evaluator(p);
     evaluator->load(obs, obs_out);
     evaluator->evaluate(obs_out);
-    std::cerr << "[speed]\nelapsed time = " << tm.elapsed() << " sec\n";
+    std::cerr << "[speed]\nelapsed time = "
+              << static_cast<double>(std::clock() - tm) / CLOCKS_PER_SEC << " sec\n";
     std::cout << "[results]\n";
     if (obs_out.size() == 1) {
       std::cout << obs_out[0];
@@ -748,10 +748,10 @@ int run_sequential_mpi(int argc, char** argv) {
   for (int i = 0; i < parameterlist.size(); ++i) {
     alps::Parameters p = parameterlist[i];
     world.barrier();
-    boost::timer tm;
+    const std::clock_t tm = std::clock();
     if (!p.defined("DIR_NAME")) p["DIR_NAME"] = ".";
     if (!p.defined("BASE_NAME")) p["BASE_NAME"] = "task" + boost::lexical_cast<std::string>(i+1);
-    if (!p.defined("SEED")) p["SEED"] = static_cast<unsigned int>(time(0));
+    if (!p.defined("SEED")) p["SEED"] = static_cast<unsigned int>(std::time(0));
     p["WORKER_SEED"] = static_cast<unsigned int>(p["SEED"]) ^ (world.rank() << 11);
     p["DISORDER_SEED"] = p["SEED"];
     if (world.rank() == 0) std::cout << "[input parameters]\n" << p << std::flush;
@@ -772,7 +772,8 @@ int run_sequential_mpi(int argc, char** argv) {
     }
     world.barrier();
     if (world.rank() == 0) {
-      std::cerr << "[speed]\nelapsed time = " << tm.elapsed() << " sec" << std::endl;
+      std::cerr << "[speed]\nelapsed time = "
+                << static_cast<double>(std::clock() - tm) / CLOCKS_PER_SEC << " sec" << std::endl;
     }
     std::vector<alps::ObservableSet> obs_out;
     boost::shared_ptr<alps::parapack::abstract_evaluator>

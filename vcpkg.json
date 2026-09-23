@@ -23,7 +23,6 @@
     "boost-serialization",
     "boost-spirit",
     "boost-thread",
-    "boost-timer",
     "boost-units",
     {
       "name": "hdf5",

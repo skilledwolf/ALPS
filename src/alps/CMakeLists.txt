@@ -132,8 +132,6 @@ if(ALPS_ENABLE_OPENMP)
   list(APPEND ALPS_HEADER_DEPENDENCIES OpenMP::OpenMP_CXX)
 endif()
 target_link_libraries(alps_headers INTERFACE "$<COMPILE_ONLY:${ALPS_HEADER_DEPENDENCIES}>")
-target_compile_definitions(alps PRIVATE BOOST_TIMER_ENABLE_DEPRECATED
-                                        BOOST_ALLOW_DEPRECATED_HEADERS)
 target_link_libraries(alps PUBLIC alps_headers HDF5::HDF5 Threads::Threads
                                   ${ALPS_BLAS_TARGET} ${ALPS_LAPACK_TARGET})
 foreach(component IN LISTS ALPS_BOOST_COMPONENTS)
