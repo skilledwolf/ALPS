@@ -17,6 +17,51 @@
 namespace alps {
 namespace parapack {
 
+namespace {
+
+std::string algorithm_name(Parameters const& params) {
+  if (params.defined("ALGORITHM")) return params["ALGORITHM"];
+  if (params.defined("WORKER")) {
+    std::cout << "Warning: parameter WORKER is obsolete.  Please use ALGORITHM instead.\n";
+    return params["WORKER"];
+  }
+  return "";
+}
+
+template <typename Registry>
+typename Registry::mapped_type select_worker(Registry const& creators, Parameters const& params,
+                                            char const* factory) {
+  if (creators.empty()) {
+    std::cerr << "Error: no algorithm registered\n";
+    boost::throw_exception(std::runtime_error(factory));
+  }
+  std::string const name = algorithm_name(params);
+  if (creators.size() == 1) {
+    if (!name.empty() && creators.begin()->first != name)
+      std::cout << "Warning: unknown algorithm: \"" << name
+                << "\".  The only algorithm \"" << creators.begin()->first
+                << "\" will be used instead.\n";
+    return creators.begin()->second;
+  }
+  auto found = creators.find(name);
+  if (name.empty() || found == creators.end() || !found->second) {
+    if (name.empty())
+      std::cerr << "Error: no algorithm specified";
+    else
+      std::cerr << "Error: unknown algorithm: \"" << name << "\"";
+    std::cerr << " (registered algorithms: ";
+    for (auto it = creators.begin(); it != creators.end(); ++it) {
+      if (it != creators.begin()) std::cerr << ", ";
+      std::cerr << "\"" << it->first << "\"";
+    }
+    std::cerr << ")\n";
+    boost::throw_exception(std::runtime_error(factory));
+  }
+  return found->second;
+}
+
+} // namespace
+
 //
 // abstract_worker
 //
@@ -154,47 +199,7 @@ worker_factory* worker_factory::instance() {
 }
 
 worker_factory::creator_pointer_type worker_factory::make_creator(Parameters const& params) const {
-  if (worker_creators_.size() == 0) {
-    std::cerr << "Error: no algorithm registered\n";
-    boost::throw_exception(std::runtime_error("worker_factory::make_creator()"));
-  }
-  std::string algoname = "";
-  if (params.defined("ALGORITHM")) {
-    algoname = params["ALGORITHM"];
-  } else if (params.defined("WORKER")) {
-    algoname = params["WORKER"];
-    std::cout << "Warning: parameter WORKER is obsolete.  Please use ALGORITHM instead.\n";
-  }
-  if (worker_creators_.size() == 1) {
-    if (algoname != "" && worker_creators_.begin()->first != algoname) {
-      std::cout << "Warning: unknown algorithm: \"" << algoname
-                << "\".  The only algorithm \"" << worker_creators_.begin()->first
-                << "\" will be used instead.\n";
-    }
-    return worker_creators_.begin()->second;
-  }
-  if (algoname == "") {
-    std::cerr << "Error: no algorithm specified (registered algorithms: ";
-    for (creator_map_type::const_iterator itr = worker_creators_.begin();
-         itr != worker_creators_.end(); ++itr) {
-      if (itr != worker_creators_.begin()) std::cerr << ", ";
-      std::cerr << "\"" << itr->first << "\"";
-    }
-    std::cerr << std::endl;
-    boost::throw_exception(std::runtime_error("worker_factory::make_creator()"));
-  }
-  creator_map_type::const_iterator itr = worker_creators_.find(algoname);
-  if (itr == worker_creators_.end() || itr->second == 0) {
-    std::cerr << "Error: unknown algorithm: \"" << algoname << "\" (registered algorithms: ";
-    for (creator_map_type::const_iterator itr = worker_creators_.begin();
-         itr != worker_creators_.end(); ++itr) {
-      if (itr != worker_creators_.begin()) std::cerr << ", ";
-      std::cerr << "\"" << itr->first << "\"";
-    }
-    std::cerr << ")\n";
-    boost::throw_exception(std::runtime_error("worker_factory::make_creator()"));
-  }
-  return itr->second;
+  return select_worker(worker_creators_, params, "worker_factory::make_creator()");
 }
 
 
@@ -223,15 +228,7 @@ evaluator_factory::creator_pointer_type
 evaluator_factory::make_creator(Parameters const& params) const {
   std::string evalname = "";
   if (params.defined("EVALUATOR")) evalname = params["EVALUATOR"];
-  std::string algoname = "";
-  if (evalname == "") {
-    if (params.defined("ALGORITHM")) {
-      algoname = params["ALGORITHM"];
-    } else if (params.defined("WORKER")) {
-      algoname = params["WORKER"];
-      std::cout << "Warning: parameter WORKER is obsolete.  Please use ALGORITHM instead.\n";
-    }
-  }
+  std::string algoname = evalname.empty() ? algorithm_name(params) : std::string();
   if (evalname == "default") {
     // return default evaluator
   } else if (evaluator_creators_.size() == 0) {
@@ -314,47 +311,7 @@ parallel_worker_factory* parallel_worker_factory::instance() {
 
 parallel_worker_factory::creator_pointer_type
 parallel_worker_factory::make_creator(Parameters const& params) const {
-  if (worker_creators_.size() == 0) {
-    std::cerr << "Error: no algorithm registered\n";
-    boost::throw_exception(std::runtime_error("parallel_worker_factory::make_creator()"));
-  }
-  std::string algoname = "";
-  if (params.defined("ALGORITHM")) {
-    algoname = params["ALGORITHM"];
-  } else if (params.defined("WORKER")) {
-    algoname = params["WORKER"];
-    std::cout << "Warning: parameter WORKER is obsolete.  Please use ALGORITHM instead.\n";
-  }
-  if (worker_creators_.size() == 1) {
-    if (algoname != "" && worker_creators_.begin()->first != algoname) {
-      std::cout << "Warning: unknown algorithm: \"" << algoname
-                << "\".  The only algorithm \"" << worker_creators_.begin()->first
-                << "\" will be used instead.\n";
-    }
-    return worker_creators_.begin()->second;
-  }
-  if (algoname == "") {
-    std::cerr << "Error: no algorithm specified (registered algorithms: ";
-    for (creator_map_type::const_iterator itr = worker_creators_.begin();
-         itr != worker_creators_.end(); ++itr) {
-      if (itr != worker_creators_.begin()) std::cerr << ", ";
-      std::cerr << "\"" << itr->first << "\"";
-    }
-    std::cerr << std::endl;
-    boost::throw_exception(std::runtime_error("worker_factory::make_creator()"));
-  }
-  creator_map_type::const_iterator itr = worker_creators_.find(algoname);
-  if (itr == worker_creators_.end() || itr->second == 0) {
-    std::cerr << "Error: unknown algorithm: \"" << algoname << "\" (registered algorithms: ";
-    for (creator_map_type::const_iterator itr = worker_creators_.begin();
-         itr != worker_creators_.end(); ++itr) {
-      if (itr != worker_creators_.begin()) std::cerr << ", ";
-      std::cerr << "\"" << itr->first << "\"";
-    }
-    std::cerr << ")\n";
-    boost::throw_exception(std::runtime_error("worker_factory::make_creator()"));
-  }
-  return itr->second;
+  return select_worker(worker_creators_, params, "parallel_worker_factory::make_creator()");
 }
 
 #endif // ALPS_HAVE_MPI

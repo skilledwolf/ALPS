@@ -80,6 +80,11 @@ target_link_libraries(job_workflow PRIVATE ALPS::alps)
 add_test(NAME job_workflow COMMAND job_workflow)
 set_property(TEST job_workflow PROPERTY LABELS parapack)
 
+add_executable(worker_factory worker_factory.cpp)
+target_link_libraries(worker_factory PRIVATE ALPS::alps)
+add_test(NAME worker_factory COMMAND worker_factory)
+set_property(TEST worker_factory PROPERTY LABELS parapack)
+
 add_executable(clone_lifecycle clone_lifecycle.cpp)
 target_link_libraries(clone_lifecycle PRIVATE ALPS::alps)
 add_test(NAME clone_lifecycle COMMAND clone_lifecycle)
