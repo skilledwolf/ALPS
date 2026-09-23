@@ -154,6 +154,10 @@ void check_quantum(bool constrained) {
     for (size_t c=0; c<5; ++c) for (size_t d=0; d<5; ++d)
       if (!constrained || (a>=2)+(b>=2)+(c>=2)+(d>=2) == 2)
         v(a,b,c,d) = value({a,b,c,d});
+  for (size_t a=0; a<5; ++a) for (size_t b=0; b<5; ++b)
+    for (size_t c=0; c<5; ++c) for (size_t d=0; d<5; ++d)
+      if (!constrained || (a>=2)+(b>=2)+(c>=2)+(d>=2) == 2)
+        require(static_cast<VectorState<double> const&>(v)(a,b,c,d) == value({a,b,c,d}));
   for (int bits : {3,5,6,9,10,12}) {
     std::array<QN,4> q;
     std::array<Range,4> r{Range(0,1),Range(0,1),Range(0,1),Range(0,1)};

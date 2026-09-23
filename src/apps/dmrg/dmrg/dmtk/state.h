@@ -180,8 +180,7 @@ class VectorState: public Vector<T>
 
     void resize_constrained();
     void copy_constrained(const Vector<T>& v);
-    T& ref_constrained(size_t i1, size_t i2, size_t i3, size_t i4);
-    T ref_constrained(size_t i1, size_t i2, size_t i3, size_t i4) const;
+    size_t coordinate_index(std::array<size_t, 4> indices) const;
 
     VectorState condense1(int mask) const;
     VectorState decondense1(int mask, const VectorState<T> &orig) const;
@@ -311,30 +310,10 @@ class VectorState: public Vector<T>
 
 
     T& operator()(size_t i1, size_t i2, size_t i3, size_t i4)
-      {
-        if(qn_constrained == 0){
-          size_t d1 = _b1.dim();
-          size_t d2 = _b2.dim();
-          size_t d3 = _b3.dim();
-          size_t d4 = _b4.dim();
-
-          return Vector<T>::operator[](i1*d2*d3*d4+i2*d3*d4+i3*d4+i4);
-        }else
-          return ref_constrained(i1,i2,i3,i4);
-      }
+      { return Vector<T>::operator[](coordinate_index({i1,i2,i3,i4})); }
 
     T operator()(size_t i1, size_t i2, size_t i3, size_t i4) const
-      {
-        if(qn_constrained == 0){
-          size_t d1 = _b1.dim();
-          size_t d2 = _b2.dim();
-          size_t d3 = _b3.dim();
-          size_t d4 = _b4.dim();
-
-          return Vector<T>::operator[](i1*d2*d3*d4+i2*d3*d4+i3*d4+i4);
-        }else
-          return ref_constrained(i1,i2,i3,i4);
-      }
+      { return Vector<T>::operator[](coordinate_index({i1,i2,i3,i4})); }
 
     T& operator()(size_t i1, size_t i2, size_t i3, size_t i4, int mask)
       {
@@ -560,55 +539,23 @@ VectorState<T>::copy_constrained(const Vector<T>& v)
 }
 
 template<class T>
-T&
-VectorState<T>::ref_constrained(size_t i1, size_t i2, size_t i3, size_t i4)
+size_t VectorState<T>::coordinate_index(std::array<size_t, 4> indices) const
 {
-/*
-  QN qn1 = _b1(i1).qn();
-  QN qn2 = _b2(i2).qn();
-  QN qn3 = _b3(i3).qn();
-  QN qn4 = _b4(i4).qn();
-*/
-  StateSpace s = get_qn_space(i1,i2,i3,i4);
-  const SubSpace &s1 = s[1];
-  const SubSpace &s2 = s[2];
-  const SubSpace &s3 = s[3];
-  const SubSpace &s4 = s[4];
-  size_t d1 = s1.dim();
-  size_t d2 = s2.dim();
-  size_t d3 = s3.dim();
-  size_t d4 = s4.dim();
-  size_t index = (i1-s1.begin())*d2*d3*d4+
-                 (i2-s2.begin())*d3*d4+
-                 (i3-s3.begin())*d4+
-                 (i4-s4.begin());
-  return Vector<T>::operator[](s.start() + index);
-}
-
-template<class T>
-T
-VectorState<T>::ref_constrained(size_t i1, size_t i2, size_t i3, size_t i4)const
-{
-/*
-  QN qn1 = _b1(i1).qn();
-  QN qn2 = _b2(i2).qn();
-  QN qn3 = _b3(i3).qn();
-  QN qn4 = _b4(i4).qn();
-*/
-  StateSpace s = get_qn_space(i1,i2,i3,i4);
-  const SubSpace &s1 = s[1];
-  const SubSpace &s2 = s[2];
-  const SubSpace &s3 = s[3];
-  const SubSpace &s4 = s[4];
-  size_t d1 = s1.dim();
-  size_t d2 = s2.dim();
-  size_t d3 = s3.dim();
-  size_t d4 = s4.dim();
-  size_t index = (i1-s1.begin())*d2*d3*d4+
-                 (i2-s2.begin())*d3*d4+
-                 (i3-s3.begin())*d4+
-                 (i4-s4.begin());
-  return Vector<T>::operator[](s.start() + index);
+  std::array<size_t, 4> dimensions;
+  size_t start = 0;
+  if (qn_constrained) {
+    auto space = get_qn_space(indices[0], indices[1], indices[2], indices[3]);
+    start = space.start();
+    for (int axis = 0; axis < 4; ++axis) {
+      dimensions[axis] = space[axis+1].dim();
+      indices[axis] -= space[axis+1].begin();
+    }
+  } else {
+    dimensions = {_b1.dim(), _b2.dim(), _b3.dim(), _b4.dim()};
+  }
+  auto stride = strides(dimensions);
+  for (int axis = 0; axis < 4; ++axis) start += indices[axis] * stride[axis];
+  return start;
 }
 
 /////////////////////////////////////////////////////////////////////////
