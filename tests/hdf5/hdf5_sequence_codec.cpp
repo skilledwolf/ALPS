@@ -4,6 +4,8 @@
 #include <alps/hdf5/vector.hpp>
 #include <alps/hdf5/valarray.hpp>
 #include <alps/hdf5/ublas/vector.hpp>
+#include <alps/hdf5/array.hpp>
+#include <alps/hdf5/stdarray.hpp>
 #include <boost/filesystem/operations.hpp>
 #include <complex>
 #include <stdexcept>
@@ -78,6 +80,48 @@ void check_scalar(alps::hdf5::archive& ar) {
     }
 }
 
+template<template<class, std::size_t> class Array>
+void check_arrays(alps::hdf5::archive& ar) {
+    Array<double, 3> numbers{{0.5, -2, 4}};
+    roundtrip(ar, "/array", numbers);
+    roundtrip(ar, "/attrs/@array", numbers);
+    roundtrip(ar, "/empty-array", Array<int, 0>{});
+    Array<std::string, 2> strings{{"alpha", "beta"}};
+    roundtrip(ar, "/array-strings", strings);
+    Array<Array<std::complex<double>, 2>, 2> complex{};
+    complex[0][0] = {1,2}; complex[0][1] = {3,4};
+    complex[1][0] = {5,6}; complex[1][1] = {7,8};
+    roundtrip(ar, "/array-complex", complex);
+    require(ar.extent("/array-complex") == std::vector<std::size_t>({2,2,2}));
+
+    Array<std::vector<int>, 2> nested{{{1,2}, {3,4}}};
+    roundtrip(ar, "/array-nested", nested);
+    require(ar.is_data("/array-nested"));
+    nested[1].push_back(5);
+    roundtrip(ar, "/array-nested", nested);
+    require(ar.is_group("/array-nested"));
+    bool rejected = false;
+    try { Array<std::vector<int>, 1> wrong; ar["/array-nested"] >> wrong; }
+    catch (alps::hdf5::invalid_path const&) { rejected = true; }
+    require(rejected);
+    nested[1].pop_back();
+    roundtrip(ar, "/array-nested", nested);
+    require(ar.is_data("/array-nested"));
+    rejected = false;
+    try { Array<double, 2> wrong; ar["/array"] >> wrong; }
+    catch (alps::hdf5::archive_error const&) { rejected = true; }
+    require(rejected);
+
+    // Fixed extent is validated against the current dimension of a hyperslab.
+    alps::hdf5::save(ar, "/array-slabs", numbers, {2}, {1}, {0});
+    numbers[0] = 9;
+    alps::hdf5::save(ar, "/array-slabs", numbers, {2}, {1}, {1});
+    Array<double, 3> restored{};
+    alps::hdf5::load(ar, "/array-slabs", restored, {1}, {1});
+    require(restored == numbers);
+    require(alps::hdf5::is_vectorizable(Array<std::vector<int>, 0>{}));
+}
+
 int main() {
     auto file = boost::filesystem::temp_directory_path() / boost::filesystem::unique_path("alps-codec-%%%%-%%%%.h5");
     {
@@ -86,6 +130,8 @@ int main() {
         check_sequences<std::vector>(ar);
         check_sequences<boost::numeric::ublas::vector>(ar);
         check_sequences<std::valarray>(ar);
+        check_arrays<std::array>(ar);
+        check_arrays<boost::array>(ar);
         roundtrip(ar, "/bool", std::vector<bool>{true, false, true});
         roundtrip(ar, "/empty-bool", std::vector<bool>{});
         check_scalar<bool>(ar);
