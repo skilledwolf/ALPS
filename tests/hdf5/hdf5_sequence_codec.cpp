@@ -6,6 +6,8 @@
 #include <alps/hdf5/ublas/vector.hpp>
 #include <alps/hdf5/array.hpp>
 #include <alps/hdf5/stdarray.hpp>
+#include <alps/hdf5/tuple.hpp>
+#include <boost/tuple/tuple_comparison.hpp>
 #include <boost/filesystem/operations.hpp>
 #include <complex>
 #include <stdexcept>
@@ -122,6 +124,43 @@ void check_arrays(alps::hdf5::archive& ar) {
     require(alps::hdf5::is_vectorizable(Array<std::vector<int>, 0>{}));
 }
 
+void check_tuples(alps::hdf5::archive& ar) {
+    auto source = boost::make_tuple(7, std::string("tuple"), std::complex<double>(2, -3), std::vector<int>{4, 5});
+    decltype(source) restored;
+    ar["/tuple"] << source;
+    ar["/tuple"] >> restored;
+    require(source == restored && ar.list_children("/tuple").size() == 4);
+    require(ar.is_complex("/tuple/2"));
+    int first = 0;
+    std::string second;
+    std::complex<double> third;
+    std::vector<int> fourth;
+    auto references = boost::tie(first, second, third, fourth);
+    ar["/tuple"] >> references;
+    require(first == 7 && second == "tuple" && third == std::complex<double>(2, -3));
+    require(fourth == std::vector<int>({4, 5}));
+
+    auto ten = boost::make_tuple(0, 1, 2, 3, 4, 5, 6, 7, 8, 9);
+    decltype(ten) ten_restored;
+    ar["/ten"] << ten;
+    ar["/ten"] >> ten_restored;
+    require(ten == ten_restored && ar.list_children("/ten").size() == 10);
+    auto nested = boost::make_tuple(boost::make_tuple(3, 1.5), boost::make_tuple(-2));
+    decltype(nested) nested_restored;
+    ar["/tuple-nested"] << nested;
+    ar["/tuple-nested"] >> nested_restored;
+    require(nested == nested_restored);
+    boost::tuple<int, boost::tuples::null_type, int> hole(3, {}, 5), hole_restored;
+    ar["/tuple-hole"] << hole;
+    ar["/tuple-hole"] >> hole_restored;
+    require(boost::get<0>(hole_restored) == 3 && boost::get<2>(hole_restored) == 5);
+    require(!ar.is_data("/tuple-hole/1"));
+    boost::tuple<> empty;
+    ar["/tuple-empty"] << empty;
+    ar["/tuple-empty"] >> empty;
+    require(!ar.is_group("/tuple-empty") && !ar.is_data("/tuple-empty"));
+}
+
 int main() {
     auto file = boost::filesystem::temp_directory_path() / boost::filesystem::unique_path("alps-codec-%%%%-%%%%.h5");
     {
@@ -132,6 +171,7 @@ int main() {
         check_sequences<std::valarray>(ar);
         check_arrays<std::array>(ar);
         check_arrays<boost::array>(ar);
+        check_tuples(ar);
         roundtrip(ar, "/bool", std::vector<bool>{true, false, true});
         roundtrip(ar, "/empty-bool", std::vector<bool>{});
         check_scalar<bool>(ar);

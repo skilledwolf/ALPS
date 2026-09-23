@@ -15,131 +15,47 @@
 #define ALPS_NGS_HDF5_BOOST_TUPLE
 
 #include <alps/hdf5/archive.hpp>
-#include <alps/ngs/cast.hpp>
-#include <alps/ngs/stringify.hpp>
 #include <alps/ngs/detail/remove_cvr.hpp>
-
 #include <boost/tuple/tuple.hpp>
-
+#include <tuple>
+#include <type_traits>
 #include <utility>
 
-namespace alps {
-    namespace hdf5 {
+namespace alps { namespace hdf5 {
+namespace detail {
 
-        namespace detail {
+// Visit real tuple fields in index order, keeping null slots absent from the
+// archive. The visitor supplies saving/loading without duplicating traversal.
+template<class Types, class Tuple, class Visitor, std::size_t... I>
+void visit_tuple(Tuple& value, Visitor visit, std::index_sequence<I...>) {
+    auto element = [&](auto index) {
+        using type = std::tuple_element_t<decltype(index)::value, Types>;
+        if constexpr (!std::is_same_v<type, boost::tuples::null_type>)
+            visit(index, boost::get<decltype(index)::value>(value));
+    };
+    (element(std::integral_constant<std::size_t, I>{}), ...);
+}
+} // namespace detail
 
-            template <int N, typename T, typename E> struct save_helper {
-                template <
-                      typename A, typename T0, typename T1, typename T2, typename T3, typename T4, typename T5, typename T6, typename T7, typename T8, typename T9
-                > static void apply(
-                      A & ar
-                    , std::string const & path
-                    , boost::tuple<T0, T1, T2, T3, T4, T5, T6, T7, T8, T9> const & value
-                ) {
-                    using boost::get;
-                    save(ar, path, get<N>(value));
-                    if (has_complex_elements<typename alps::detail::remove_cvr<T>::type>::value)
-                        ar.set_complex(path);
-                }
-            };
-
-            template <int N, typename T> struct save_helper<N, T, boost::true_type> {
-                template <
-                      typename A, typename T0, typename T1, typename T2, typename T3, typename T4, typename T5, typename T6, typename T7, typename T8, typename T9
-                > static void apply(
-                      A &
-                    , std::string const &
-                    , boost::tuple<T0, T1, T2, T3, T4, T5, T6, T7, T8, T9> const &
-                ) {}
-            };
-
-            template <int N, typename T, class E> struct load_helper {
-                template <
-                      typename A, typename T0, typename T1, typename T2, typename T3, typename T4, typename T5, typename T6, typename T7, typename T8, typename T9
-                > static void apply(
-                      A & ar
-                    , std::string const & path
-                    , boost::tuple<T0, T1, T2, T3, T4, T5, T6, T7, T8, T9> & value
-                ) {
-                    using boost::get;
-                    load(ar, path, get<N>(value));
-                }
-            };
-
-            template <int N, typename T> struct load_helper<N, T, boost::true_type> {
-                template <
-                      typename A, typename T0, typename T1, typename T2, typename T3, typename T4, typename T5, typename T6, typename T7, typename T8, typename T9
-                > static void apply(
-                      A &
-                    , std::string const &
-                    , boost::tuple<T0, T1, T2, T3, T4, T5, T6, T7, T8, T9> &
-                ) {}
-            };
-        }
-
-        template <
-            typename T0, typename T1, typename T2, typename T3, typename T4, typename T5, typename T6, typename T7, typename T8, typename T9
-        > void save(
-              archive & ar
-            , std::string const & path
-            , boost::tuple<T0, T1, T2, T3, T4, T5, T6, T7, T8, T9> const & value
-            , std::vector<std::size_t> size = std::vector<std::size_t>()
-            , std::vector<std::size_t> chunk = std::vector<std::size_t>()
-            , std::vector<std::size_t> offset = std::vector<std::size_t>()
-        ) {
-            detail::save_helper<0, T0, typename boost::is_same<T0, boost::tuples::null_type>::type>::apply(
-                ar, ar.complete_path(path) + "/0", value
-            );
-            detail::save_helper<1, T1, typename boost::is_same<T1, boost::tuples::null_type>::type>::apply(
-                ar, ar.complete_path(path) + "/1", value
-            );
-            detail::save_helper<2, T2, typename boost::is_same<T2, boost::tuples::null_type>::type>::apply(
-                ar, ar.complete_path(path) + "/2", value
-            );
-            detail::save_helper<3, T3, typename boost::is_same<T3, boost::tuples::null_type>::type>::apply(
-                ar, ar.complete_path(path) + "/3", value
-            );
-            detail::save_helper<4, T4, typename boost::is_same<T4, boost::tuples::null_type>::type>::apply(
-                ar, ar.complete_path(path) + "/4", value
-            );
-            detail::save_helper<5, T5, typename boost::is_same<T5, boost::tuples::null_type>::type>::apply(
-                ar, ar.complete_path(path) + "/5", value
-            );
-            detail::save_helper<6, T6, typename boost::is_same<T6, boost::tuples::null_type>::type>::apply(
-                ar, ar.complete_path(path) + "/6", value
-            );
-            detail::save_helper<7, T7, typename boost::is_same<T7, boost::tuples::null_type>::type>::apply(
-                ar, ar.complete_path(path) + "/7", value
-            );
-            detail::save_helper<8, T8, typename boost::is_same<T8, boost::tuples::null_type>::type>::apply(
-                ar, ar.complete_path(path) + "/8", value
-            );
-            detail::save_helper<9, T9, typename boost::is_same<T9, boost::tuples::null_type>::type>::apply(
-                ar, ar.complete_path(path) + "/9", value
-            );
-        }
-
-        template <
-            typename T0, typename T1, typename T2, typename T3, typename T4, typename T5, typename T6, typename T7, typename T8, typename T9
-        > void load(
-              archive & ar
-            , std::string const & path
-            , boost::tuple<T0, T1, T2, T3, T4, T5, T6, T7, T8, T9> & value
-            , std::vector<std::size_t> chunk = std::vector<std::size_t>()
-            , std::vector<std::size_t> offset = std::vector<std::size_t>()
-        ) {
-            detail::load_helper<0, T0, typename boost::is_same<T0, boost::tuples::null_type>::type>::apply(ar, ar.complete_path(path) + "/0", value);
-            detail::load_helper<1, T1, typename boost::is_same<T1, boost::tuples::null_type>::type>::apply(ar, ar.complete_path(path) + "/1", value);
-            detail::load_helper<2, T2, typename boost::is_same<T2, boost::tuples::null_type>::type>::apply(ar, ar.complete_path(path) + "/2", value);
-            detail::load_helper<3, T3, typename boost::is_same<T3, boost::tuples::null_type>::type>::apply(ar, ar.complete_path(path) + "/3", value);
-            detail::load_helper<4, T4, typename boost::is_same<T4, boost::tuples::null_type>::type>::apply(ar, ar.complete_path(path) + "/4", value);
-            detail::load_helper<5, T5, typename boost::is_same<T5, boost::tuples::null_type>::type>::apply(ar, ar.complete_path(path) + "/5", value);
-            detail::load_helper<6, T6, typename boost::is_same<T6, boost::tuples::null_type>::type>::apply(ar, ar.complete_path(path) + "/6", value);  
-            detail::load_helper<7, T7, typename boost::is_same<T7, boost::tuples::null_type>::type>::apply(ar, ar.complete_path(path) + "/7", value);
-            detail::load_helper<8, T8, typename boost::is_same<T8, boost::tuples::null_type>::type>::apply(ar, ar.complete_path(path) + "/8", value);
-            detail::load_helper<9, T9, typename boost::is_same<T9, boost::tuples::null_type>::type>::apply(ar, ar.complete_path(path) + "/9", value);
-        }
-    }
+template<class... T>
+void save(archive& ar, std::string const& path, boost::tuple<T...> const& value,
+    std::vector<std::size_t> size = {}, std::vector<std::size_t> chunk = {},
+    std::vector<std::size_t> offset = {}) {
+    detail::visit_tuple<std::tuple<T...>>(value, [&](auto index, auto const& element) {
+        auto child = ar.complete_path(path) + "/" + std::to_string(index);
+        save(ar, child, element);
+        using type = typename alps::detail::remove_cvr<decltype(element)>::type;
+        if (has_complex_elements<type>::value) ar.set_complex(child);
+    }, std::index_sequence_for<T...>{});
 }
 
+template<class... T>
+void load(archive& ar, std::string const& path, boost::tuple<T...>& value,
+    std::vector<std::size_t> chunk = {}, std::vector<std::size_t> offset = {}) {
+    detail::visit_tuple<std::tuple<T...>>(value, [&](auto index, auto& element) {
+        load(ar, ar.complete_path(path) + "/" + std::to_string(index), element);
+    }, std::index_sequence_for<T...>{});
+}
+
+}} // namespace alps::hdf5
 #endif
