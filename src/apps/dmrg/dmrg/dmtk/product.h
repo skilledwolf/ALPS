@@ -2,6 +2,8 @@
 #define __DMTK_PRODUCT_H__
 
 #include "basic_op.h"
+#include <array>
+#include <type_traits>
 
 namespace dmtk
 {
@@ -518,6 +520,47 @@ product_term1(const ProductTerm<T> &pterm,
   }
 }
 
+namespace detail {
+// Select whole operator axes and fix the spectator coordinates. The existing
+// state-slice overloads retain the layout and constness of each view.
+template<int Selected, int Axis>
+auto product_slice_index(size_t extent, size_t coordinate)
+{
+  if constexpr (Selected & (1 << Axis))
+    return slice(0, extent, 1);
+  else
+    return coordinate;
+}
+
+template<int Selected, class View>
+auto product_slice(const View& view, const std::array<size_t, 4>& i)
+{
+  return view(product_slice_index<Selected, 0>(view.size1(), i[0]),
+              product_slice_index<Selected, 1>(view.size2(), i[1]),
+              product_slice_index<Selected, 2>(view.size3(), i[2]),
+              product_slice_index<Selected, 3>(view.size4(), i[3]));
+}
+
+template<int Selected, class T, class Apply>
+void for_each_product_slice(const StateSpace& space, const cstate_slice<T>& source,
+                            const state_slice<T>& target, Apply apply)
+{
+  // Selected axes belong to the slice, so iterate only the spectators, in
+  // physical axis order. Use the original space for both normal and HC passes.
+  const std::array<size_t, 4> count = {
+    Selected & MASK_BLOCK1 ? 1u : space[1].dim(),
+    Selected & MASK_BLOCK2 ? 1u : space[2].dim(),
+    Selected & MASK_BLOCK3 ? 1u : space[3].dim(),
+    Selected & MASK_BLOCK4 ? 1u : space[4].dim()};
+  std::array<size_t, 4> i{};
+  for (i[0] = 0; i[0] < count[0]; ++i[0])
+  for (i[1] = 0; i[1] < count[1]; ++i[1])
+  for (i[2] = 0; i[2] < count[2]; ++i[2])
+  for (i[3] = 0; i[3] < count[3]; ++i[3])
+    apply(product_slice<Selected>(source, i), product_slice<Selected>(target, i));
+}
+} // namespace detail
+
 template<class T>
 void
 product_term2(const ProductTerm<T> &pterm,
@@ -557,327 +600,61 @@ product_term2(const ProductTerm<T> &pterm,
   bool do_hc = pterm.do_hc;
   T coef = pterm.coef;
 
-  switch(_mask){
-      case (MASK_BLOCK1|MASK_BLOCK2):
-        if(mask_hc & MASK_PRODUCT_DEFAULT){
-          for(int i3 = 0; i3 < ss[3].dim(); i3++)
-          for(int i4 = 0; i4 < ss[4].dim(); i4++){
-            cgslice_iter<T> subv = v_slice(slice(0,v_slice.size1(),1),
-                                           slice(0,v_slice.size2(),1),i3,i4);
-            gslice_iter<T> subres = res_slice(slice(0,res_slice.size1(),1),
-                                              slice(0,res_slice.size2(),1),i3,i4);
-            if(use_condensed){
-              product(block1,block2,subv,subres,maux3,coef,T(1));
-            } else {
-              maux1 = subv;
-              maux2 = subres;
-              product(block1,block2,maux1,maux2,maux3,coef,T(1));
-              subres = maux2.array();
-            }
-          }
+  auto apply_layout = [&](auto selected_blocks) {
+    constexpr int selected = decltype(selected_blocks)::value;
+    auto apply = [&](const cstate_slice<T>& source, const state_slice<T>& target, bool hc) {
+      detail::for_each_product_slice<selected>(ss, source, target, [&](auto subv, auto subres) {
+        if constexpr ((selected & (selected - 1)) == 0) {
+          // Both operators act on the same block: multiply a vector slice.
+          vaux1 = subv;
+          vaux2 = subres;
+          product(block1, block2, vaux1, vaux2, coef, T(1), hc);
+          subres = vaux2.array();
+        } else if (use_condensed) {
+          product(block1, block2, subv, subres, maux3, coef, T(1), hc);
+        } else {
+          maux1 = subv;
+          maux2 = subres;
+          product(block1, block2, maux1, maux2, maux3, coef, T(1), hc);
+          subres = maux2.array();
         }
-        if(do_hc && (mask_hc & MASK_PRODUCT_HC)){
-          for(int i3 = 0; i3 < ss[3].dim(); i3++)
-          for(int i4 = 0; i4 < ss[4].dim(); i4++){
-            cgslice_iter<T> subv = v_slice_hc(slice(0,v_slice_hc.size1(),1),
-                                              slice(0,v_slice_hc.size2(),1),i3,i4);
-            gslice_iter<T> subres = res_slice_hc(slice(0,res_slice_hc.size1(),1),
-                                                 slice(0,res_slice_hc.size2(),1),i3,i4);
-            if(use_condensed){
-              product(block1,block2,subv,subres,maux3,coef,T(1),true);
-            } else {
-              maux1 = subv;
-              maux2 = subres;
-              product(block1,block2,maux1,maux2,maux3,coef,T(1),true);
-              subres = maux2.array();
-            }
-          }
-        }
-        break;
-      case (MASK_BLOCK1|MASK_BLOCK3):
-        if(mask_hc & MASK_PRODUCT_DEFAULT){
-          for(int i2 = 0; i2 < ss[2].dim(); i2++)
-          for(int i4 = 0; i4 < ss[4].dim(); i4++){
-            cgslice_iter<T> subv = v_slice(slice(0,v_slice.size1(),1),i2,
-                                           slice(0,v_slice.size3(),1),i4);
-            gslice_iter<T> subres = res_slice(slice(0,res_slice.size1(),1),i2,
-                                              slice(0,res_slice.size3(),1),i4);
-            if(use_condensed){
-              product(block1,block2,subv,subres,maux3,coef,T(1));
-            } else {
-              maux1 = subv;
-              maux2 = subres;
-              product(block1,block2,maux1,maux2,maux3,coef,T(1));
-              subres = maux2.array();
-            }
-          }
-        }
-        if(do_hc && (mask_hc & MASK_PRODUCT_HC)){
-          for(int i2 = 0; i2 < ss[2].dim(); i2++)
-          for(int i4 = 0; i4 < ss[4].dim(); i4++){
-            cgslice_iter<T> subv = v_slice_hc(slice(0,v_slice_hc.size1(),1),i2,
-                                              slice(0,v_slice_hc.size3(),1),i4);
-            gslice_iter<T> subres = res_slice_hc(slice(0,res_slice_hc.size1(),1),i2,
-                                                 slice(0,res_slice_hc.size3(),1),i4);
-            if(use_condensed){
-              product(block1,block2,subv,subres,maux3,coef,T(1),true);
-            } else {
-              maux1 = subv;
-              maux2 = subres;
-              product(block1,block2,maux1,maux2,maux3,coef,T(1),true);
-              subres = maux2.array();
-            }
-          }
-        }
-        break;
-     case (MASK_BLOCK1|MASK_BLOCK4):
-        if(mask_hc & MASK_PRODUCT_DEFAULT){
-          for(int i2 = 0; i2 < ss[2].dim(); i2++)
-          for(int i3 = 0; i3 < ss[3].dim(); i3++){
-            cgslice_iter<T> subv = v_slice(slice(0,v_slice.size1(),1),i2,i3,
-                                           slice(0,v_slice.size4(),1));
-            gslice_iter<T> subres = res_slice(slice(0,res_slice.size1(),1),i2,i3,
-                                              slice(0,res_slice.size4(),1));
-            if(use_condensed){
-              product(block1,block2,subv,subres,maux3,coef,T(1));
-            } else {
-              maux1 = subv;
-              maux2 = subres;
-              product(block1,block2,maux1,maux2,maux3,coef,T(1));
-              subres = maux2.array();
-            }
-          }
-        }
-        if(do_hc && (mask_hc & MASK_PRODUCT_HC)){
-          for(int i2 = 0; i2 < ss[2].dim(); i2++)
-          for(int i3 = 0; i3 < ss[3].dim(); i3++){
-            cgslice_iter<T> subv = v_slice_hc(slice(0,v_slice_hc.size1(),1),i2,i3,
-                                              slice(0,v_slice_hc.size4(),1));
-            gslice_iter<T> subres = res_slice_hc(slice(0,res_slice_hc.size1(),1),i2,i3,
-                                                 slice(0,res_slice_hc.size4(),1));
-            if(use_condensed){
-              product(block1,block2,subv,subres,maux3,coef,T(1),true);
-            } else {
-              maux1 = subv;
-              maux2 = subres;
-              product(block1,block2,maux1,maux2,maux3,coef,T(1),true);
-              subres = maux2.array();
-            }
-          }
-        }
-        break;
-     case (MASK_BLOCK2|MASK_BLOCK3):
-        if(mask_hc & MASK_PRODUCT_DEFAULT){
-          for(int i1 = 0; i1 < ss[1].dim(); i1++)
-          for(int i4 = 0; i4 < ss[4].dim(); i4++){
-            cgslice_iter<T> subv = v_slice(i1,slice(0,v_slice.size2(),1),
-                                           slice(0,v_slice.size3(),1),i4);
-            gslice_iter<T> subres = res_slice(i1,slice(0,res_slice.size2(),1),
-                                              slice(0,res_slice.size3(),1),i4);
-            if(use_condensed){
-              product(block1,block2,subv,subres,maux3,coef,T(1));
-            } else {
-              maux1 = subv;
-              maux2 = subres;
-              product(block1,block2,maux1,maux2,maux3,coef,T(1));
-              subres = maux2.array();
-            }
-          }
-        }
-        if(do_hc && (mask_hc & MASK_PRODUCT_HC)){
-          for(int i1 = 0; i1 < ss[1].dim(); i1++)
-          for(int i4 = 0; i4 < ss[4].dim(); i4++){
-            cgslice_iter<T> subv = v_slice_hc(i1,slice(0,v_slice_hc.size2(),1),
-                                           slice(0,v_slice_hc.size3(),1),i4);
-            gslice_iter<T> subres = res_slice_hc(i1,slice(0,res_slice_hc.size2(),1),
-                                              slice(0,res_slice_hc.size3(),1),i4);
-            if(use_condensed){
-              product(block1,block2,subv,subres,maux3,coef,T(1),true);
-            } else {
-              maux1 = subv;
-              maux2 = subres;
-              product(block1,block2,maux1,maux2,maux3,coef,T(1),true);
-              subres = maux2.array();
-            }
-          }
-        }
-        break;
-     case (MASK_BLOCK2|MASK_BLOCK4):
-        if(mask_hc & MASK_PRODUCT_DEFAULT){
-          for(int i1 = 0; i1 < ss[1].dim(); i1++)
-          for(int i3 = 0; i3 < ss[3].dim(); i3++){
-            cgslice_iter<T> subv = v_slice(i1,slice(0,v_slice.size2(),1),i3,
-                                           slice(0,v_slice.size4(),1));
-            gslice_iter<T> subres = res_slice(i1,slice(0,res_slice.size2(),1),i3,
-                                              slice(0,res_slice.size4(),1));
-            if(use_condensed){
-              product(block1,block2,subv,subres,maux3,coef,T(1));
-            } else {
-              maux1 = subv;
-              maux2 = subres;
-              product(block1,block2,maux1,maux2,maux3,coef,T(1));
-              subres = maux2.array();
-            }
-          }
-        }
-        if(do_hc && (mask_hc & MASK_PRODUCT_HC)){
-          for(int i1 = 0; i1 < ss[1].dim(); i1++)
-          for(int i3 = 0; i3 < ss[3].dim(); i3++){
-            cgslice_iter<T> subv = v_slice_hc(i1,slice(0,v_slice_hc.size2(),1),i3,
-                                              slice(0,v_slice_hc.size4(),1));
-            gslice_iter<T> subres = res_slice_hc(i1,slice(0,res_slice_hc.size2(),1),i3,
-                                                 slice(0,res_slice_hc.size4(),1));
-            if(use_condensed){
-              product(block1,block2,subv,subres,maux3,coef,T(1),true);
-            } else {
-              maux1 = subv;
-              maux2 = subres;
-              product(block1,block2,maux1,maux2,maux3,coef,T(1),true);
-              subres = maux2.array();
-            }
-          }
-        }
-        break;
-     case (MASK_BLOCK3|MASK_BLOCK4):
-        if(mask_hc & MASK_PRODUCT_DEFAULT){
-          for(int i1 = 0; i1 < ss[1].dim(); i1++)
-          for(int i2 = 0; i2 < ss[2].dim(); i2++){
-            cgslice_iter<T> subv = v_slice(i1,i2,slice(0,v_slice.size3(),1),
-                                           slice(0,v_slice.size4(),1));
-            gslice_iter<T> subres = res_slice(i1,i2,slice(0,res_slice.size3(),1),
-                                              slice(0,res_slice.size4(),1));
-            if(use_condensed){
-              product(block1,block2,subv,subres,maux3,coef,T(1));
-            } else {
-              maux1 = subv;
-              maux2 = subres;
-              product(block1,block2,maux1,maux2,maux3,coef,T(1));
-              subres = maux2.array();
-            }
-          }
-        }
-        if(do_hc && (mask_hc & MASK_PRODUCT_HC)){
-          for(int i1 = 0; i1 < ss[1].dim(); i1++)
-          for(int i2 = 0; i2 < ss[2].dim(); i2++){
-            cgslice_iter<T> subv = v_slice_hc(i1,i2,slice(0,v_slice_hc.size3(),1),
-                                              slice(0,v_slice_hc.size4(),1));
-            gslice_iter<T> subres = res_slice_hc(i1,i2,slice(0,res_slice_hc.size3(),1),
-                                                 slice(0,res_slice_hc.size4(),1));
-            if(use_condensed){
-              product(block1,block2,subv,subres,maux3,coef,T(1),true);
-            } else {
-              maux1 = subv;
-              maux2 = subres;
-              product(block1,block2,maux1,maux2,maux3,coef,T(1),true);
-              subres = maux2.array();
-            }
-          }
-        }
-        break;
-      case MASK_BLOCK1:
-        if(mask_hc & MASK_PRODUCT_DEFAULT){
-          for(int i2 = 0; i2 < ss[2].dim(); i2++)
-          for(int i3 = 0; i3 < ss[3].dim(); i3++)
-          for(int i4 = 0; i4 < ss[4].dim(); i4++){
-            cslice_iter<T> subv = v_slice(slice(0,v_slice.size1(),1),i2,i3,i4);
-            slice_iter<T> subres = res_slice(slice(0,res_slice.size1(),1),i2,i3,i4);
-            vaux1 = subv;
-            vaux2 = subres;
-            product(block1,block2,vaux1,vaux2,coef,T(1));
-            subres = vaux2.array();
-          }
-        }
-        if(do_hc && (mask_hc & MASK_PRODUCT_HC)){
-          for(int i2 = 0; i2 < ss[2].dim(); i2++)
-          for(int i3 = 0; i3 < ss[3].dim(); i3++)
-          for(int i4 = 0; i4 < ss[4].dim(); i4++){
-            cslice_iter<T> subv = v_slice_hc(slice(0,v_slice_hc.size1(),1),i2,i3,i4);
-            slice_iter<T> subres = res_slice_hc(slice(0,res_slice_hc.size1(),1),i2,i3,i4);
-            vaux1 = subv;
-            vaux2 = subres;
-            product(block1,block2,vaux1,vaux2,coef,T(1),true);
-            subres = vaux2.array();
-          }
-        }
-        break;
-      case MASK_BLOCK2:
-        if(mask_hc & MASK_PRODUCT_DEFAULT){
-          for(int i1 = 0; i1 < ss[1].dim(); i1++)
-          for(int i3 = 0; i3 < ss[3].dim(); i3++)
-          for(int i4 = 0; i4 < ss[4].dim(); i4++){
-            cslice_iter<T> subv = v_slice(i1,slice(0,v_slice.size2(),1),i3,i4);
-            slice_iter<T> subres = res_slice(i1,slice(0,res_slice.size2(),1),i3,i4);
-            vaux1 = subv;
-            vaux2 = subres;
-            product(block1,block2,vaux1,vaux2,coef,T(1));
-            subres = vaux2.array();
-          }
-        }
-        if(do_hc && (mask_hc & MASK_PRODUCT_HC)){
-          for(int i1 = 0; i1 < ss[1].dim(); i1++)
-          for(int i3 = 0; i3 < ss[3].dim(); i3++)
-          for(int i4 = 0; i4 < ss[4].dim(); i4++){
-            cslice_iter<T> subv = v_slice_hc(i1,slice(0,v_slice_hc.size2(),1),i3,i4);
-            slice_iter<T> subres = res_slice_hc(i1,slice(0,res_slice_hc.size2(),1),i3,i4);
-            vaux1 = subv;
-            vaux2 = subres;
-            product(block1,block2,vaux1,vaux2,coef,T(1),true);
-            subres = vaux2.array();
-          }
-        }
-        break;
-      case MASK_BLOCK3:
-        if(mask_hc & MASK_PRODUCT_DEFAULT){
-          for(int i1 = 0; i1 < ss[1].dim(); i1++)
-          for(int i2 = 0; i2 < ss[2].dim(); i2++)
-          for(int i4 = 0; i4 < ss[4].dim(); i4++){
-            cslice_iter<T> subv = v_slice(i1,i2,slice(0,v_slice.size3(),1),i4);
-            slice_iter<T> subres = res_slice(i1,i2,slice(0,res_slice.size3(),1),i4);
-            vaux1 = subv;
-            vaux2 = subres;
-            product(block1,block2,vaux1,vaux2,coef,T(1));
-            subres = vaux2.array();
-          }
-        }
-        if(do_hc && (mask_hc & MASK_PRODUCT_HC)){
-          for(int i1 = 0; i1 < ss[1].dim(); i1++)
-          for(int i2 = 0; i2 < ss[2].dim(); i2++)
-          for(int i4 = 0; i4 < ss[4].dim(); i4++){
-            cslice_iter<T> subv = v_slice_hc(i1,i2,slice(0,v_slice_hc.size3(),1),i4);
-            slice_iter<T> subres = res_slice_hc(i1,i2,slice(0,res_slice_hc.size3(),1),i4);
-            vaux1 = subv;
-            vaux2 = subres;
-            product(block1,block2,vaux1,vaux2,coef,T(1),true);
-            subres = vaux2.array();
-          }
-        }
-        break;
-     case MASK_BLOCK4:
-        if(mask_hc & MASK_PRODUCT_DEFAULT){
-          for(int i1 = 0; i1 < ss[1].dim(); i1++)
-          for(int i2 = 0; i2 < ss[2].dim(); i2++)
-          for(int i3 = 0; i3 < ss[3].dim(); i3++){
-            cslice_iter<T> subv = v_slice(i1,i2,i3,slice(0,v_slice.size4(),1));
-            slice_iter<T> subres = res_slice(i1,i2,i3,slice(0,res_slice.size4(),1));
-            vaux1 = subv;
-            vaux2 = subres;
-            product(block1,block2,vaux1,vaux2,coef,T(1));
-            subres = vaux2.array();
-          }
-        }
-        if(do_hc && (mask_hc & MASK_PRODUCT_HC)){
-          for(int i1 = 0; i1 < ss[1].dim(); i1++)
-          for(int i2 = 0; i2 < ss[2].dim(); i2++)
-          for(int i3 = 0; i3 < ss[3].dim(); i3++){
-            cslice_iter<T> subv = v_slice_hc(i1,i2,i3,slice(0,v_slice_hc.size4(),1));
-            slice_iter<T> subres = res_slice_hc(i1,i2,i3,slice(0,res_slice_hc.size4(),1));
-            vaux1 = subv;
-            vaux2 = subres;
-            product(block1,block2,vaux1,vaux2,coef,T(1),true);
-            subres = vaux2.array();
-          }
-        }
-        break;
+      });
+    };
+    if (mask_hc & MASK_PRODUCT_DEFAULT) apply(v_slice, res_slice, false);
+    if (do_hc && (mask_hc & MASK_PRODUCT_HC)) apply(v_slice_hc, res_slice_hc, true);
+  };
+
+  switch (_mask) {
+    case MASK_BLOCK1:
+      apply_layout(std::integral_constant<int, MASK_BLOCK1>{});
+      break;
+    case MASK_BLOCK2:
+      apply_layout(std::integral_constant<int, MASK_BLOCK2>{});
+      break;
+    case MASK_BLOCK3:
+      apply_layout(std::integral_constant<int, MASK_BLOCK3>{});
+      break;
+    case MASK_BLOCK4:
+      apply_layout(std::integral_constant<int, MASK_BLOCK4>{});
+      break;
+    case MASK_BLOCK1 | MASK_BLOCK2:
+      apply_layout(std::integral_constant<int, MASK_BLOCK1 | MASK_BLOCK2>{});
+      break;
+    case MASK_BLOCK1 | MASK_BLOCK3:
+      apply_layout(std::integral_constant<int, MASK_BLOCK1 | MASK_BLOCK3>{});
+      break;
+    case MASK_BLOCK1 | MASK_BLOCK4:
+      apply_layout(std::integral_constant<int, MASK_BLOCK1 | MASK_BLOCK4>{});
+      break;
+    case MASK_BLOCK2 | MASK_BLOCK3:
+      apply_layout(std::integral_constant<int, MASK_BLOCK2 | MASK_BLOCK3>{});
+      break;
+    case MASK_BLOCK2 | MASK_BLOCK4:
+      apply_layout(std::integral_constant<int, MASK_BLOCK2 | MASK_BLOCK4>{});
+      break;
+    case MASK_BLOCK3 | MASK_BLOCK4:
+      apply_layout(std::integral_constant<int, MASK_BLOCK3 | MASK_BLOCK4>{});
+      break;
   }
   if(!globals){
     delete(_vaux1);
