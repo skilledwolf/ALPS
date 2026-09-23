@@ -28,6 +28,7 @@
 
 #include <algorithm>
 #include <functional>
+#include <numeric>
 #include <cmath>
 #include <vector>
 
@@ -525,6 +526,58 @@ inline alps::IDump& operator>>(alps::IDump& dp, alps::parapack::exmc::exchange_s
 // The exchange algorithm is independent of replica transport. MPI workers
 // gather weights before calling it and broadcast the resulting state afterward.
 struct exchange_algorithm {
+  // Seed construction is independent of whether a walker spans MPI ranks.
+  template<class Worker, class Create>
+  static void init_walkers(Worker& worker, alps::Parameters params,
+                           std::vector<int>& ids, int count, int offset, Create create) {
+    worker.walker_.resize(count);
+    ids.resize(count);
+    for (int p = 0; p < count; ++p) {
+      for (int j = 1; j < 3637 /* 509th prime number */; ++j) worker.engine()();
+      params["WORKER_SEED"] = worker.engine()();
+      worker.walker_[p] = create(params); // Preserve DISORDER_SEED for every walker.
+      ids[p] = p + offset;
+    }
+  }
+
+  // Called once by the serial worker or by the MPI controller rank.
+  template<class Worker>
+  static void init_state(Worker& worker) {
+    int nrep = worker.beta_.size();
+    worker.tid_.resize(nrep);
+    worker.wid_.resize(nrep);
+    std::iota(worker.tid_.begin(), worker.tid_.end(), 0);
+    std::iota(worker.wid_.begin(), worker.wid_.end(), 0);
+    if (worker.mcs_.exchange()) {
+      worker.direc_.assign(nrep, walker_direc::unlabeled);
+      worker.direc_[0] = walker_direc::down;
+      worker.wp_.resize(nrep);
+      worker.upward_.resize(nrep);
+      worker.accept_.resize(nrep - 1);
+      if (worker.mcs_.random_exchange()) worker.permutation_.resize(nrep - 1);
+      worker.weight_parameters_.assign(nrep, typename Worker::weight_parameter_type(0));
+    }
+  }
+
+  static std::pair<int, int> partition(int nrep, int processes, int rank) {
+    int count = nrep / processes, remainder = nrep % processes;
+    return {count + (rank < remainder), count * rank + (std::min)(rank, remainder)};
+  }
+
+  template<class Worker>
+  static void init_partition(Worker& worker, int processes) {
+    worker.nreps_.resize(processes);
+    worker.offsets_.resize(processes);
+    worker.nrep_max_ = 0;
+    for (int rank = 0; rank < processes; ++rank) {
+      boost::tie(worker.nreps_[rank], worker.offsets_[rank]) = worker.calc_nrep(rank);
+      worker.nrep_max_ = (std::max)(worker.nrep_max_, worker.nreps_[rank]);
+    }
+    std::cout << "EXMC: number of replicas = " << worker.beta_.size() << std::endl
+              << "EXMC: number of replicas on each process = " << write_vector(worker.nreps_) << std::endl
+              << "EXMC: initial inverse temperature set = " << write_vector(worker.beta_, " ", 5) << std::endl;
+  }
+
   static void init_observables(alps::ObservableSet& obs, int p, int nrep, bool exchange) {
     obs << SimpleRealObservable("EXMC: Temperature")
            << SimpleRealObservable("EXMC: Inverse Temperature");
@@ -738,37 +791,9 @@ public:
     std::cout << "EXMC: initial inverse temperature set = " << write_vector(beta_, " ", 5)
               << std::endl;
 
-    // initialize walkers
-    walker_.resize(nrep);
-    tid_.resize(nrep);
-    alps::Parameters wp(params);
-    for (int p = 0; p < nrep; ++p) {
-      for (int j = 1; j < 3637 /* 509th prime number */; ++j) engine()();
-      wp["WORKER_SEED"] = engine()(); // different seed for each walker
-      walker_[p] = helper::create_walker(wp, init_); // same DISORDER_SEED for all walkers
-      tid_[p] = p;
-    }
-
-    // initialize walker labels
-    wid_.resize(nrep);
-    for (int p = 0; p < nrep; ++p) wid_[p] = p;
-    if (mcs_.exchange()) {
-      direc_.resize(nrep);
-      direc_[0] = walker_direc::down;
-      for (int p = 1; p < nrep; ++p) direc_[p] = walker_direc::unlabeled;
-    }
-
-    // working space
-    if (mcs_.exchange()) {
-      wp_.resize(nrep);
-      upward_.resize(nrep);
-      accept_.resize(nrep - 1);
-      if (mcs_.random_exchange()) permutation_.resize(nrep - 1);
-    }
-    if (mcs_.exchange()) {
-      weight_parameters_.resize(nrep);
-      for (int p = 0; p < nrep; ++p) weight_parameters_[p] = weight_parameter_type(0);
-    }
+    exmc::exchange_algorithm::init_walkers(*this, params, tid_, nrep, 0,
+      [&](alps::Parameters const& wp) { return helper::create_walker(wp, init_); });
+    exmc::exchange_algorithm::init_state(*this);
   }
   virtual ~single_exchange_worker() {}
 
@@ -878,70 +903,17 @@ public:
     : super_type(params), comm_(comm), init_(params), beta_(params), mcs_(params),
       num_returnee_(0) {
 
-    int nrep = beta_.size();
     boost::tie(nrep_local_, offset_local_) = calc_nrep(comm_.rank());
     if (nrep_local_ == 0) {
       std::cerr << "Error: number of replicas is smaller than number of processes\n";
       boost::throw_exception(std::runtime_error(
         "number of replicas is smaller than number of processes"));
     }
-    if (comm_.rank() == 0) {
-      nreps_.resize(comm_.size());
-      offsets_.resize(comm_.size());
-      nrep_max_ = 0;
-      for (int p = 0; p < comm_.size(); ++p) {
-        boost::tie(nreps_[p], offsets_[p]) = calc_nrep(p);
-        nrep_max_ = (std::max)(nrep_max_, nreps_[p]);
-      }
-      std::cout << "EXMC: number of replicas = " << nrep << std::endl
-                << "EXMC: number of replicas on each process = "
-                << write_vector(nreps_) << std::endl
-                << "EXMC: initial inverse temperature set = "
-                << write_vector(beta_, " ", 5) << std::endl;
-    }
-
-    // initialize walkers
-    walker_.resize(nrep_local_);
-    tid_local_.resize(nrep_local_);
-    alps::Parameters wp(params);
-    for (int p = 0; p < nrep_local_; ++p) {
-      // different WORKER_SEED for each walker, same DISORDER_SEED for all walkers
-      for (int j = 1; j < 3637 /* 509th prime number */; ++j) engine()();
-      wp["WORKER_SEED"] = engine()();
-      walker_[p] = helper::create_walker(wp, init_);
-      tid_local_[p] = p + offset_local_;
-    }
-    if (comm_.rank() == 0) {
-      tid_.resize(nrep);
-      for (int p = 0; p < nrep; ++p) tid_[p] = p;
-    }
-
-    if (comm_.rank() == 0 && mcs_.exchange()) {
-      weight_parameters_.resize(nrep);
-      for (int p = 0; p < nrep; ++p) weight_parameters_[p] = weight_parameter_type(0);
-    }
-
-    // initialize walker labels
-    if (comm_.rank() == 0) {
-      wid_.resize(nrep);
-      for (int p = 0; p < nrep; ++p) wid_[p] = p;
-      if (mcs_.exchange()) {
-        direc_.resize(nrep);
-        direc_[0] = walker_direc::down;
-        for (int p = 1; p < nrep; ++p) direc_[p] = walker_direc::unlabeled;
-      }
-    }
-
-    // working space
-    if (mcs_.exchange()) {
-      wp_local_.resize(nrep_local_);
-      if (comm_.rank() == 0) {
-        wp_.resize(nrep);
-        upward_.resize(nrep);
-        accept_.resize(nrep - 1);
-        if (mcs_.random_exchange()) permutation_.resize(nrep - 1);
-      }
-    }
+    if (comm_.rank() == 0) exmc::exchange_algorithm::init_partition(*this, comm_.size());
+    exmc::exchange_algorithm::init_walkers(*this, params, tid_local_, nrep_local_, offset_local_,
+      [&](alps::Parameters const& wp) { return helper::create_walker(wp, init_); });
+    if (comm_.rank() == 0) exmc::exchange_algorithm::init_state(*this);
+    if (mcs_.exchange()) wp_local_.resize(nrep_local_);
   }
   virtual ~parallel_exchange_worker() {}
 
@@ -1044,16 +1016,7 @@ public:
 
 protected:
   std::pair<int, int> calc_nrep(int id) const {
-    int nrep = beta_.size();
-    int n = nrep / comm_.size();
-    int f;
-    if (id < nrep - n * comm_.size()) {
-      ++n;
-      f = n * id;
-    } else {
-      f = (nrep - n * comm_.size()) + n * id;
-    }
-    return std::make_pair(n, f);
+    return exmc::exchange_algorithm::partition(beta_.size(), comm_.size(), id);
   }
 
 private:

@@ -58,13 +58,13 @@ void check(Worker& uninterrupted, Worker& resumed, alps::Parameters const& p, in
   for (std::size_t p = 0; p < obs.size(); ++p) {
     alps::RealObsevaluator a(obs[p]["Energy"]), b(restored_obs[p]["Energy"]);
     samples += a.count();
-    if (a.count() != b.count() || a.mean() != b.mean())
+    if (a.count() != b.count() || (a.count() && a.mean() != b.mean()))
       throw std::runtime_error("Exchange restart changed measurements");
   }
 #ifdef ALPS_HAVE_MPI
   samples = boost::mpi::all_reduce(boost::mpi::communicator(), samples, std::plus<unsigned long long>());
 #endif
-  if (samples != 64 * 4 * ranks_per_replica)
+  if (samples != 64 * static_cast<int>(p["NUM_REPLICAS"]) * ranks_per_replica)
     throw std::runtime_error("Exchange lost replicas while distributing workers");
   // Deterministic fingerprint also allows comparison with the pre-refactor implementation.
   uint64_t fingerprint = 14695981039346656037ull;
@@ -77,17 +77,19 @@ int main(int argc, char** argv) {
   boost::mpi::environment env(argc, argv);
   boost::mpi::communicator comm;
 #endif
-  for (int random : {0, 1}) for (std::string mode : {"none", "rate", "population"}) {
+  for (int replicas : {4, 5}) for (int random : {0, 1})
+  for (std::string mode : {"disabled", "none", "rate", "population"}) {
     alps::Parameters p;
     p["WORKER_SEED"] = 42;
     p["DISORDER_SEED"] = 7;
     p["BETA_MIN"] = 0.5;
     p["BETA_MAX"] = 2;
-    p["NUM_REPLICAS"] = 4;
+    p["NUM_REPLICAS"] = replicas;
     p["SWEEPS"] = 128;
     p["THERMALIZATION"] = 8;
     p["RANDOM_EXCHANGE"] = random;
-    p["OPTIMIZE_TEMPERATURE"] = mode != "none";
+    p["NO_EXCHANGE"] = mode == "disabled";
+    p["OPTIMIZE_TEMPERATURE"] = mode == "rate" || mode == "population";
     p["OPTIMIZATION_TYPE"] = mode;
     p["INITIAL_BLOCK_SWEEPS"] = 8;
     p["OPTIMIZATION_ITERATIONS"] = 1;
