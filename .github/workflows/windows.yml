@@ -78,6 +78,20 @@ jobs:
         run: python .github/scripts/build_metrics.py run 'SDK tests' ctest --preset windows-${{ inputs.architecture }} -C ${{ inputs.configuration }} --output-junit ctest.xml --no-tests=error
       - name: Install SDK
         run: cmake --install _build/windows-${{ inputs.architecture }} --config ${{ inputs.configuration }}
+      - name: Stage installed SDK runtime checks
+        if: inputs.wheel
+        shell: pwsh
+        run: |
+          Copy-Item -Recurse _build/windows-${{ inputs.architecture }}/install/bin _build/sdk-runtime
+          foreach ($probe in @('portability', 'numerics', 'hdf5_complex')) {
+            Copy-Item "_build/windows-${{ inputs.architecture }}/bin/${{ inputs.configuration }}/$probe.exe" _build/sdk-runtime/
+          }
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: inputs.wheel
+        with:
+          name: sdk-runtime-windows-${{ inputs.architecture }}
+          path: _build/sdk-runtime
+          if-no-files-found: error
       - name: Install Python build requirements
         if: inputs.wheel
         run: python -m pip install build "nanobind>=2.10,<3" numpy scipy matplotlib h5py pytest "scikit-build-core>=1.0" abi3audit

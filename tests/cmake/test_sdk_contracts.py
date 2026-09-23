@@ -25,9 +25,10 @@ def configure(build, *options, success=True):
     return result.stdout + result.stderr
 
 
-def build_and_run(build):
+def build_and_run(build, *, environment=None):
     subprocess.run(["cmake", "--build", str(build), "--config", "Release", "--parallel", "2"], check=True)
-    subprocess.run(["ctest", "--test-dir", str(build), "-C", "Release", "--output-on-failure"], check=True)
+    subprocess.run([shutil.which("ctest"), "--test-dir", str(build), "-C", "Release", "--output-on-failure"],
+                   check=True, env=environment)
 
 
 @pytest.mark.parametrize("standard", (17, 20))
@@ -92,6 +93,8 @@ def test_sdk_exports_solver_libraries(tmp_path):
 
 
 def test_relocated_sdk(tmp_path):
+    # Unix SDKs intentionally use externally installed dependencies; deployment
+    # without those dependencies is tested against the repaired wheels in CI.
     prefix = Path(os.environ["ALPS_DIR"]).resolve().parents[1]
     relocated = tmp_path / "relocated"
     # Preserve the installed layout, including platforms that use lib64.
@@ -105,4 +108,10 @@ def test_relocated_sdk(tmp_path):
             shutil.copy2(library, relocated / bindir / library.name)
     build = tmp_path / "consumer"
     configure(build, f"-DALPS_DIR={relocated / 'share/alps'}")
-    build_and_run(build)
+    environment = os.environ.copy()
+    for name in ("LD_LIBRARY_PATH", "DYLD_LIBRARY_PATH", "DYLD_FALLBACK_LIBRARY_PATH",
+                 "ALPS_ROOT", "ALPS_XML_PATH"):
+        environment.pop(name, None)
+    environment["PATH"] = (str(Path(os.environ["SystemRoot"]) / "System32")
+                           if os.name == "nt" else "/usr/bin:/bin")
+    build_and_run(build, environment=environment)
