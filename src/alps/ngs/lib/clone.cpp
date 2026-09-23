@@ -20,6 +20,8 @@
 #include <alps/parapack/logger.h>
 #include <boost/filesystem/operations.hpp>
 
+#include <alps/parapack/detail/clone_workflow.hpp>
+
 namespace alps {
 namespace ngs_parapack {
 
@@ -44,8 +46,8 @@ clone::clone(boost::filesystem::path const& basedir, dump_policy_t dump_policy,
 
   worker_ = ngs_parapack::worker_factory::make_worker(params_);
   if (!is_new) {
-    bool exists = 
-      boost::filesystem::exists(absolute(boost::filesystem::path(info_.dumpfile()), basedir_)) &&
+    // NGS stores the worker state in the HDF5 checkpoint itself.
+    bool exists =
       boost::filesystem::exists(absolute(boost::filesystem::path(info_.dumpfile_h5()), basedir_));
     if (exists) {
       this->load();
@@ -56,34 +58,17 @@ clone::clone(boost::filesystem::path const& basedir, dump_policy_t dump_policy,
     }
   }
 
-  if (is_new || worker_->fraction_completed() < 1)
-    info_.start("running");
-  if (is_new && worker_->fraction_completed() >= 1) {
-    info_.set_progress(worker_->fraction_completed());
-    info_.stop();
-    do_halt();
-  }
-
-  if (!is_new) timer_.reset(worker_->fraction_completed());
-  loops_ = 1;
+  detail::clone_workflow::initialize<false>(*this, is_new,
+    [this] { return worker_->fraction_completed(); }, "running");
 }
 
 clone::~clone() {}
 
 void clone::run(boost::function<bool ()> const& stop_callback,
   boost::function<void (double)> const& progress_callback) {
-  for (clone_timer::loops_t i = 0; i < loops_; ++i) {
-    double progress = worker_->fraction_completed();
-    worker_->run(stop_callback, progress_callback);
-    if (progress < 1 && worker_->fraction_completed() >= 1) {
-      info_.set_progress(worker_->fraction_completed());
-      info_.stop();
-      do_halt();
-      return;
-    }
-  }
-  info_.set_progress(worker_->fraction_completed());
-  loops_ = timer_.next_loops(loops_);
+  detail::clone_workflow::step<false>(*this,
+    [this] { return worker_->fraction_completed(); },
+    [&] { worker_->run(stop_callback, progress_callback); return false; });
 }
 
 bool clone::halted() const { return !worker_; }
@@ -91,29 +76,11 @@ bool clone::halted() const { return !worker_; }
 clone_info const& clone::info() const { return info_; }
 
 void clone::load() {
-  boost::filesystem::path dump_h5 =
-    absolute(boost::filesystem::path(info_.dumpfile_h5()), basedir_);
-  bool workerdump = (dump_policy_ == dump_policy::All) ||
-    (dump_policy_ == dump_policy::RunningOnly && info_.progress() < 1);
-  #pragma omp critical (hdf5io)
-  {
-    hdf5::archive h5(dump_h5.string());
-    h5 >> make_pvp("/", *this);
-    if(workerdump) worker_->load_worker(h5);
-  }
+  detail::clone_workflow::load_ngs<false>(*this);
 }
 
 void clone::save() const{
-  boost::filesystem::path dump_h5 =
-    absolute(boost::filesystem::path(info_.dumpfile_h5()), basedir_);
-  bool workerdump = (dump_policy_ == dump_policy::All) ||
-    (dump_policy_ == dump_policy::RunningOnly && info_.progress() < 1);
-  #pragma omp critical (hdf5io)
-  {
-    hdf5::archive h5(dump_h5.string(), "a");
-    h5 << make_pvp("/", *this);
-    if (workerdump) worker_->save_worker(h5);
-  }
+  detail::clone_workflow::save_ngs<false>(*this);
 }
 
 void clone::load(hdf5::archive & ar) {
@@ -125,21 +92,15 @@ void clone::save(hdf5::archive & ar) const {
 }
 
 void clone::checkpoint() {
-  if (info_.progress() < 1) info_.stop();
-  this->save();
+  detail::clone_workflow::checkpoint<false>(*this);
 }
 
 void clone::suspend() {
-  info_.stop();
-  this->save();
-  worker_.reset();
+  detail::clone_workflow::suspend<false>(*this);
 }
 
 void clone::do_halt() {
-  if (info_.progress() < 1)
-    boost::throw_exception(std::logic_error("clone is not finished"));
-  this->save();
-  worker_.reset();
+  detail::clone_workflow::halt<false>(*this);
 }
 
 void clone::output() const{
@@ -189,118 +150,37 @@ clone_mpi::clone_mpi(boost::mpi::communicator const& ctrl, boost::mpi::communica
     }
   }
 
-  if (is_new || info_.progress() < 1)
-    info_.start("running");
-  if (work_.rank() == 0 && is_new && worker_->fraction_completed() >= 1) {
-    info_.set_progress(worker_->fraction_completed());
-    info_.stop();
-    if (group_id_ == 0) {
-      do_halt();
-    } else {
-      send_info(mcmp_tag::clone_info);
-    }
-  }
-
-  if (work_.rank() == 0 && !is_new) timer_.reset(worker_->fraction_completed());
-  loops_ = 1;
+  detail::clone_workflow::initialize<true>(*this, is_new,
+    [this] { return worker_->fraction_completed(); }, "running");
 }
 
 clone_mpi::~clone_mpi() {}
 
 void clone_mpi::run(boost::function<bool ()> const& stop_callback,
   boost::function<void (double)> const& progress_callback) {
-  int tag = (info_.progress() < 1) ? mcmp_tag::do_step : mcmp_tag::do_nothing;
-  if (work_.rank() == 0 && ctrl_.iprobe(0, boost::mpi::any_tag)) {
-    boost::mpi::status stat = ctrl_.recv(0, boost::mpi::any_tag);
-    tag = stat.tag();
-    if (tag == mcmp_tag::clone_suspend && info_.progress() >= 1)
-      tag = mcmp_tag::clone_halt;
-  }
-  broadcast(work_, tag, 0);
-
-  switch (tag) {
-  case mcmp_tag::do_step :
-    for (clone_timer::loops_t i = 0; i < loops_; ++i) {
-      double progress = worker_->fraction_completed();
-      worker_->run(stop_callback, progress_callback);
-      if (progress < 1 && worker_->fraction_completed() >= 1) {
-        if (work_.rank() == 0) {
-          info_.set_progress(worker_->fraction_completed());
-          info_.stop();
-        }
-        if (group_id_ == 0) {
-          do_halt();
-        } else {
-          send_info(mcmp_tag::clone_info);
-        }
-        return;
-      }
-    }
-    if (work_.rank() == 0) {
-      info_.set_progress(worker_->fraction_completed());
-      loops_ = timer_.next_loops(loops_);
-    }
-    broadcast(work_, loops_, 0);
-    break;
-  case mcmp_tag::clone_info :
-    send_info(mcmp_tag::clone_info);
-    break;
-  case mcmp_tag::clone_checkpoint :
-    do_checkpoint();
-    send_info(mcmp_tag::clone_checkpoint);
-    break;
-  case mcmp_tag::clone_suspend :
-    this->do_suspend();
-    send_info(mcmp_tag::clone_suspend);
-    break;
-  case mcmp_tag::clone_halt :
-    this->do_halt();
-    send_halted();
-    break;
-  case mcmp_tag::do_nothing :
-    break;
-  default:
-    if (work_.rank() == 0)
-      std::cerr << "Warning: ignoring a message with an unknown tag " << tag << std::endl;
-  }
+  detail::clone_workflow::run_mpi(*this,
+    [this] { return worker_->fraction_completed(); },
+    [&] { worker_->run(stop_callback, progress_callback); return false; });
 }
 
 void clone_mpi::checkpoint() {
-  if (work_.rank() == 0) {
-    int tag = mcmp_tag::clone_checkpoint;
-    broadcast(work_, tag, 0);
-    do_checkpoint();
-  }
+  detail::clone_workflow::request(*this, mcmp_tag::clone_checkpoint);
 }
 
 void clone_mpi::suspend() {
-  if (work_.rank() == 0) {
-    int tag = mcmp_tag::clone_suspend;
-    broadcast(work_, tag, 0);
-    do_suspend();
-  }
+  detail::clone_workflow::request(*this, mcmp_tag::clone_suspend);
 }
 
 void clone_mpi::do_checkpoint() {
-  if (work_.rank() == 0 && info_.progress() < 1) info_.stop();
-  this->save();
+  detail::clone_workflow::checkpoint<true>(*this);
 }
 
 void clone_mpi::do_suspend() {
-  if (work_.rank() == 0) info_.stop();
-  this->save();
-  work_.barrier();
-  worker_.reset();
+  detail::clone_workflow::suspend<true>(*this);
 }
 
 void clone_mpi::do_halt() {
-  if (work_.rank() == 0 && info_.progress() < 1) {
-    std::cerr << "clone is not finished\n";
-    boost::throw_exception(std::logic_error("clone is not finished"));
-  }
-  this->save();
-  work_.barrier();
-  worker_.reset();
+  detail::clone_workflow::halt<true>(*this);
 }
 
 bool clone_mpi::halted() const { return !worker_; }
@@ -308,31 +188,11 @@ bool clone_mpi::halted() const { return !worker_; }
 clone_info const& clone_mpi::info() const { return info_; }
 
 void clone_mpi::load() {
-  boost::filesystem::path dump_h5 =
-    absolute(boost::filesystem::path(info_.dumpfile_h5()), basedir_);
-  bool workerdump = (dump_policy_ == dump_policy::All) ||
-    (dump_policy_ == dump_policy::RunningOnly && info_.progress() < 1);
-  broadcast(work_, workerdump, 0);
-  #pragma omp critical (hdf5io)
-  {
-    hdf5::archive h5(dump_h5.string());
-    h5 >> make_pvp("/", *this);
-    if (workerdump) worker_->load_worker(h5);
-  }
+  detail::clone_workflow::load_ngs<true>(*this);
 }
 
 void clone_mpi::save() const{
-  boost::filesystem::path dump_h5 =
-    absolute(boost::filesystem::path(info_.dumpfile_h5()), basedir_);
-  bool workerdump = (dump_policy_ == dump_policy::All) ||
-    (dump_policy_ == dump_policy::RunningOnly && info_.progress() < 1);
-  broadcast(work_, workerdump, 0);
-  #pragma omp critical (hdf5io)
-  {
-    hdf5::archive h5(dump_h5.string(), "a");
-    h5 << make_pvp("/", *this);
-    if (workerdump) worker_->save_worker(h5);
-  }
+  detail::clone_workflow::save_ngs<true>(*this);
 }
 
 void clone_mpi::load(hdf5::archive & ar) {

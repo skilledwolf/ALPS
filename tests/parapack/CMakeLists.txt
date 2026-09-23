@@ -74,3 +74,14 @@ add_executable(task_state task_state.cpp)
 target_link_libraries(task_state PRIVATE ALPS::alps)
 add_test(NAME task_state COMMAND task_state)
 set_property(TEST task_state PROPERTY LABELS parapack)
+
+add_executable(clone_lifecycle clone_lifecycle.cpp)
+target_link_libraries(clone_lifecycle PRIVATE ALPS::alps)
+add_test(NAME clone_lifecycle COMMAND clone_lifecycle)
+set_tests_properties(clone_lifecycle PROPERTIES LABELS parapack TIMEOUT 60)
+if(ALPS_ENABLE_MPI)
+  add_test(NAME clone_lifecycle_mpi
+    COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2 ${MPIEXEC_PREFLAGS}
+      $<TARGET_FILE:clone_lifecycle> mpi ${MPIEXEC_POSTFLAGS})
+  set_tests_properties(clone_lifecycle_mpi PROPERTIES LABELS "parapack;mpi" PROCESSORS 2 TIMEOUT 60)
+endif()
