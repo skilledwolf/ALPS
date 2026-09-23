@@ -35,7 +35,7 @@
 
 #include "../ctint/types.hpp"
 
-namespace alps { namespace ctint { struct update_kernel; } }
+namespace alps { namespace ctint { struct update_kernel; struct measurement_kernel; } }
 
 
 /*class InteractionExpansionSim: public alps::scheduler::MCSimulation, public alps::MatsubaraImpurityTask
@@ -71,6 +71,9 @@ private:
 class InteractionExpansion: public alps::mcbase
 {
   friend struct alps::ctint::update_kernel;
+  friend struct alps::ctint::measurement_kernel;
+  static constexpr bool ctint_single_site_density = true;
+  void ctint_measure(std::string const& name, std::valarray<double> const& value);
   double ctint_uniform() { return random(); }
   unsigned int ctint_site(unsigned int sites) { return static_cast<unsigned int>(random() * sites); }
   [[noreturn]] void ctint_invalid_flavors(const char* message) { throw std::logic_error(message); }

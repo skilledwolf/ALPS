@@ -36,7 +36,7 @@
 
 #include "../ctint/types.hpp"
 
-namespace alps { namespace ctint { struct update_kernel; } }
+namespace alps { namespace ctint { struct update_kernel; struct measurement_kernel; } }
 
 
 std::ostream & operator<<(std::ostream &os, inverse_m_matrix const& M);
@@ -76,6 +76,9 @@ private:
 class InteractionExpansionRun: public alps::scheduler::MCRun
 {
   friend struct alps::ctint::update_kernel;
+  friend struct alps::ctint::measurement_kernel;
+  static constexpr bool ctint_single_site_density = false;
+  void ctint_measure(std::string const& name, std::valarray<double> const& value);
   double ctint_uniform() { return random_01(); }
   unsigned int ctint_site(unsigned int sites) { return random_int(sites); }
   [[noreturn]] void ctint_invalid_flavors(const char* message) { std::cerr << message << std::endl; std::abort(); }

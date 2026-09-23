@@ -86,6 +86,11 @@ if(ALPS_BUILD_TESTING)
   alps_add_test(dmft_ctint_update_kernel)
   set_property(TEST dmft_ctint_update_kernel PROPERTY LABELS dmft)
 
+  add_executable(dmft_ctint_selfenergy ctint/selfenergy_test.cpp)
+  target_link_libraries(dmft_ctint_selfenergy PRIVATE ALPS::alps)
+  add_test(NAME dmft_ctint_selfenergy COMMAND dmft_ctint_selfenergy)
+  set_property(TEST dmft_ctint_selfenergy PROPERTY LABELS dmft)
+
   # Regression tests for the shared DMFT QMC infrastructure.
   add_executable(dmft_fouriertransform_offdiag_numeric dmft_fouriertransform_offdiag_numeric.C)
   target_link_libraries(dmft_fouriertransform_offdiag_numeric PRIVATE dmft_qmc_impl)
