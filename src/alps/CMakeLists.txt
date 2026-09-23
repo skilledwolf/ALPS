@@ -124,7 +124,7 @@ target_include_directories(
             $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/third_party/xdr/include>
             $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 target_link_libraries(alps_headers INTERFACE Boost::headers)
-set(ALPS_HEADER_DEPENDENCIES ${ALPS_HDF5_TARGETS})
+set(ALPS_HEADER_DEPENDENCIES HDF5::HDF5)
 if(ALPS_ENABLE_MPI)
   list(APPEND ALPS_HEADER_DEPENDENCIES MPI::MPI_CXX)
 endif()
@@ -134,7 +134,7 @@ endif()
 target_link_libraries(alps_headers INTERFACE "$<COMPILE_ONLY:${ALPS_HEADER_DEPENDENCIES}>")
 target_compile_definitions(alps PRIVATE BOOST_TIMER_ENABLE_DEPRECATED
                                         BOOST_ALLOW_DEPRECATED_HEADERS)
-target_link_libraries(alps PUBLIC alps_headers ${ALPS_HDF5_TARGETS} Threads::Threads
+target_link_libraries(alps PUBLIC alps_headers HDF5::HDF5 Threads::Threads
                                   ${ALPS_BLAS_TARGET} ${ALPS_LAPACK_TARGET})
 foreach(component IN LISTS ALPS_BOOST_COMPONENTS)
   target_link_libraries(alps PUBLIC Boost::${component})
@@ -162,12 +162,19 @@ if(ALPS_LOADER_ORIGIN)
   # or build tree. Imported shared libraries still need to be found after the
   # SDK is installed, including when CI extracts its dependencies in _build/.
   get_target_property(dependencies alps LINK_LIBRARIES)
+  # FindHDF5's aggregate preserves configuration-aware provider targets, or
+  # absolute library paths when the provider has no CMake package.
+  get_target_property(hdf5_dependencies HDF5::HDF5 INTERFACE_LINK_LIBRARIES)
+  list(APPEND dependencies ${hdf5_dependencies})
   foreach(dependency IN LISTS dependencies)
     if(TARGET "${dependency}")
       get_target_property(dependency_type "${dependency}" TYPE)
       if(dependency_type MATCHES "^(SHARED|UNKNOWN)_LIBRARY$")
         set_property(TARGET alps APPEND PROPERTY INSTALL_RPATH "$<TARGET_FILE_DIR:${dependency}>")
       endif()
+    elseif(IS_ABSOLUTE "${dependency}")
+      get_filename_component(dependency_directory "${dependency}" DIRECTORY)
+      set_property(TARGET alps APPEND PROPERTY INSTALL_RPATH "${dependency_directory}")
     endif()
   endforeach()
 endif()

@@ -32,7 +32,8 @@ def build_and_run(build):
 
 @pytest.mark.parametrize("standard", (17, 20))
 def test_installed_sdk_preserves_parent_settings(tmp_path, standard):
-    configure(tmp_path, f"-DCMAKE_CXX_STANDARD={standard}")
+    configure(tmp_path, f"-DCMAKE_CXX_STANDARD={standard}",
+              "-DCMAKE_FIND_PACKAGE_PREFER_CONFIG=ON")
     build_and_run(tmp_path)
 
 

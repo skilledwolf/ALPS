@@ -61,16 +61,7 @@ endif()
 string(TIMESTAMP ALPS_YEAR "%Y" UTC)
 
 find_package(Threads REQUIRED)
-set(ALPS_BOOST_COMPONENTS
-    filesystem
-    serialization
-    program_options
-    regex
-    thread
-    date_time
-    chrono
-    timer
-    iostreams)
+set(ALPS_BOOST_COMPONENTS filesystem serialization program_options regex thread date_time chrono)
 if(ALPS_ENABLE_MPI)
   find_package(MPI REQUIRED COMPONENTS CXX)
   list(APPEND ALPS_BOOST_COMPONENTS mpi)
@@ -79,21 +70,12 @@ if(ALPS_ENABLE_MPI)
 endif()
 find_package(Boost 1.76 CONFIG REQUIRED COMPONENTS ${ALPS_BOOST_COMPONENTS})
 
-find_package(HDF5 REQUIRED COMPONENTS C)
-# Prefer HDF5's exported targets: older FindHDF5 aggregate targets flatten
-# Debug/Release import libraries into whichever configuration was found first.
-set(ALPS_HDF5_TARGETS hdf5::hdf5)
-if(TARGET hdf5::hdf5-shared AND NOT HDF5_USE_STATIC_LIBRARIES)
-  set(ALPS_HDF5_TARGETS hdf5::hdf5-shared)
-elseif(TARGET hdf5::hdf5-static)
-  set(ALPS_HDF5_TARGETS hdf5::hdf5-static)
+# FindHDF5 supplies HDF5::HDF5 and preserves the provider's configurations.
+find_package(HDF5 MODULE REQUIRED COMPONENTS C)
+if(HDF5_IS_PARALLEL AND NOT ALPS_ENABLE_MPI)
+  message(FATAL_ERROR "Parallel HDF5 requires ALPS_ENABLE_MPI=ON")
 endif()
-if(HDF5_IS_PARALLEL)
-  if(NOT ALPS_ENABLE_MPI)
-    message(FATAL_ERROR "Parallel HDF5 requires ALPS_ENABLE_MPI=ON")
-  endif()
-  set(ALPS_HAVE_HDF5_PARALLEL 1)
-endif()
+set(ALPS_HAVE_HDF5_PARALLEL "${HDF5_IS_PARALLEL}")
 if(ALPS_ENABLE_OPENMP)
   find_package(OpenMP REQUIRED COMPONENTS CXX)
 endif()

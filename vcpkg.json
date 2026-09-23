@@ -13,7 +13,6 @@
     "boost-foreach",
     "boost-format",
     "boost-graph",
-    "boost-iostreams",
     "boost-lambda",
     "boost-math",
     "boost-multi-array",
