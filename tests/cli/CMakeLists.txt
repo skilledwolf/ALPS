@@ -8,3 +8,11 @@ add_test(NAME parameter_conversion
     -Dhdf5_program=$<TARGET_FILE:parameter2hdf5>
     -P ${CMAKE_CURRENT_SOURCE_DIR}/parameter_conversion.cmake)
 set_property(TEST parameter_conversion PROPERTY LABELS cli)
+
+add_executable(spin_simulation spin_simulation.cpp)
+target_link_libraries(spin_simulation PRIVATE ALPS::alps)
+target_include_directories(spin_simulation PRIVATE ${PROJECT_SOURCE_DIR}/src/apps/mc/spins)
+target_compile_definitions(spin_simulation PRIVATE
+  ALPS_TEST_LATTICES="${PROJECT_SOURCE_DIR}/src/alps/resources/lattices.xml")
+add_test(NAME spin_simulation COMMAND spin_simulation)
+set_tests_properties(spin_simulation PROPERTIES LABELS spinmc TIMEOUT 60)
