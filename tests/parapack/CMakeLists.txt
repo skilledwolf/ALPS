@@ -69,3 +69,8 @@ if(ALPS_ENABLE_MPI)
     # set_property(TEST ${name} PROPERTY LABELS parapack)
   endforeach()
 endif()
+
+add_executable(task_state task_state.cpp)
+target_link_libraries(task_state PRIVATE ALPS::alps)
+add_test(NAME task_state COMMAND task_state)
+set_property(TEST task_state PROPERTY LABELS parapack)

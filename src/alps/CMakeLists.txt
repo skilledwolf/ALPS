@@ -105,7 +105,6 @@ add_library(alps
   parapack/worker_factory.C
   parapack/staging.C
   ngs/lib/clone.cpp
-  ngs/lib/clone_info.cpp
   ngs/lib/job.cpp
   ngs/lib/parapack.cpp
   ngs/lib/worker_factory.cpp)

@@ -25,6 +25,8 @@
 
 namespace alps {
 
+class params;
+
 //
 // clone_phase
 //
@@ -96,6 +98,7 @@ public:
   clone_info();
   clone_info(cid_t cid);
   clone_info(cid_t cid, Parameters const& params, std::string const& dump, bool initialize = true);
+  clone_info(cid_t cid, alps::params const& params, std::string const& dump, bool initialize = true);
   virtual ~clone_info() {}
 
   cid_t clone_id() const { return clone_id_; }
@@ -180,6 +183,8 @@ class ALPS_DECL clone_info_mpi : public clone_info {
 public:
   // interprocess communication is required
   clone_info_mpi(boost::mpi::communicator const& comm, cid_t cid, Parameters const& params,
+    std::string const& base);
+  clone_info_mpi(boost::mpi::communicator const& comm, cid_t cid, alps::params const& params,
     std::string const& base);
 private:
   boost::mpi::communicator comm_;
