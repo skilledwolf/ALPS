@@ -155,7 +155,7 @@ jobs:
         run: |
           extra_args=()
           if [[ "$EXTRAS" == true ]]; then
-            extra_args+=(-DALPS_BUILD_EXAMPLES=ON -DALPS_ENABLE_OPENMP=ON)
+            extra_args+=(-DALPS_ENABLE_OPENMP=ON)
           fi
           if [[ "$EXTENSIVE" == true ]]; then extra_args+=(-DALPS_BUILD_EXTENSIVE_TESTS=ON); fi
           if [[ "$SANITIZER" == true ]]; then
@@ -166,7 +166,7 @@ jobs:
                          "-DCMAKE_EXE_LINKER_FLAGS=$flags" "-DCMAKE_SHARED_LINKER_FLAGS=$flags")
           fi
           python .github/scripts/build_metrics.py run 'SDK configure' cmake -S . -B _build/ci -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON \
+            -DCMAKE_BUILD_TYPE=Release -DALPS_BUILD_TESTING=ON \
             "-DALPS_ENABLE_MPI=$ALPS_BOOST_MPI" \
             "-DCMAKE_PREFIX_PATH=$PWD/_build/boost-install" \
             "-DCMAKE_INSTALL_PREFIX=$PWD/_build/ci/install" \

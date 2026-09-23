@@ -21,7 +21,7 @@
       "displayName": "Library and installed C++ SDK",
       "inherits": "default",
       "cacheVariables": {
-        "BUILD_TESTING": "OFF",
+        "ALPS_BUILD_TESTING": "OFF",
         "ALPS_BUILD_APPLICATIONS": "OFF"
       }
     },
@@ -30,7 +30,7 @@
       "displayName": "Redistributable SDK and applications",
       "cacheVariables": {
         "ALPS_BUILD_APPLICATIONS": "ON",
-        "BUILD_TESTING": "OFF"
+        "ALPS_BUILD_TESTING": "OFF"
       },
       "inherits": "default"
     },

@@ -4,7 +4,7 @@ include_guard(GLOBAL)
 # Golden-output tests need stdin and byte comparison in addition to CTest's
 # ordinary exit-status checks. Keep that behavior in one small runner.
 function(alps_add_test name)
-  if(NOT BUILD_TESTING)
+  if(NOT ALPS_BUILD_TESTING)
     return()
   endif()
   cmake_parse_arguments(PARSE_ARGV 1 TEST "" "TARGET;INPUT;OUTPUT" "")

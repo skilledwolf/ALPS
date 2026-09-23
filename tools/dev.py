@@ -116,7 +116,7 @@ def binary_dependencies(directory, architecture):
 def configuration(directory, dependency_prefix=None, architecture=None, testing=True):
     options = [
         "-G", "Ninja", "-DCMAKE_BUILD_TYPE=Release",
-        f"-DBUILD_TESTING={'ON' if testing else 'OFF'}", "-DALPS_BUILD_APPLICATIONS=ON", "-DALPS_ENABLE_MPI=OFF",
+        f"-DALPS_BUILD_TESTING={'ON' if testing else 'OFF'}", "-DALPS_BUILD_APPLICATIONS=ON", "-DALPS_ENABLE_MPI=OFF",
         f"-DCMAKE_INSTALL_PREFIX={directory / 'install'}",
         "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON", "-DCMAKE_INSTALL_MESSAGE=LAZY",
     ]

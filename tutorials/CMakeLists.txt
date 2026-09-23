@@ -1,10 +1,6 @@
 #  Copyright Matthias Troyer and Synge Todo 2009 - 2015.
 #   SPDX-License-Identifier: MIT
 
-if(ALPS_BUILD_EXAMPLES)
-  add_subdirectory(examples)
-endif()
-
 install(
   DIRECTORY .
   DESTINATION ${CMAKE_INSTALL_DATADIR}/alps/tutorials

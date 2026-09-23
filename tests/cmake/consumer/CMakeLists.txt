@@ -12,7 +12,7 @@ if(ALPS_SOURCE)
   add_subdirectory("${ALPS_SOURCE}" alps EXCLUDE_FROM_ALL)
   if(ALPS_ENABLE_MPI
      OR ALPS_BUILD_APPLICATIONS
-     OR BUILD_TESTING)
+     OR ALPS_BUILD_TESTING)
     message(FATAL_ERROR "Embedded ALPS must default to a library-only build")
   endif()
   foreach(property IN ITEMS POSITION_INDEPENDENT_CODE RUNTIME_OUTPUT_DIRECTORY

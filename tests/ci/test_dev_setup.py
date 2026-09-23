@@ -42,7 +42,7 @@ def test_sdk_and_binding_configuration_disable_vcpkg_builds(tmp_path):
     assert "-DVCPKG_MANIFEST_MODE=OFF" in bindings
     assert "-DVCPKG_TARGET_TRIPLET=arm64-windows" in bindings
     assert any(option.startswith("-DCMAKE_TOOLCHAIN_FILE=") for option in bindings)
-    assert "-DBUILD_TESTING=ON" in sdk and "-DALPS_ENABLE_MPI=OFF" in sdk
+    assert "-DALPS_BUILD_TESTING=ON" in sdk and "-DALPS_ENABLE_MPI=OFF" in sdk
 
 
 def test_unix_build_and_bindings_use_the_same_binary_environment(tmp_path):

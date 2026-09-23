@@ -186,13 +186,23 @@ For everyday work, reuse one build directory per configuration and build only th
 cmake --build --preset windows-x64 --config Debug --target spinmc
 ```
 
-That builds the target and its dependencies without building every application and test. The `sdk` preset disables tests, applications and MPI for a small library build. The default and Windows presets include full native validation. `BUILD_TESTING` is the single test switch; `ALPS_BUILD_APPLICATIONS` controls simulation applications and command-line tools together. Examples and tutorial installation are opt-in. SDK headers are always installed.
+That builds the target and its dependencies without building every application and test. The `sdk` preset disables tests, applications and MPI for a small library build. The default and Windows presets include full native validation. `ALPS_BUILD_TESTING` is the single test switch; `ALPS_BUILD_APPLICATIONS` controls simulation applications and command-line tools together. Examples build separately against the installed SDK; tutorial installation is opt-in. SDK headers are always installed.
 
-`ALPS_BUILD_EXTENSIVE_TESTS=ON` adds the expensive graph and HDF5 type-matrix tests to `BUILD_TESTING`. The HDF5 matrix compiles each type once and exercises dataset, attribute and compression modes at runtime; unavailable SZIP encoding is reported as a skipped test.
+`ALPS_BUILD_EXTENSIVE_TESTS=ON` adds the expensive graph and HDF5 type-matrix tests to `ALPS_BUILD_TESTING`. The HDF5 matrix compiles each type once and exercises dataset, attribute and compression modes at runtime; unavailable SZIP encoding is reported as a skipped test.
 
 `add_subdirectory(ALPS)` defaults to the library alone, with MPI disabled. An embedding project can explicitly enable the capabilities it needs. MPI is opt-in in every build. `ALPS_ENABLE_OPENMP=ON` enables OpenMP, including worker scheduling; select the worker's thread count at runtime.
 
-`ALPS_BUILD_EXAMPLES=ON` builds the C++ examples. The Fortran examples are a separate consumer of the installed SDK, so ordinary builds need no Fortran compiler:
+Use `ALPS_BUILD_TESTING` to select ALPS's tests independently of a parent project's `BUILD_TESTING`. This replaces the old ALPS `-DBUILD_TESTING=...` argument; update custom presets and scripts accordingly. `BUILD_SHARED_LIBS` still selects shared or static ALPS libraries. When it is unset, ALPS defaults to shared libraries within its own directory without changing the parent's library defaults.
+
+The C++ and Fortran examples are standalone consumers of the installed SDK. This replaces the root `ALPS_BUILD_EXAMPLES` option. Build the C++ examples with:
+
+```bash
+cmake -S tutorials/examples -B build/examples -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=/path/to/alps
+cmake --build build/examples --parallel 2
+ctest --test-dir build/examples --output-on-failure
+```
+
+Fortran examples additionally require a Fortran compiler:
 
 ```bash
 cmake -S tutorials/examples/fortran -B build/fortran -DCMAKE_PREFIX_PATH=/path/to/alps
@@ -200,9 +210,11 @@ cmake --build build/fortran
 ctest --test-dir build/fortran --output-on-failure
 ```
 
+Both example projects register tests by default. Pass `-DALPS_BUILD_TESTING=OFF` to build them without registering tests. Ordinary `ctest` commands and CMake test presets work without the optional CTest/CDash dashboard targets.
+
 ### Numerical libraries
 
-The SDK uses LP64 BLAS/LAPACK: 32-bit integers and lowercase symbols with a trailing underscore. Alternate integer widths and symbol spellings are unsupported. `BLA_VENDOR` and `BLA_STATIC` are passed to CMake's numerical-library finders. Both numerical libraries are required; missing dependencies cause a configuration error. The default build prefers provider targets to preserve Debug/Release library selection. The regression suite checks LAPACK's integer ABI and a numerical solve. `BUILD_TESTING=OFF` also leaves Boost.Test out of the vcpkg manifest features and the installed SDK never requires it.
+The SDK uses LP64 BLAS/LAPACK: 32-bit integers and lowercase symbols with a trailing underscore. Alternate integer widths and symbol spellings are unsupported. `BLA_VENDOR` and `BLA_STATIC` are passed to CMake's numerical-library finders. Both numerical libraries are required; missing dependencies cause a configuration error. The default build prefers provider targets to preserve Debug/Release library selection. The regression suite checks LAPACK's integer ABI and a numerical solve. `ALPS_BUILD_TESTING=OFF` also leaves Boost.Test out of the vcpkg manifest features and the installed SDK never requires it.
 
 ### Consuming the C++ SDK
 

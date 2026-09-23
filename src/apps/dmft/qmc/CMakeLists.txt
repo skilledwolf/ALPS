@@ -80,7 +80,7 @@ target_link_libraries(hirschfye PRIVATE dmft_qmc_impl)
 target_link_libraries(hybridization PRIVATE ALPS::cthyb)
 target_link_libraries(interaction PRIVATE ALPS::ctint)
 
-if(BUILD_TESTING)
+if(ALPS_BUILD_TESTING)
   # Regression tests for the shared DMFT QMC infrastructure.
   add_executable(dmft_fouriertransform_offdiag_numeric dmft_fouriertransform_offdiag_numeric.C)
   target_link_libraries(dmft_fouriertransform_offdiag_numeric PRIVATE dmft_qmc_impl)

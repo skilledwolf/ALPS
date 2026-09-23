@@ -8,35 +8,29 @@ endif()
 include(cmake/ALPSVersion.cmake)
 # These options must precede project(): vcpkg reads manifest features when the
 # toolchain is loaded. Embedded builds default to just the library.
-set(_alps_top_level OFF)
-if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
-  set(_alps_top_level ON)
-endif()
-option(BUILD_TESTING "Build and register tests" ${_alps_top_level})
+string(COMPARE EQUAL "${CMAKE_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}" _alps_top_level)
+option(ALPS_BUILD_TESTING "Build and register ALPS tests" ${_alps_top_level})
 option(ALPS_ENABLE_MPI "Enable MPI parallelization" OFF)
 option(ALPS_BUILD_APPLICATIONS "Build simulation applications and command-line tools"
        ${_alps_top_level})
-if(BUILD_TESTING)
+if(ALPS_BUILD_TESTING)
   list(APPEND VCPKG_MANIFEST_FEATURES tests)
 endif()
 if(ALPS_ENABLE_MPI)
   list(APPEND VCPKG_MANIFEST_FEATURES mpi)
 endif()
-project(
-  alps
-  VERSION ${ALPS_VERSION_CORE}
-  LANGUAGES C CXX)
+project(alps VERSION ${ALPS_VERSION_CORE} LANGUAGES C CXX)
 
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 
-option(BUILD_SHARED_LIBS "Build shared libraries" ON)
+# A local default must not change later add_library() calls in a parent project.
+if(NOT DEFINED BUILD_SHARED_LIBS)
+  set(BUILD_SHARED_LIBS ON)
+endif()
 option(ALPS_ENABLE_OPENMP "Enable OpenMP parallelization" OFF)
-option(ALPS_BUILD_EXAMPLES "Build examples" OFF)
 option(ALPS_BUILD_EXTENSIVE_TESTS "Build expensive graph and HDF5 type-matrix tests" OFF)
-set(ALPS_VERSION_PRERELEASE
-    ""
-    CACHE STRING "Optional prerelease version label")
+set(ALPS_VERSION_PRERELEASE "" CACHE STRING "Optional prerelease version label")
 
 # Language requirements belong to ALPS::headers and propagate to every consumer.
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -98,7 +92,9 @@ if(ALPS_LOADER_ORIGIN)
 endif()
 set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 
-include(CTest)
+if(ALPS_BUILD_TESTING)
+  enable_testing()
+endif()
 include(cmake/ALPSTesting.cmake)
 add_subdirectory(src/alps)
 if(ALPS_BUILD_APPLICATIONS)
@@ -107,7 +103,7 @@ if(ALPS_BUILD_APPLICATIONS)
   get_target_property(ALPS_APPLICATION_TARGETS alps ALPS_APPLICATION_TARGETS)
 endif()
 add_subdirectory(tutorials)
-if(BUILD_TESTING)
+if(ALPS_BUILD_TESTING)
   add_subdirectory(tests)
 endif()
 

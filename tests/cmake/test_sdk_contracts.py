@@ -46,6 +46,24 @@ def test_embedded_defaults_and_mpi_isolation(tmp_path):
                 for kind in ("RUNTIME", "LIBRARY", "ARCHIVE")))
 
 
+@pytest.mark.parametrize("source", [
+    "tutorials/examples", "tutorials/code-07-mcmain-mcbase/heisenberg/o_n_model",
+])
+@pytest.mark.parametrize("testing", ["ON", "OFF"])
+def test_standalone_examples_respect_build_testing(tmp_path, source, testing):
+    result = subprocess.run([
+        "cmake", "-S", str(SOURCE / source), "-B", str(tmp_path),
+        "-DALPS_DIR=" + os.environ["ALPS_DIR"],
+        *json.loads(os.environ.get("ALPS_TEST_CMAKE_ARGS", "[]")),
+        f"-DALPS_BUILD_TESTING={testing}",
+    ], capture_output=True, text=True)
+    assert result.returncode == 0, result.stdout + result.stderr
+    result = subprocess.run([
+        "ctest", "--test-dir", str(tmp_path), "--show-only=json-v1",
+    ], check=True, capture_output=True, text=True)
+    assert bool(json.loads(result.stdout)["tests"]) == (testing == "ON")
+
+
 def test_sdk_rejects_integer_abi_mismatch(tmp_path):
     output = configure(tmp_path, "-DBLA_SIZEOF_INTEGER=8", "-DEXPECT_ABI=ON", success=False)
     assert "requires BLA_SIZEOF_INTEGER=4" in output

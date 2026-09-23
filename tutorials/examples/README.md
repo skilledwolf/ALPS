@@ -33,8 +33,6 @@ cmake --build build-fortran --parallel 2
 ctest --test-dir build-fortran --output-on-failure
 ```
 
+Both projects register tests by default; pass `-DALPS_BUILD_TESTING=OFF` to build without registering tests. These standalone builds replace the root `ALPS_BUILD_EXAMPLES` option. To use a local ALPS checkout, build and install its SDK first, then pass that installation prefix in the commands above.
+
 CTest locates the SDK's XML resources and Windows DLLs. When running an executable directly, use the input files in its example directory; set `ALPS_ROOT` to the SDK prefix if the SDK has been relocated. On Windows, also add the SDK's `bin` directory to `PATH`.
-
-## Build with the ALPS source tree
-
-Configure the repository with `-DALPS_BUILD_EXAMPLES=ON` to include the C++ examples in its build and test suite. Fortran examples use the standalone build above.
