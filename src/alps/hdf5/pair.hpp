@@ -97,7 +97,14 @@ namespace alps {
                     using alps::hdf5::get_extent;
                     auto extent = value.second;
                     auto count = array_size(extent);
-                    if (!count) return extent;
+                    if (!count) {
+                        // Complex values occupy a final real/imaginary axis,
+                        // including when there is no element to inspect.
+                        if (!extent.empty() && is_continuous<T>::value &&
+                            has_complex_elements<typename alps::detail::remove_cvr<T>::type>::value)
+                            extent.push_back(2);
+                        return extent;
+                    }
                     auto inner = get_extent(*value.first);
                     if (!is_continuous<T>::value)
                         for (std::size_t i = 1; i < count; ++i)
@@ -152,12 +159,17 @@ namespace alps {
         template<typename T>
         void save(archive& ar, std::string const& path, std::pair<T*, std::vector<std::size_t>> const& value,
             std::vector<std::size_t> size = {}, std::vector<std::size_t> chunk = {}, std::vector<std::size_t> offset = {}) {
-            if (is_continuous<T>::value) {
+            if constexpr (is_continuous<T>::value) {
                 auto extent = get_extent(value);
                 size.insert(size.end(), extent.begin(), extent.end());
                 chunk.insert(chunk.end(), extent.begin(), extent.end());
                 offset.resize(offset.size() + extent.size(), 0);
-                ar.write(path, get_pointer(value), size, chunk, offset);
+                // HDF5 attributes require a non-null buffer even for a zero
+                // element dataspace. No value is transferred from this dummy.
+                typename scalar_type<std::pair<T*, std::vector<std::size_t>>>::type empty{};
+                auto pointer = !value.second.empty() && !detail::array_size(value.second)
+                    ? &empty : get_pointer(value);
+                ar.write(path, pointer, size, chunk, offset);
             } else if (!detail::array_size(value.second)) {
                 ar.write(path, static_cast<int const*>(nullptr), std::vector<std::size_t>());
             } else if (is_vectorizable(value)) {

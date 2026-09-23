@@ -220,12 +220,26 @@ void check_multidimensional(alps::hdf5::archive& ar) {
     require(empty_restored.num_elements() == 0);
     boost::multi_array<std::complex<double>, 2> empty_complex(boost::extents[0][3]), empty_complex_restored;
     ar["/multi-empty-complex"] << empty_complex;
+    require(ar.extent("/multi-empty-complex") == std::vector<std::size_t>({0, 3, 2}));
     ar["/multi-empty-complex"] >> empty_complex_restored;
     require(empty_complex_restored.num_elements() == 0);
     rejected = false;
     try { ar["/array"] >> restored; }
     catch (alps::hdf5::archive_error const&) { rejected = true; }
     require(rejected);
+
+    bool boolean = false;
+    signed char byte = 0;
+    auto bool_view = std::make_pair(&boolean, std::vector<std::size_t>{2, 0});
+    auto byte_view = std::make_pair(&byte, bool_view.second);
+    ar["/attrs/@empty-bool"] << bool_view;
+    ar["/attrs/@empty-byte"] << byte_view;
+    require(ar.extent("/attrs/@empty-bool") == bool_view.second);
+    require(ar.extent("/attrs/@empty-byte") == byte_view.second);
+    auto complex_view = std::make_pair(static_cast<std::complex<double>*>(nullptr), std::vector<std::size_t>{2, 0, 3});
+    ar["/attrs/@empty-complex"] << complex_view;
+    require(ar.extent("/attrs/@empty-complex") == std::vector<std::size_t>({2, 0, 3, 2}));
+    ar["/attrs/@empty-complex"] >> complex_view;
 }
 
 int main() {
