@@ -161,6 +161,73 @@ void check_tuples(alps::hdf5::archive& ar) {
     require(!ar.is_group("/tuple-empty") && !ar.is_data("/tuple-empty"));
 }
 
+void check_multidimensional(alps::hdf5::archive& ar) {
+    boost::multi_array<std::vector<int>, 2> source(boost::extents[2][3]), restored;
+    for (int i = 0; i < 6; ++i) source.data()[i] = {i * 10, i * 10 + 1};
+    ar["/multi"] << source;
+    require(ar.extent("/multi") == std::vector<std::size_t>({2, 3, 2}));
+    ar["/multi"] >> restored;
+    require(source == restored);
+    alps::hdf5::save(ar, "/multi-slabs", source, {2}, {1}, {0});
+    source[0][0][0] = 99;
+    alps::hdf5::save(ar, "/multi-slabs", source, {2}, {1}, {1});
+    alps::hdf5::load(ar, "/multi-slabs", restored, {1}, {1});
+    require(source == restored);
+
+    // A raw multidimensional view uses the same coordinates without owning or
+    // resizing the outer buffer. Ragged elements retain their group encoding.
+    auto view = std::make_pair(source.data(), std::vector<std::size_t>{2, 3});
+    auto restored_view = std::make_pair(restored.data(), view.second);
+    source[1][0].push_back(72);
+    ar["/ragged-view"] << view;
+    ar["/ragged-view"] >> restored_view;
+    require(source == restored && ar.is_group("/ragged-view"));
+    require(ar.is_data("/ragged-view/0/0") && ar.is_data("/ragged-view/1/2"));
+    bool rejected = false;
+    try { ar["/ragged-multi"] << source; }
+    catch (alps::hdf5::wrong_type const&) { rejected = true; }
+    require(rejected);
+
+    double values[] = {0, 1, 2, 3, 4, 5}, loaded[6] = {};
+    auto numbers = std::make_pair(values, view.second);
+    auto loaded_numbers = std::make_pair(loaded, view.second);
+    alps::hdf5::save(ar, "/view-slabs", numbers, {2}, {1}, {0});
+    values[0] = 9;
+    alps::hdf5::save(ar, "/view-slabs", numbers, {2}, {1}, {1});
+    alps::hdf5::load(ar, "/view-slabs", loaded_numbers, {1}, {1});
+    require(std::equal(std::begin(values), std::end(values), std::begin(loaded)));
+    rejected = false;
+    try { alps::hdf5::load(ar, "/view-slabs", loaded_numbers, {1, 1, 1, 1}, {}); }
+    catch (alps::hdf5::archive_error const&) { rejected = true; }
+    require(rejected);
+
+    boost::multi_array<std::vector<std::complex<double>>, 3> complex(boost::extents[2][1][2]), complex_restored;
+    for (int i = 0; i < 4; ++i) complex.data()[i] = {{double(i), -2}, {3, double(i)}};
+    ar["/multi-complex"] << complex;
+    ar["/multi-complex"] >> complex_restored;
+    require(complex == complex_restored && ar.is_complex("/multi-complex"));
+    require(ar.extent("/multi-complex") == std::vector<std::size_t>({2, 1, 2, 2, 2}));
+    alps::multi_array<double, 2> owned(boost::extents[2][3]), owned_restored;
+    std::copy(std::begin(values), std::end(values), owned.data());
+    ar["/alps-multi"] << owned;
+    ar["/alps-multi"] >> owned_restored;
+    require(owned == owned_restored);
+
+    boost::multi_array<std::vector<int>, 2> empty(boost::extents[0][3]), empty_restored;
+    require(alps::hdf5::is_vectorizable(empty));
+    ar["/multi-empty"] << empty;
+    ar["/multi-empty"] >> empty_restored;
+    require(empty_restored.num_elements() == 0);
+    boost::multi_array<std::complex<double>, 2> empty_complex(boost::extents[0][3]), empty_complex_restored;
+    ar["/multi-empty-complex"] << empty_complex;
+    ar["/multi-empty-complex"] >> empty_complex_restored;
+    require(empty_complex_restored.num_elements() == 0);
+    rejected = false;
+    try { ar["/array"] >> restored; }
+    catch (alps::hdf5::archive_error const&) { rejected = true; }
+    require(rejected);
+}
+
 int main() {
     auto file = boost::filesystem::temp_directory_path() / boost::filesystem::unique_path("alps-codec-%%%%-%%%%.h5");
     {
@@ -172,6 +239,7 @@ int main() {
         check_arrays<std::array>(ar);
         check_arrays<boost::array>(ar);
         check_tuples(ar);
+        check_multidimensional(ar);
         roundtrip(ar, "/bool", std::vector<bool>{true, false, true});
         roundtrip(ar, "/empty-bool", std::vector<bool>{});
         check_scalar<bool>(ar);
