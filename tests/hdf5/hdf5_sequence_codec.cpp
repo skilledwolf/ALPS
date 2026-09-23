@@ -4,12 +4,14 @@
 #include <alps/hdf5/vector.hpp>
 #include <alps/hdf5/valarray.hpp>
 #include <alps/hdf5/ublas/vector.hpp>
+#include <alps/hdf5/ublas/matrix.hpp>
 #include <alps/hdf5/array.hpp>
 #include <alps/hdf5/stdarray.hpp>
 #include <alps/hdf5/tuple.hpp>
 #include <boost/tuple/tuple_comparison.hpp>
 #include <boost/filesystem/operations.hpp>
 #include <complex>
+#include <limits>
 #include <stdexcept>
 
 void require(bool condition) {
@@ -79,6 +81,13 @@ void check_scalar(alps::hdf5::archive& ar) {
         ar[path] >> number;
         ar[path] >> text;
         require(same == T(1) && number == 1 && std::stold(text) == 1);
+        T source[] = {T(0), T(1), T(1), T(0)}, restored[4];
+        ar.write(path, source, {2, 2});
+        ar.read(path, restored, {2, 2});
+        double converted[4];
+        ar.read(path, converted, {2, 2});
+        for (int i = 0; i < 4; ++i)
+            require(restored[i] == source[i] && converted[i] == double(source[i]));
     }
 }
 
@@ -242,6 +251,116 @@ void check_multidimensional(alps::hdf5::archive& ar) {
     ar["/attrs/@empty-complex"] >> complex_view;
 }
 
+template<class Layout>
+void check_matrices(alps::hdf5::archive& ar) {
+    using matrix = boost::numeric::ublas::matrix<double, Layout>;
+    matrix values(2, 3), restored;
+    for (std::size_t i = 0; i < 2; ++i)
+        for (std::size_t j = 0; j < 3; ++j) values(i, j) = 10 * i + j;
+    require(alps::hdf5::get_pointer(values) == &values(0, 0));
+    require(alps::hdf5::get_pointer(static_cast<matrix const&>(values)) == &values(0, 0));
+    for (std::string path : {"/matrix", "/attrs/@matrix"}) {
+        ar[path] << values;
+        require(ar.extent(path) == std::vector<std::size_t>({2, 3}));
+        double raw[6];
+        ar.read(path, raw, {2, 3});
+        // ALPS stores physical order even for column-major matrices.
+        for (int i = 0; i < 6; ++i) require(raw[i] == values.data()[i]);
+        ar[path] >> restored;
+        require(restored.size1() == 2 && restored.size2() == 3);
+        for (std::size_t i = 0; i < 2; ++i)
+            for (std::size_t j = 0; j < 3; ++j) require(values(i, j) == restored(i, j));
+    }
+    alps::hdf5::save(ar, "/matrix-slabs", values, {2}, {1}, {0});
+    values(0, 0) = 91;
+    alps::hdf5::save(ar, "/matrix-slabs", values, {2}, {1}, {1});
+    alps::hdf5::load(ar, "/matrix-slabs", restored, {1}, {1});
+    require(restored.size1() == 2 && restored.size2() == 3 && restored(0, 0) == 91);
+    for (std::size_t rows : {0, 2}) {
+        matrix empty(rows, 0);
+        require(alps::hdf5::is_vectorizable(empty) && !alps::hdf5::get_pointer(empty));
+        ar["/attrs/@empty-matrix"] << empty;
+        ar["/attrs/@empty-matrix"] >> restored;
+        require(restored.size1() == rows && restored.size2() == 0);
+    }
+    using complex_matrix = boost::numeric::ublas::matrix<std::complex<double>, Layout>;
+    complex_matrix complex(2, 3), complex_restored;
+    for (int i = 0; i < 6; ++i) complex.data()[i] = {double(i), double(-i)};
+    ar["/matrix-complex"] << complex;
+    ar["/matrix-complex"] >> complex_restored;
+    require(ar.extent("/matrix-complex") == std::vector<std::size_t>({2, 3, 2}));
+    for (int i = 0; i < 6; ++i) require(complex_restored.data()[i] == complex.data()[i]);
+    double guarded[16];
+    std::fill(std::begin(guarded), std::end(guarded), 99);
+    auto view = std::make_pair(guarded, std::vector<std::size_t>{2, 3});
+    auto reject_oversized = [&](auto operation) {
+        bool rejected = false;
+        try { operation(); }
+        catch (alps::hdf5::archive_error const&) { rejected = true; }
+        require(rejected);
+        for (auto value : guarded) require(value == 99);
+    };
+    reject_oversized([&] { alps::hdf5::load(ar, "/matrix-complex", view); });
+    reject_oversized([&] { alps::hdf5::load(ar, "/matrix-slabs", view, {2}, {0}); });
+    reject_oversized([&] { alps::hdf5::save(ar, "/matrix-overflow", view, {2}, {2}, {0}); });
+    complex.resize(0, 3);
+    ar["/attrs/@empty-complex-matrix"] << complex;
+    require(ar.extent("/attrs/@empty-complex-matrix") == std::vector<std::size_t>({0, 3, 2}));
+    ar["/attrs/@empty-complex-matrix"] >> complex_restored;
+    require(complex_restored.size1() == 0 && complex_restored.size2() == 3);
+    bool rejected = false;
+    ar["/not-a-matrix"] << std::vector<double>{1, 2, 3};
+    try { ar["/not-a-matrix"] >> restored; }
+    catch (alps::hdf5::archive_error const&) { rejected = true; }
+    require(rejected);
+    rejected = false;
+    try { ar["/matrix-slabs"] >> restored; }
+    catch (alps::hdf5::archive_error const&) { rejected = true; }
+    require(rejected); // A rank-three scalar array cannot fit in a matrix.
+    boost::numeric::ublas::matrix<std::vector<int>, Layout> unsupported(1, 1);
+    rejected = false;
+    try { ar["/unsupported-matrix"] << unsupported; }
+    catch (alps::hdf5::wrong_type const&) { rejected = true; }
+    require(rejected);
+}
+
+void check_buffer_conversion(alps::hdf5::archive& ar) {
+    std::string empty;
+    auto empty_view = std::make_pair(&empty, std::vector<std::size_t>{2, 0});
+    ar["/attrs/@empty-string-buffer"] << empty_view;
+    require(ar.extent("/attrs/@empty-string-buffer") == empty_view.second);
+    ar["/attrs/@empty-string-buffer"] >> empty_view;
+    std::string texts[] = {"3", "5", "8", "13", "21", "34"};
+    for (std::string path : {"/string-buffer", "/attrs/@string-buffer"}) {
+        ar.write(path, texts, {2, 3});
+        int numbers[6] = {};
+        ar.read(path, numbers, {2, 3});
+        require(numbers[0] == 3 && numbers[5] == 34);
+    }
+    int slab[2] = {};
+    ar.read("/string-buffer", slab, {1, 2}, {1, 1});
+    require(slab[0] == 21 && slab[1] == 34);
+    bool rejected_offset = false;
+    std::string invalid_slab[6];
+    try { ar.read("/string-buffer", invalid_slab, {2, 3}, {std::numeric_limits<std::size_t>::max(), 0}); }
+    catch (alps::hdf5::archive_error const&) { rejected_offset = true; }
+    require(rejected_offset);
+    std::string invalid[] = {"7", "999999999999999999999999"};
+    for (std::string path : {"/invalid-buffer", "/attrs/@invalid-buffer"}) {
+        ar.write(path, invalid, {2});
+        for (int repeat = 0; repeat < 32; ++repeat) {
+            bool rejected = false;
+            int numbers[2];
+            try { ar.read(path, numbers, {2}); }
+            catch (std::out_of_range const&) { rejected = true; }
+            require(rejected);
+        }
+        std::string restored[2];
+        ar.read(path, restored, {2});
+        require(restored[0] == invalid[0] && restored[1] == invalid[1]);
+    }
+}
+
 int main() {
     auto file = boost::filesystem::temp_directory_path() / boost::filesystem::unique_path("alps-codec-%%%%-%%%%.h5");
     {
@@ -254,6 +373,9 @@ int main() {
         check_arrays<boost::array>(ar);
         check_tuples(ar);
         check_multidimensional(ar);
+        check_matrices<boost::numeric::ublas::row_major>(ar);
+        check_matrices<boost::numeric::ublas::column_major>(ar);
+        check_buffer_conversion(ar);
         roundtrip(ar, "/bool", std::vector<bool>{true, false, true});
         roundtrip(ar, "/empty-bool", std::vector<bool>{});
         check_scalar<bool>(ar);

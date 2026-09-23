@@ -120,6 +120,8 @@ namespace alps {
                     using alps::hdf5::set_extent;
                     if (value.second.size() > size.size() || !std::equal(value.second.begin(), value.second.end(), size.begin()))
                         throw archive_error("invalid data size" + ALPS_STACKTRACE);
+                    if (is_continuous<T>::value && size != alps::hdf5::get_extent(value))
+                        throw archive_error("invalid data size" + ALPS_STACKTRACE);
                     if (!is_continuous<T>::value && value.second.size() < size.size()) {
                         std::vector<std::size_t> inner(size.begin() + value.second.size(), size.end());
                         for (std::size_t i = 0; i < array_size(value.second); ++i) set_extent(value.first[i], inner);
@@ -159,6 +161,9 @@ namespace alps {
         template<typename T>
         void save(archive& ar, std::string const& path, std::pair<T*, std::vector<std::size_t>> const& value,
             std::vector<std::size_t> size = {}, std::vector<std::size_t> chunk = {}, std::vector<std::size_t> offset = {}) {
+            // A view contains one value at each coordinate of its outer prefix.
+            if (std::any_of(chunk.begin(), chunk.end(), [](auto n) { return n != 1; }))
+                throw archive_error("invalid buffer slice" + ALPS_STACKTRACE);
             if constexpr (is_continuous<T>::value) {
                 auto extent = get_extent(value);
                 size.insert(size.end(), extent.begin(), extent.end());
@@ -199,6 +204,8 @@ namespace alps {
                 auto size = ar.extent(path);
                 if (chunk.size() > size.size() || offset.size() > size.size())
                     throw archive_error("invalid data size" + ALPS_STACKTRACE);
+                if (std::any_of(chunk.begin(), chunk.end(), [](auto n) { return n != 1; }))
+                    throw archive_error("invalid buffer slice" + ALPS_STACKTRACE);
                 if (ar.is_null(path) && !detail::array_size(value.second)) return;
                 set_extent(value, std::vector<std::size_t>(size.begin() + chunk.size(), size.end()));
                 if (!value.second.empty() && !detail::array_size(value.second)) return;

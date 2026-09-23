@@ -14,7 +14,7 @@
 #ifndef ALPS_NGS_HDF5_BOOST_NUMERIC_UBLAS_MATRIX_HPP
 #define ALPS_NGS_HDF5_BOOST_NUMERIC_UBLAS_MATRIX_HPP
 
-#include <alps/hdf5/archive.hpp>
+#include <alps/hdf5/pair.hpp>
 
 #include <boost/numeric/ublas/matrix.hpp>
 
@@ -32,69 +32,47 @@ namespace alps {
         {};
 
         namespace detail {
+            // Preserve the historical physical-storage order for both uBLAS
+            // layouts; the archive shape remains (rows, columns).
+            template<class Matrix> auto matrix_view(Matrix& value) {
+                return std::make_pair(value.size1() && value.size2() ? &value(0, 0) : nullptr,
+                                      std::vector<std::size_t>{value.size1(), value.size2()});
+            }
 
-            template<typename T, typename F, typename A> struct get_extent<boost::numeric::ublas::matrix<T, F, A> > {
-                static std::vector<std::size_t> apply(boost::numeric::ublas::matrix<T, F, A> const & value) {
-                    using alps::hdf5::get_extent;
-                    std::vector<std::size_t> extent(2, value.size1());
-                    extent[1] = value.size2();
-                    if (value.size1() && value.size2()) {
-                        std::vector<std::size_t> first(get_extent(value(0, 0)));
-                        for (std::size_t i = 0; i < value.size1(); ++i)
-                            for (std::size_t j = 0; j < value.size2(); ++j)  {
-                                std::vector<std::size_t> size(get_extent(value(i, j)));
-                                if (
-                                       first.size() != size.size()
-                                    || !std::equal(first.begin(), first.end(), size.begin())
-                                )
-                                    throw archive_error("no rectengual matrix" + ALPS_STACKTRACE);
-                            }
-                        std::copy(first.begin(), first.end(), std::back_inserter(extent));
-                    }
-                    return extent;
+            template<typename T, typename F, typename A> struct get_extent<boost::numeric::ublas::matrix<T, F, A>> {
+                static auto apply(boost::numeric::ublas::matrix<T, F, A> const& value) {
+                    return alps::hdf5::get_extent(matrix_view(value));
                 }
             };
 
-            template<typename T, typename F, typename A> struct set_extent<boost::numeric::ublas::matrix<T, F, A> > {
-                static void apply(boost::numeric::ublas::matrix<T, F, A> & value, std::vector<std::size_t> const & size) {
-                    using alps::hdf5::set_extent;
+            template<typename T, typename F, typename A> struct set_extent<boost::numeric::ublas::matrix<T, F, A>> {
+                static void apply(boost::numeric::ublas::matrix<T, F, A>& value, std::vector<std::size_t> const& size) {
+                    if (size.size() < 2) throw archive_error("invalid matrix dimensions" + ALPS_STACKTRACE);
                     value.resize(size[0], size[1], false);
-                    if (!is_continuous<T>::value && size.size() != 2)
-                        for (std::size_t i = 0; i < value.size1(); ++i)
-                            for (std::size_t j = 0; j < value.size2(); ++j)
-                                set_extent(value(i, j), std::vector<std::size_t>(size.begin() + 2, size.end()));
+                    auto view = matrix_view(value);
+                    alps::hdf5::set_extent(view, size);
                 }
             };
 
-            template<typename T, typename F, typename A> struct is_vectorizable<boost::numeric::ublas::matrix<T, F, A> > {
-                static bool apply(boost::numeric::ublas::matrix<T, F, A> const & value) {
-                    using alps::hdf5::get_extent;
-                    using alps::hdf5::is_vectorizable;
-                    if (!boost::is_scalar<typename boost::numeric::ublas::matrix<T, F, A>::value_type>::value) {
-                        std::vector<std::size_t> size(get_extent(value(0, 0)));
-                        for (std::size_t i = 0; i < value.size1(); ++i)
-                            for (std::size_t j = 1; j < value.size2(); ++j)
-                                if (!is_vectorizable(value(i, j)) || !std::equal(size.begin(), size.end(), get_extent(value(i, j)).begin()))
-                                    return false;
-                    }
-                    return true;
+            template<typename T, typename F, typename A> struct is_vectorizable<boost::numeric::ublas::matrix<T, F, A>> {
+                static bool apply(boost::numeric::ublas::matrix<T, F, A> const& value) {
+                    return alps::hdf5::is_vectorizable(matrix_view(value));
                 }
             };
 
-            template<typename T, typename F, typename A> struct get_pointer<boost::numeric::ublas::matrix<T, F, A> > {
-                static typename alps::hdf5::scalar_type<boost::numeric::ublas::matrix<T, F, A> >::type * apply(boost::numeric::ublas::matrix<T, F, A> & value) {
-                    using alps::hdf5::get_pointer;
-                    return get_pointer(value(0, 0));
+            template<typename T, typename F, typename A> struct get_pointer<boost::numeric::ublas::matrix<T, F, A>> {
+                static auto apply(boost::numeric::ublas::matrix<T, F, A>& value) {
+                    auto view = matrix_view(value);
+                    return alps::hdf5::get_pointer(view);
                 }
             };
 
             template<typename T, typename F, typename A> struct get_pointer<boost::numeric::ublas::matrix<T, F, A> const> {
-                static typename alps::hdf5::scalar_type<boost::numeric::ublas::matrix<T, F, A> >::type const * apply(boost::numeric::ublas::matrix<T, F, A> const & value) {
-                    using alps::hdf5::get_pointer;
-                    return get_pointer(value(0, 0));
+                static auto apply(boost::numeric::ublas::matrix<T, F, A> const& value) {
+                    auto const view = matrix_view(value);
+                    return alps::hdf5::get_pointer(view);
                 }
             };
-
         }
 
         template <typename T, typename F, typename A> void save(
@@ -105,15 +83,10 @@ namespace alps {
             , std::vector<std::size_t> chunk = std::vector<std::size_t>()
             , std::vector<std::size_t> offset = std::vector<std::size_t>()
         ) {
-            if (is_continuous<T>::value) {
-                std::vector<std::size_t> extent(get_extent(value));
-                std::copy(extent.begin(), extent.end(), std::back_inserter(size));
-                std::copy(extent.begin(), extent.end(), std::back_inserter(chunk));
-                std::fill_n(std::back_inserter(offset), extent.size(), 0);
-                ar.write(path, get_pointer(value), size, chunk, offset);
-            } else {
+            if constexpr (is_continuous<T>::value)
+                save(ar, path, detail::matrix_view(value), size, chunk, offset);
+            else
                 throw wrong_type("invalid type" + ALPS_STACKTRACE);
-            }
         }
 
         template <typename T, typename F, typename A> void load(
@@ -123,17 +96,19 @@ namespace alps {
             , std::vector<std::size_t> chunk = std::vector<std::size_t>()
             , std::vector<std::size_t> offset = std::vector<std::size_t>()
         ) {
-            if (ar.is_group(path))
-                throw invalid_path("invalid path" + ALPS_STACKTRACE);
-            else {
-                std::vector<std::size_t> size(ar.extent(path));
+            if constexpr (!is_continuous<T>::value) {
+                throw invalid_path("invalid type" + ALPS_STACKTRACE);
+            } else {
+                if (ar.is_group(path)) throw invalid_path("invalid path" + ALPS_STACKTRACE);
+                if (ar.is_null(path)) {
+                    value.resize(0, 0, false);
+                    return;
+                }
+                auto size = ar.extent(path);
+                if (chunk.size() > size.size()) throw archive_error("invalid matrix dimensions" + ALPS_STACKTRACE);
                 set_extent(value, std::vector<std::size_t>(size.begin() + chunk.size(), size.end()));
-                if (is_continuous<T>::value) {
-                    std::copy(size.begin(), size.end(), std::back_inserter(chunk));
-                    std::fill_n(std::back_inserter(offset), size.size(), 0);
-                    ar.read(path, get_pointer(value), chunk, offset);
-                } else
-                    throw invalid_path("invalid type" + ALPS_STACKTRACE);
+                auto view = detail::matrix_view(value);
+                load(ar, path, view, chunk, offset);
             }
         }
     }
