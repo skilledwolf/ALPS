@@ -40,28 +40,20 @@ template <class T> struct property_traits<std::vector<T> > {
 template <class M>
 struct measurement_traits {
    static double component_number() { return 1.;}
-   static const bool use_improved_estimator = false;
+   static constexpr bool use_improved_estimator = false;
 };
-
-template <class M>
-const bool measurement_traits<M>::use_improved_estimator;
 
 template <>
 struct measurement_traits<IsingMoment> {
    static double component_number() { return 1.;}
-   static const bool use_improved_estimator = true;
+   static constexpr bool use_improved_estimator = true;
 };
-
-const bool measurement_traits<IsingMoment>::use_improved_estimator;
 
 template <int N>
 struct measurement_traits<ONMoment<N> > {
    static double component_number() { return N;}
-   static const bool use_improved_estimator = true;
+   static constexpr bool use_improved_estimator = true;
 };
-
-template <int N>
-const bool measurement_traits<ONMoment<N> >::use_improved_estimator;
 
 template <class M, class MAT>
 class SpinSim : public AbstractSpinSim<MAT> {

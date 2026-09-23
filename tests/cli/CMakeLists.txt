@@ -10,7 +10,7 @@ add_test(NAME parameter_conversion
 set_property(TEST parameter_conversion PROPERTY LABELS cli)
 
 add_executable(spin_simulation spin_simulation.cpp)
-target_link_libraries(spin_simulation PRIVATE ALPS::alps)
+target_link_libraries(spin_simulation PRIVATE spinmc_impl)
 target_include_directories(spin_simulation PRIVATE ${PROJECT_SOURCE_DIR}/src/apps/mc/spins)
 target_compile_definitions(spin_simulation PRIVATE
   ALPS_TEST_LATTICES="${PROJECT_SOURCE_DIR}/src/alps/resources/lattices.xml")
