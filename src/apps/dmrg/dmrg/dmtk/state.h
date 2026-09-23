@@ -48,6 +48,7 @@ class StateSpace
     SubSpace _s3;
     SubSpace _s4;
     int _start;  /* negative means error */
+    int compare(const StateSpace& space) const;
 
     inline const SubSpace& ref(size_t i) const
       { 
@@ -97,65 +98,21 @@ class StateSpace
     friend class VectorState;
 }; 
 
-inline bool
-StateSpace::operator==(const StateSpace &s) const
+inline int StateSpace::compare(const StateSpace& space) const
 {
-  for(int i = 1; i < 5; i++)
-    if(ref(i).qn() != s.ref(i).qn()) return false;
-  return true;
+  for (int i = 1; i <= 4; ++i) {
+    auto left = ref(i).qn(), right = space.ref(i).qn();
+    if (left != right) return left < right ? -1 : 1;
+  }
+  return 0;
 }
 
-inline bool
-StateSpace::operator!=(const StateSpace &s) const
-{
-  for(int i = 1; i < 5; i++)
-    if(ref(i).qn() != s.ref(i).qn()) return true;
-  return false;
-}
-
-#define OP_EXCLUSIVE(op,ap) \
-inline bool \
-op(const StateSpace &s) const \
-{ \
-  for(int i = 1; i < 5; i++){ \
-    QN i1 = ref(i).qn(); \
-    QN i2 = s.ref(i).qn(); \
-    if(i1 == i2)  \
-      continue; \
-    else if(i1 ap i2)  \
-      return true; \
-    else; \
-      return false; \
-  } \
-  \
-  return false; \
-}
-
-OP_EXCLUSIVE(StateSpace::operator>,>)
-OP_EXCLUSIVE(StateSpace::operator<,<)
-#undef OP_EXCLUSIVE
-
-#define OP_INCLUSIVE(op,ap) \
-inline bool \
-op(const StateSpace &s) const \
-{ \
-  for(int i = 1; i < 5; i++){ \
-    QN i1 = ref(i).qn(); \
-    QN i2 = s.ref(i).qn(); \
-    if(i1 == i2)  \
-      continue; \
-    else if(i1 ap i2)  \
-      return true; \
-    else; \
-      return false; \
-  } \
-  \
-  return true; \
-}
-
-OP_INCLUSIVE(StateSpace::operator>=,>=)
-OP_INCLUSIVE(StateSpace::operator<=,<=)
-#undef OP_INCLUSIVE
+inline bool StateSpace::operator==(const StateSpace& s) const { return compare(s) == 0; }
+inline bool StateSpace::operator!=(const StateSpace& s) const { return compare(s) != 0; }
+inline bool StateSpace::operator<(const StateSpace& s) const { return compare(s) < 0; }
+inline bool StateSpace::operator>(const StateSpace& s) const { return compare(s) > 0; }
+inline bool StateSpace::operator<=(const StateSpace& s) const { return compare(s) <= 0; }
+inline bool StateSpace::operator>=(const StateSpace& s) const { return compare(s) >= 0; }
 
 template <class T>
 class VectorState: public Vector<T>

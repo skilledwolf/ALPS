@@ -151,53 +151,53 @@ class System
 
     CTimer _timer;
 
-    bool _in_warmup;
+    bool _in_warmup{true};
     size_t dir;
-    int _sweep;
-    int iter;
+    int _sweep{1};
+    int iter{1};
 
-    bool _use_hc;
-    int _grand_canonical;
+    bool _use_hc{false};
+    int _grand_canonical{QN::default_mask()};
 
-    int m;
-    int m1;
-    int m2;
-    int m3;
-    int m4;
+    int m{10};
+    int m1{2};
+    int m2{2};
+    int m3{2};
+    int m4{2};
 
     double _error;  
     double _truncation_error;
     double _entropy;
-    bool _use_error;
-    int _error_max_size;
-    bool _target_subspaces; // build density matrix using all subspaces
-    int _nsub; // number states per subspace
+    bool _use_error{false};
+    int _error_max_size{-1};
+    bool _target_subspaces{false}; // build density matrix using all subspaces
+    int _nsub{1}; // number states per subspace
 
-    int _verbose;
-    int _calc_gap;
-    bool _project;
-    bool _use_k;
-    bool _use_seed;
-    bool _use_basic_seed;
-    bool _use_composite;
-    bool _grow_symmetric;
-    bool _grow_outward;
-    bool _custom_qns;
-    bool _store_products;
-    bool _measure_symmetric;
-    bool _apply_hami;
-    bool _apply_extern;
-    bool _rotate_terms;
-    bool _full_sweep; // run sweep from 1 to ls-3/ls-4
-    bool _use_coef_tol; 
-    double _coef_tol;
-    Matrix<size_t> _sweeps;
-    size_t _numsweeps;
+    int _verbose{0};
+    int _calc_gap{0};
+    bool _project{false};
+    bool _use_k{false};
+    bool _use_seed{true};
+    bool _use_basic_seed{false};
+    bool _use_composite{true};
+    bool _grow_symmetric{true};
+    bool _grow_outward{false};
+    bool _custom_qns{true};
+    bool _store_products{true};
+    bool _measure_symmetric{false};
+    bool _apply_hami{true};
+    bool _apply_extern{true};
+    bool _rotate_terms{true};
+    bool _full_sweep{false}; // run sweep from 1 to ls-3/ls-4
+    bool _use_coef_tol{false};
+    double _coef_tol{1.e-5};
+    Matrix<size_t> _sweeps{2, 10};
+    size_t _numsweeps{0};
 
     char _name[255];
 
-    double _lanczos_tol;
-    int _lanczos_maxiter;
+    double _lanczos_tol{1.e-7};
+    int _lanczos_maxiter{-1};
 
     virtual void init_iteration(const B&b1, const B&b2, const B&b3, const B&b4, bool use_seed = false, bool create_composite = true);
     void rotate_hami(int position, Block<T> &b, Basis &basis, Basis &rho_basis, const Hami<T> *this_hami = NULL);
@@ -249,16 +249,16 @@ class System
     const B* _b3;
     const B* _b4;
 
-    QN qnt;
+    QN qnt{0};
     QN qn;
     double precision;
 
-    size_t _ntargets;
-    Vector<VectorState<T> > _target;   
-    Vector<double> _target_weight;
+    size_t _ntargets{1};
+    Vector<VectorState<T> > _target{1};
+    Vector<double> _target_weight{1};
     Vector<VectorState<T> *> _project_states;
 
-    size_t _nstates;  // excited states for diagonalization
+    size_t _nstates{1};  // excited states for diagonalization
     Vector<VectorState<T> > _state; // gs and excited states  
     Vector<VectorState<T> > _propagate_state; // states that we want to transform as we sweep (besides the ground state)
 
@@ -282,84 +282,17 @@ class System
 
 //  Constructor
   
-    System()
-    : _in_warmup(true)
-    , _sweep(1)
-    , iter(1)
-    , _use_hc(false)
-    , _grand_canonical(QN::default_mask())
-    , m(10)
-    , m1(2)
-    , m2(2)
-    , m3(2)
-    , m4(2)
-    , _use_error(false)
-    , _error_max_size(-1)
-    , _target_subspaces(false)
-    , _nsub(1)
-    , _verbose(0)
-    , _calc_gap(0)
-    , _project(false)
-    , _use_k(false)
-    , _use_seed(true)
-    , _use_basic_seed(false)
-    , _use_composite(true)
-    , _grow_symmetric(true)
-    , _grow_outward(false)
-    , _custom_qns(true)
-    , _store_products(true)
-    , _measure_symmetric(false)
-    , _apply_hami(true)
-    , _apply_extern(true)
-    , _rotate_terms(true)
-    , _full_sweep(false)
-    , _use_coef_tol(false)
-    , _coef_tol(1.e-5) 
-    , _numsweeps(0)
-    , _lanczos_tol(1.e-7)
-    , _lanczos_maxiter(-1)
-    , qnt(0)
-    , _ntargets(1)
-    , _nstates(1)
-    { _sweeps.resize(2,10); _target.resize(1); _target_weight.resize(1); set_name(""); init_signals(); };
+    System() { set_name(""); init_signals(); }
 
-    System(const Hami<T> &_h, const Lattice& lattice, const char *the_name)
-     : _lattice(lattice)
-     , _in_warmup(true)
-     , _sweep(1)
-     , iter(1)
-     , _use_hc(false)
-     , _grand_canonical(QN::default_mask())
-     , _use_error(false)
-     , _error_max_size(-1)
-     , _target_subspaces(false)
-     , _nsub(1)
-     , _verbose(0)
-     , _calc_gap(0)
-     , _project(false)
-     , _use_k(false)
-     , _use_seed(true)
-     , _use_basic_seed(false)
-     , _use_composite(true)
-     , _grow_symmetric(true)
-     , _grow_outward(false)
-     , _custom_qns(true)
-     , _store_products(true)
-     , _measure_symmetric(false)
-     , _apply_hami(true)
-     , _apply_extern(true)
-     , _rotate_terms(true)
-     , _full_sweep(false)
-     , _use_coef_tol(false)
-     , _coef_tol(1.e-5) 
-     , _numsweeps(0)
-     , _lanczos_tol(1.e-7)
-     , _lanczos_maxiter(-1)
-     , qnt(0)
-     , _ntargets(1)
-     , _nstates(1)
-     , h(_h)
-      { set_name(the_name); m1 = m2 = m3 = m4 = _h.get_site(0).dim(); m = m1 * m2; _sweeps.resize(2,10); _target.resize(1); _target_weight.resize(1); _target_weight[0] = double(1); init_signals(); }
+    System(const Hami<T>& hamiltonian, const Lattice& lattice, const char* name)
+      : _lattice(lattice), h(hamiltonian)
+    {
+      set_name(name);
+      m1 = m2 = m3 = m4 = hamiltonian.get_site(0).dim();
+      m = m1 * m2;
+      _target_weight[0] = 1;
+      init_signals();
+    }
 
     virtual ~System() {}
 //  Methods

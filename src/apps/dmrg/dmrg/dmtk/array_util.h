@@ -98,25 +98,6 @@ array_copy(int n, const complex<double> *in, complex<double> *out)
 #endif
 }
 
-template<class T>
-void
-array_copy(int n, const T* in, T* out)
-{
-   int m = n%7;
-   if(m != 0) {
-      for(int i = 0; i < m; i++) out[i] = in[i];
-      if(n < 7) return;
-   } 
-   for(int i = m; i < n; i+= 7){
-     out[i] = in[i];
-     out[i + 1] = in[i + 1];
-     out[i + 2] = in[i + 2];
-     out[i + 3] = in[i + 3];
-     out[i + 4] = in[i + 4];
-     out[i + 5] = in[i + 5];
-     out[i + 6] = in[i + 6];
-   }
-}
 
 #else // !WITH_LAPACK
 
@@ -142,86 +123,35 @@ dot_product(const int& n,
   return sum;
 }
 
-template<class T>
-void
-array_copy(int n, const T* in, T* out)
-{
-   int m = n%7;
-   if(m != 0) {
-      for(int i = 0; i < m; i++) out[i] = in[i];
-      if(n < 7) return;
-   } 
-   for(int i = m; i < n; i+= 7){
-     out[i] = in[i];
-     out[i + 1] = in[i + 1];
-     out[i + 2] = in[i + 2];
-     out[i + 3] = in[i + 3];
-     out[i + 4] = in[i + 4];
-     out[i + 5] = in[i + 5];
-     out[i + 6] = in[i + 6];
-   }
-}
 
 #endif // WITH_LAPACK
+
+template<class T>
+void array_copy(int n, const T* in, T* out)
+{
+  for (int i = 0; i < n; ++i) out[i] = in[i];
+}
+
 
 template<class T>
 void
 array_copy(int n, T& in, T& out)
 {
-   int m = n%7;
-   if(m != 0) {
-      for(int i = 0; i < m; i++) out[i] = in[i]; 
-      if(n < 7) return;
-   } 
-   for(int i = m; i < n; i+= 7){
-     out[i] = in[i];
-     out[i + 1] = in[i + 1];
-     out[i + 2] = in[i + 2];
-     out[i + 3] = in[i + 3];
-     out[i + 4] = in[i + 4];
-     out[i + 5] = in[i + 5];
-     out[i + 6] = in[i + 6];
-   }
+  for (int i = 0; i < n; ++i) out[i] = in[i];
 }
 
 template<class T1, class T2>
 void
 array_copy2(int n, const T1& in, T2& out)
 {
-   int m = n%7;
-   if(m != 0) {
-      for(int i = 0; i < m; i++) out[i] = in[i];
-      if(n < 7) return;
-   } 
-   for(int i = m; i < n; i+= 7){
-     out[i] = in[i];
-     out[i + 1] = in[i + 1];
-     out[i + 2] = in[i + 2];
-     out[i + 3] = in[i + 3];
-     out[i + 4] = in[i + 4];
-     out[i + 5] = in[i + 5];
-     out[i + 6] = in[i + 6];
-   }
+  for (int i = 0; i < n; ++i) out[i] = in[i];
 }
 
 template<class T1, class T2>
 void
 array_copy2(int n, T1& in, T2& out)
 {
-   int m = n%7;
-   if(m != 0) {
-      for(int i = 0; i < m; i++) out[i] = in[i];
-      if(n < 7) return;
-   } 
-   for(int i = m; i < n; i+= 7){
-     out[i] = in[i];
-     out[i + 1] = in[i + 1];
-     out[i + 2] = in[i + 2];
-     out[i + 3] = in[i + 3];
-     out[i + 4] = in[i + 4];
-     out[i + 5] = in[i + 5];
-     out[i + 6] = in[i + 6];
-   }
+  for (int i = 0; i < n; ++i) out[i] = in[i];
 }
 
 inline double quickran(long & idum)

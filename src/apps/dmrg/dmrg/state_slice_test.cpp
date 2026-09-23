@@ -2,6 +2,8 @@
 #define WITH_LAPACK
 #include <dmtk/dmtk.h>
 #include <array>
+#include <numeric>
+#include <random>
 #include <stdexcept>
 
 namespace {
@@ -13,6 +15,63 @@ double value(coordinates const& i) {
 }
 void require(bool ok) {
   if (!ok) throw std::runtime_error("state slice differs from coordinate reference");
+}
+
+template<class Value, class Reference>
+void check_order(Value const& a, Value const& b, Reference const& left, Reference const& right) {
+  require((a == b) == (left == right)); require((a != b) == (left != right));
+  require((a < b) == (left < right)); require((a <= b) == (left <= right));
+  require((a > b) == (left > right)); require((a >= b) == (left >= right));
+}
+
+void check_ordering() {
+  QN::init();
+  for (int i = 0; i < 6; ++i) QN::add_qn_index(std::to_string(i));
+  std::mt19937 random(1729);
+  for (int mask = 0; mask < 64; ++mask) {
+    QN::set_qn_mask(mask);
+    for (int sample = 0; sample < 128; ++sample) {
+      StateSpace a, b;
+      std::vector<int> state_left, state_right;
+      for (int site = 1; site <= 4; ++site) {
+        QN qa, qb;
+        std::vector<int> left, right;
+        for (int i = 0; i < 6; ++i) {
+          int x = int(random() % 9) - 4, y = int(random() % 9) - 4;
+          if (sample % 4 == 0) y = x;
+          qa[i].set_half(x); qb[i].set_half(y);
+          if (mask & (1 << i)) { left.push_back(x); right.push_back(y); }
+        }
+        check_order(qa, qb, left, right);
+        require(qa.equal(qb, mask) == (left == right));
+        // Ranges do not participate in StateSpace ordering.
+        a[site] = SubSpace(qa, 0, 2); b[site] = SubSpace(qb, 3, 8);
+        state_left.insert(state_left.end(), left.begin(), left.end());
+        state_right.insert(state_right.end(), right.begin(), right.end());
+      }
+      check_order(a, b, state_left, state_right);
+    }
+  }
+}
+
+void check_copy_ranges() {
+  std::array<int, 24> source, target;
+  std::iota(source.begin(), source.end(), -7);
+  for (int count = 0; count <= 24; ++count) {
+    target.fill(99);
+    array_copy(count, static_cast<int const*>(source.data()), target.data());
+    for (int i = 0; i < 24; ++i) require(target[i] == (i < count ? source[i] : 99));
+    target.fill(99);
+    array_copy(count, source, target);
+    for (int i = 0; i < 24; ++i) require(target[i] == (i < count ? source[i] : 99));
+    std::array<double, 24> converted;
+    converted.fill(99);
+    array_copy2(count, static_cast<std::array<int, 24> const&>(source), converted);
+    for (int i = 0; i < 24; ++i) require(converted[i] == (i < count ? source[i] : 99));
+    converted.fill(99);
+    array_copy2(count, source, converted);
+    for (int i = 0; i < 24; ++i) require(converted[i] == (i < count ? source[i] : 99));
+  }
 }
 
 template<int A, class State, class Selector>
@@ -114,5 +173,7 @@ void check_quantum(bool constrained) {
 }
 
 int main() {
+  check_ordering();
+  check_copy_ranges();
   check_ranges(); check_quantum(false); check_quantum(true);
 }
