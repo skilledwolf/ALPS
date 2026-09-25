@@ -20,6 +20,25 @@
 #include <alps/config.h>
 #include <boost/cstdint.hpp>
 
+namespace {
+// The coordinate determines the grid; real and complex values share the same
+// orbital traversal and keep the existing space-separated text format.
+void write_value(std::ostream& out, double value) { out << " " << value; }
+void write_value(std::ostream& out, std::complex<double> value) {
+  out << " " << value.real() << " " << value.imag();
+}
+template<class GreenFunction, class Coordinate>
+void write_green_table(char const* filename, GreenFunction const& green,
+                       std::size_t count, std::size_t orbitals, Coordinate coordinate) {
+  std::ofstream out(filename);
+  for (std::size_t n = 0; n < count; ++n) {
+    out << coordinate(n);
+    for (std::size_t j = 0; j < orbitals; ++j) write_value(out, green(n,0,0,j));
+    out << std::endl;
+  }
+}
+} // namespace
+
 void evaluate_basics(const alps::results_type<hybridization>::type &results,
                      const alps::parameters_type<hybridization>::type &parms,
                      alps::hdf5::archive &solver_output){
@@ -194,24 +213,10 @@ void evaluate_time(const alps::results_type<hybridization>::type &results,
   }
 
   if(parms["TEXT_OUTPUT"]|0){
-    std::ofstream G_file("Gt.dat");
-    for(std::size_t t=0;t<=N_t;++t){
-      G_file<<beta*t/N_t;
-      for(std::size_t j=0;j<n_orbitals;++j){
-        G_file<<" "<<G_tau(t,0,0,j);
-      }
-      G_file<<std::endl;
-    }
-    G_file.close();
-     std::ofstream F_file("Ft.dat");
-    for(std::size_t t=0;t<=N_t;++t){
-      F_file<<beta*t/N_t;
-      for(std::size_t j=0;j<n_orbitals;++j){
-        F_file<<" "<<F_tau(t,0,0,j);
-      }
-      F_file<<std::endl;
-    }
-    F_file.close();
+    write_green_table("Gt.dat", G_tau, N_t+1, n_orbitals,
+                      [=](std::size_t n) { return beta*n/N_t; });
+    write_green_table("Ft.dat", F_tau, N_t+1, n_orbitals,
+                      [=](std::size_t n) { return beta*n/N_t; });
   }
 }
 
@@ -276,35 +281,14 @@ void evaluate_freq(const alps::results_type<hybridization>::type &results,
   }
 
     
-  std::ofstream Gw_file("Gw.dat");
-  for(std::size_t n=0;n<N_w;++n){
-    Gw_file<<(2.*n+1)*boost::math::constants::pi<double>()/beta;
-    for(std::size_t j=0;j<n_orbitals;++j){
-      Gw_file<<" "<<G_omega(n,0,0,j).real()<<" "<<G_omega(n,0,0,j).imag();
-    }
-    Gw_file<<std::endl;
-  }
-  Gw_file.close();
+  write_green_table("Gw.dat", G_omega, N_w, n_orbitals,
+                    [=](std::size_t n) { return (2.*n+1)*boost::math::constants::pi<double>()/beta; });
 
-  std::ofstream Fw_file("Fw.dat");
-  for(std::size_t n=0;n<N_w;++n){
-    Fw_file<<(2.*n+1)*boost::math::constants::pi<double>()/beta;
-    for(std::size_t j=0;j<n_orbitals;++j){
-      Fw_file<<" "<<F_omega(n,0,0,j).real()<<" "<<F_omega(n,0,0,j).imag();
-    }
-    Fw_file<<std::endl;
-  }
-  Fw_file.close();
+  write_green_table("Fw.dat", F_omega, N_w, n_orbitals,
+                    [=](std::size_t n) { return (2.*n+1)*boost::math::constants::pi<double>()/beta; });
 
-  std::ofstream Sw_file("Sw.dat");
-  for(std::size_t n=0;n<N_w;++n){
-    Sw_file<<(2.*n+1)*boost::math::constants::pi<double>()/beta;
-    for(std::size_t j=0;j<n_orbitals;++j){
-      Sw_file<<" "<<S_omega(n,0,0,j).real()<<" "<<S_omega(n,0,0,j).imag();
-    }
-    Sw_file<<std::endl;
-  }
-  Sw_file.close();
+  write_green_table("Sw.dat", S_omega, N_w, n_orbitals,
+                    [=](std::size_t n) { return (2.*n+1)*boost::math::constants::pi<double>()/beta; });
 }
 
 
@@ -402,51 +386,16 @@ void evaluate_legendre(const alps::results_type<hybridization>::type &results,
     }
     gc_str.close();
     fc_str.close();
-    std::ofstream Gtl_file("Gtl.dat");
-    for(std::size_t t=0;t<=N_t;++t){
-      Gtl_file<<beta*t/N_t;
-      for(std::size_t j=0;j<n_orbitals;++j){
-        Gtl_file<<" " <<G_l_tau(t,0,0,j);
-      }
-      Gtl_file<<std::endl;
-    }
-    Gtl_file.close();
-    std::ofstream Ftl_file("Ftl.dat");
-    for(std::size_t t=0;t<=N_t;++t){
-      Ftl_file<<beta*t/N_t;
-      for(std::size_t j=0;j<n_orbitals;++j){
-        Ftl_file<<" " <<F_l_tau(t,0,0,j);
-      }
-      Ftl_file<<std::endl;
-    }
-    Ftl_file.close();
-    std::ofstream Gw_file("Gwl.dat");
-    for(std::size_t t=0;t<N_w;++t){
-      Gw_file<<(2.*t+1)*boost::math::constants::pi<double>()/beta;
-      for(std::size_t j=0;j<n_orbitals;++j){
-        Gw_file<<" "<<G_l_omega(t,0,0,j).real()<<" "<<G_l_omega(t,0,0,j).imag();
-      }
-      Gw_file<<std::endl;
-    }
-    Gw_file.close();
-    std::ofstream Fw_file("Fwl.dat");
-    for(std::size_t t=0;t<N_w;++t){
-      Fw_file<<(2.*t+1)*boost::math::constants::pi<double>()/beta;
-      for(std::size_t j=0;j<n_orbitals;++j){
-        Fw_file<<" "<<F_l_omega(t,0,0,j).real()<<" "<<F_l_omega(t,0,0,j).imag();
-      }
-      Fw_file<<std::endl;
-    }
-    Fw_file.close();
-    std::ofstream Sw_file("Swl.dat");
-    for(std::size_t t=0;t<N_w;++t){
-      Sw_file<<(2.*t+1)*boost::math::constants::pi<double>()/beta;
-      for(std::size_t j=0;j<n_orbitals;++j){
-        Sw_file<<" "<<S_l_omega(t,0,0,j).real()<<" "<<S_l_omega(t,0,0,j).imag();
-      }
-      Sw_file<<std::endl;
-    }
-    Sw_file.close();
+    write_green_table("Gtl.dat", G_l_tau, N_t+1, n_orbitals,
+                      [=](std::size_t n) { return beta*n/N_t; });
+    write_green_table("Ftl.dat", F_l_tau, N_t+1, n_orbitals,
+                      [=](std::size_t n) { return beta*n/N_t; });
+    write_green_table("Gwl.dat", G_l_omega, N_w, n_orbitals,
+                      [=](std::size_t n) { return (2.*n+1)*boost::math::constants::pi<double>()/beta; });
+    write_green_table("Fwl.dat", F_l_omega, N_w, n_orbitals,
+                      [=](std::size_t n) { return (2.*n+1)*boost::math::constants::pi<double>()/beta; });
+    write_green_table("Swl.dat", S_l_omega, N_w, n_orbitals,
+                      [=](std::size_t n) { return (2.*n+1)*boost::math::constants::pi<double>()/beta; });
   }
 
 }
@@ -680,4 +629,3 @@ void evaluate_2p(const alps::results_type<hybridization>::type &results,
     }//j
   }//i
 }
-
