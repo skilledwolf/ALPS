@@ -14,7 +14,7 @@ Start with the [tutorial guide](tutorials/README.md): run your first simulation,
 
 For current binary, source, and Spack installation instructions, see the [ALPS installation website](https://alps.comp-phys.org/install/).
 
-Source builds require **CMake 4.3 or newer**. If your system provides an older version, follow the [CMake and Ninja setup](CONTRIBUTING.md#install-cmake-and-ninja) for pip installation on Linux, macOS, and Windows, or official binary downloads. For the full build instructions, including MSVC/vcpkg presets for Windows x64 and ARM64 and the exported CMake SDK target, see [the development setup](CONTRIBUTING.md#getting-started-with-the-code).
+Source builds require **CMake 3.27 or newer**. If your system provides an older version, follow the [CMake and Ninja setup](CONTRIBUTING.md#install-cmake-and-ninja) for pip installation on Linux, macOS, and Windows, or official binary downloads. For the full build instructions, including MSVC/vcpkg presets for Windows x64 and ARM64 and the exported CMake SDK target, see [the development setup](CONTRIBUTING.md#getting-started-with-the-code).
 
 Python projects live under [`python/`](python/README.md); see the [pyalps build instructions](python/pyalps/README.md) to build the current package against an installed C++ SDK.
 

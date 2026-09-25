@@ -1,7 +1,7 @@
 #  Copyright Matthias Troyer and Synge Todo 2010-2011.
 #   SPDX-License-Identifier: MIT
 
-cmake_minimum_required(VERSION 4.3)
+cmake_minimum_required(VERSION 3.27...4.3)
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
   project(alps_examples LANGUAGES C CXX)
   find_package(ALPS CONFIG REQUIRED)

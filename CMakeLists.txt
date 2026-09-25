@@ -1,7 +1,8 @@
 #  Copyright Synge Todo and Matthias Troyer 2009 - 2010.
 #   SPDX-License-Identifier: MIT
 
-cmake_minimum_required(VERSION 4.3)
+# Support 3.27 while retaining modern policies on newer CMake releases.
+cmake_minimum_required(VERSION 3.27...4.3)
 if(CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_CURRENT_BINARY_DIR)
   message(FATAL_ERROR "Use an out-of-source build: cmake -S . -B build")
 endif()

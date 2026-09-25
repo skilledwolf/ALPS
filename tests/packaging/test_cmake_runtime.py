@@ -31,7 +31,7 @@ def consumer(tmp_path):
     (package / "include").mkdir()
     (package / "lib/libalps-hashed.so.3").touch()
     (source / "CMakeLists.txt").write_text('''
-cmake_minimum_required(VERSION 4.3)
+cmake_minimum_required(VERSION 3.27...4.3)
 project(wheel_runtime_contract LANGUAGES NONE)
 find_package(pyalps CONFIG QUIET)
 if(EXPECT_FAILURE)

@@ -51,7 +51,7 @@ Before opening a new issue, please search existing issues to avoid duplicates.
 
 ### Prerequisites
 
-- CMake ≥ 4.3; Ninja for the `default`, `sdk`, and `distribution` presets ([installation instructions](#install-cmake-and-ninja))
+- CMake ≥ 3.27; Ninja for the `default`, `sdk`, and `distribution` presets ([installation instructions](#install-cmake-and-ninja))
 - A C++17 compiler and C11 compiler (GCC, Clang, or MSVC 2022)
 - An installed Boost ≥ 1.76, HDF5 with its C library, and BLAS/LAPACK
 - MPI and Boost.MPI when configuring with `-DALPS_ENABLE_MPI=ON`
@@ -75,7 +75,7 @@ See the [installation page](https://alps.comp-phys.org/install/) for full platfo
 
 ### Install CMake and Ninja
 
-Check `cmake --version` first: ALPS requires **4.3 or newer**. Your system package manager or IDE may provide an older version. If you need an upgrade, installing [CMake through pip](https://cmake-python-distributions.readthedocs.io/en/stable/installation.html) in a virtual environment is a convenient option on Linux, macOS, and Windows. The [CMake wheels](https://pypi.org/project/cmake/#files) include binaries for x64 and ARM64 on all three platforms.
+Check `cmake --version` first: ALPS requires **3.27 or newer**. Your system package manager or IDE may provide an older version. If you need an upgrade, installing [CMake through pip](https://cmake-python-distributions.readthedocs.io/en/stable/installation.html) in a virtual environment is a convenient option on Linux, macOS, and Windows. The [CMake wheels](https://pypi.org/project/cmake/#files) include binaries for x64 and ARM64 on all three platforms.
 
 With Python 3.12 or newer installed, run the following from the repository root. If you already have an active virtual environment, skip creating a new one and run the two pip commands in it.
 
@@ -85,7 +85,7 @@ Linux and macOS (bash or zsh):
 python3 -m venv .venv
 . .venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install --upgrade "cmake>=4.3" ninja
+python -m pip install --upgrade "cmake>=3.27" ninja
 ```
 
 If Linux reports that `venv` or `ensurepip` is unavailable, install your distribution's Python venv package first (for example, `python3-venv` on Debian/Ubuntu).
@@ -96,7 +96,7 @@ Windows (PowerShell):
 py -3 -m venv .venv
 $env:PATH = "$(Resolve-Path .venv\Scripts);$env:PATH"
 python -m pip install --upgrade pip
-python -m pip install --upgrade "cmake>=4.3" ninja
+python -m pip install --upgrade "cmake>=3.27" ninja
 ```
 
 The PowerShell PATH assignment makes the environment's tools available in the current shell without running an activation script. In each new terminal, repeat the activation command on Linux/macOS or the PATH assignment on Windows before building. Configure your IDE to use the same CMake executable if needed.
@@ -109,9 +109,9 @@ ctest --version
 ninja --version
 ```
 
-Both CMake and CTest must report 4.3 or newer. If an older executable still wins, check its location with `command -v cmake` on Linux/macOS or `Get-Command cmake` in PowerShell and put the virtual environment's executable directory first on `PATH`.
+Both CMake and CTest must report 3.27 or newer. If an older executable still wins, check its location with `command -v cmake` on Linux/macOS or `Get-Command cmake` in PowerShell and put the virtual environment's executable directory first on `PATH`.
 
-You can also use [official CMake downloads](https://cmake.org/download/) without Python: install or unpack a release ≥ 4.3 for your OS and architecture, and add its executable directory to `PATH`. For the macOS application bundle this is `/Applications/CMake.app/Contents/bin`. Install Ninja separately if using a Ninja preset; the Windows Visual Studio presets do not require it. A system package is equally suitable when `cmake --version` confirms it meets the requirement.
+You can also use [official CMake downloads](https://cmake.org/download/) without Python: install or unpack a release ≥ 3.27 for your OS and architecture, and add its executable directory to `PATH`. For the macOS application bundle this is `/Applications/CMake.app/Contents/bin`. Install Ninja separately if using a Ninja preset; the Windows Visual Studio presets do not require it. A system package is equally suitable when `cmake --version` confirms it meets the requirement.
 
 ### Build
 
@@ -139,7 +139,7 @@ Dependencies are discovered through their CMake packages. Set `CMAKE_PREFIX_PATH
 
 ### Native Windows (MSVC)
 
-Install Visual Studio 2022's **Desktop development with C++** workload, [CMake ≥ 4.3](#install-cmake-and-ninja), Git, and [vcpkg](https://github.com/microsoft/vcpkg). Set `VCPKG_ROOT` to its checkout. Use the preset matching your native architecture. On Windows x64, run in PowerShell:
+Install Visual Studio 2022's **Desktop development with C++** workload, [CMake ≥ 3.27](#install-cmake-and-ninja), Git, and [vcpkg](https://github.com/microsoft/vcpkg). Set `VCPKG_ROOT` to its checkout. Use the preset matching your native architecture. On Windows x64, run in PowerShell:
 
 ```powershell
 cmake --preset windows-x64
@@ -348,7 +348,7 @@ If you are contributing a new simulation application or library, the Governing C
 
 ### CMake
 
-- CMake ≥ 4.3 features are acceptable. Express dependencies and compiler settings on targets with explicit `PRIVATE`, `PUBLIC` or `INTERFACE` scope.
+- Build rules must work with CMake 3.27 and newer. Express dependencies and compiler settings on targets with explicit `PRIVATE`, `PUBLIC` or `INTERFACE` scope.
 - Use target-based linking (`target_link_libraries`, `target_include_directories`) rather than directory-level commands.
 
 ### Markdown

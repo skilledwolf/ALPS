@@ -13,7 +13,7 @@ def version_project(tmp_path):
     shutil.copy2(Path(__file__).resolve().parents[2] / "cmake/ALPSVersion.cmake",
                  source / "cmake/ALPSVersion.cmake")
     (source / "CMakeLists.txt").write_text(
-        'cmake_minimum_required(VERSION 4.3)\n'
+        'cmake_minimum_required(VERSION 3.27...4.3)\n'
         'include(cmake/ALPSVersion.cmake)\n'
         'project(version_contract VERSION ${ALPS_VERSION_CORE} LANGUAGES NONE)\n'
         'file(WRITE "${CMAKE_BINARY_DIR}/version.txt" "${PROJECT_VERSION}")\n',

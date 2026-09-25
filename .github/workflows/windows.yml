@@ -18,6 +18,8 @@ jobs:
       VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/.cache/vcpkg
       CMAKE_BUILD_PARALLEL_LEVEL: 2
       CTEST_PARALLEL_LEVEL: 2
+      # Keep a Windows minimum-version build alongside current-CMake wheels.
+      CMAKE_REQUIREMENT: ${{ matrix.arch == 'x64' && matrix.config == 'Debug' && 'cmake==3.27.9' || 'cmake>=3.27' }}
     strategy:
       fail-fast: false
       matrix:
@@ -46,7 +48,7 @@ jobs:
       - name: Configure SDK
         shell: pwsh
         run: |
-          python -m pip install "cmake>=4.3"
+          python -m pip install $env:CMAKE_REQUIREMENT
           $env:VCPKG_ROOT = $env:VCPKG_INSTALLATION_ROOT
           cmake --preset windows-${{ matrix.arch }}
       - name: Build SDK

@@ -1,7 +1,7 @@
 # Copyright (C) 2026 by the ALPS collaboration
 # SPDX-License-Identifier: MIT
 
-cmake_minimum_required(VERSION 4.3)
+cmake_minimum_required(VERSION 3.27...4.3)
 # One dependency scan supplies the package's Windows DLL directory.
 set(VCPKG_APPLOCAL_DEPS OFF)
 project(pyalps LANGUAGES C CXX)

@@ -12,7 +12,7 @@ python .github/scripts/validate_pyalps.py --output _build/validation --wheelhous
 
 The output contains a JUnit report, test log, source revision and dirty-file hashes, installed package/dependency versions, extension hashes, distribution hashes, executed commands, timings, and pass/fail status. A failing check exits nonzero and retains its evidence. Each subprocess has a five-minute timeout. Outputs belong in an ignored build directory or outside the checkout.
 
-Use `--packaging` to include release/packaging tests (requires packaging and scikit-build-core). Use `--downstream` to enable the two compiled consumers; this requires the matching SDK installed at `_build/distribution/install`, a C++ compiler, CMake 4.3 or newer, and nanobind 2.10 or newer. Check the reported skips: a standard wheel smoke run does not exercise these opt-in consumers or MPI without mpi4py.
+Use `--packaging` to include release/packaging tests (requires packaging and scikit-build-core). Use `--downstream` to enable the two compiled consumers; this requires the matching SDK installed at `_build/distribution/install`, a C++ compiler, CMake 3.27 or newer, and nanobind 2.10 or newer. Check the reported skips: a standard wheel smoke run does not exercise these opt-in consumers or MPI without mpi4py.
 
 Use `--applications` for input generation, dispatch, and result loading through the installed `spinmc`, `loop`, `dirloop_sse`, `sparsediag`, `fulldiag`, and `dmrg` programs. The exact-diagonalization cases assert the four-site periodic Heisenberg ground-state energy, -2, within 1e-10. The Monte Carlo and short DMRG cases assert finite loaded results; they do not establish convergence. Each run writes its own inputs and outputs under the evidence directory.
 

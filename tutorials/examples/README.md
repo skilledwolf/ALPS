@@ -15,7 +15,7 @@ These small programs demonstrate individual ALPS APIs. For complete simulation w
 
 ## Build against an installed SDK
 
-These examples require CMake 4.3 or newer; see the [CMake setup instructions](../../CONTRIBUTING.md#install-cmake-and-ninja) if your system provides an older version.
+These examples require CMake 3.27 or newer; see the [CMake setup instructions](../../CONTRIBUTING.md#install-cmake-and-ninja) if your system provides an older version.
 
 From this directory, build the C++ examples together:
 
