@@ -6,7 +6,7 @@ Python applications and libraries for the Algorithms and Libraries for Physics S
 python -m pip install pyalps
 ```
 
-Install `pyalps[plot]` to use the Matplotlib plotting helpers. Install `pyalps[mpi]` for the mpi4py-backed `pyalps.mpi` compatibility layer.
+Matplotlib plotting helpers are included with `pyalps`. Install `pyalps[mpi]` for the mpi4py-backed `pyalps.mpi` compatibility layer.
 
 The bindings are built as a standalone `scikit-build-core` project using nanobind. A source build requires GIL-enabled CPython 3.12 or newer, CMake 3.27 or newer, Ninja, a C++17 compiler, BLAS/LAPACK, HDF5, and an installed shared ALPS C++ SDK. The SDK's numeric version must match `ALPS_VERSION.txt`; CMake rejects a mismatch before compiling. Point `ALPS_DIR` at the SDK's `share/alps` package directory.
 
