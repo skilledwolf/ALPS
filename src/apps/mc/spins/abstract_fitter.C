@@ -14,6 +14,7 @@
 
 #include "fitter.h"
 #include "fitting_scheduler.h"
+#include <initializer_list>
 
 alps::oxstream& operator<< (alps::oxstream& oxs, const FitterParamList list) {
   oxs << list.parms;
@@ -935,38 +936,26 @@ void AbstractFitter::print_results(const std::string filename) const
 
   using namespace std;
 
-  std::string mean_name, error_name, rel_name, count_name, res_name, 
-               allres_name, ressign_name;
-  std::fstream mean_stream, error_stream, rel_stream, count_stream, res_stream,
-               allres_stream, ressign_stream;
+  std::ofstream mean_stream(filename + ".mean"), error_stream(filename + ".error"),
+                rel_stream(filename + ".rel_error"), count_stream(filename + ".count"),
+                res_stream(filename + ".residual"), allres_stream(filename + ".all_res"),
+                ressign_stream(filename + ".res_sign");
+  const std::initializer_list<std::ostream*> all_streams{
+    &mean_stream, &error_stream, &rel_stream, &count_stream,
+    &res_stream, &allres_stream, &ressign_stream};
+  const std::initializer_list<std::ostream*> value_streams{
+    &mean_stream, &error_stream, &rel_stream, &count_stream};
+  auto signed_value = [](std::ostream& out, double value) {
+    if (value >= 0.0) out << "+";
+    out << std::setw(7) << std::scientific << value << " ";
+  };
 
-  mean_name = filename + ".mean";
-  error_name = filename + ".error";
-  rel_name = filename + ".rel_error";
-  count_name = filename + ".count";
-  res_name = filename + ".residual";
-  allres_name = filename + ".all_res";
-  ressign_name = filename + ".res_sign";
-  mean_stream.open(mean_name.c_str(), std::fstream::out);
-  error_stream.open(error_name.c_str(), std::fstream::out);
-  rel_stream.open(rel_name.c_str(), std::fstream::out);
-  count_stream.open(count_name.c_str(), std::fstream::out);
-  res_stream.open(res_name.c_str(), std::fstream::out);
-  allres_stream.open(allres_name.c_str(), std::fstream::out);
-  ressign_stream.open(ressign_name.c_str(), std::fstream::out);
-
-  mean_stream << "results of the simulation: Values for the observable "
-              << fit_obs_name << "\n==========================\n\n";
-  error_stream << "results of the simulation: Values for the observable "
-               << fit_obs_name << "\n==========================\n\n";
-  rel_stream << "results of the simulation: Values for the observable "
-             << fit_obs_name << "\n==========================\n\n";
-  count_stream << "results of the simulation: Values for the observable "
-               << fit_obs_name << "\n==========================\n\n";
-  res_stream << "residui for the fitting : obervable " << fit_obs_name
-             << "\n=======================\n\n";
-  allres_stream << "residui for the fitting : obervable " << fit_obs_name
-             << "\n=======================\n\n";
+  for (auto* out : value_streams)
+    *out << "results of the simulation: Values for the observable "
+         << fit_obs_name << "\n==========================\n\n";
+  for (auto* out : {&res_stream, &allres_stream})
+    *out << "residui for the fitting : obervable " << fit_obs_name
+         << "\n=======================\n\n";
   ressign_stream << "error/mean of the residui for the fitting : obervable " 
                  << fit_obs_name << "\n=========================\n\n";
 
@@ -983,23 +972,10 @@ void AbstractFitter::print_results(const std::string filename) const
   unsigned int var_par_count = variable_params.size();
   alps::ParameterList print_param;
 
-  mean_stream << "step   ";
-  error_stream << "step   ";
-  rel_stream << "step   ";
-  count_stream << "step   ";
-  res_stream << "step   ";
-  allres_stream << "step   ";
-  ressign_stream << "step   ";
-
-  // print out the names of all variable parameters
-  for (unsigned int i=0; i<var_par_count; i++) {
-    mean_stream  << std::setw(13) << variable_params[i].name << " ";
-    error_stream << std::setw(13) << variable_params[i].name << " ";
-    rel_stream << std::setw(13) << variable_params[i].name << " ";
-    count_stream << std::setw(13) << variable_params[i].name << " ";
-    res_stream << std::setw(13) << variable_params[i].name << " ";
-    allres_stream << std::setw(13) << variable_params[i].name << " ";
-    ressign_stream << std::setw(13) << variable_params[i].name << " ";
+  for (auto* out : all_streams) {
+    *out << "step   ";
+    for (unsigned int i=0; i<var_par_count; ++i)
+      *out << std::setw(13) << variable_params[i].name << " ";
   }
 
   res_stream << setw(12) << "|r|/n";
@@ -1008,14 +984,8 @@ void AbstractFitter::print_results(const std::string filename) const
 
   // print out all the temperature values
   for (unsigned int i=0; i<T_count; i++) {
-    mean_stream << std::setw(12) << std::showpoint 
-                << sim_results[sim_count-1][i].T << " ";
-    error_stream << std::setw(12) << std::showpoint 
-                 << sim_results[sim_count-1][i].T << " ";
-    rel_stream << std::setw(12) << std::showpoint 
-               << sim_results[sim_count-1][i].T << " ";
-    count_stream << std::setw(12) << std::showpoint
-                 << sim_results[sim_count-1][i].T << " ";
+    for (auto* out : value_streams)
+      *out << std::setw(12) << std::showpoint << sim_results[sim_count-1][i].T << " ";
     if (i<9) 
       allres_stream << std::setw(11) << "r(" << i+1 << ") ";
     else
@@ -1026,12 +996,8 @@ void AbstractFitter::print_results(const std::string filename) const
       ressign_stream << std::setw(10) << "r(" << i+1 << ") ";
 
   }
-  mean_stream << "\n";
-  error_stream << "\n";
-  rel_stream << "\n";
-  count_stream << "\n";
-  res_stream << "\n";
-  allres_stream << "\n";
+  for (auto* out : {&mean_stream, &error_stream, &rel_stream, &count_stream, &res_stream, &allres_stream})
+    *out << "\n";
   ressign_stream << std::setw(10) << "count\n";
 
   unsigned int least_avg_res_index = 0;
@@ -1039,35 +1005,16 @@ void AbstractFitter::print_results(const std::string filename) const
     char type = param_history[sim].type;
 
     // print step number
-    mean_stream << std::setw(4) << sim << " " << type << " ";
-    error_stream << std::setw(4) << sim << " " << type << " ";
-    rel_stream << std::setw(4) << sim << " " << type << " ";
-    count_stream << std::setw(4) << sim << " " << type << " ";
-    res_stream << std::setw(4) << sim << " " << type << " ";
-    allres_stream << std::setw(4) << sim << " " << type << " ";
-    ressign_stream << std::setw(4) << sim << " " << type << " ";
+    for (auto* out : all_streams) *out << std::setw(4) << sim << " " << type << " ";
 
     print_param = param_history[sim].parms;
     double value;
     for (int i=0; i<var_par_count; i++) {
       value = (double)print_param[0][variable_params[i].name];
-      if (value >=0.0) {
-        mean_stream << "+";
-        error_stream << "+";
-        rel_stream << "+";
-        count_stream << "+";
-        res_stream << "+";
-        allres_stream << "+";
-        ressign_stream << "+";
+      for (auto* out : all_streams) {
+        if (value >= 0.0) *out << "+";
+        *out << setw(8) << scientific << value << " ";
       }
-
-      mean_stream << setw(8) << scientific << value << " ";
-      error_stream << setw(8) << scientific << value << " ";
-      rel_stream << setw(8) << scientific << value << " ";
-      count_stream << setw(8) << scientific << value << " ";
-      res_stream << setw(8) << scientific << value << " ";
-      allres_stream << setw(8) << scientific << value << " ";
-      ressign_stream << setw(8) << scientific << value << " ";
     }
 
     avg_res_size = residuum_history[sim].avg_res_size;
@@ -1084,24 +1031,17 @@ void AbstractFitter::print_results(const std::string filename) const
     int erroneous_count = 0;
 
     for (int i=0; i<T_count; i++) {
-      value = (double)sim_results[sim][i].mean;
-      if (value >=0.0) mean_stream << "+";
-      mean_stream << std::setw(7) << std::scientific << value << " ";
+      signed_value(mean_stream, (double)sim_results[sim][i].mean);
 
-      value = (double)sim_results[sim][i].error;
-      if (value >=0.0) error_stream << "+";
-      error_stream << std::setw(7) << std::scientific << value << " ";
+      signed_value(error_stream, (double)sim_results[sim][i].error);
 
-      value=(double)sim_results[sim][i].error/(double)sim_results[sim][i].mean;
-      if (value >=0.0) rel_stream << "+";
-      rel_stream << std::setw(7) << std::scientific << value << " ";
+      signed_value(rel_stream, (double)sim_results[sim][i].error/(double)sim_results[sim][i].mean);
 
       value = (double)sim_results[sim][i].count;
       count_stream << std::setw(10) << std::scientific << value << " ";
 
       value = (double)residuum_history[sim].res_vals[i].mean;
-      if (value >=0.0) allres_stream << "+";
-      allres_stream << std::setw(7) << std::scientific << value << " ";
+      signed_value(allres_stream, value);
 
       value = residuum_history[sim].res_vals[i].error/value;
       value = std::abs(value);
@@ -1111,10 +1051,7 @@ void AbstractFitter::print_results(const std::string filename) const
 
     }
 
-    mean_stream << "\n";
-    error_stream << "\n";
-    rel_stream << "\n";
-    count_stream << "\n";
+    for (auto* out : value_streams) *out << "\n";
     res_stream << std::setw(12) << residuum_history[sim].res_vals.size() <<"\n";
     allres_stream << "\n";
     ressign_stream << std::setw(12) << erroneous_count << " out of " 
@@ -1122,13 +1059,8 @@ void AbstractFitter::print_results(const std::string filename) const
     erroneous_count = 0;
   }
   std::string fitter_name = get_fitter_name();
-  mean_stream << "\nDescription of the fitter:\n" << fitter_name;
-  error_stream << "\nDescription of the fitter:\n" << fitter_name;
-  rel_stream << "\nDescription of the fitter:\n" << fitter_name;
-  count_stream << "\nDescription of the fitter:\n" << fitter_name;
-  res_stream << "\nDescription of the fitter:\n" << fitter_name;
-  allres_stream << "\nDescription of the fitter:\n" << fitter_name;
-  ressign_stream << "\nDescription of the fitter:\n" << fitter_name;
+  for (auto* out : all_streams)
+    *out << "\nDescription of the fitter:\n" << fitter_name;
 
   char time_measure[256];
   boost::posix_time::time_duration time_used;
@@ -1137,11 +1069,8 @@ void AbstractFitter::print_results(const std::string filename) const
                static_cast<long>(time_used.hours()), static_cast<long>(time_used.minutes()),
                static_cast<long>(time_used.seconds()));
 
-  mean_stream << "\n" << time_measure << std::endl;
-  error_stream << "\n" << time_measure << std::endl;
-  rel_stream << "\n" << time_measure << std::endl;
-  count_stream << "\n" << time_measure << std::endl;
-  
+  for (auto* out : value_streams) *out << "\n" << time_measure << std::endl;
+
   if (sim_count > 0) {
     res_stream << "\n\nLeast residuum size achieved was " << least_avg_res_size
                << " in step " << least_avg_res_index << "." << time_measure;
@@ -1151,13 +1080,7 @@ void AbstractFitter::print_results(const std::string filename) const
     ressign_stream << "\n" << time_measure << std::endl;
   }
 
-  mean_stream.close();
-  error_stream.close();
-  rel_stream.close();
-  count_stream.close();
-  res_stream.close();
-  allres_stream.close();
-  ressign_stream.close();
+
 }
 
 /**
