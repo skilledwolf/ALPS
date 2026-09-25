@@ -180,12 +180,13 @@ namespace alps {
         return implementation()->operator!= (rhs.implementation());
     }
 
-    mcresult & mcresult::operator+() {
+    mcresult mcresult::operator+() const {
         return *this;
     }
-    mcresult & mcresult::operator-() {
-        implementation()->operator-();
-        return *this;
+    mcresult mcresult::operator-() const {
+        mcresult lhs;
+        lhs.ref_cnt_[lhs.impl_ = implementation()->neg()] = 1;
+        return lhs;
     }
 
     void mcresult::construct(Observable const * obs) {

@@ -39,6 +39,21 @@ int main() {
   alps::mcresult s(&scalar), t(&other), v(&vector), w(&other_vector);
   alps::alea::mcdata<double> sd(scalar), td(other);
   alps::alea::mcdata<std::vector<double>> vd(vector), wd(other_vector);
+  // Negating a const result must preserve the original and its aliases.
+  const alps::mcresult scalar_alias(s), vector_alias(v);
+  const auto negative_scalar = -scalar_alias;
+  const auto negative_vector = -vector_alias;
+  close(negative_scalar.mean<double>(), -sd.mean());
+  close(negative_scalar.error<double>(), sd.error());
+  auto negative_means = vd.mean();
+  for (auto& value : negative_means) value = -value;
+  close(negative_vector.mean<std::vector<double>>(), negative_means);
+  close(negative_vector.error<std::vector<double>>(), vd.error());
+  check(s, sd);
+  check(v, vd);
+  check(+scalar_alias, sd);
+  check(+vector_alias, vd);
+  rejects<std::runtime_error>([] { -alps::mcresult(); });
   std::vector<double> raw{2., 4.};
   auto exercise = [&](auto op, auto assign) {
     check(op(s, t), op(sd, td));

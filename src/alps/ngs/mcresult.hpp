@@ -173,8 +173,8 @@ namespace alps {
 
             bool operator==(mcresult const & rhs) const;
             bool operator!=(mcresult const & rhs) const;
-            mcresult & operator+();
-            mcresult & operator-();
+            mcresult operator+() const;
+            mcresult operator-() const;
 
         private:
 

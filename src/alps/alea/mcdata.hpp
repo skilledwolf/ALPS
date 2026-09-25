@@ -666,10 +666,10 @@ namespace alps {
                     return *this;
                 }
 
-                mcdata<T> & operator-() {
+                mcdata<T> operator-() const {
                     mcdata<T> result(*this);
                     result.transform_linear(alps::numeric::unary_minus<T>(), error_, variance_opt_);
-                    return *this;
+                    return result;
                 }
 
                 template <typename X> void subtract_from(X const & x) {
