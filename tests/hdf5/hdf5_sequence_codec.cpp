@@ -361,6 +361,43 @@ void check_buffer_conversion(alps::hdf5::archive& ar) {
     }
 }
 
+void check_write_replacement(alps::hdf5::archive& ar) {
+    for (std::string path : {"/replacement", "/attrs/@replacement"}) {
+        ar.write(path, 42);
+        roundtrip(ar, path, std::vector<double>{1, 2, 3});
+        require(!ar.is_scalar(path) && ar.is_datatype<double>(path));
+        roundtrip(ar, path, std::vector<std::string>{"one", "two"});
+        require(ar.is_datatype<std::string>(path));
+        roundtrip(ar, path, std::vector<std::string>{});
+        require(ar.is_null(path));
+        roundtrip(ar, path, std::vector<std::string>{"after empty"});
+        ar.write(path, std::string("scalar again"));
+        std::string text;
+        ar.read(path, text);
+        require(ar.is_scalar(path) && text == "scalar again");
+    }
+    // Matching layouts must update in place, preserving dataset attributes.
+    int values[] = {1, 2, 3, 4}, patch[] = {8, 9}, restored[4];
+    ar.write("/in-place", values, {2, 2});
+    ar.write("/in-place/@keep", 7);
+    ar.write("/in-place", patch, {2, 2}, {1, 2}, {1, 0});
+    ar.read("/in-place", restored, {2, 2});
+    require(restored[0] == 1 && restored[1] == 2 && restored[2] == 8 && restored[3] == 9);
+    require(ar.is_attribute("/in-place/@keep"));
+    ar.write("/in-place", values, {4});
+    require(ar.extent("/in-place") == std::vector<std::size_t>{4});
+    require(!ar.is_attribute("/in-place/@keep"));
+
+    bool rejected = false;
+    try { ar.write("/bad-rank", values, {2, 2}, {2}, {0, 0}); }
+    catch (alps::hdf5::archive_error const&) { rejected = true; }
+    require(rejected && !ar.is_data("/bad-rank"));
+    rejected = false;
+    try { ar.write("/attrs/@partial", values, {4}, {2}, {0}); }
+    catch (std::logic_error const&) { rejected = true; }
+    require(rejected);
+}
+
 int main() {
     auto file = boost::filesystem::temp_directory_path() / boost::filesystem::unique_path("alps-codec-%%%%-%%%%.h5");
     {
@@ -376,6 +413,7 @@ int main() {
         check_matrices<boost::numeric::ublas::row_major>(ar);
         check_matrices<boost::numeric::ublas::column_major>(ar);
         check_buffer_conversion(ar);
+        check_write_replacement(ar);
         roundtrip(ar, "/bool", std::vector<bool>{true, false, true});
         roundtrip(ar, "/empty-bool", std::vector<bool>{});
         check_scalar<bool>(ar);
