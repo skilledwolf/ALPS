@@ -30,6 +30,7 @@ class QN
     static Vector<std::string> _qn_name;
     static int _qn_fermion;
     static int _qn_mask;
+    int compare(const QN& qn, int mask) const;
 
     typedef alps::half_integer<short> half_integer_type;
 
@@ -214,80 +215,23 @@ std::ostream& operator << (std::ostream& s, const QN& q)
   return s;
 }
 
-inline bool
-QN::operator==(const QN &qn) const
+inline int QN::compare(const QN& qn, int mask) const
 {
-  return equal(qn, QN::get_qn_mask());
-}
-
-inline bool
-QN::operator!=(const QN &qn) const
-{
-  return (!equal(qn, QN::get_qn_mask()));
-}
-
-inline bool
-QN::equal(const QN &qn, int mask) const
-{
-  QN qn1 = *this;
-//  QN qn2 = qn;
-  for(int i = 0; i < QN_LAST; i++){
-    if((mask & (1 << i)) && qn1[i] != qn[i]) return false;
+  for (int i = 0; i < QN_LAST; ++i) {
+    if (!(mask & (1 << i))) continue;
+    auto left = (*this)[i], right = qn[i];
+    if (left != right) return left < right ? -1 : 1;
   }
-  return true;
+  return 0;
 }
 
-#define OP_EXCLUSIVE(op,ap) \
-inline bool \
-op(const QN &qn) const \
-{ \
-  QN qn1 = *this; \
-  QN qn2 = qn; \
-  for(int i = 0; i < QN_LAST; i++){ \
-    if(_qn_mask & (1 << i)){ \
-      alps::half_integer<short>  i1 = qn1[i]; \
-      alps::half_integer<short>  i2 = qn2[i]; \
-      if(i1 == i2)  \
-        continue; \
-      else if(i1 ap i2)  \
-        return true; \
-      else; \
-        return false; \
-    }\
-  } \
-  \
-  return false; \
-} 
-
-OP_EXCLUSIVE(QN::operator>,>)
-OP_EXCLUSIVE(QN::operator<,<)
-#undef OP_EXCLUSIVE
-
-#define OP_INCLUSIVE(op,ap) \
-inline bool \
-op(const QN &qn) const \
-{ \
-  QN qn1 = *this; \
-  QN qn2 = qn; \
-  for(int i = 0; i < QN_LAST; i++){ \
-    if(_qn_mask & (1 << i)){ \
-      alps::half_integer<short>  i1 = qn1[i]; \
-      alps::half_integer<short>  i2 = qn2[i]; \
-      if(i1 == i2)  \
-        continue; \
-      else if(i1 ap i2)  \
-        return true; \
-      else; \
-        return false; \
-    }\
-  } \
-  \
-  return true; \
-} 
-
-OP_INCLUSIVE(QN::operator>=,>=)
-OP_INCLUSIVE(QN::operator<=,<=)
-#undef OP_INCLUSIVE
+inline bool QN::equal(const QN& qn, int mask) const { return compare(qn, mask) == 0; }
+inline bool QN::operator==(const QN& qn) const { return compare(qn, _qn_mask) == 0; }
+inline bool QN::operator!=(const QN& qn) const { return compare(qn, _qn_mask) != 0; }
+inline bool QN::operator<(const QN& qn) const { return compare(qn, _qn_mask) < 0; }
+inline bool QN::operator>(const QN& qn) const { return compare(qn, _qn_mask) > 0; }
+inline bool QN::operator<=(const QN& qn) const { return compare(qn, _qn_mask) <= 0; }
+inline bool QN::operator>=(const QN& qn) const { return compare(qn, _qn_mask) >= 0; }
 
 template <int I, class BinOp> 
 struct meta_op{

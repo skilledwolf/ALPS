@@ -86,9 +86,6 @@ public:
   const basis_type& basis() const { return basis_descriptor_;}
 private:
   template <class J>
-  bool satisfies_quantumnumbers(const std::vector<I>& idx,
-                                const std::pair<std::string,half_integer<J> >&);
-  template <class J>
   void build(const std::vector<std::pair<std::string,half_integer<J> > >&);
 
 
@@ -163,21 +160,17 @@ bool basis_states<I,S,SS>::check_sort() const
   return true;
 }
 
-template <class I, class S, class SS> template <class J>
-bool basis_states<I,S,SS>::satisfies_quantumnumbers(const std::vector<I>& idx, const std::pair<std::string, half_integer<J> >& constraint )
+namespace detail {
+// Enumerate constrained product states in lexicographic order. Consumers own
+// storage and any symmetry projection; pruning and quantum-number checks live here.
+template<class I, class SS, class J, class Accept>
+void for_each_basis_state(basis_states_descriptor<I,SS> const& basis,
+                          std::vector<std::pair<std::string,half_integer<J>>> const& constraints,
+                          Accept accept)
 {
-  half_integer<J> val;
-  for (std::size_t i=0;i<basis_descriptor_.size();++i)
-    val += get_quantumnumber(basis_descriptor_[i][idx[i]],constraint.first,basis_descriptor_.get_site_basis(i));
-  return val==constraint.second;
-}
-
-template <class I, class S, class SS> template<class J>
-void basis_states<I,S,SS>::build(const std::vector<std::pair<std::string,half_integer<J> > >& constraints)
-{
-  if (basis_descriptor_.empty())
+  if (basis.empty())
     return;
-  std::vector<I> idx(basis_descriptor_.size(),0);
+  std::vector<I> idx(basis.size(),0);
   unsigned int last=idx.size()-1;
 
   //
@@ -196,12 +189,12 @@ void basis_states<I,S,SS>::build(const std::vector<std::pair<std::string,half_in
                   half_integer<J>& lmax=local_max[ic][is];
                   half_integer<J>& lmin=local_min[ic][is];
 
-                  lmax=lmin=get_quantumnumber(basis_descriptor_[is][0],constraints[ic].first,basis_descriptor_.get_site_basis(is));
+                  lmax=lmin=get_quantumnumber(basis[is][0],constraints[ic].first,basis.get_site_basis(is));
 
-                  for (std::size_t ib=1;ib<basis_descriptor_[is].size();++ib) {
-                          half_integer<J> val=get_quantumnumber(basis_descriptor_[is][ib],
+                  for (std::size_t ib=1;ib<basis[is].size();++ib) {
+                          half_integer<J> val=get_quantumnumber(basis[is][ib],
                                                                                                         constraints[ic].first,
-                                                                                                        basis_descriptor_.get_site_basis(is));
+                                                                                                        basis.get_site_basis(is));
                           if(lmax<val) lmax=val;
                           if(lmin>val) lmin=val;
                   }
@@ -223,7 +216,7 @@ void basis_states<I,S,SS>::build(const std::vector<std::pair<std::string,half_in
   while (true) {
     unsigned int k=last;
 
-    while ((idx[k]>=(int)(basis_descriptor_[k].size())) && k) {
+    while ((idx[k]>=(int)(basis[k].size())) && k) {
       idx[k]=0;
       if (k==0)
         break;
@@ -235,7 +228,7 @@ void basis_states<I,S,SS>::build(const std::vector<std::pair<std::string,half_in
           //         states can be found.
           //
           bool breaked=false;
-          if(idx[k]<(int)(basis_descriptor_[k].size())){
+          if(idx[k]<(int)(basis[k].size())){
                   // if this condition is true I will quit this loop
                   // principle, let us see now if the new partial state
                   // idx[0,k] is compatible with any of the partial
@@ -243,9 +236,9 @@ void basis_states<I,S,SS>::build(const std::vector<std::pair<std::string,half_in
                   for (std::size_t ic=0;ic<constraints.size();++ic) {
                           half_integer<J> val;
                           for (std::size_t is=0;is<=k;++is)
-                                  val += get_quantumnumber(basis_descriptor_[is][idx[is]],
+                                  val += get_quantumnumber(basis[is][idx[is]],
                                                                                    constraints[ic].first,
-                                                                                   basis_descriptor_.get_site_basis(is));
+                                                                                   basis.get_site_basis(is));
                           if (val+max_partial_qn_value[ic][k]<constraints[ic].second ||
                                   val+min_partial_qn_value[ic][k]>constraints[ic].second) {
                                   //impossible to satisfy constraint
@@ -258,18 +251,30 @@ void basis_states<I,S,SS>::build(const std::vector<std::pair<std::string,half_in
           }
           // end of new part
     }
-    if (k==0 && (idx[k]>=(int)(basis_descriptor_[k].size())))
+    if (k==0 && (idx[k]>=(int)(basis[k].size())))
       break;
 
     bool satisfies=true;
     for (std::size_t i=0;i<constraints.size();++i)
-      satisfies = satisfies && satisfies_quantumnumbers(idx,constraints[i]);
+      if (satisfies) {
+        half_integer<J> val;
+        for (std::size_t site=0; site<basis.size(); ++site)
+          val += get_quantumnumber(basis[site][idx[site]], constraints[i].first,
+                                   basis.get_site_basis(site));
+        satisfies = val == constraints[i].second;
+      }
 
-    if (satisfies) {
-      std::vector<S>::push_back(idx);
-        }
+    if (satisfies) accept(idx);
     ++idx[last];
   }
+}
+} // namespace detail
+
+template <class I, class S, class SS> template<class J>
+void basis_states<I,S,SS>::build(const std::vector<std::pair<std::string,half_integer<J> > >& constraints)
+{
+  detail::for_each_basis_state(basis_descriptor_, constraints,
+    [this](std::vector<I> const& idx) { std::vector<S>::push_back(idx); });
   if (!check_sort()) {
     std::sort(super_type::begin(),super_type::end());
     if (!check_sort())

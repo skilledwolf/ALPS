@@ -30,3 +30,9 @@ foreach(
     OUTPUT ${name})
   set_property(TEST model_${name} PROPERTY LABELS model)
 endforeach()
+
+add_executable(model_basis_enumeration basis_enumeration.cpp)
+target_link_libraries(model_basis_enumeration PRIVATE ALPS::alps)
+add_test(NAME model_basis_enumeration COMMAND model_basis_enumeration
+         "${PROJECT_SOURCE_DIR}/src/alps/resources")
+set_property(TEST model_basis_enumeration PROPERTY LABELS model)

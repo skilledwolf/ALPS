@@ -125,286 +125,131 @@ def obsdict(tol, diff, props):
     return {'difference':diff, 'tolerance':tol, \
             'observable': props['observable'], \
             'filename': props['filename'], \
-            'passed'  : (False, True)[tol - diff >= 0] }
+            'passed'  : bool(tol - diff >= 0) }
             #TODO: Include sector information for epsilon-type measurements
 
-def compareMC( testfiles, reffiles, tol_factor='auto', whatlist=None ):
-    """ Compare results of Monte Carlo Simulations
-
-    returns True if test succeeded"""
-     
-    if tol_factor == 'auto':
-        tol_factor = 2.0
-
-    testdata = pyalps.loadMeasurements( testfiles ) 
-    refdata = pyalps.loadMeasurements( reffiles ) 
-
-    if len( testdata ) != len( refdata ):
-        raise Exception( "Comparison Error: test and reference data differ in number of tasks" )
-
-    # File level
-    compare_list = []
-    for testtask, reftask in zip(testdata, refdata):
-        testfile = testtask[0].props['filename']
-        reffile = reftask[0].props['filename']
-        # Ensure we compare equivalent tasks
-        if len(testtask) != len(reftask):
-            raise Exception( "Comparison Error: test and reference data have \
-                different number of observables\n\
-                (Have both reference and test data been evaluated?)" )
+def _mc_difference(test, ref, vector):
+    tolerance = np.sqrt(test.error**2 + ref.error**2)
+    difference = np.abs(test.mean - ref.mean)
+    return tolerance, difference
 
 
-        # Observables 
-        
-        # Select only observables from whatlist if specified
-        if whatlist:
-            notfoundtest = [ w for w in whatlist if w not in [ o.props['observable'] for o in testtask] ]
-            if notfoundtest:
-                print("The following observables specified for comparison\nhave not been found in test results:")
-                print("File:", testfile)
-                print(notfoundtest)
-                sys.exit(1)
+def _epsilon_difference(test, ref, vector):
+    return max(10e-12, (ref if vector else np.abs(ref)) * 10e-12), np.abs(test - ref)
 
-            notfoundref = [ w for w in whatlist if w not in [ o.props['observable'] for o in reftask] ]
-            if notfoundref:
-                print("The following observables specified for comparison\nhave not been found in reference results:")
-                print("File:", reffile)
-                print(notfoundref)
-                sys.exit(1)
 
-            testtask = [ o for o in testtask if o.props['observable'] in whatlist ]
-            reftask = [ o for o in reftask if o.props['observable'] in whatlist ]
+def _compare_values(test, ref, tol_factor, difference, *, scalar_index=False):
+    if pyalps.size(test) == 1:
+        if scalar_index:
+            test, ref = test[0], ref[0]
+        tol, diff = difference(test, ref, False)
+    else:
+        pairs = [difference(ty, ry, True) for ty, ry in zip(test, ref)]
+        differences = [pair[1] for pair in pairs]
+        diff = max(differences)
+        tol = pairs[differences.index(diff)][0]
+        # Preserve the historical MC vector tolerance (factor squared).
+        if difference is _mc_difference:
+            tol *= tol_factor
+    return tol * tol_factor, diff
 
-        #print("\ncomparing file " + testfile + " against file " + reffile)
-        compare_obs = []
-        for testobs, refobs in zip(testtask, reftask):
 
-            # Scalar observables
-            if pyalps.size(testobs.y[0])==1:
-                testerr = testobs.y[0].error
-                referr = refobs.y[0].error
-                tol = np.sqrt( testerr**2 + referr**2 ) * tol_factor
-                diff = np.abs( testobs.y[0].mean - refobs.y[0].mean )
-                compare_obs.append( obsdict(tol, diff, testobs.props) )
+def _compare_mc(test, ref, factor):
+    return _compare_values(test.y[0], ref.y[0], factor, _mc_difference)
 
-            # Array valued observables
-            else:
-                tol_list = []
-                diff_list = []
-                for (ty,ry) in zip(testobs.y[0],refobs.y[0]):
-                    tol_list.append( np.sqrt(ty.error**2 + ry.error**2)*tol_factor )
-                    diff_list.append( np.abs(ty-ry) )
 
-                maxdiff = max(diff_list)
-                tol = tol_list[ diff_list.index(maxdiff) ] * tol_factor
-                compare_obs.append( obsdict(tol, maxdiff, testobs.props) )
+def _compare_epsilon(test, ref, factor):
+    return _compare_values(test.y[0], ref.y[0], factor, _epsilon_difference)
 
-        compare_list.append(compare_obs)
 
-    #writeTest2stdout(compare_list) # or a file, if that has been specified
-    succeed_list = [ obs['passed'] for obs_list in compare_list for obs in obs_list ]
-    return False not in succeed_list, compare_list
-
-def compareMixed( testfiles, reffiles, tol_factor='auto', whatlist = None ):
-    """ Compare results of QWL, DMRG (ALPS)
-
-    returns True if test succeeded"""
-     
-    if tol_factor == 'auto':
-        tol_factor = 2.0
-
-    testdata = pyalps.loadMeasurements( testfiles ) 
-    refdata = pyalps.loadMeasurements( reffiles ) 
-    if len( testdata ) != len( refdata ):
-        raise Exception( "Comparison Error: test and reference data differ in number of tasks" )
-
-    # This is needed by the dmrg example
+def _compare_mixed(test, ref, factor):
     try:
-       testeig = pyalps.loadEigenstateMeasurements( testfiles )
-       refeig = pyalps.loadEigenstateMeasurements( reffiles )
-       for ttask,rtask,teig,reig in zip(testdata,refdata,testeig,refeig):
-           ttask += teig
-           rtask += reig
+        return _compare_values(test.y, ref.y, factor, _mc_difference, scalar_index=True)
+    except AttributeError:
+        return _compare_values(test.y, ref.y, factor, _epsilon_difference, scalar_index=True)
+
+
+def _select_observables(observables, whatlist, filename, source):
+    if not whatlist:
+        return observables
+    names = [obs.props['observable'] for obs in observables]
+    missing = [name for name in whatlist if name not in names]
+    if missing:
+        print("The following observables specified for comparison\nhave not been found in %s results:" % source)
+        print("File:", filename)
+        print(missing)
+        sys.exit(1)
+    return [obs for obs in observables if obs.props['observable'] in whatlist]
+
+
+def _compare_data(testdata, refdata, factor, whatlist, compare, *, sectors=False):
+    if not sectors and len(testdata) != len(refdata):
+        raise Exception("Comparison Error: test and reference data differ in number of tasks")
+    comparisons = []
+    for testtask, reftask in zip(testdata, refdata):
+        if sectors:
+            try:
+                testfile = testtask[0][0].props['filename']
+                reffile = reftask[0][0].props['filename']
+            except AttributeError:
+                testtask, reftask = [testtask], [reftask]
+                testfile = testtask[0][0].props['filename']
+                reffile = reftask[0][0].props['filename']
+        else:
+            testfile = testtask[0].props['filename']
+            reffile = reftask[0].props['filename']
+        if len(testtask) != len(reftask):
+            unit = "sectors" if sectors else "observables"
+            raise Exception("Comparison Error: test and reference data have different number of " + unit)
+        if not sectors:
+            testtask, reftask = [testtask], [reftask]
+        results = []
+        for testsector, refsector in zip(testtask, reftask):
+            testsector = _select_observables(testsector, whatlist, testfile, "test")
+            refsector = _select_observables(refsector, whatlist, reffile, "reference")
+            for testobs, refobs in zip(testsector, refsector):
+                tol, diff = compare(testobs, refobs, factor)
+                results.append(obsdict(tol, diff, testobs.props))
+        comparisons.append(results)
+    return all(obs['passed'] for task in comparisons for obs in task), comparisons
+
+
+def compareMC(testfiles, reffiles, tol_factor='auto', whatlist=None):
+    """Compare Monte Carlo results; return success and per-task comparisons."""
+    return _compare_data(pyalps.loadMeasurements(testfiles), pyalps.loadMeasurements(reffiles),
+                         2.0 if tol_factor == 'auto' else tol_factor, whatlist, _compare_mc)
+
+
+def compareMixed(testfiles, reffiles, tol_factor='auto', whatlist=None):
+    """Compare mixed Monte Carlo and deterministic results (QWL, DMRG)."""
+    testdata = pyalps.loadMeasurements(testfiles)
+    refdata = pyalps.loadMeasurements(reffiles)
+    if len(testdata) != len(refdata):
+        raise Exception("Comparison Error: test and reference data differ in number of tasks")
+    try:
+        testeig = pyalps.loadEigenstateMeasurements(testfiles)
+        refeig = pyalps.loadEigenstateMeasurements(reffiles)
+        for test, ref, teig, reig in zip(testdata, refdata, testeig, refeig):
+            test += teig
+            ref += reig
     except RuntimeError:
         pass
+    return _compare_data(testdata, refdata, 2.0 if tol_factor == 'auto' else tol_factor,
+                         whatlist, _compare_mixed)
 
-    # File level
-    compare_list = []
-    for testtask, reftask in zip(testdata, refdata):
-        testfile = testtask[0].props['filename']
-        reffile = reftask[0].props['filename']
 
-        # Ensure we compare equivalent tasks
-        if len(testtask) != len(reftask):
-            raise Exception( "Comparison Error: test and reference data have \
-                different number of observables\n")
-
-        # Observables 
-        
-        # Select only observables from whatlist if specified
-        if whatlist:
-            notfoundtest = [ w for w in whatlist if w not in [ o.props['observable'] for o in testtask] ]
-            if notfoundtest:
-                print("The following observables specified for comparison\nhave not been found in test results:")
-                print("File:", testfile)
-                print(notfoundtest)
-                sys.exit(1)
-
-            notfoundref = [ w for w in whatlist if w not in [ o.props['observable'] for o in reftask] ]
-            if notfoundref:
-                print("The following observables specified for comparison\nhave not been found in reference results:")
-                print("File:", reffile)
-                print(notfoundref)
-                sys.exit(1)
-
-            testtask = [ o for o in testtask if o.props['observable'] in whatlist ]
-            reftask = [ o for o in reftask if o.props['observable'] in whatlist ]
-
-        #print("\ncomparing file " + testfile + " against file " + reffile)
-        compare_obs = []
-        for testobs, refobs in zip(testtask, reftask):
-
-            # MC if it succeeds
-            try:
-                # Scalar observables
-                if pyalps.size(testobs.y)==1:
-                    testerr = testobs.y[0].error
-                    referr = refobs.y[0].error
-                    tol = np.sqrt( testerr**2 + referr**2 ) * tol_factor
-                    diff = np.abs( testobs.y[0].mean - refobs.y[0].mean )
-                    compare_obs.append( obsdict(tol, diff, testobs.props) )
-
-                # Array valued observables
-                else:
-                    tol_list = []
-                    diff_list = []
-                    for (ty,ry) in zip(testobs.y,refobs.y):
-                        tol_list.append( np.sqrt(ty.error**2 + ry.error**2)*tol_factor )
-                        diff_list.append( np.abs(ty-ry) )
-
-                    maxdiff = max(diff_list)
-                    tol = tol_list[ diff_list.index(maxdiff) ] * tol_factor
-                    compare_obs.append( obsdict(tol, maxdiff, testobs.props) )
-
-            # Epsilon otherwise
-            except AttributeError:
-                # Scalar observables
-                if pyalps.size(testobs.y)==1:
-                    tol = max(10e-12, np.abs(refobs.y[0])*10e-12) * tol_factor
-                    diff = np.abs( testobs.y[0] - refobs.y[0] )
-                    compare_obs.append( obsdict(tol, diff, testobs.props) )
-
-                # Array valued observables
-                else:
-                    tol_list = []
-                    diff_list = []
-                    for (ty,ry) in zip(testobs.y,refobs.y):
-                        tol_list.append( max(10e-12, ry*10e-12) )
-                        diff_list.append( np.abs( ty - ry ) )
-
-                    maxdiff = max(diff_list)
-                    tol = tol_list[ diff_list.index(maxdiff) ] * tol_factor
-                    compare_obs.append( obsdict(tol, maxdiff, testobs.props) )
-
-        compare_list.append(compare_obs)
-
-    #writeTest2stdout(compare_list) # or a file, if that has been specified
-    succeed_list = [ obs['passed'] for obs_list in compare_list for obs in obs_list ]
-    return False not in succeed_list, compare_list
-
-def compareEpsilon( testfiles, reffiles, tol_factor='auto', whatlist = None ):
-    """ Compare results from diagonalization applications 
-    
-    returns True if test succeeded"""
-
-    if tol_factor == 'auto':
-        tol_factor = 1.0
-
-    testdata = pyalps.loadEigenstateMeasurements(testfiles) 
-    refdata = pyalps.loadEigenstateMeasurements(reffiles) 
+def compareEpsilon(testfiles, reffiles, tol_factor='auto', whatlist=None):
+    """Compare diagonalization results; return success and per-task comparisons."""
+    testdata = pyalps.loadEigenstateMeasurements(testfiles)
+    refdata = pyalps.loadEigenstateMeasurements(reffiles)
     if not testdata or not refdata:
         if not testdata:
             print("loadEigenstateMeasurements of file %s returned an empty list" % testfiles)
-
         if not refdata:
             print("loadEigenstateMeasurements of file %s returned an empty list" % reffiles)
-
         return
-
-    # File level
-    compare_list = []
-    for testtask, reftask in zip(testdata, refdata):
-        try:
-            # ALPS applications
-            testfile = testtask[0][0].props['filename']
-            reffile = reftask[0][0].props['filename']
-
-        except AttributeError:
-            # workaround for MAQUIS DMRG which doesn't have sectors
-            testtask = [testtask]
-            reftask = [reftask]
-            testfile = testtask[0][0].props['filename']
-            reffile = reftask[0][0].props['filename']
-
-        # Ensure we compare equivalent tasks
-        if len(testtask) != len(reftask):
-            raise Exception( "Comparison Error: test and reference data have \
-                              different number of sectors\n\
-                              (Have both reference and test data been pyalps.evaluate'd?)" )
-
-        # Sector level
-        #print("\ncomparing file " + testfile + " against file " + reffile)
-        compare_sector = []
-        for testsector, refsector in zip(testtask, reftask):
-
-            # Observables
-        
-            # Select only observables from whatlist if specified
-            if whatlist:
-                notfoundtest = [ w for w in whatlist if w not in [ o.props['observable'] for o in testsector] ]
-                if notfoundtest:
-                    print("The following observables specified for comparison\n\
-                           have not been found in test results:")
-                    print("File:", testfile)
-                    print(notfoundtest)
-                    sys.exit(1)
-
-                notfoundref = [ w for w in whatlist if w not in [ o.props['observable'] for o in refsector] ]
-                if notfoundref:
-                    print("The following observables specified for comparison\n\
-                           have not been found in reference results:")
-                    print("File:", reffile)
-                    print(notfoundref)
-                    sys.exit(1)
-
-                testsector = [ o for o in testsector if o.props['observable'] in whatlist ]
-                refsector = [ o for o in refsector if o.props['observable'] in whatlist ]
-
-            for testobs, refobs in zip(testsector, refsector):
-
-                # Scalar observables
-                if pyalps.size(testobs.y[0])==1:
-                    tol = max(10e-12, np.abs(refobs.y[0])*10e-12) * tol_factor
-                    diff = np.abs( testobs.y[0] - refobs.y[0] )
-                    compare_sector.append( obsdict(tol, diff, testobs.props) )
-
-                # Array valued observables
-                else:
-                    tol_list = []
-                    diff_list = []
-                    for (ty,ry) in zip(testobs.y[0],refobs.y[0]):
-                        tol_list.append( max(10e-12, ry*10e-12) )
-                        diff_list.append( np.abs( ty - ry ) )
-
-                    maxdiff = max(diff_list)
-                    tol = tol_list[ diff_list.index(maxdiff) ] * tol_factor
-                    compare_sector.append( obsdict(tol, maxdiff, testobs.props) )
-
-        compare_list.append(compare_sector)
-
-    #writeTest2stdout(compare_list) # or a file, if that has been specified
-    succeed_list = [ obs['passed'] for obs_list in compare_list for obs in obs_list ]
-    return False not in succeed_list, compare_list
+    return _compare_data(testdata, refdata, 1.0 if tol_factor == 'auto' else tol_factor,
+                         whatlist, _compare_epsilon, sectors=True)
 
 #*******************************************************************************
 

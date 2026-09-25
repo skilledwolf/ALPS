@@ -13,6 +13,7 @@
 #define __DMTK_STATE_H__
 
 #include <iosfwd>
+#include <array>
 #include <vector>
 #include "enums.h"
 #include "range.h"
@@ -47,6 +48,7 @@ class StateSpace
     SubSpace _s3;
     SubSpace _s4;
     int _start;  /* negative means error */
+    int compare(const StateSpace& space) const;
 
     inline const SubSpace& ref(size_t i) const
       { 
@@ -96,65 +98,21 @@ class StateSpace
     friend class VectorState;
 }; 
 
-inline bool
-StateSpace::operator==(const StateSpace &s) const
+inline int StateSpace::compare(const StateSpace& space) const
 {
-  for(int i = 1; i < 5; i++)
-    if(ref(i).qn() != s.ref(i).qn()) return false;
-  return true;
+  for (int i = 1; i <= 4; ++i) {
+    auto left = ref(i).qn(), right = space.ref(i).qn();
+    if (left != right) return left < right ? -1 : 1;
+  }
+  return 0;
 }
 
-inline bool
-StateSpace::operator!=(const StateSpace &s) const
-{
-  for(int i = 1; i < 5; i++)
-    if(ref(i).qn() != s.ref(i).qn()) return true;
-  return false;
-}
-
-#define OP_EXCLUSIVE(op,ap) \
-inline bool \
-op(const StateSpace &s) const \
-{ \
-  for(int i = 1; i < 5; i++){ \
-    QN i1 = ref(i).qn(); \
-    QN i2 = s.ref(i).qn(); \
-    if(i1 == i2)  \
-      continue; \
-    else if(i1 ap i2)  \
-      return true; \
-    else; \
-      return false; \
-  } \
-  \
-  return false; \
-}
-
-OP_EXCLUSIVE(StateSpace::operator>,>)
-OP_EXCLUSIVE(StateSpace::operator<,<)
-#undef OP_EXCLUSIVE
-
-#define OP_INCLUSIVE(op,ap) \
-inline bool \
-op(const StateSpace &s) const \
-{ \
-  for(int i = 1; i < 5; i++){ \
-    QN i1 = ref(i).qn(); \
-    QN i2 = s.ref(i).qn(); \
-    if(i1 == i2)  \
-      continue; \
-    else if(i1 ap i2)  \
-      return true; \
-    else; \
-      return false; \
-  } \
-  \
-  return true; \
-}
-
-OP_INCLUSIVE(StateSpace::operator>=,>=)
-OP_INCLUSIVE(StateSpace::operator<=,<=)
-#undef OP_INCLUSIVE
+inline bool StateSpace::operator==(const StateSpace& s) const { return compare(s) == 0; }
+inline bool StateSpace::operator!=(const StateSpace& s) const { return compare(s) != 0; }
+inline bool StateSpace::operator<(const StateSpace& s) const { return compare(s) < 0; }
+inline bool StateSpace::operator>(const StateSpace& s) const { return compare(s) > 0; }
+inline bool StateSpace::operator<=(const StateSpace& s) const { return compare(s) <= 0; }
+inline bool StateSpace::operator>=(const StateSpace& s) const { return compare(s) >= 0; }
 
 template <class T>
 class VectorState: public Vector<T>
@@ -169,10 +127,60 @@ class VectorState: public Vector<T>
     std::vector<StateSpace> qn_space;
     Vector<size_t> index; // for condensed vectors
 
+    using slices_type = std::array<std::slice, 2>;
+
+    static std::array<size_t, 4> strides(std::array<size_t, 4> dimensions) {
+      return {dimensions[1]*dimensions[2]*dimensions[3],
+              dimensions[2]*dimensions[3], dimensions[3], 1};
+    }
+
+    slices_type range_slices(std::array<Range, 4> const& ranges,
+                             int first, int second = -1) const {
+      if(qn_constrained != 0)
+        cerr << "*** WARNING: Constrained StateVector. This operation may not work properly\n";
+      auto stride = strides({_b1.dim(), _b2.dim(), _b3.dim(), _b4.dim()});
+      size_t start[2] = {0, 0};
+      for (int axis = 0; axis < 4; ++axis)
+        start[second >= 0 && axis >= second] += ranges[axis].start() * stride[axis];
+      slices_type result{std::slice(start[0], ranges[first].size(),
+                                    ranges[first].stride()*stride[first]), std::slice()};
+      // Keep the two starts separate: callers also inspect the view's layout.
+      if (second >= 0)
+        result[1] = std::slice(start[1], ranges[second].size(),
+                              ranges[second].stride()*stride[second]);
+      return result;
+    }
+
+    slices_type quantum_slices(std::array<QN, 4> qns,
+                               std::array<size_t, 4> const& indices,
+                               int first, int second = -1) const {
+      std::array<PackedBasis const*, 4> bases{&_b1, &_b2, &_b3, &_b4};
+      if (!qn_constrained) {
+        std::array<Range, 4> ranges{Range(0,0), Range(0,0), Range(0,0), Range(0,0)};
+        for (int axis = 0; axis < 4; ++axis)
+          ranges[axis] = (axis == first || axis == second)
+            ? Range((*bases[axis])(qns[axis])) : Range(indices[axis], indices[axis]);
+        return range_slices(ranges, first, second);
+      }
+      for (int axis = 0; axis < 4; ++axis)
+        if (axis != first && axis != second)
+          qns[axis] = (*bases[axis])(indices[axis]).qn();
+      StateSpace space = get_qn_space(qns[0], qns[1], qns[2], qns[3]);
+      if (space.start() == -1) cout << "ERROR: VectorState\n";
+      auto stride = strides({space[1].dim(), space[2].dim(), space[3].dim(), space[4].dim()});
+      size_t start = space.start();
+      for (int axis = 0; axis < 4; ++axis)
+        if (axis != first && axis != second)
+          start += (indices[axis] - space[axis+1].begin()) * stride[axis];
+      slices_type result{std::slice(start, space[first+1].dim(), stride[first]), std::slice()};
+      if (second >= 0)
+        result[1] = std::slice(0, space[second+1].dim(), stride[second]);
+      return result;
+    }
+
     void resize_constrained();
     void copy_constrained(const Vector<T>& v);
-    T& ref_constrained(size_t i1, size_t i2, size_t i3, size_t i4);
-    T ref_constrained(size_t i1, size_t i2, size_t i3, size_t i4) const;
+    size_t coordinate_index(std::array<size_t, 4> indices) const;
 
     VectorState condense1(int mask) const;
     VectorState decondense1(int mask, const VectorState<T> &orig) const;
@@ -302,30 +310,10 @@ class VectorState: public Vector<T>
 
 
     T& operator()(size_t i1, size_t i2, size_t i3, size_t i4)
-      {
-        if(qn_constrained == 0){
-          size_t d1 = _b1.dim();
-          size_t d2 = _b2.dim();
-          size_t d3 = _b3.dim();
-          size_t d4 = _b4.dim();
-
-          return Vector<T>::operator[](i1*d2*d3*d4+i2*d3*d4+i3*d4+i4);
-        }else
-          return ref_constrained(i1,i2,i3,i4);
-      }
+      { return Vector<T>::operator[](coordinate_index({i1,i2,i3,i4})); }
 
     T operator()(size_t i1, size_t i2, size_t i3, size_t i4) const
-      {
-        if(qn_constrained == 0){
-          size_t d1 = _b1.dim();
-          size_t d2 = _b2.dim();
-          size_t d3 = _b3.dim();
-          size_t d4 = _b4.dim();
-
-          return Vector<T>::operator[](i1*d2*d3*d4+i2*d3*d4+i3*d4+i4);
-        }else
-          return ref_constrained(i1,i2,i3,i4);
-      }
+      { return Vector<T>::operator[](coordinate_index({i1,i2,i3,i4})); }
 
     T& operator()(size_t i1, size_t i2, size_t i3, size_t i4, int mask)
       {
@@ -551,55 +539,23 @@ VectorState<T>::copy_constrained(const Vector<T>& v)
 }
 
 template<class T>
-T&
-VectorState<T>::ref_constrained(size_t i1, size_t i2, size_t i3, size_t i4)
+size_t VectorState<T>::coordinate_index(std::array<size_t, 4> indices) const
 {
-/*
-  QN qn1 = _b1(i1).qn();
-  QN qn2 = _b2(i2).qn();
-  QN qn3 = _b3(i3).qn();
-  QN qn4 = _b4(i4).qn();
-*/
-  StateSpace s = get_qn_space(i1,i2,i3,i4);
-  const SubSpace &s1 = s[1];
-  const SubSpace &s2 = s[2];
-  const SubSpace &s3 = s[3];
-  const SubSpace &s4 = s[4];
-  size_t d1 = s1.dim();
-  size_t d2 = s2.dim();
-  size_t d3 = s3.dim();
-  size_t d4 = s4.dim();
-  size_t index = (i1-s1.begin())*d2*d3*d4+
-                 (i2-s2.begin())*d3*d4+
-                 (i3-s3.begin())*d4+
-                 (i4-s4.begin());
-  return Vector<T>::operator[](s.start() + index);
-}
-
-template<class T>
-T
-VectorState<T>::ref_constrained(size_t i1, size_t i2, size_t i3, size_t i4)const
-{
-/*
-  QN qn1 = _b1(i1).qn();
-  QN qn2 = _b2(i2).qn();
-  QN qn3 = _b3(i3).qn();
-  QN qn4 = _b4(i4).qn();
-*/
-  StateSpace s = get_qn_space(i1,i2,i3,i4);
-  const SubSpace &s1 = s[1];
-  const SubSpace &s2 = s[2];
-  const SubSpace &s3 = s[3];
-  const SubSpace &s4 = s[4];
-  size_t d1 = s1.dim();
-  size_t d2 = s2.dim();
-  size_t d3 = s3.dim();
-  size_t d4 = s4.dim();
-  size_t index = (i1-s1.begin())*d2*d3*d4+
-                 (i2-s2.begin())*d3*d4+
-                 (i3-s3.begin())*d4+
-                 (i4-s4.begin());
-  return Vector<T>::operator[](s.start() + index);
+  std::array<size_t, 4> dimensions;
+  size_t start = 0;
+  if (qn_constrained) {
+    auto space = get_qn_space(indices[0], indices[1], indices[2], indices[3]);
+    start = space.start();
+    for (int axis = 0; axis < 4; ++axis) {
+      dimensions[axis] = space[axis+1].dim();
+      indices[axis] -= space[axis+1].begin();
+    }
+  } else {
+    dimensions = {_b1.dim(), _b2.dim(), _b3.dim(), _b4.dim()};
+  }
+  auto stride = strides(dimensions);
+  for (int axis = 0; axis < 4; ++axis) start += indices[axis] * stride[axis];
+  return start;
 }
 
 /////////////////////////////////////////////////////////////////////////
@@ -607,96 +563,48 @@ template<class T>
 gslice_iter<T> 
 VectorState<T>::operator()(size_t i1, size_t i2, Range r3, Range r4)
 {
-  size_t d1 = _b1.dim();
-  size_t d2 = _b2.dim();
-  size_t d3 = _b3.dim();
-  size_t d4 = _b4.dim();
-
-  if(qn_constrained != 0) cerr << "*** WARNING: Constrained StateVector. This operation may not work properly\n";
-
-  slice s3(i1*d2*d3*d4+i2*d3*d4+r3.start()*d4,r3.size(),r3.stride()*d4);
-  slice s4(r4.start(),r4.size(),r4.stride());
-  return gslice_iter<T>(this, s3, s4);
+  auto slices = range_slices({Range(i1, i1), Range(i2, i2), r3, r4}, 2, 3);
+  return gslice_iter<T>(this, slices[0], slices[1]);
 }
 
 template<class T>
 gslice_iter<T> 
 VectorState<T>::operator()(size_t i1, Range r2, Range r3, size_t i4)
 {
-  size_t d1 = _b1.dim();
-  size_t d2 = _b2.dim();
-  size_t d3 = _b3.dim();
-  size_t d4 = _b4.dim();
-
-  if(qn_constrained != 0) cerr << "*** WARNING: Constrained StateVector. This operation may not work properly\n";
-
-  slice s2(i1*d2*d3*d4+r2.start()*d3*d4,r2.size(),r2.stride()*d3*d4);
-  slice s3(r3.start()*d4+i4,r3.size(),r3.stride()*d4);
-  return gslice_iter<T>(this, s2, s3);
+  auto slices = range_slices({Range(i1, i1), r2, r3, Range(i4, i4)}, 1, 2);
+  return gslice_iter<T>(this, slices[0], slices[1]);
 }
 
 template<class T>
 gslice_iter<T> 
 VectorState<T>::operator()(Range r1, Range r2, size_t i3, size_t i4)
 {
-  size_t d1 = _b1.dim();
-  size_t d2 = _b2.dim();
-  size_t d3 = _b3.dim();
-  size_t d4 = _b4.dim();
-
-  if(qn_constrained != 0) cerr << "*** WARNING: Constrained StateVector. This operation may not work properly\n";
-
-  slice s1(r1.start()*d2*d3*d4,r1.size(),r1.stride()*d2*d3*d4);
-  slice s2(r2.start()*d3*d4+i3*d4+i4,r2.size(),r2.stride()*d3*d4);
-  return gslice_iter<T>(this, s1, s2);
+  auto slices = range_slices({r1, r2, Range(i3, i3), Range(i4, i4)}, 0, 1);
+  return gslice_iter<T>(this, slices[0], slices[1]);
 }
 
 template<class T>
 gslice_iter<T> 
 VectorState<T>::operator()(size_t i1, Range r2, size_t i3, Range r4)
 {
-  size_t d1 = _b1.dim();
-  size_t d2 = _b2.dim();
-  size_t d3 = _b3.dim();
-  size_t d4 = _b4.dim();
-
-  if(qn_constrained != 0) cerr << "*** WARNING: Constrained StateVector. This operation may not work properly\n";
-
-  slice s2(i1*d2*d3*d4+r2.start()*d3*d4+i3*d4,r2.size(),r2.stride()*d3*d4);
-  slice s4(r4.start(),r4.size(),r4.stride());
-  return gslice_iter<T>(this, s2, s4);
+  auto slices = range_slices({Range(i1, i1), r2, Range(i3, i3), r4}, 1, 3);
+  return gslice_iter<T>(this, slices[0], slices[1]);
 }
 
 template<class T>
 gslice_iter<T> 
 VectorState<T>::operator()(Range r1, size_t i2, size_t i3, Range r4)
 {
-  size_t d1 = _b1.dim();
-  size_t d2 = _b2.dim();
-  size_t d3 = _b3.dim();
-  size_t d4 = _b4.dim();
-
-  if(qn_constrained != 0) cerr << "*** WARNING: Constrained StateVector. This operation may not work properly\n";
-
-  slice s1(r1.start()*d2*d3*d4+i2*d3*d4+i3*d4,r1.size(),r1.stride()*d2*d3*d4);
-  slice s4(r4.start(),r4.size(),r4.stride());
-  return gslice_iter<T>(this, s1, s4);
+  auto slices = range_slices({r1, Range(i2, i2), Range(i3, i3), r4}, 0, 3);
+  return gslice_iter<T>(this, slices[0], slices[1]);
 }
 
 template<class T>
 gslice_iter<T> 
 VectorState<T>::operator()(Range r1, size_t i2, Range r3, size_t i4)
 {
-  size_t d1 = _b1.dim();
-  size_t d2 = _b2.dim();
-  size_t d3 = _b3.dim();
-  size_t d4 = _b4.dim();
-
-  if(qn_constrained != 0) cerr << "*** WARNING: Constrained StateVector. This operation may not work properly\n";
-
-  slice s1(r1.start()*d2*d3*d4+i2*d3*d4,r1.size(),r1.stride()*d2*d3*d4);
-  slice s3(r3.start()*d4+i4,r3.size(),r3.stride()*d4);
-  return gslice_iter<T>(this, s1, s3);
+  auto slices = range_slices({r1, Range(i2, i2), r3, Range(i4, i4)}, 0, 2);
+  return gslice_iter<T>(this, slices[0], slices[1]);
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -705,96 +613,48 @@ template<class T>
 cgslice_iter<T> 
 VectorState<T>::operator()(size_t i1, size_t i2, Range r3, Range r4) const
 {
-  size_t d1 = _b1.dim();
-  size_t d2 = _b2.dim();
-  size_t d3 = _b3.dim();
-  size_t d4 = _b4.dim();
-
-  if(qn_constrained != 0) cerr << "*** WARNING: Constrained StateVector. This operation may not work properly\n";
-
-  slice s3(i1*d2*d3*d4+i2*d3*d4+r3.start()*d4,r3.size(),r3.stride()*d4);
-  slice s4(r4.start(),r4.size(),r4.stride());
-  return cgslice_iter<T>(this, s3, s4);
+  auto slices = range_slices({Range(i1, i1), Range(i2, i2), r3, r4}, 2, 3);
+  return cgslice_iter<T>(this, slices[0], slices[1]);
 }
 
 template<class T>
 cgslice_iter<T> 
 VectorState<T>::operator()(size_t i1, Range r2, Range r3, size_t i4) const
 {
-  size_t d1 = _b1.dim();
-  size_t d2 = _b2.dim();
-  size_t d3 = _b3.dim();
-  size_t d4 = _b4.dim();
-
-  if(qn_constrained != 0) cerr << "*** WARNING: Constrained StateVector. This operation may not work properly\n";
-
-  slice s2(i1*d2*d3*d4+r2.start()*d3*d4,r2.size(),r2.stride()*d3*d4);
-  slice s3(r3.start()*d4+i4,r3.size(),r3.stride()*d4);
-  return cgslice_iter<T>(this, s2, s3);
+  auto slices = range_slices({Range(i1, i1), r2, r3, Range(i4, i4)}, 1, 2);
+  return cgslice_iter<T>(this, slices[0], slices[1]);
 }
 
 template<class T>
 cgslice_iter<T> 
 VectorState<T>::operator()(size_t i1, Range r2, size_t i3, Range r4) const
 {
-  size_t d1 = _b1.dim();
-  size_t d2 = _b2.dim();
-  size_t d3 = _b3.dim();
-  size_t d4 = _b4.dim();
-
-  if(qn_constrained != 0) cerr << "*** WARNING: Constrained StateVector. This operation may not work properly\n";
-
-  slice s2(i1*d2*d3*d4+r2.start()*d3*d4+i3*d4,r2.size(),r2.stride()*d3*d4);
-  slice s4(r4.start(),r4.size(),r4.stride());
-  return cgslice_iter<T>(this, s2, s4);
+  auto slices = range_slices({Range(i1, i1), r2, Range(i3, i3), r4}, 1, 3);
+  return cgslice_iter<T>(this, slices[0], slices[1]);
 }
 
 template<class T>
 cgslice_iter<T> 
 VectorState<T>::operator()(Range r1, Range r2, size_t i3, size_t i4) const
 {
-  size_t d1 = _b1.dim();
-  size_t d2 = _b2.dim();
-  size_t d3 = _b3.dim();
-  size_t d4 = _b4.dim();
-
-  if(qn_constrained != 0) cerr << "*** WARNING: Constrained StateVector. This operation may not work properly\n";
-
-  slice s1(r1.start()*d2*d3*d4,r1.size(),r1.stride()*d2*d3*d4);
-  slice s2(r2.start()*d3*d4+i3*d4+i4,r2.size(),r2.stride()*d3*d4);
-  return cgslice_iter<T>(this, s1, s2);
+  auto slices = range_slices({r1, r2, Range(i3, i3), Range(i4, i4)}, 0, 1);
+  return cgslice_iter<T>(this, slices[0], slices[1]);
 }
 
 template<class T>
 cgslice_iter<T> 
 VectorState<T>::operator()(Range r1, size_t i2, size_t i3, Range r4) const
 {
-  size_t d1 = _b1.dim();
-  size_t d2 = _b2.dim();
-  size_t d3 = _b3.dim();
-  size_t d4 = _b4.dim();
-
-  if(qn_constrained != 0) cerr << "*** WARNING: Constrained StateVector. This operation may not work properly\n";
-
-  slice s1(r1.start()*d2*d3*d4+i2*d3*d4+i3*d4,r1.size(),r1.stride()*d2*d3*d4);
-  slice s4(r4.start(),r4.size(),r4.stride());
-  return cgslice_iter<T>(this, s1, s4);
+  auto slices = range_slices({r1, Range(i2, i2), Range(i3, i3), r4}, 0, 3);
+  return cgslice_iter<T>(this, slices[0], slices[1]);
 }
 
 template<class T>
 cgslice_iter<T> 
 VectorState<T>::operator()(Range r1, size_t i2, Range r3, size_t i4) const
 {
-  size_t d1 = _b1.dim();
-  size_t d2 = _b2.dim();
-  size_t d3 = _b3.dim();
-  size_t d4 = _b4.dim();
-
-  if(qn_constrained != 0) cerr << "*** WARNING: Constrained StateVector. This operation may not work properly\n";
-
-  slice s1(r1.start()*d2*d3*d4+i2*d3*d4,r1.size(),r1.stride()*d2*d3*d4);
-  slice s3(r3.start()*d4+i4,r3.size(),r3.stride()*d4);
-  return cgslice_iter<T>(this, s1, s3);
+  auto slices = range_slices({r1, Range(i2, i2), r3, Range(i4, i4)}, 0, 2);
+  return cgslice_iter<T>(this, slices[0], slices[1]);
 }
 
 ////////////////////////////////////////////////////////
@@ -802,120 +662,64 @@ template<class T>
 slice_iter<T> 
 VectorState<T>::operator()(size_t i1, size_t i2, size_t i3, Range r4)
 {
-  size_t d1 = _b1.dim();
-  size_t d2 = _b2.dim();
-  size_t d3 = _b3.dim();
-  size_t d4 = _b4.dim();
-
-  if(qn_constrained != 0) cerr << "*** WARNING: Constrained StateVector. This operation may not work properly\n";
-
-  slice s4(i1*d2*d3*d4+i2*d3*d4+i3*d4+r4.start(),r4.size(),r4.stride());
-  return slice_iter<T>(this, s4);
+  auto slices = range_slices({Range(i1, i1), Range(i2, i2), Range(i3, i3), r4}, 3);
+  return slice_iter<T>(this, slices[0]);
 }
 
 template<class T>
 slice_iter<T> 
 VectorState<T>::operator()(size_t i1, size_t i2, Range r3, size_t i4)
 {
-  size_t d1 = _b1.dim();
-  size_t d2 = _b2.dim();
-  size_t d3 = _b3.dim();
-  size_t d4 = _b4.dim();
-
-  if(qn_constrained != 0) cerr << "*** WARNING: Constrained StateVector. This operation may not work properly\n";
-
-  slice s3(i1*d2*d3*d4+i2*d3*d4+r3.start()*d4+i4,r3.size(),r3.stride()*d4);
-  return slice_iter<T>(this, s3);
+  auto slices = range_slices({Range(i1, i1), Range(i2, i2), r3, Range(i4, i4)}, 2);
+  return slice_iter<T>(this, slices[0]);
 }
 
 template<class T>
 slice_iter<T> 
 VectorState<T>::operator()(size_t i1, Range r2, size_t i3, size_t i4)
 {
-  size_t d1 = _b1.dim();
-  size_t d2 = _b2.dim();
-  size_t d3 = _b3.dim();
-  size_t d4 = _b4.dim();
-
-  if(qn_constrained != 0) cerr << "*** WARNING: Constrained StateVector. This operation may not work properly\n";
-
-  slice s2(i1*d2*d3*d4+r2.start()*d3*d4+i3*d4+i4,r2.size(),r2.stride()*d3*d4);
-  return slice_iter<T>(this, s2);
+  auto slices = range_slices({Range(i1, i1), r2, Range(i3, i3), Range(i4, i4)}, 1);
+  return slice_iter<T>(this, slices[0]);
 }
 
 template<class T>
 slice_iter<T> 
 VectorState<T>::operator()(Range r1, size_t i2, size_t i3, size_t i4)
 {
-  size_t d1 = _b1.dim();
-  size_t d2 = _b2.dim();
-  size_t d3 = _b3.dim();
-  size_t d4 = _b4.dim();
-
-  if(qn_constrained != 0) cerr << "*** WARNING: Constrained StateVector. This operation may not work properly\n";
-
-  slice s1(r1.start()*d2*d3*d4+i2*d3*d4+i3*d4+i4,r1.size(),r1.stride()*d2*d3*d4);
-  return slice_iter<T>(this, s1);
+  auto slices = range_slices({r1, Range(i2, i2), Range(i3, i3), Range(i4, i4)}, 0);
+  return slice_iter<T>(this, slices[0]);
 }
 
 template<class T>
 cslice_iter<T> 
 VectorState<T>::operator()(size_t i1, size_t i2, size_t i3, Range r4) const
 {
-  size_t d1 = _b1.dim();
-  size_t d2 = _b2.dim();
-  size_t d3 = _b3.dim();
-  size_t d4 = _b4.dim();
-
-  if(qn_constrained != 0) cerr << "*** WARNING: Constrained StateVector. This operation may not work properly\n";
-
-  slice s4(i1*d2*d3*d4+i2*d3*d4+i3*d4+r4.start(),r4.size(),r4.stride());
-  return cslice_iter<T>(this, s4);
+  auto slices = range_slices({Range(i1, i1), Range(i2, i2), Range(i3, i3), r4}, 3);
+  return cslice_iter<T>(this, slices[0]);
 }
 
 template<class T>
 cslice_iter<T> 
 VectorState<T>::operator()(size_t i1, size_t i2, Range r3, size_t i4) const
 {
-  size_t d1 = _b1.dim();
-  size_t d2 = _b2.dim();
-  size_t d3 = _b3.dim();
-  size_t d4 = _b4.dim();
-
-  if(qn_constrained != 0) cerr << "*** WARNING: Constrained StateVector. This operation may not work properly\n";
-
-  slice s3(i1*d2*d3*d4+i2*d3*d4+r3.start()*d4+i4,r3.size(),r3.stride()*d4);
-  return cslice_iter<T>(this, s3);
+  auto slices = range_slices({Range(i1, i1), Range(i2, i2), r3, Range(i4, i4)}, 2);
+  return cslice_iter<T>(this, slices[0]);
 }
 
 template<class T>
 cslice_iter<T> 
 VectorState<T>::operator()(size_t i1, Range r2, size_t i3, size_t i4) const
 {
-  size_t d1 = _b1.dim();
-  size_t d2 = _b2.dim();
-  size_t d3 = _b3.dim();
-  size_t d4 = _b4.dim();
-
-  if(qn_constrained != 0) cerr << "*** WARNING: Constrained StateVector. This operation may not work properly\n";
-
-  slice s2(i1*d2*d3*d4+r2.start()*d3*d4+i3*d4+i4,r2.size(),r2.stride()*d3*d4);
-  return cslice_iter<T>(this, s2);
+  auto slices = range_slices({Range(i1, i1), r2, Range(i3, i3), Range(i4, i4)}, 1);
+  return cslice_iter<T>(this, slices[0]);
 }
 
 template<class T>
 cslice_iter<T> 
 VectorState<T>::operator()(Range r1, size_t i2, size_t i3, size_t i4) const
 {
-  size_t d1 = _b1.dim();
-  size_t d2 = _b2.dim();
-  size_t d3 = _b3.dim();
-  size_t d4 = _b4.dim();
-
-  if(qn_constrained != 0) cerr << "*** WARNING: Constrained StateVector. This operation may not work properly\n";
-
-  slice s1(r1.start()*d2*d3*d4+i2*d3*d4+i3*d4+i4,r1.size(),r1.stride()*d2*d3*d4);
-  return cslice_iter<T>(this, s1);
+  auto slices = range_slices({r1, Range(i2, i2), Range(i3, i3), Range(i4, i4)}, 0);
+  return cslice_iter<T>(this, slices[0]);
 }
 
 ////////////////////////////////////////////////////////
@@ -1058,164 +862,48 @@ template<class T>
 gslice_iter<T> 
 VectorState<T>::operator()(size_t i1, size_t i2, QN qn3, QN qn4)
 {
-
-  if(!qn_constrained){
-    SubSpace s3 = _b3(qn3);
-    SubSpace s4 = _b4(qn4);
-    return operator()(i1,i2,s3,s4);
-  }
-    
-  QN qn1 = _b1(i1).qn();
-  QN qn2 = _b2(i2).qn();
-  StateSpace s = get_qn_space(qn1,qn2,qn3,qn4); 
-  if(s.start() == -1) cout << "ERROR: VectorState\n";
-  const SubSpace &s1 = s[1];
-  const SubSpace &s2 = s[2];
-  const SubSpace &s3 = s[3];
-  const SubSpace &s4 = s[4];
-  size_t d1 = s1.dim();
-  size_t d2 = s2.dim();
-  size_t start = (i1 - s1.begin())*d2*s3.dim()*s4.dim() +
-                 (i2 - s2.begin())*s3.dim()*s4.dim();
-  slice _s3(s.start()+start,s3.dim(),s4.dim());
-  slice _s4(0,s4.dim(),1);
-  return gslice_iter<T>(this, _s3, _s4);
+  auto slices = quantum_slices({QN(), QN(), qn3, qn4}, {i1, i2, 0, 0}, 2, 3);
+  return gslice_iter<T>(this, slices[0], slices[1]);
 }
 
 template<class T>
 gslice_iter<T> 
 VectorState<T>::operator()(size_t i1, QN qn2, QN qn3, size_t i4)
 {
-
-  if(!qn_constrained){
-    SubSpace s2 = _b2(qn2);
-    SubSpace s3 = _b3(qn3);
-    return operator()(i1,s2,s3,i4);
-  }
-    
-  QN qn1 = _b1(i1).qn();
-  QN qn4 = _b4(i4).qn();
-  StateSpace s = get_qn_space(qn1,qn2,qn3,qn4); 
-  if(s.start() == -1) cout << "ERROR: VectorState\n";
-  const SubSpace &s1 = s[1];
-  const SubSpace &s2 = s[2];
-  const SubSpace &s3 = s[3];
-  const SubSpace &s4 = s[4];
-  size_t d1 = s1.dim();
-  size_t d4 = s4.dim();
-  size_t start = (i1 - s1.begin())*s2.dim()*s3.dim()*d4 + (i4 - s4.begin());
-  slice _s2(s.start()+start,s2.dim(),s3.dim()*d4);
-  slice _s3(0,s3.dim(),d4);
-  return gslice_iter<T>(this, _s2, _s3);
+  auto slices = quantum_slices({QN(), qn2, qn3, QN()}, {i1, 0, 0, i4}, 1, 2);
+  return gslice_iter<T>(this, slices[0], slices[1]);
 }
 
 template<class T>
 gslice_iter<T> 
 VectorState<T>::operator()(QN qn1, QN qn2, size_t i3, size_t i4)
 {
-
-  if(!qn_constrained){
-    SubSpace s1 = _b1(qn1);
-    SubSpace s2 = _b2(qn2);
-    return operator()(s1,s2,i3,i4);
-  }
-    
-  QN qn3 = _b3(i3).qn();
-  QN qn4 = _b4(i4).qn();
-  StateSpace s = get_qn_space(qn1,qn2,qn3,qn4); 
-  if(s.start() == -1) cout << "ERROR: VectorState\n";
-  const SubSpace &s1 = s[1];
-  const SubSpace &s2 = s[2];
-  const SubSpace &s3 = s[3];
-  const SubSpace &s4 = s[4];
-  size_t d3 = s3.dim();
-  size_t d4 = s4.dim();
-  size_t start = (i3 - s3.begin())*d4 + (i4 - s4.begin());
-  slice _s1(s.start()+start,s1.dim(),s2.dim()*d3*d4);
-  slice _s2(0,s2.dim(),d3*d4);
-  return gslice_iter<T>(this, _s1, _s2);
+  auto slices = quantum_slices({qn1, qn2, QN(), QN()}, {0, 0, i3, i4}, 0, 1);
+  return gslice_iter<T>(this, slices[0], slices[1]);
 }
 
 template<class T>
 cgslice_iter<T> 
 VectorState<T>::operator()(size_t i1, size_t i2, QN qn3, QN qn4) const
 {
-
-  if(!qn_constrained){
-    SubSpace s3 = _b3(qn3);
-    SubSpace s4 = _b4(qn4);
-    return operator()(i1,i2,s3,s4);
-  }
-    
-  QN qn1 = _b1(i1).qn();
-  QN qn2 = _b2(i2).qn();
-  StateSpace s = get_qn_space(qn1,qn2,qn3,qn4); 
-  if(s.start() == -1) cout << "ERROR: VectorState\n";
-  const SubSpace &s1 = s[1];
-  const SubSpace &s2 = s[2];
-  const SubSpace &s3 = s[3];
-  const SubSpace &s4 = s[4];
-  size_t d1 = s1.dim();
-  size_t d2 = s2.dim();
-  size_t start = (i1 - s1.begin())*d2*s3.dim()*s4.dim() +
-                 (i2 - s2.begin())*s3.dim()*s4.dim();
-  slice _s3(s.start()+start,s3.dim(),s4.dim());
-  slice _s4(0,s4.dim(),1);
-  return cgslice_iter<T>(this, _s3, _s4);
+  auto slices = quantum_slices({QN(), QN(), qn3, qn4}, {i1, i2, 0, 0}, 2, 3);
+  return cgslice_iter<T>(this, slices[0], slices[1]);
 }
 
 template<class T>
 cgslice_iter<T> 
 VectorState<T>::operator()(size_t i1, QN qn2, QN qn3, size_t i4) const
 {
-
-  if(!qn_constrained){
-    SubSpace s2 = _b2(qn2);
-    SubSpace s3 = _b3(qn3);
-    return operator()(i1,s2,s3,i4);
-  }
-    
-  QN qn1 = _b1(i1).qn();
-  QN qn4 = _b4(i4).qn();
-  StateSpace s = get_qn_space(qn1,qn2,qn3,qn4); 
-  if(s.start() == -1) cout << "ERROR: VectorState\n";
-  const SubSpace &s1 = s[1];
-  const SubSpace &s2 = s[2];
-  const SubSpace &s3 = s[3];
-  const SubSpace &s4 = s[4];
-  size_t d1 = s1.dim();
-  size_t d4 = s4.dim();
-  size_t start = (i1 - s1.begin())*s2.dim()*s3.dim()*d4 + (i4 - s4.begin());
-  slice _s2(s.start()+start,s2.dim(),s3.dim()*d4);
-  slice _s3(0,s3.dim(),d4);
-  return cgslice_iter<T>(this, _s2, _s3);
+  auto slices = quantum_slices({QN(), qn2, qn3, QN()}, {i1, 0, 0, i4}, 1, 2);
+  return cgslice_iter<T>(this, slices[0], slices[1]);
 }
 
 template<class T>
 cgslice_iter<T> 
 VectorState<T>::operator()(QN qn1, QN qn2, size_t i3, size_t i4) const
 {
-
-  if(!qn_constrained){
-    SubSpace s1 = _b1(qn1);
-    SubSpace s2 = _b2(qn2);
-    return operator()(s1,s2,i3,i4);
-  }
-    
-  QN qn3 = _b3(i3).qn();
-  QN qn4 = _b4(i4).qn();
-  StateSpace s = get_qn_space(qn1,qn2,qn3,qn4); 
-  if(s.start() == -1) cout << "ERROR: VectorState\n";
-  const SubSpace &s1 = s[1];
-  const SubSpace &s2 = s[2];
-  const SubSpace &s3 = s[3];
-  const SubSpace &s4 = s[4];
-  size_t d3 = s3.dim();
-  size_t d4 = s4.dim();
-  size_t start = (i3 - s3.begin())*d4 + (i4 - s4.begin());
-  slice _s1(s.start()+start,s1.dim(),s2.dim()*d3*d4);
-  slice _s2(0,s2.dim(),d3*d4);
-  return cgslice_iter<T>(this, _s1, _s2);
+  auto slices = quantum_slices({qn1, qn2, QN(), QN()}, {0, 0, i3, i4}, 0, 1);
+  return cgslice_iter<T>(this, slices[0], slices[1]);
 }
 
 ////////////////////////////////////////////////////////
@@ -1254,234 +942,64 @@ template<class T>
 slice_iter<T> 
 VectorState<T>::operator()(QN qn1, size_t i2, size_t i3, size_t i4)
 {
-
-  if(!qn_constrained){
-    SubSpace s1 = _b1(qn1);
-    return operator()(s1,i2,i3,i4);
-  }
-    
-  QN qn2 = _b2(i2).qn();
-  QN qn3 = _b3(i3).qn();
-  QN qn4 = _b4(i4).qn();
-  StateSpace s = get_qn_space(qn1,qn2,qn3,qn4);
-  if(s.start() == -1) cout << "ERROR: VectorState\n";
-  const SubSpace &s1 = s[1];
-  const SubSpace &s2 = s[2];
-  const SubSpace &s3 = s[3];
-  const SubSpace &s4 = s[4];
-  size_t d1 = s1.dim();
-  size_t d2 = s2.dim();
-  size_t d3 = s3.dim();
-  size_t d4 = s4.dim();
-  size_t start = (i2 - s2.begin())*d3*d4 +
-                 (i3 - s3.begin())*d4 + (i4 - s4.begin());
-  slice _s1(s.start()+start,d1,d2*d3*d4);
-  return slice_iter<T>(this, _s1);
+  auto slices = quantum_slices({qn1, QN(), QN(), QN()}, {0, i2, i3, i4}, 0);
+  return slice_iter<T>(this, slices[0]);
 }
 
 template<class T>
 slice_iter<T> 
 VectorState<T>::operator()(size_t i1, QN qn2, size_t i3, size_t i4)
 {
-
-  if(!qn_constrained){
-    SubSpace s2 = _b2(qn2);
-    return operator()(i1,s2,i3,i4);
-  }
-    
-  QN qn1 = _b1(i1).qn();
-  QN qn3 = _b3(i3).qn();
-  QN qn4 = _b4(i4).qn();
-  StateSpace s = get_qn_space(qn1,qn2,qn3,qn4);
-  if(s.start() == -1) cout << "ERROR: VectorState\n";
-  const SubSpace &s1 = s[1];
-  const SubSpace &s2 = s[2];
-  const SubSpace &s3 = s[3];
-  const SubSpace &s4 = s[4];
-  size_t d1 = s1.dim();
-  size_t d2 = s2.dim();
-  size_t d3 = s3.dim();
-  size_t d4 = s4.dim();
-  size_t start = (i1 - s1.begin())*d2*d3*d4 +
-                 (i3 - s3.begin())*d4 + (i4 - s4.begin());
-  slice _s2(s.start()+start,d2,d3*d4);
-  return slice_iter<T>(this, _s2);
+  auto slices = quantum_slices({QN(), qn2, QN(), QN()}, {i1, 0, i3, i4}, 1);
+  return slice_iter<T>(this, slices[0]);
 }
 
 template<class T>
 slice_iter<T> 
 VectorState<T>::operator()(size_t i1, size_t i2, QN qn3, size_t i4)
 {
-
-  if(!qn_constrained){
-    SubSpace s3 = _b3(qn3);
-    return operator()(i1,i2,s3,i4);
-  }
-    
-  QN qn1 = _b1(i1).qn();
-  QN qn2 = _b2(i2).qn();
-  QN qn4 = _b4(i4).qn();
-  StateSpace s = get_qn_space(qn1,qn2,qn3,qn4);
-  if(s.start() == -1) cout << "ERROR: VectorState\n";
-  const SubSpace &s1 = s[1];
-  const SubSpace &s2 = s[2];
-  const SubSpace &s3 = s[3];
-  const SubSpace &s4 = s[4];
-  size_t d1 = s1.dim();
-  size_t d2 = s2.dim();
-  size_t d3 = s3.dim();
-  size_t d4 = s4.dim();
-  size_t start = (i1 - s1.begin())*d2*d3*d4 +
-                 (i2 - s2.begin())*d3*d4 + 
-                 (i4 - s4.begin());
-  slice _s3(s.start()+start,d3,d4);
-  return slice_iter<T>(this, _s3);
+  auto slices = quantum_slices({QN(), QN(), qn3, QN()}, {i1, i2, 0, i4}, 2);
+  return slice_iter<T>(this, slices[0]);
 }
 
 template<class T>
 slice_iter<T> 
 VectorState<T>::operator()(size_t i1, size_t i2, size_t i3, QN qn4)
 {
-  if(!qn_constrained){
-    SubSpace s4 = _b4(qn4);
-    return operator()(i1,i2,i3,s4);
-  }
-    
-  QN qn1 = _b1(i1).qn();
-  QN qn2 = _b2(i2).qn();
-  QN qn3 = _b3(i3).qn();
-  StateSpace s = get_qn_space(qn1,qn2,qn3,qn4);
-  if(s.start() == -1) cout << "ERROR: VectorState\n";
-  const SubSpace &s1 = s[1];
-  const SubSpace &s2 = s[2];
-  const SubSpace &s3 = s[3];
-  const SubSpace &s4 = s[4];
-  size_t d1 = s1.dim();
-  size_t d2 = s2.dim();
-  size_t d3 = s3.dim();
-  size_t d4 = s4.dim();
-  size_t start = (i1 - s1.begin())*d2*d3*d4 +
-                 (i2 - s2.begin())*d3*d4 + 
-                 (i3 - s3.begin())*d4;
-  slice _s4(s.start()+start,d4,1);
-  return slice_iter<T>(this, _s4);
+  auto slices = quantum_slices({QN(), QN(), QN(), qn4}, {i1, i2, i3, 0}, 3);
+  return slice_iter<T>(this, slices[0]);
 }
 
 template<class T>
 cslice_iter<T> 
 VectorState<T>::operator()(QN qn1, size_t i2, size_t i3, size_t i4) const
 {
-
-  if(!qn_constrained){
-    SubSpace s1 = _b1(qn1);
-    return operator()(s1,i2,i3,i4);
-  }
-    
-  QN qn2 = _b2(i2).qn();
-  QN qn3 = _b3(i3).qn();
-  QN qn4 = _b4(i4).qn();
-  StateSpace s = get_qn_space(qn1,qn2,qn3,qn4);
-  if(s.start() == -1) cout << "ERROR: VectorState\n";
-  const SubSpace &s1 = s[1];
-  const SubSpace &s2 = s[2];
-  const SubSpace &s3 = s[3];
-  const SubSpace &s4 = s[4];
-  size_t d1 = s1.dim();
-  size_t d2 = s2.dim();
-  size_t d3 = s3.dim();
-  size_t d4 = s4.dim();
-  size_t start = (i2 - s2.begin())*d3*d4 +
-                 (i3 - s3.begin())*d4 + (i4 - s4.begin());
-  slice _s1(s.start()+start,d1,d2*d3*d4);
-  return cslice_iter<T>(this, _s1);
+  auto slices = quantum_slices({qn1, QN(), QN(), QN()}, {0, i2, i3, i4}, 0);
+  return cslice_iter<T>(this, slices[0]);
 }
 
 template<class T>
 cslice_iter<T> 
 VectorState<T>::operator()(size_t i1, QN qn2, size_t i3, size_t i4) const
 {
-
-  if(!qn_constrained){
-    SubSpace s2 = _b2(qn2);
-    return operator()(i1,s2,i3,i4);
-  }
-    
-  QN qn1 = _b1(i1).qn();
-  QN qn3 = _b3(i3).qn();
-  QN qn4 = _b4(i4).qn();
-  StateSpace s = get_qn_space(qn1,qn2,qn3,qn4);
-  if(s.start() == -1) cout << "ERROR: VectorState\n";
-  const SubSpace &s1 = s[1];
-  const SubSpace &s2 = s[2];
-  const SubSpace &s3 = s[3];
-  const SubSpace &s4 = s[4];
-  size_t d1 = s1.dim();
-  size_t d2 = s2.dim();
-  size_t d3 = s3.dim();
-  size_t d4 = s4.dim();
-  size_t start = (i1 - s1.begin())*d2*d3*d4 +
-                 (i3 - s3.begin())*d4 + (i4 - s4.begin());
-  slice _s2(s.start()+start,d2,d3*d4);
-  return cslice_iter<T>(this, _s2);
+  auto slices = quantum_slices({QN(), qn2, QN(), QN()}, {i1, 0, i3, i4}, 1);
+  return cslice_iter<T>(this, slices[0]);
 }
 
 template<class T>
 cslice_iter<T> 
 VectorState<T>::operator()(size_t i1, size_t i2, QN qn3, size_t i4) const
 {
-
-  if(!qn_constrained){
-    SubSpace s3 = _b3(qn3);
-    return operator()(i1,i2,s3,i4);
-  }
-    
-  QN qn1 = _b1(i1).qn();
-  QN qn2 = _b2(i2).qn();
-  QN qn4 = _b4(i4).qn();
-  StateSpace s = get_qn_space(qn1,qn2,qn3,qn4);
-  if(s.start() == -1) cout << "ERROR: VectorState\n";
-  const SubSpace &s1 = s[1];
-  const SubSpace &s2 = s[2];
-  const SubSpace &s3 = s[3];
-  const SubSpace &s4 = s[4];
-  size_t d1 = s1.dim();
-  size_t d2 = s2.dim();
-  size_t d3 = s3.dim();
-  size_t d4 = s4.dim();
-  size_t start = (i1 - s1.begin())*d2*d3*d4 +
-                 (i2 - s2.begin())*d3*d4 + 
-                 (i4 - s4.begin());
-  slice _s3(s.start()+start,d3,d4);
-  return cslice_iter<T>(this, _s3);
+  auto slices = quantum_slices({QN(), QN(), qn3, QN()}, {i1, i2, 0, i4}, 2);
+  return cslice_iter<T>(this, slices[0]);
 }
 
 template<class T>
 cslice_iter<T> 
 VectorState<T>::operator()(size_t i1, size_t i2, size_t i3, QN qn4) const
 {
-  if(!qn_constrained){
-    SubSpace s4 = _b4(qn4);
-    return operator()(i1,i2,i3,s4);
-  }
-    
-  QN qn1 = _b1(i1).qn();
-  QN qn2 = _b2(i2).qn();
-  QN qn3 = _b3(i3).qn();
-  StateSpace s = get_qn_space(qn1,qn2,qn3,qn4);
-  if(s.start() == -1) cout << "ERROR: VectorState\n";
-  const SubSpace &s1 = s[1];
-  const SubSpace &s2 = s[2];
-  const SubSpace &s3 = s[3];
-  const SubSpace &s4 = s[4];
-  size_t d1 = s1.dim();
-  size_t d2 = s2.dim();
-  size_t d3 = s3.dim();
-  size_t d4 = s4.dim();
-  size_t start = (i1 - s1.begin())*d2*d3*d4 +
-                 (i2 - s2.begin())*d3*d4 + 
-                 (i3 - s3.begin())*d4;
-  slice _s4(s.start()+start,d4,1);
-  return cslice_iter<T>(this, _s4);
+  auto slices = quantum_slices({QN(), QN(), QN(), qn4}, {i1, i2, i3, 0}, 3);
+  return cslice_iter<T>(this, slices[0]);
 }
 
 ////////////////////////////////////////////////////////

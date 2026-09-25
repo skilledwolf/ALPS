@@ -2,7 +2,7 @@
 #            Lukas Gamper 2012
 #   SPDX-License-Identifier: MIT
 
-foreach(name ngs_hdf5 ngs_hash)
+foreach(name ngs_hdf5 ngs_hash ngs_result_arithmetic)
   add_executable(${name} ${name}.cpp)
 
   target_link_libraries(${name} PRIVATE ALPS::alps)

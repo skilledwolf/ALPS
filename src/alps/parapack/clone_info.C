@@ -12,6 +12,7 @@
 *****************************************************************************/
 
 #include "clone_info.h"
+#include <alps/ngs/params.hpp>
 #include "util.h"
 
 #include <alps/utility/os.hpp>
@@ -19,6 +20,24 @@
 #include <boost/foreach.hpp>
 
 namespace alps {
+
+namespace {
+// Clone metadata depends only on these two parameters. Both runtimes share its
+// seed derivation, checkpoint schema and execution history.
+Parameters clone_parameters(alps::params const& p) {
+  Parameters result;
+  if (p.defined("SEED")) {
+    result["SEED"] = static_cast<seed_t>(p["SEED"]);
+    if (p.defined("DISORDER_SEED"))
+      result["DISORDER_SEED"] = static_cast<seed_t>(p["DISORDER_SEED"]);
+  }
+  return result;
+}
+}
+
+clone_info::clone_info(cid_t cid, alps::params const& p, std::string const& dump,
+  bool initialize) : clone_info(cid, clone_parameters(p), dump, initialize) {}
+
 
 //
 // clone_phase
@@ -333,6 +352,10 @@ clone_info_mpi::clone_info_mpi(boost::mpi::communicator const& comm, cid_t cid,
   clone_info(cid, params, dump, false), comm_(comm) {
   clone_info::init(params, dump);
 }
+
+clone_info_mpi::clone_info_mpi(boost::mpi::communicator const& comm, cid_t cid,
+  alps::params const& p, std::string const& dump) :
+  clone_info_mpi(comm, cid, clone_parameters(p), dump) {}
 
 unsigned int clone_info_mpi::num_processes() const { return comm_.size(); }
 

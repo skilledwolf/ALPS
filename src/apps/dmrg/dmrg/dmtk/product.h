@@ -1,6 +1,10 @@
 #ifndef __DMTK_PRODUCT_H__
 #define __DMTK_PRODUCT_H__
 
+#include "basic_op.h"
+#include <array>
+#include <type_traits>
+
 namespace dmtk
 {
 
@@ -25,19 +29,18 @@ struct ProductTerm
 };
 
 ////////////////////////////////////////////////////////////////////
-// get product terms
+// Prepare product commands once for cached execution, or stream them to an
+// immediate executor without allocating a temporary command list.
 ////////////////////////////////////////////////////////////////////
-template<class T>
-std::vector<ProductTerm<T> >
-get_product_terms(const BasicOp<T> &op,
+template<class T, class Emit>
+void for_each_product_term(const BasicOp<T> &op,
         const VectorState<T> &v, VectorState<T> &res,
-        size_t m, T coef = T(1), bool hc = false)
+        size_t m, T coef, bool hc, Emit emit)
 {
-  std::vector<ProductTerm<T> > product_terms;
   Vector<QN> dqn(5);
-  if(!hc) 
-    dqn(m) += op.dqn; 
-  else 
+  if(!hc)
+    dqn(m) += op.dqn;
+  else
     dqn(m) -= op.dqn;
 
   bool do_hc = hc;
@@ -61,14 +64,14 @@ get_product_terms(const BasicOp<T> &op,
     cstate_slice<T> v_slice = v(ss);
     state_slice<T> res_slice = res(ss[1].qn()+dqn[1],ss[2].qn()+dqn[2],
                                    ss[3].qn()+dqn[3],ss[4].qn()+dqn[4]);
-    if(res_slice.size() == 0) continue; 
+    if(res_slice.size() == 0) continue;
 
     int sign = 1;
     if(op.fermion()){
       for(int ib = m-1; ib >= 1; ib--) sign *= ss[ib].qn().fermion_sign();
     }
 
-    ProductTerm<T> pterm;
+    ProductTerm<T> pterm{};
     pterm.coef = T(sign)*real_coef;
     pterm.nops = 1;
     pterm.m1 = m;
@@ -76,18 +79,27 @@ get_product_terms(const BasicOp<T> &op,
     pterm.vspace = ss;
     pterm.do_hc = do_hc;
     pterm.res_space = res.get_qn_space(ss[1].qn()+dqn[1],ss[2].qn()+dqn[2], ss[3].qn()+dqn[3],ss[4].qn()+dqn[4]);
-    product_terms.push_back(pterm); 
+    emit(pterm);
   }
-  return product_terms;
 }
 
 template<class T>
 std::vector<ProductTerm<T> >
-get_product_terms(const BasicOp<T> &op1, const BasicOp<T>& op2,
+get_product_terms(const BasicOp<T> &op,
         const VectorState<T> &v, VectorState<T> &res,
-        size_t m1, size_t m2, T coef = T(1), bool hc = false)
+        size_t m, T coef = T(1), bool hc = false)
 {
-  std::vector<ProductTerm<T> > product_terms;
+  std::vector<ProductTerm<T> > terms;
+  for_each_product_term(op, v, res, m, coef, hc,
+    [&](const ProductTerm<T>& term) { terms.push_back(term); });
+  return terms;
+}
+
+template<class T, class Emit>
+void for_each_product_term(const BasicOp<T> &op1, const BasicOp<T>& op2,
+        const VectorState<T> &v, VectorState<T> &res,
+        size_t m1, size_t m2, T coef, bool hc, Emit emit)
+{
   int _mask = mask(m1,m2);
   int _m1, _m2;
   Vector<QN> dqn(5);
@@ -131,12 +143,12 @@ get_product_terms(const BasicOp<T> &op1, const BasicOp<T>& op2,
     cstate_slice<T> v_slice = v(ss);
     state_slice<T> res_slice = res(ss[1].qn()+dqn[1],ss[2].qn()+dqn[2],
                                    ss[3].qn()+dqn[3],ss[4].qn()+dqn[4]);
-    if(res_slice.size() == 0) continue; 
+    if(res_slice.size() == 0) continue;
 
     cstate_slice<T> v_slice_hc = v(ss[1].qn()+dqn[1],ss[2].qn()+dqn[2],
                                    ss[3].qn()+dqn[3],ss[4].qn()+dqn[4]);
     state_slice<T> res_slice_hc = res(ss[1].qn(),ss[2].qn(),ss[3].qn(),ss[4].qn());
-    if(v_slice_hc.size() == 0 || res_slice_hc.size() == 0) continue; 
+    if(v_slice_hc.size() == 0 || res_slice_hc.size() == 0) continue;
 
     int sign = sign0;
 
@@ -147,7 +159,7 @@ get_product_terms(const BasicOp<T> &op1, const BasicOp<T>& op2,
       for(int ib = m1-1; ib >= 1; ib--) sign *= ss[ib].qn().fermion_sign()*dqn2[ib].fermion_sign();
     }
 
-    ProductTerm<T> pterm;
+    ProductTerm<T> pterm{};
     pterm.coef = T(sign)*coef;
     pterm.nops = 2;
     pterm.block1 = _block1;
@@ -159,20 +171,29 @@ get_product_terms(const BasicOp<T> &op1, const BasicOp<T>& op2,
     pterm.res_space = res.get_qn_space(ss[1].qn()+dqn[1],ss[2].qn()+dqn[2], ss[3].qn()+dqn[3],ss[4].qn()+dqn[4]);
     pterm.vspace_hc = v.get_qn_space(ss[1].qn()+dqn[1],ss[2].qn()+dqn[2], ss[3].qn()+dqn[3],ss[4].qn()+dqn[4]);
     pterm.res_space_hc = ss;
-    product_terms.push_back(pterm); 
+    emit(pterm);
   }
-  return product_terms;
 }
 
 template<class T>
 std::vector<ProductTerm<T> >
 get_product_terms(const BasicOp<T> &op1, const BasicOp<T>& op2,
+        const VectorState<T> &v, VectorState<T> &res,
+        size_t m1, size_t m2, T coef = T(1), bool hc = false)
+{
+  std::vector<ProductTerm<T> > terms;
+  for_each_product_term(op1, op2, v, res, m1, m2, coef, hc,
+    [&](const ProductTerm<T>& term) { terms.push_back(term); });
+  return terms;
+}
+
+template<class T, class Emit>
+void for_each_product_term(const BasicOp<T> &op1, const BasicOp<T>& op2,
         const BasicOp<T> &op3, const BasicOp<T>& op4,
         const VectorState<T> &v, VectorState<T> &res,
         size_t m1, size_t m2, size_t m3, size_t m4,
-        T coef = T(1), bool hc = false)
+        T coef, bool hc, Emit emit)
 {
-  std::vector<ProductTerm<T> > product_terms;
   Vector<QN> dqn(5);
   size_t _m1, _m2, _m3, _m4;
   dqn(m4) += op4.dqn;
@@ -230,12 +251,12 @@ get_product_terms(const BasicOp<T> &op1, const BasicOp<T>& op2,
     cstate_slice<T> v_slice = v(ss);
     state_slice<T> res_slice = res(ss[1].qn()+dqn[1],ss[2].qn()+dqn[2],
                                    ss[3].qn()+dqn[3],ss[4].qn()+dqn[4]);
-    if(res_slice.size() == 0) continue; 
+    if(res_slice.size() == 0) continue;
 
     cstate_slice<T> v_slice_hc = v(ss[1].qn()+dqn[1],ss[2].qn()+dqn[2],
                                    ss[3].qn()+dqn[3],ss[4].qn()+dqn[4]);
     state_slice<T> res_slice_hc = res(ss[1].qn(),ss[2].qn(),ss[3].qn(),ss[4].qn());
-    if(hc && (v_slice_hc.size() == 0 || res_slice_hc.size() == 0)) continue; 
+    if(hc && (v_slice_hc.size() == 0 || res_slice_hc.size() == 0)) continue;
 
     int sign = 1;
     if(op4.fermion()){
@@ -252,7 +273,7 @@ get_product_terms(const BasicOp<T> &op1, const BasicOp<T>& op2,
     }
 
 
-    ProductTerm<T> pterm;
+    ProductTerm<T> pterm{};
     pterm.coef = T(sign)*coef;
     pterm.nops = 4;
     pterm.block1 = _block1;
@@ -268,21 +289,32 @@ get_product_terms(const BasicOp<T> &op1, const BasicOp<T>& op2,
     pterm.res_space = res.get_qn_space(ss[1].qn()+dqn[1],ss[2].qn()+dqn[2], ss[3].qn()+dqn[3],ss[4].qn()+dqn[4]);
     pterm.vspace_hc = v.get_qn_space(ss[1].qn()+dqn[1],ss[2].qn()+dqn[2], ss[3].qn()+dqn[3],ss[4].qn()+dqn[4]);
     pterm.res_space_hc = ss;
-    product_terms.push_back(pterm); 
+    emit(pterm);
   }
 
-  return product_terms;
 }
 
 template<class T>
 std::vector<ProductTerm<T> >
 get_product_terms(const BasicOp<T> &op1, const BasicOp<T>& op2,
-        const BasicOp<T> &op3, 
+        const BasicOp<T> &op3, const BasicOp<T>& op4,
         const VectorState<T> &v, VectorState<T> &res,
-        size_t m1, size_t m2, size_t m3,
+        size_t m1, size_t m2, size_t m3, size_t m4,
         T coef = T(1), bool hc = false)
 {
-  std::vector<ProductTerm<T> > product_terms;
+  std::vector<ProductTerm<T> > terms;
+  for_each_product_term(op1, op2, op3, op4, v, res, m1, m2, m3, m4, coef, hc,
+    [&](const ProductTerm<T>& term) { terms.push_back(term); });
+  return terms;
+}
+
+template<class T, class Emit>
+void for_each_product_term(const BasicOp<T> &op1, const BasicOp<T>& op2,
+        const BasicOp<T> &op3,
+        const VectorState<T> &v, VectorState<T> &res,
+        size_t m1, size_t m2, size_t m3,
+        T coef, bool hc, Emit emit)
+{
   Vector<QN> dqn(5);
   size_t _m1, _m2, _m3;
   dqn(m3) += op3.dqn;
@@ -330,12 +362,12 @@ get_product_terms(const BasicOp<T> &op1, const BasicOp<T>& op2,
     cstate_slice<T> v_slice = v(ss);
     state_slice<T> res_slice = res(ss[1].qn()+dqn[1],ss[2].qn()+dqn[2],
                                    ss[3].qn()+dqn[3],ss[4].qn()+dqn[4]);
-    if(res_slice.size() == 0) continue; 
+    if(res_slice.size() == 0) continue;
 
     cstate_slice<T> v_slice_hc = v(ss[1].qn()+dqn[1],ss[2].qn()+dqn[2],
                                    ss[3].qn()+dqn[3],ss[4].qn()+dqn[4]);
     state_slice<T> res_slice_hc = res(ss[1].qn(),ss[2].qn(),ss[3].qn(),ss[4].qn());
-    if(hc && (v_slice_hc.size() == 0 || res_slice_hc.size() == 0)) continue; 
+    if(hc && (v_slice_hc.size() == 0 || res_slice_hc.size() == 0)) continue;
 
     int sign = 1;
     if(op3.fermion()){
@@ -348,7 +380,7 @@ get_product_terms(const BasicOp<T> &op1, const BasicOp<T>& op2,
       for(int ib = m1-1; ib >= 1; ib--) sign *= ss[ib].qn().fermion_sign()*dqn2[ib].fermion_sign()*dqn3[ib].fermion_sign();
     }
 
-    ProductTerm<T> pterm;
+    ProductTerm<T> pterm{};
     pterm.coef = T(sign)*coef;
     pterm.nops = 3;
     pterm.block1 = _block1;
@@ -362,16 +394,31 @@ get_product_terms(const BasicOp<T> &op1, const BasicOp<T>& op2,
     pterm.res_space = res.get_qn_space(ss[1].qn()+dqn[1],ss[2].qn()+dqn[2], ss[3].qn()+dqn[3],ss[4].qn()+dqn[4]);
     pterm.vspace_hc = v.get_qn_space(ss[1].qn()+dqn[1],ss[2].qn()+dqn[2], ss[3].qn()+dqn[3],ss[4].qn()+dqn[4]);
     pterm.res_space_hc = ss;
-    product_terms.push_back(pterm); 
+    emit(pterm);
   }
-  return product_terms;
 }
+
+template<class T>
+std::vector<ProductTerm<T> >
+get_product_terms(const BasicOp<T> &op1, const BasicOp<T>& op2,
+        const BasicOp<T> &op3,
+        const VectorState<T> &v, VectorState<T> &res,
+        size_t m1, size_t m2, size_t m3,
+        T coef = T(1), bool hc = false)
+{
+  std::vector<ProductTerm<T> > terms;
+  for_each_product_term(op1, op2, op3, v, res, m1, m2, m3, coef, hc,
+    [&](const ProductTerm<T>& term) { terms.push_back(term); });
+  return terms;
+}
+
+
 
 
 template<class T>
 void
 product_term(const ProductTerm<T> &pterm,
-        const VectorState<T> &v, VectorState<T> &res, int mask_hc, 
+        const VectorState<T> &v, VectorState<T> &res, int mask_hc,
         DMTKglobals<T> *globals = NULL)
 {
   switch(pterm.nops){
@@ -393,7 +440,7 @@ product_term(const ProductTerm<T> &pterm,
 template<class T>
 void
 product_term1(const ProductTerm<T> &pterm,
-        const VectorState<T> &v, VectorState<T> &res, int mask_hc, 
+        const VectorState<T> &v, VectorState<T> &res, int mask_hc,
         DMTKglobals<T> *globals = NULL)
 {
   Matrix<T> *_maux1, *_maux2;
@@ -473,10 +520,51 @@ product_term1(const ProductTerm<T> &pterm,
   }
 }
 
+namespace detail {
+// Select whole operator axes and fix the spectator coordinates. The existing
+// state-slice overloads retain the layout and constness of each view.
+template<int Selected, int Axis>
+auto product_slice_index(size_t extent, size_t coordinate)
+{
+  if constexpr (Selected & (1 << Axis))
+    return slice(0, extent, 1);
+  else
+    return coordinate;
+}
+
+template<int Selected, class View>
+auto product_slice(const View& view, const std::array<size_t, 4>& i)
+{
+  return view(product_slice_index<Selected, 0>(view.size1(), i[0]),
+              product_slice_index<Selected, 1>(view.size2(), i[1]),
+              product_slice_index<Selected, 2>(view.size3(), i[2]),
+              product_slice_index<Selected, 3>(view.size4(), i[3]));
+}
+
+template<int Selected, class T, class Apply>
+void for_each_product_slice(const StateSpace& space, const cstate_slice<T>& source,
+                            const state_slice<T>& target, Apply apply)
+{
+  // Selected axes belong to the slice, so iterate only the spectators, in
+  // physical axis order. Use the original space for both normal and HC passes.
+  const std::array<size_t, 4> count = {
+    Selected & MASK_BLOCK1 ? 1u : space[1].dim(),
+    Selected & MASK_BLOCK2 ? 1u : space[2].dim(),
+    Selected & MASK_BLOCK3 ? 1u : space[3].dim(),
+    Selected & MASK_BLOCK4 ? 1u : space[4].dim()};
+  std::array<size_t, 4> i{};
+  for (i[0] = 0; i[0] < count[0]; ++i[0])
+  for (i[1] = 0; i[1] < count[1]; ++i[1])
+  for (i[2] = 0; i[2] < count[2]; ++i[2])
+  for (i[3] = 0; i[3] < count[3]; ++i[3])
+    apply(product_slice<Selected>(source, i), product_slice<Selected>(target, i));
+}
+} // namespace detail
+
 template<class T>
 void
 product_term2(const ProductTerm<T> &pterm,
-             const VectorState<T> &v, VectorState<T> &res, int mask_hc, 
+             const VectorState<T> &v, VectorState<T> &res, int mask_hc,
              DMTKglobals<T> *globals = NULL, bool use_condensed = false)
 {
   int _mask = mask(pterm.m1,pterm.m2);
@@ -512,327 +600,61 @@ product_term2(const ProductTerm<T> &pterm,
   bool do_hc = pterm.do_hc;
   T coef = pterm.coef;
 
-  switch(_mask){
-      case (MASK_BLOCK1|MASK_BLOCK2):
-        if(mask_hc & MASK_PRODUCT_DEFAULT){
-          for(int i3 = 0; i3 < ss[3].dim(); i3++)
-          for(int i4 = 0; i4 < ss[4].dim(); i4++){
-            cgslice_iter<T> subv = v_slice(slice(0,v_slice.size1(),1),
-                                           slice(0,v_slice.size2(),1),i3,i4);
-            gslice_iter<T> subres = res_slice(slice(0,res_slice.size1(),1),
-                                              slice(0,res_slice.size2(),1),i3,i4);
-            if(use_condensed){
-              product(block1,block2,subv,subres,maux3,coef,T(1));
-            } else {
-              maux1 = subv;
-              maux2 = subres;
-              product(block1,block2,maux1,maux2,maux3,coef,T(1));
-              subres = maux2.array();
-            }
-          }
+  auto apply_layout = [&](auto selected_blocks) {
+    constexpr int selected = decltype(selected_blocks)::value;
+    auto apply = [&](const cstate_slice<T>& source, const state_slice<T>& target, bool hc) {
+      detail::for_each_product_slice<selected>(ss, source, target, [&](auto subv, auto subres) {
+        if constexpr ((selected & (selected - 1)) == 0) {
+          // Both operators act on the same block: multiply a vector slice.
+          vaux1 = subv;
+          vaux2 = subres;
+          product(block1, block2, vaux1, vaux2, coef, T(1), hc);
+          subres = vaux2.array();
+        } else if (use_condensed) {
+          product(block1, block2, subv, subres, maux3, coef, T(1), hc);
+        } else {
+          maux1 = subv;
+          maux2 = subres;
+          product(block1, block2, maux1, maux2, maux3, coef, T(1), hc);
+          subres = maux2.array();
         }
-        if(do_hc && (mask_hc & MASK_PRODUCT_HC)){
-          for(int i3 = 0; i3 < ss[3].dim(); i3++)
-          for(int i4 = 0; i4 < ss[4].dim(); i4++){
-            cgslice_iter<T> subv = v_slice_hc(slice(0,v_slice_hc.size1(),1),
-                                              slice(0,v_slice_hc.size2(),1),i3,i4);
-            gslice_iter<T> subres = res_slice_hc(slice(0,res_slice_hc.size1(),1),
-                                                 slice(0,res_slice_hc.size2(),1),i3,i4);
-            if(use_condensed){
-              product(block1,block2,subv,subres,maux3,coef,T(1),true);
-            } else {
-              maux1 = subv;
-              maux2 = subres;
-              product(block1,block2,maux1,maux2,maux3,coef,T(1),true);
-              subres = maux2.array();
-            }
-          }
-        }
-        break;
-      case (MASK_BLOCK1|MASK_BLOCK3):
-        if(mask_hc & MASK_PRODUCT_DEFAULT){
-          for(int i2 = 0; i2 < ss[2].dim(); i2++)
-          for(int i4 = 0; i4 < ss[4].dim(); i4++){
-            cgslice_iter<T> subv = v_slice(slice(0,v_slice.size1(),1),i2,
-                                           slice(0,v_slice.size3(),1),i4);
-            gslice_iter<T> subres = res_slice(slice(0,res_slice.size1(),1),i2,
-                                              slice(0,res_slice.size3(),1),i4);
-            if(use_condensed){
-              product(block1,block2,subv,subres,maux3,coef,T(1));
-            } else {
-              maux1 = subv;
-              maux2 = subres;
-              product(block1,block2,maux1,maux2,maux3,coef,T(1));
-              subres = maux2.array();
-            }
-          }
-        }
-        if(do_hc && (mask_hc & MASK_PRODUCT_HC)){
-          for(int i2 = 0; i2 < ss[2].dim(); i2++)
-          for(int i4 = 0; i4 < ss[4].dim(); i4++){
-            cgslice_iter<T> subv = v_slice_hc(slice(0,v_slice_hc.size1(),1),i2,
-                                              slice(0,v_slice_hc.size3(),1),i4);
-            gslice_iter<T> subres = res_slice_hc(slice(0,res_slice_hc.size1(),1),i2,
-                                                 slice(0,res_slice_hc.size3(),1),i4);
-            if(use_condensed){
-              product(block1,block2,subv,subres,maux3,coef,T(1),true);
-            } else {
-              maux1 = subv;
-              maux2 = subres;
-              product(block1,block2,maux1,maux2,maux3,coef,T(1),true);
-              subres = maux2.array();
-            }
-          }
-        }
-        break;
-     case (MASK_BLOCK1|MASK_BLOCK4):
-        if(mask_hc & MASK_PRODUCT_DEFAULT){
-          for(int i2 = 0; i2 < ss[2].dim(); i2++)
-          for(int i3 = 0; i3 < ss[3].dim(); i3++){
-            cgslice_iter<T> subv = v_slice(slice(0,v_slice.size1(),1),i2,i3,
-                                           slice(0,v_slice.size4(),1));
-            gslice_iter<T> subres = res_slice(slice(0,res_slice.size1(),1),i2,i3,
-                                              slice(0,res_slice.size4(),1));
-            if(use_condensed){
-              product(block1,block2,subv,subres,maux3,coef,T(1));
-            } else {
-              maux1 = subv;
-              maux2 = subres;
-              product(block1,block2,maux1,maux2,maux3,coef,T(1));
-              subres = maux2.array();
-            }
-          }
-        }
-        if(do_hc && (mask_hc & MASK_PRODUCT_HC)){
-          for(int i2 = 0; i2 < ss[2].dim(); i2++)
-          for(int i3 = 0; i3 < ss[3].dim(); i3++){
-            cgslice_iter<T> subv = v_slice_hc(slice(0,v_slice_hc.size1(),1),i2,i3,
-                                              slice(0,v_slice_hc.size4(),1));
-            gslice_iter<T> subres = res_slice_hc(slice(0,res_slice_hc.size1(),1),i2,i3,
-                                                 slice(0,res_slice_hc.size4(),1));
-            if(use_condensed){
-              product(block1,block2,subv,subres,maux3,coef,T(1),true);
-            } else {
-              maux1 = subv;
-              maux2 = subres;
-              product(block1,block2,maux1,maux2,maux3,coef,T(1),true);
-              subres = maux2.array();
-            }
-          }
-        }
-        break;
-     case (MASK_BLOCK2|MASK_BLOCK3):
-        if(mask_hc & MASK_PRODUCT_DEFAULT){
-          for(int i1 = 0; i1 < ss[1].dim(); i1++)
-          for(int i4 = 0; i4 < ss[4].dim(); i4++){
-            cgslice_iter<T> subv = v_slice(i1,slice(0,v_slice.size2(),1),
-                                           slice(0,v_slice.size3(),1),i4);
-            gslice_iter<T> subres = res_slice(i1,slice(0,res_slice.size2(),1),
-                                              slice(0,res_slice.size3(),1),i4);
-            if(use_condensed){
-              product(block1,block2,subv,subres,maux3,coef,T(1));
-            } else {
-              maux1 = subv;
-              maux2 = subres;
-              product(block1,block2,maux1,maux2,maux3,coef,T(1));
-              subres = maux2.array();
-            }
-          }
-        }
-        if(do_hc && (mask_hc & MASK_PRODUCT_HC)){
-          for(int i1 = 0; i1 < ss[1].dim(); i1++)
-          for(int i4 = 0; i4 < ss[4].dim(); i4++){
-            cgslice_iter<T> subv = v_slice_hc(i1,slice(0,v_slice_hc.size2(),1),
-                                           slice(0,v_slice_hc.size3(),1),i4);
-            gslice_iter<T> subres = res_slice_hc(i1,slice(0,res_slice_hc.size2(),1),
-                                              slice(0,res_slice_hc.size3(),1),i4);
-            if(use_condensed){
-              product(block1,block2,subv,subres,maux3,coef,T(1),true);
-            } else {
-              maux1 = subv;
-              maux2 = subres;
-              product(block1,block2,maux1,maux2,maux3,coef,T(1),true);
-              subres = maux2.array();
-            }
-          }
-        }
-        break;
-     case (MASK_BLOCK2|MASK_BLOCK4):
-        if(mask_hc & MASK_PRODUCT_DEFAULT){
-          for(int i1 = 0; i1 < ss[1].dim(); i1++)
-          for(int i3 = 0; i3 < ss[3].dim(); i3++){
-            cgslice_iter<T> subv = v_slice(i1,slice(0,v_slice.size2(),1),i3,
-                                           slice(0,v_slice.size4(),1));
-            gslice_iter<T> subres = res_slice(i1,slice(0,res_slice.size2(),1),i3,
-                                              slice(0,res_slice.size4(),1));
-            if(use_condensed){
-              product(block1,block2,subv,subres,maux3,coef,T(1));
-            } else {
-              maux1 = subv;
-              maux2 = subres;
-              product(block1,block2,maux1,maux2,maux3,coef,T(1));
-              subres = maux2.array();
-            }
-          }
-        }
-        if(do_hc && (mask_hc & MASK_PRODUCT_HC)){
-          for(int i1 = 0; i1 < ss[1].dim(); i1++)
-          for(int i3 = 0; i3 < ss[3].dim(); i3++){
-            cgslice_iter<T> subv = v_slice_hc(i1,slice(0,v_slice_hc.size2(),1),i3,
-                                              slice(0,v_slice_hc.size4(),1));
-            gslice_iter<T> subres = res_slice_hc(i1,slice(0,res_slice_hc.size2(),1),i3,
-                                                 slice(0,res_slice_hc.size4(),1));
-            if(use_condensed){
-              product(block1,block2,subv,subres,maux3,coef,T(1),true);
-            } else {
-              maux1 = subv;
-              maux2 = subres;
-              product(block1,block2,maux1,maux2,maux3,coef,T(1),true);
-              subres = maux2.array();
-            }
-          }
-        }
-        break;
-     case (MASK_BLOCK3|MASK_BLOCK4):
-        if(mask_hc & MASK_PRODUCT_DEFAULT){
-          for(int i1 = 0; i1 < ss[1].dim(); i1++)
-          for(int i2 = 0; i2 < ss[2].dim(); i2++){
-            cgslice_iter<T> subv = v_slice(i1,i2,slice(0,v_slice.size3(),1),
-                                           slice(0,v_slice.size4(),1));
-            gslice_iter<T> subres = res_slice(i1,i2,slice(0,res_slice.size3(),1),
-                                              slice(0,res_slice.size4(),1));
-            if(use_condensed){
-              product(block1,block2,subv,subres,maux3,coef,T(1));
-            } else {
-              maux1 = subv;
-              maux2 = subres;
-              product(block1,block2,maux1,maux2,maux3,coef,T(1));
-              subres = maux2.array();
-            }
-          }
-        }
-        if(do_hc && (mask_hc & MASK_PRODUCT_HC)){
-          for(int i1 = 0; i1 < ss[1].dim(); i1++)
-          for(int i2 = 0; i2 < ss[2].dim(); i2++){
-            cgslice_iter<T> subv = v_slice_hc(i1,i2,slice(0,v_slice_hc.size3(),1),
-                                              slice(0,v_slice_hc.size4(),1));
-            gslice_iter<T> subres = res_slice_hc(i1,i2,slice(0,res_slice_hc.size3(),1),
-                                                 slice(0,res_slice_hc.size4(),1));
-            if(use_condensed){
-              product(block1,block2,subv,subres,maux3,coef,T(1),true);
-            } else {
-              maux1 = subv;
-              maux2 = subres;
-              product(block1,block2,maux1,maux2,maux3,coef,T(1),true);
-              subres = maux2.array();
-            }
-          }
-        }
-        break;
-      case MASK_BLOCK1:
-        if(mask_hc & MASK_PRODUCT_DEFAULT){
-          for(int i2 = 0; i2 < ss[2].dim(); i2++)
-          for(int i3 = 0; i3 < ss[3].dim(); i3++)
-          for(int i4 = 0; i4 < ss[4].dim(); i4++){
-            cslice_iter<T> subv = v_slice(slice(0,v_slice.size1(),1),i2,i3,i4);
-            slice_iter<T> subres = res_slice(slice(0,res_slice.size1(),1),i2,i3,i4);
-            vaux1 = subv;
-            vaux2 = subres;
-            product(block1,block2,vaux1,vaux2,coef,T(1));
-            subres = vaux2.array();
-          }
-        }
-        if(do_hc && (mask_hc & MASK_PRODUCT_HC)){
-          for(int i2 = 0; i2 < ss[2].dim(); i2++)
-          for(int i3 = 0; i3 < ss[3].dim(); i3++)
-          for(int i4 = 0; i4 < ss[4].dim(); i4++){
-            cslice_iter<T> subv = v_slice_hc(slice(0,v_slice_hc.size1(),1),i2,i3,i4);
-            slice_iter<T> subres = res_slice_hc(slice(0,res_slice_hc.size1(),1),i2,i3,i4);
-            vaux1 = subv;
-            vaux2 = subres;
-            product(block1,block2,vaux1,vaux2,coef,T(1),true);
-            subres = vaux2.array();
-          }
-        }
-        break;
-      case MASK_BLOCK2:
-        if(mask_hc & MASK_PRODUCT_DEFAULT){
-          for(int i1 = 0; i1 < ss[1].dim(); i1++)
-          for(int i3 = 0; i3 < ss[3].dim(); i3++)
-          for(int i4 = 0; i4 < ss[4].dim(); i4++){
-            cslice_iter<T> subv = v_slice(i1,slice(0,v_slice.size2(),1),i3,i4);
-            slice_iter<T> subres = res_slice(i1,slice(0,res_slice.size2(),1),i3,i4);
-            vaux1 = subv;
-            vaux2 = subres;
-            product(block1,block2,vaux1,vaux2,coef,T(1));
-            subres = vaux2.array();
-          }
-        }
-        if(do_hc && (mask_hc & MASK_PRODUCT_HC)){
-          for(int i1 = 0; i1 < ss[1].dim(); i1++)
-          for(int i3 = 0; i3 < ss[3].dim(); i3++)
-          for(int i4 = 0; i4 < ss[4].dim(); i4++){
-            cslice_iter<T> subv = v_slice_hc(i1,slice(0,v_slice_hc.size2(),1),i3,i4);
-            slice_iter<T> subres = res_slice_hc(i1,slice(0,res_slice_hc.size2(),1),i3,i4);
-            vaux1 = subv;
-            vaux2 = subres;
-            product(block1,block2,vaux1,vaux2,coef,T(1),true);
-            subres = vaux2.array();
-          }
-        }
-        break;
-      case MASK_BLOCK3:
-        if(mask_hc & MASK_PRODUCT_DEFAULT){
-          for(int i1 = 0; i1 < ss[1].dim(); i1++)
-          for(int i2 = 0; i2 < ss[2].dim(); i2++)
-          for(int i4 = 0; i4 < ss[4].dim(); i4++){
-            cslice_iter<T> subv = v_slice(i1,i2,slice(0,v_slice.size3(),1),i4);
-            slice_iter<T> subres = res_slice(i1,i2,slice(0,res_slice.size3(),1),i4);
-            vaux1 = subv;
-            vaux2 = subres;
-            product(block1,block2,vaux1,vaux2,coef,T(1));
-            subres = vaux2.array();
-          }
-        }
-        if(do_hc && (mask_hc & MASK_PRODUCT_HC)){
-          for(int i1 = 0; i1 < ss[1].dim(); i1++)
-          for(int i2 = 0; i2 < ss[2].dim(); i2++)
-          for(int i4 = 0; i4 < ss[4].dim(); i4++){
-            cslice_iter<T> subv = v_slice_hc(i1,i2,slice(0,v_slice_hc.size3(),1),i4);
-            slice_iter<T> subres = res_slice_hc(i1,i2,slice(0,res_slice_hc.size3(),1),i4);
-            vaux1 = subv;
-            vaux2 = subres;
-            product(block1,block2,vaux1,vaux2,coef,T(1),true);
-            subres = vaux2.array();
-          }
-        }
-        break;
-     case MASK_BLOCK4:
-        if(mask_hc & MASK_PRODUCT_DEFAULT){
-          for(int i1 = 0; i1 < ss[1].dim(); i1++)
-          for(int i2 = 0; i2 < ss[2].dim(); i2++)
-          for(int i3 = 0; i3 < ss[3].dim(); i3++){
-            cslice_iter<T> subv = v_slice(i1,i2,i3,slice(0,v_slice.size4(),1));
-            slice_iter<T> subres = res_slice(i1,i2,i3,slice(0,res_slice.size4(),1));
-            vaux1 = subv;
-            vaux2 = subres;
-            product(block1,block2,vaux1,vaux2,coef,T(1));
-            subres = vaux2.array();
-          }
-        }
-        if(do_hc && (mask_hc & MASK_PRODUCT_HC)){
-          for(int i1 = 0; i1 < ss[1].dim(); i1++)
-          for(int i2 = 0; i2 < ss[2].dim(); i2++)
-          for(int i3 = 0; i3 < ss[3].dim(); i3++){
-            cslice_iter<T> subv = v_slice_hc(i1,i2,i3,slice(0,v_slice_hc.size4(),1));
-            slice_iter<T> subres = res_slice_hc(i1,i2,i3,slice(0,res_slice_hc.size4(),1));
-            vaux1 = subv;
-            vaux2 = subres;
-            product(block1,block2,vaux1,vaux2,coef,T(1),true);
-            subres = vaux2.array();
-          }
-        }
-        break;
+      });
+    };
+    if (mask_hc & MASK_PRODUCT_DEFAULT) apply(v_slice, res_slice, false);
+    if (do_hc && (mask_hc & MASK_PRODUCT_HC)) apply(v_slice_hc, res_slice_hc, true);
+  };
+
+  switch (_mask) {
+    case MASK_BLOCK1:
+      apply_layout(std::integral_constant<int, MASK_BLOCK1>{});
+      break;
+    case MASK_BLOCK2:
+      apply_layout(std::integral_constant<int, MASK_BLOCK2>{});
+      break;
+    case MASK_BLOCK3:
+      apply_layout(std::integral_constant<int, MASK_BLOCK3>{});
+      break;
+    case MASK_BLOCK4:
+      apply_layout(std::integral_constant<int, MASK_BLOCK4>{});
+      break;
+    case MASK_BLOCK1 | MASK_BLOCK2:
+      apply_layout(std::integral_constant<int, MASK_BLOCK1 | MASK_BLOCK2>{});
+      break;
+    case MASK_BLOCK1 | MASK_BLOCK3:
+      apply_layout(std::integral_constant<int, MASK_BLOCK1 | MASK_BLOCK3>{});
+      break;
+    case MASK_BLOCK1 | MASK_BLOCK4:
+      apply_layout(std::integral_constant<int, MASK_BLOCK1 | MASK_BLOCK4>{});
+      break;
+    case MASK_BLOCK2 | MASK_BLOCK3:
+      apply_layout(std::integral_constant<int, MASK_BLOCK2 | MASK_BLOCK3>{});
+      break;
+    case MASK_BLOCK2 | MASK_BLOCK4:
+      apply_layout(std::integral_constant<int, MASK_BLOCK2 | MASK_BLOCK4>{});
+      break;
+    case MASK_BLOCK3 | MASK_BLOCK4:
+      apply_layout(std::integral_constant<int, MASK_BLOCK3 | MASK_BLOCK4>{});
+      break;
   }
   if(!globals){
     delete(_vaux1);
@@ -846,7 +668,7 @@ product_term2(const ProductTerm<T> &pterm,
 template<class T>
 void
 product_term4(const ProductTerm<T> &pterm,
-             const VectorState<T> &v, VectorState<T> &res, int mask_hc, 
+             const VectorState<T> &v, VectorState<T> &res, int mask_hc,
              DMTKglobals<T> *globals = NULL)
 {
   StateSpace ss = pterm.vspace;
@@ -889,7 +711,7 @@ product_term4(const ProductTerm<T> &pterm,
 template<class T>
 void
 product_term3(const ProductTerm<T> &pterm,
-             const VectorState<T> &v, VectorState<T> &res, int mask_hc, 
+             const VectorState<T> &v, VectorState<T> &res, int mask_hc,
              DMTKglobals<T> *globals = NULL)
 {
   StateSpace ss = pterm.vspace;

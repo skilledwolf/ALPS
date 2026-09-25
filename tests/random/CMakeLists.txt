@@ -1,7 +1,7 @@
 #  Copyright Matthias Troyer and Synge Todo 2009 - 2012.
 #   SPDX-License-Identifier: MIT
 
-foreach(name random_choice uniform_on_sphere_n)
+foreach(name random_choice uniform_on_sphere_n prime_table)
   add_executable(${name} ${name}.C)
 
   target_link_libraries(${name} PRIVATE ALPS::alps)

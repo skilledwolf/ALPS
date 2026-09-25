@@ -35,6 +35,11 @@ endforeach()
 # tests/numeric/CMakeLists.txt.
 target_compile_definitions(hdf5_fortran_string PRIVATE ALPS_SRCDIR="${PROJECT_SOURCE_DIR}")
 
+add_executable(hdf5_sequence_codec hdf5_sequence_codec.cpp)
+target_link_libraries(hdf5_sequence_codec PRIVATE ALPS::alps)
+add_test(NAME hdf5_sequence_codec COMMAND hdf5_sequence_codec)
+set_property(TEST hdf5_sequence_codec PROPERTY LABELS hdf5)
+
 if(ALPS_ENABLE_OPENMP)
   add_executable(hdf5_omp hdf5_omp.cpp)
 

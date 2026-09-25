@@ -28,6 +28,7 @@
 #include <alps/scheduler/info.h>
 
 namespace alps {
+namespace detail { struct clone_workflow; }
 
 ALPS_DECL void save_observable(hdf5::archive & ar, std::vector<ObservableSet> const& obs);
 ALPS_DECL void save_observable(hdf5::archive & ar, cid_t cid,
@@ -60,6 +61,7 @@ public:
 };
 
 class ALPS_DECL clone : public abstract_clone {
+  friend struct alps::detail::clone_workflow;
 public:
   clone(boost::filesystem::path const& basedir, alps::parapack::option opt, tid_t tid, cid_t cid,
     Parameters const& params, std::string const& base, bool is_new);
@@ -149,6 +151,7 @@ struct clone_halt_msg_t {
 };
 
 class ALPS_DECL clone_mpi : public abstract_clone {
+  friend struct alps::detail::clone_workflow;
 public:
   clone_mpi(boost::mpi::communicator const& ctrl, boost::mpi::communicator const& work,
     boost::filesystem::path const& basedir, alps::parapack::option opt,

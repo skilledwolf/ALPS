@@ -35,6 +35,7 @@
 #include <alps/numeric/is_nonzero.hpp>
 
 #include <boost/config.hpp>
+#include <type_traits>
 
 // workaround for FCC
 #ifdef __FCC_VERSION
@@ -134,7 +135,6 @@ inline void SimpleBinning<T>::reset(bool )
 }
 
 // add a new measurement
-template <> void SimpleBinning<std::valarray<double> >::operator<<(const std::valarray<double>& x);
 template <class T>
 inline void SimpleBinning<T>::operator<<(const T& x)
 {
@@ -154,76 +154,18 @@ inline void SimpleBinning<T>::operator<<(const T& x)
     boost::throw_exception(std::runtime_error("Size of argument does not match in SimpleBinning<T>::add"));
   }
 
-  // store x, x^2
-  last_bin_[0]=alps::numeric_cast<result_type>(x);
-  sum_[0]+=alps::numeric_cast<result_type>(x);
-  sum2_[0]+=alps::numeric_cast<result_type>(x)*alps::numeric_cast<result_type>(x);
-
-  uint64_t i=count_;
-  count_++;
-  bin_entries_[0]++;
-  uint64_t binlen=1;
-  std::size_t bin=0;
-
-  // binning
-  do
-    {
-      if(i&1)
-        {
-          // a bin is filled
-          binlen*=2;
-          bin++;
-          if(bin>=last_bin_.size())
-          {
-            last_bin_.resize(std::max BOOST_PREVENT_MACRO_SUBSTITUTION (bin+1,last_bin_.size()));
-            sum_.resize(std::max BOOST_PREVENT_MACRO_SUBSTITUTION (bin+1, sum_.size()));
-            sum2_.resize(std::max BOOST_PREVENT_MACRO_SUBSTITUTION (bin+1,sum2_.size()));
-            bin_entries_.resize(std::max BOOST_PREVENT_MACRO_SUBSTITUTION (bin+1,bin_entries_.size()));
-
-            resize_same_as(last_bin_[bin],x);
-            resize_same_as(sum_[bin],x);
-            resize_same_as(sum2_[bin],x);
-          }
-
-          result_type x1=(sum_[0]-sum_[bin]);
-          x1/=count_type(binlen);
-
-          result_type y1 = x1*x1;
-
-          last_bin_[bin]=x1;
-          sum2_[bin] += y1;
-          sum_[bin] = sum_[0];
-          bin_entries_[bin]++;
-        }
-      else
-        break;
-    } while ( i>>=1);
-}
-
-template <> inline void SimpleBinning<std::valarray<double> >::operator<<(const std::valarray<double> & x)
-{
-  // set sizes if starting additions
-  if(count_==0)
-  {
-    last_bin_.resize(1);
-    sum_.resize(1);
-    sum2_.resize(1);
-    bin_entries_.resize(1);
-    resize_same_as(last_bin_[0],x);
-    resize_same_as(sum_[0],x);
-    resize_same_as(sum2_[0],x);
-  }
-
-  if(alps::size(x)!=size()) {
-    std::cerr << "Size is " << size() << " while new size is " << alps::size(x) << "\n";
-    boost::throw_exception(std::runtime_error("Size of argument does not match in SimpleBinning<T>::add"));
-  }
-
-  // store x, x^2 and the minimum and maximum value
-  for(std::size_t i=0;i<size();++i){
-    last_bin_[0][i]=x[i];
-    sum_[0][i]+=x[i];
-    sum2_[0][i]+=x[i]*x[i];
+  // Keep the vector specialization's elementwise arithmetic without copying
+  // the surrounding bin allocation, validation and advancement workflow.
+  if constexpr (std::is_same_v<T, std::valarray<double>>) {
+    for (std::size_t i = 0; i < size(); ++i) {
+      last_bin_[0][i] = x[i];
+      sum_[0][i] += x[i];
+      sum2_[0][i] += x[i]*x[i];
+    }
+  } else {
+    last_bin_[0]=alps::numeric_cast<result_type>(x);
+    sum_[0]+=alps::numeric_cast<result_type>(x);
+    sum2_[0]+=alps::numeric_cast<result_type>(x)*alps::numeric_cast<result_type>(x);
   }
 
   uint64_t i=count_;
@@ -255,10 +197,15 @@ template <> inline void SimpleBinning<std::valarray<double> >::operator<<(const 
           result_type x1=(sum_[0]-sum_[bin]);
           x1/=count_type(binlen);
 
-          last_bin_[bin]=x1;
-
-          x1 *= x1;
-          sum2_[bin] += x1;
+          if constexpr (std::is_same_v<T, std::valarray<double>>) {
+            last_bin_[bin]=x1;
+            x1 *= x1;
+            sum2_[bin] += x1;
+          } else {
+            result_type y1 = x1*x1;
+            last_bin_[bin]=x1;
+            sum2_[bin] += y1;
+          }
           sum_[bin] = sum_[0];
           bin_entries_[bin]++;
         }

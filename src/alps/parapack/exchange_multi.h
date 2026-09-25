@@ -60,6 +60,7 @@ struct multiple_initializer_helper {
 template<typename WALKER, typename INITIALIZER = exmc::no_initializer>
 class multiple_parallel_exchange_worker : public mc_worker {
 private:
+  friend struct exmc::exchange_algorithm;
   typedef mc_worker super_type;
   typedef WALKER walker_type;
   typedef typename walker_type::weight_parameter_type weight_parameter_type;
@@ -85,7 +86,6 @@ public:
       }
     }
     
-    int nrep = beta_.size();
     if (head_) {
       boost::tie(nrep_local_, offset_local_) = calc_nrep(head_.rank());
       if (nrep_local_ == 0) {
@@ -96,65 +96,11 @@ public:
     }
     broadcast(work_, nrep_local_, 0);
     broadcast(work_, offset_local_, 0);
-    if (head_ && head_.rank() == 0) {
-      nreps_.resize(head_.size());
-      offsets_.resize(head_.size());
-      nrep_max_ = 0;
-      for (int p = 0; p < head_.size(); ++p) {
-        boost::tie(nreps_[p], offsets_[p]) = calc_nrep(p);
-        nrep_max_ = (std::max)(nrep_max_, nreps_[p]);
-      }
-      std::cout << "EXMC: number of replicas = " << nrep << std::endl
-                << "EXMC: number of replicas on each process = "
-                << write_vector(nreps_) << std::endl
-                << "EXMC: initial inverse temperature set = "
-                << write_vector(beta_, " ", 5) << std::endl;
-    }
-
-    // initialize walkers
-    walker_.resize(nrep_local_);
-    tid_local_.resize(nrep_local_);
-    alps::Parameters wp(params);
-    for (int p = 0; p < nrep_local_; ++p) {
-      // different WORKER_SEED for each walker, same DISORDER_SEED for all walkers
-      for (int j = 1; j < 3637 /* 509th prime number */; ++j) engine()();
-      wp["WORKER_SEED"] = engine()();
-      walker_[p] = helper::create_walker(work_, wp, init_);
-      tid_local_[p] = p + offset_local_;
-    }
-    if (head_ && head_.rank() == 0) {
-      tid_.resize(nrep);
-      for (int p = 0; p < nrep; ++p) tid_[p] = p;
-    }
-
-    if (head_ && head_.rank() == 0 && mcs_.exchange()) {
-      weight_parameters_.resize(nrep);
-      for (int p = 0; p < nrep; ++p) weight_parameters_[p] = weight_parameter_type(0);
-    }
-
-    // initialize walker labels
-    if (head_ && head_.rank() == 0) {
-      wid_.resize(nrep);
-      for (int p = 0; p < nrep; ++p) wid_[p] = p;
-      if (mcs_.exchange()) {
-        direc_.resize(nrep);
-        direc_[0] = walker_direc::down;
-        for (int p = 1; p < nrep; ++p) direc_[p] = walker_direc::unlabeled;
-      }
-    }
-
-    // working space
-    if (mcs_.exchange()) {
-      if (head_) {
-        wp_local_.resize(nrep_local_);
-        if (head_.rank() == 0) {
-          wp_.resize(nrep);
-          upward_.resize(nrep);
-          accept_.resize(nrep - 1);
-          if (mcs_.random_exchange()) permutation_.resize(nrep - 1);
-        }
-      }
-    }
+    if (head_ && head_.rank() == 0) exmc::exchange_algorithm::init_partition(*this, head_.size());
+    exmc::exchange_algorithm::init_walkers(*this, params, tid_local_, nrep_local_, offset_local_,
+      [&](alps::Parameters const& wp) { return helper::create_walker(work_, wp, init_); });
+    if (head_ && head_.rank() == 0) exmc::exchange_algorithm::init_state(*this);
+    if (mcs_.exchange() && head_) wp_local_.resize(nrep_local_);
   }
   virtual ~multiple_parallel_exchange_worker() {}
 
@@ -165,19 +111,7 @@ public:
       helper::init_observables(walker_[0], params, init_, obs[p]);
     if (head_ && head_.rank() == 0) {
       for (int p = 0; p < nrep; ++p) {
-        obs[p] << SimpleRealObservable("EXMC: Temperature")
-               << SimpleRealObservable("EXMC: Inverse Temperature");
-        if (mcs_.exchange()) {
-          obs[p] << SimpleRealObservable("EXMC: Ratio of Upward-Moving Walker")
-                 << SimpleRealObservable("EXMC: Ratio of Downward-Moving Walker")
-                 << SimpleRealObservable("EXMC: Inverse Round-Trip Time");
-          obs[p]["EXMC: Ratio of Upward-Moving Walker"].reset(true);
-          obs[p]["EXMC: Ratio of Downward-Moving Walker"].reset(true);
-          if (p != nrep - 1) {
-            obs[p] << SimpleRealObservable("EXMC: Acceptance Rate");
-            obs[p]["EXMC: Acceptance Rate"].reset(true);
-          }
-        }
+        exmc::exchange_algorithm::init_observables(obs[p], p, nrep, mcs_.exchange());
       }
       if (mcs_.exchange()) obs[0] << SimpleRealObservable("EXMC: Average Inverse Round-Trip Time");
     }
@@ -223,171 +157,15 @@ public:
         }
 
         if (head_.rank() == 0) {
-          if (mcs_.random_exchange()) {
-            // random exchange
-            for (int p = 0; p < nrep - 1; ++p) permutation_[p] = p;
-            alps::random_shuffle(permutation_.begin(), permutation_.end(), generator_01());
+          exmc::exchange_algorithm::exchange<true>(*this, obs);
 
-            for (int i = 0; i < nrep - 1; ++i) {
-              int p = permutation_[i];
-              int w0 = wid_[p];
-              int w1 = wid_[p+1];
-              double logp = ((walker_type::log_weight(wp_[w1], beta_[p]  ) +
-                              walker_type::log_weight(wp_[w0], beta_[p+1])) -
-                             (walker_type::log_weight(wp_[w1], beta_[p+1]) +
-                              walker_type::log_weight(wp_[w0], beta_[p]  )));
-              if (logp > 0 || uniform_01() < std::exp(logp)) {
-                std::swap(tid_[w0], tid_[w1]);
-                std::swap(wid_[p], wid_[p+1]);
-                obs[p]["EXMC: Acceptance Rate"] << 1.;
-              } else {
-                obs[p]["EXMC: Acceptance Rate"] << 0.;
-              }
-            }
-          } else {
-            // alternating exchange
-            int start = (mcs_() / mcs_.interval()) % 2;
-            for (int p = start; p < nrep - 1; p += 2) {
-              int w0 = wid_[p];
-              int w1 = wid_[p+1];
-              double logp = ((walker_type::log_weight(wp_[w1], beta_[p]  ) +
-                              walker_type::log_weight(wp_[w0], beta_[p+1])) -
-                             (walker_type::log_weight(wp_[w1], beta_[p+1]) +
-                              walker_type::log_weight(wp_[w0], beta_[p]  )));
-              if (logp > 0 || uniform_01() < std::exp(logp)) {
-                std::swap(tid_[w0], tid_[w1]);
-                std::swap(wid_[p], wid_[p+1]);
-                obs[p]["EXMC: Acceptance Rate"] << 1.;
-              } else {
-                obs[p]["EXMC: Acceptance Rate"] << 0.;
-              }
-            }
-          }
-
-          int wtop = wid_.front();
-          for (int w = 0; w < nrep; ++w) {
-            if (w == wtop && direc_[w] == walker_direc::up) {
-              obs[w]["EXMC: Inverse Round-Trip Time"] << 1.;
-            } else {
-              obs[w]["EXMC: Inverse Round-Trip Time"] << 0.;
-            }
-          }
-          if (direc_[wtop] == walker_direc::up) {
-            obs[0]["EXMC: Average Inverse Round-Trip Time"] << 1. / nrep;
-            ++num_returnee_;
-          } else {
-            obs[0]["EXMC: Average Inverse Round-Trip Time"] << 0.;
-          }
-          direc_[wtop] = walker_direc::down;
-          if (direc_[wid_.back()] == walker_direc::down) direc_[wid_.back()] = walker_direc::up;
-          for (int p = 0; p < nrep; ++p) {
-            obs[p]["EXMC: Ratio of Upward-Moving Walker"] <<
-              (direc_[wid_[p]] == walker_direc::up ? 1. : 0.);
-            obs[p]["EXMC: Ratio of Downward-Moving Walker"] <<
-              (direc_[wid_[p]] == walker_direc::down ? 1. : 0.);
-          }
-          
           if (mcs_.doing_optimization() && mcs_.stage_count() == mcs_.stage_sweeps()) {
 
-            if (mcs_.optimization_type() == exmc::exchange_steps::rate) {
-
-              for (int p = 0; p < nrep - 1; ++p)
-                accept_[p] =
-                  reinterpret_cast<SimpleRealObservable&>(obs[p]["EXMC: Acceptance Rate"]).mean();
-              for (int p = 0; p < nrep; ++p) wp_[p] = weight_parameters_[p] / mcs_.stage_count();
-              std::cout << "EXMC stage " << mcs_.stage() << ": acceptance rate = "
-                        << write_vector(accept_, " ", 5) << std::endl;
-           
-              if (mcs_.stage() != 0) {
-                beta_.optimize_h1999<walker_type>(wp_);
-                std::cout << "EXMC stage " << mcs_.stage() << ": optimized inverse temperature set = "
-                          << write_vector(beta_, " ", 5) << std::endl;
-              }
-              next_stage = true;
-           
-              for (int p = 0; p < nrep - 1; ++p) {
-                obs[p]["EXMC: Acceptance Rate"].reset(true);
-              }
-              for (int p = 0; p < nrep; ++p) {
-                obs[p]["EXMC: Ratio of Upward-Moving Walker"].reset(true);
-                obs[p]["EXMC: Ratio of Downward-Moving Walker"].reset(true);
-                weight_parameters_[p] = weight_parameter_type(0);
-              }
-              
-            } else {
-
-              bool success = (num_returnee_ >= nrep);
-
-              int nu = 0;
-              for (int p = 0; p < nrep; ++p) if (direc_[p] == walker_direc::unlabeled) ++nu;
-              if (nu > 0) success = false;
-           
-              for (int p = 0; p < nrep; ++p) {
-                double up = reinterpret_cast<SimpleRealObservable&>(
-                  obs[p]["EXMC: Ratio of Upward-Moving Walker"]).mean();
-                double down = reinterpret_cast<SimpleRealObservable&>(
-                  obs[p]["EXMC: Ratio of Downward-Moving Walker"]).mean();
-                upward_[p] = (up + down > 0) ? up / (up + down) : alps::nan();
-              }
-
-              for (int p = 0; p < nrep - 1; ++p)
-                accept_[p] = reinterpret_cast<SimpleRealObservable&>(
-                  obs[p]["EXMC: Acceptance Rate"]).mean();
-
-              std::cout << "EXMC stage " << mcs_.stage()
-                        << ": stage count = " << mcs_.stage_count() << '\n'
-                        << "EXMC stage " << mcs_.stage()
-                        << ": number of returned walkers = " << num_returnee_ << '\n'
-                        << "EXMC stage " << mcs_.stage()
-                        << ": number of unlabeled walkers = " << nu << '\n'
-                        << "EXMC stage " << mcs_.stage()
-                        << ": population ratio of upward-moving walkers "
-                        << write_vector(upward_, " ", 5) << '\n'
-                        << "EXMC stage " << mcs_.stage()
-                        << ": acceptance rate " << write_vector(accept_, " ", 3) << std::endl;
-
-              // preform optimization
-              if (mcs_.stage() != 0 && success) success = beta_.optimize2(upward_);
-           
-              if (success) {
-                std::cout << "EXMC stage " << mcs_.stage() << ": DONE" << std::endl;
-                if (mcs_.stage() > 0)
-                  std::cout << "EXMC stage " << mcs_.stage() << ": optimized inverse temperature set = "
-                            << write_vector(beta_, " ", 5) << std::endl;
-                next_stage = true;
-                for (int p = 0; p < nrep - 1; ++p) {
-                  obs[p]["EXMC: Acceptance Rate"].reset(true);
-                }
-                for (int p = 0; p < nrep; ++p) {
-                  obs[p]["EXMC: Ratio of Upward-Moving Walker"].reset(true);
-                  obs[p]["EXMC: Ratio of Downward-Moving Walker"].reset(true);
-                }
-                num_returnee_ = 0;
-              } else {
-                // increase stage sweeps
-                continue_stage = true;
-                std::cout << "EXMC stage " << mcs_.stage() << ": NOT FINISHED\n"
-                          << "EXMC stage " << mcs_.stage() << ": increased number of sweeps to "
-                          << mcs_.stage_sweeps() << std::endl;
-              }
-            }
+            exmc::exchange_algorithm::optimize(*this, obs,
+              [&] { next_stage = true; }, [&] { continue_stage = true; }, 5);
 
             // check whether all the replicas have revisited the highest temperature or not
-            if (!mcs_.perform_optimization() && mcs_() == mcs_.thermalization()) {
-              int nu = 0;
-              for (int p = 0; p < nrep; ++p) if (direc_[p] == walker_direc::unlabeled) ++nu;
-              std::cout << "EXMC: thermalization count = " << mcs_() << '\n'
-                        << "EXMC: number of returned walkers = " << num_returnee_ << '\n'
-                        << "EXMC: number of unlabeled walkers = " << nu << std::endl;
-              if ((num_returnee_ >= nrep) && (nu == 0)) {
-                std::cout << "EXMC: thermzlization DONE" << std::endl;
-              } else {
-                continue_stage = true;
-                std::cout << "EXMC: thermalization NOT FINISHED\n"
-                          << "EXMC: increased number of thermalization sweeps to "
-                          << mcs_.thermalization() << std::endl;
-              }
-            }
+            exmc::exchange_algorithm::check_thermalization(*this, [&] { continue_stage = true; });
           }
         }
       
@@ -433,16 +211,8 @@ public:
 
 protected:
   std::pair<int, int> calc_nrep(int id) const {
-    int nrep = beta_.size();
-    int n = nrep / comm_.size();
-    int f;
-    if (id < nrep - n * comm_.size()) {
-      ++n;
-      f = n * id;
-    } else {
-      f = (nrep - n * comm_.size()) + n * id;
-    }
-    return std::make_pair(n, f);
+    // Replicas are distributed across worker groups, not individual ranks.
+    return exmc::exchange_algorithm::partition(beta_.size(), head_.size(), id);
   }
 
 private:

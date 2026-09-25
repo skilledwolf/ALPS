@@ -38,52 +38,6 @@ namespace ngs_parapack {
 // task
 //
 
-task::task() : status_(task_status::Undefined) {}
-
-task::task(boost::filesystem::path const& file) : status_(task_status::Undefined) {
-  basedir_ = file.parent_path();
-  file_in_str_ = file.filename().string();
-  file_out_str_ = regex_replace(file.filename().string(), boost::regex("\\.in\\.xml$"), ".out.xml");
-  if (file_in_str_ == file_out_str_) {
-    file_in_str_ = regex_replace(file.filename().string(), boost::regex("\\.out\\.xml$"), ".in.xml");
-    file_out_str_ = file.filename().string();
-  }
-  base_ = regex_replace(file_out_str_, boost::regex("\\.out\\.xml$"), "");
-}
-
-bool task::on_memory() const {
-  return status_ == task_status::Ready || status_ == task_status::Running ||
-    status_ == task_status::Continuing || status_ == task_status::Idling;
-}
-
-task::range_type const& task::num_clones() const {
-  if (!on_memory()) boost::throw_exception(std::logic_error(
-    "task::num_clones() task not loaded"));
-  return num_clones_;
-}
-
-uint32_t task::num_running() const {
-  if (!on_memory()) boost::throw_exception(std::logic_error(
-    "task::num_running() task not loaded"));
-  return running_.size();
-}
-
-uint32_t task::num_suspended() const {
-  if (!on_memory()) boost::throw_exception(std::logic_error(
-    "task::num_suspended() task not loaded"));
-  return suspended_.size();
-}
-
-uint32_t task::num_finished() const {
-  if (!on_memory()) boost::throw_exception(std::logic_error(
-    "task::num_finished() task not loaded"));
-  return finished_.size();
-}
-
-uint32_t task::num_started() const {
-  return num_running() + num_suspended() + num_finished();
-}
-
 void task::load() {
   if (on_memory()) boost::throw_exception(std::logic_error("task::load() task already loaded"));
   params_ = alps::params();
@@ -102,26 +56,7 @@ void task::load() {
   }
 
   num_clones_ = (params_["NUM_CLONES"] | 1);
-  clone_status_.clear();
-  clone_master_.clear();
-  running_.clear();
-  suspended_.clear();
-  finished_.clear();
-  BOOST_FOREACH(clone_info const& info, clone_info_) {
-    if (info.progress() < 1){
-      clone_status_.push_back(clone_status::Suspended);
-      suspended_.insert(info.clone_id());
-    } else {
-      clone_status_.push_back(clone_status::Finished);
-      finished_.insert(info.clone_id());
-    }
-    clone_master_.push_back(Process());
-  }
-
-  status_ = task_status::Ready;
-  progress_ = calc_progress();
-  boost::tie(weight_, dump_weight_) = calc_weight();
-  status_ = calc_status();
+  restore_state();
 }
 
 void task::save(bool write_xml) const {
@@ -145,33 +80,8 @@ void task::save(bool write_xml) const {
 }
 
 void task::halt() {
-  if (!on_memory()) boost::throw_exception(std::logic_error("task not loaded"));
-  if (running_.size()) boost::throw_exception(std::logic_error("running clone exists"));
-
-  switch (status_) {
-  case task_status::Ready:
-    status_ = task_status::NotStarted;
-    break;
-  case task_status::Running:
-    status_ = task_status::Suspended;
-    break;
-  case task_status::Continuing:
-    status_ = task_status::Finished;
-    break;
-  case task_status::Idling:
-    status_ = task_status::Completed;
-    break;
-  default:
-    boost::throw_exception(std::logic_error("unknown task_status"));
-  }
-
+  halt_state();
   params_ = alps::params();
-  clone_status_.clear();
-  clone_master_.clear();
-  clone_info_.clear();
-  running_.clear();
-  suspended_.clear();
-  finished_.clear();
 }
 
 void task::check_parameter(bool write_xml) {
@@ -235,48 +145,6 @@ void task::check_parameter(bool write_xml) {
   }
 }
 
-bool task::can_dispatch() const {
-  return num_suspended() > 0 || num_started() < num_clones_.max BOOST_PREVENT_MACRO_SUBSTITUTION ();
-}
-
-void task::info_updated(cid_t cid, clone_info const& info) {
-  if (clone_status_[cid] == clone_status::Running) {
-    clone_info_[cid] = info;
-    if (info.progress() >= 1) clone_status_[cid] = clone_status::Idling;
-  }
-}
-
-void task::clone_halted(cid_t cid, clone_info const& info) {
-  info_updated(cid, info);
-  clone_halted(cid);
-}
-
-void task::clone_halted(cid_t cid) {
-  if (clone_status_[cid] != clone_status::Stopping)
-    boost::throw_exception(std::logic_error("clone is not stopping"));
-  clone_status_[cid] = clone_status::Finished;
-  running_.erase(cid);
-  finished_.insert(cid);
-  progress_ = calc_progress();
-  status_ = calc_status();
-  boost::tie(weight_, dump_weight_) = calc_weight();
-}
-
-void task::write_xml_summary(oxstream& os) const {
-  os << start_tag("TASK")
-     << attribute("id", task_id_+1)
-     << attribute("status", task_status::to_string(status_))
-     << attribute("progress", precision(progress() * 100, 3) + '%')
-     << attribute("weight", precision(dump_weight_, 3))
-     << start_tag("INPUT")
-     << attribute("file", file_in_str_)
-     << end_tag("INPUT")
-     << start_tag("OUTPUT")
-     << attribute("file", file_out_str_)
-     << end_tag("OUTPUT")
-     << end_tag("TASK");
-}
-
 void task::write_xml_archive(oxstream& os) const {
   os << alps::start_tag("SIMULATION")
      << attribute("id", task_id_+1)
@@ -285,41 +153,6 @@ void task::write_xml_archive(oxstream& os) const {
      << params_;
   for (unsigned int i = 0; i < clone_info_.size(); ++i) if (clone_info_[i].clone_id() == i) os << clone_info_[i];
   os << alps::end_tag("SIMULATION");
-}
-
-double task::calc_progress() const {
-  if (!on_memory()) boost::throw_exception(std::logic_error("task not loaded"));
-  return (double)(num_finished()) / num_clones().min BOOST_PREVENT_MACRO_SUBSTITUTION ();
-}
-
-std::pair<double, double> task::calc_weight() const {
-  if (!on_memory()) boost::throw_exception(std::logic_error("task not loaded"));
-  double w;
-  if (num_suspended() > 0)
-    w = 4.0;
-  else if (num_started() == 0)
-    // NotStarted
-    w = 3.0;
-  else if (num_started() < num_clones().min BOOST_PREVENT_MACRO_SUBSTITUTION ())
-    // Running
-    w = 2.0 - (double)(num_started()) / num_clones().min BOOST_PREVENT_MACRO_SUBSTITUTION ();
-  else
-    // Continuing
-    w = 1.0 - (double)(num_started()) / num_clones().max BOOST_PREVENT_MACRO_SUBSTITUTION ();
-  double d = (num_running() + num_suspended() > 0) ? 4.0 : w;
-  return std::make_pair(w, d);
-}
-
-task_status_t task::calc_status() const {
-  if (!on_memory()) boost::throw_exception(std::logic_error("task not loaded"));
-  if (num_started() == 0)
-    return task_status::Ready;
-  else if (num_finished() < num_clones_.min BOOST_PREVENT_MACRO_SUBSTITUTION ())
-    return task_status::Running;
-  else if (num_finished() < num_clones_.max BOOST_PREVENT_MACRO_SUBSTITUTION ())
-    return task_status::Continuing;
-  else
-    return task_status::Idling;
 }
 
 } // end namespace ngs_parapack

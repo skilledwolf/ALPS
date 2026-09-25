@@ -17,6 +17,7 @@
 // This version of the system class works only on symmetric systems
 //*******************************************************************
  
+#include <array>
 #include <iostream>
 #include <iosfwd>
 #include <list>
@@ -144,60 +145,86 @@ FileList tmp_files;
 template<class T>
 class System
 {
+    void sweep_iteration(size_t kept_states, std::ostream& outputfile, bool final);
+
   protected:
     typedef typename dmtk::Block<T> B;
+
+    struct site_location {
+      B const* block;
+      size_t index;
+      int local;
+    };
+    site_location locate_site(int site) const;
+
+    Term<T> term_on_blocks(Term<T> const& term, int block_mask) const {
+      Term<T> piece;
+      for (auto const& op : term) {
+        auto position = block(op.site());
+        if (position != BLOCK_NONE && (block_mask & mask(position))) piece *= op;
+      }
+      return piece;
+    }
+
+    // A single operator keeps its own metadata; a product derives it from the term.
+    static BasicOp<T> term_operator(Term<T> const& term) {
+      BasicOp<T> op;
+      if (term.size() == 1) op = term[0];
+      else op = term;
+      return op;
+    }
 
     Lattice _lattice;
 
     CTimer _timer;
 
-    bool _in_warmup;
+    bool _in_warmup{true};
     size_t dir;
-    int _sweep;
-    int iter;
+    int _sweep{1};
+    int iter{1};
 
-    bool _use_hc;
-    int _grand_canonical;
+    bool _use_hc{false};
+    int _grand_canonical{QN::default_mask()};
 
-    int m;
-    int m1;
-    int m2;
-    int m3;
-    int m4;
+    int m{10};
+    int m1{2};
+    int m2{2};
+    int m3{2};
+    int m4{2};
 
     double _error;  
     double _truncation_error;
     double _entropy;
-    bool _use_error;
-    int _error_max_size;
-    bool _target_subspaces; // build density matrix using all subspaces
-    int _nsub; // number states per subspace
+    bool _use_error{false};
+    int _error_max_size{-1};
+    bool _target_subspaces{false}; // build density matrix using all subspaces
+    int _nsub{1}; // number states per subspace
 
-    int _verbose;
-    int _calc_gap;
-    bool _project;
-    bool _use_k;
-    bool _use_seed;
-    bool _use_basic_seed;
-    bool _use_composite;
-    bool _grow_symmetric;
-    bool _grow_outward;
-    bool _custom_qns;
-    bool _store_products;
-    bool _measure_symmetric;
-    bool _apply_hami;
-    bool _apply_extern;
-    bool _rotate_terms;
-    bool _full_sweep; // run sweep from 1 to ls-3/ls-4
-    bool _use_coef_tol; 
-    double _coef_tol;
-    Matrix<size_t> _sweeps;
-    size_t _numsweeps;
+    int _verbose{0};
+    int _calc_gap{0};
+    bool _project{false};
+    bool _use_k{false};
+    bool _use_seed{true};
+    bool _use_basic_seed{false};
+    bool _use_composite{true};
+    bool _grow_symmetric{true};
+    bool _grow_outward{false};
+    bool _custom_qns{true};
+    bool _store_products{true};
+    bool _measure_symmetric{false};
+    bool _apply_hami{true};
+    bool _apply_extern{true};
+    bool _rotate_terms{true};
+    bool _full_sweep{false}; // run sweep from 1 to ls-3/ls-4
+    bool _use_coef_tol{false};
+    double _coef_tol{1.e-5};
+    Matrix<size_t> _sweeps{2, 10};
+    size_t _numsweeps{0};
 
     char _name[255];
 
-    double _lanczos_tol;
-    int _lanczos_maxiter;
+    double _lanczos_tol{1.e-7};
+    int _lanczos_maxiter{-1};
 
     virtual void init_iteration(const B&b1, const B&b2, const B&b3, const B&b4, bool use_seed = false, bool create_composite = true);
     void rotate_hami(int position, Block<T> &b, Basis &basis, Basis &rho_basis, const Hami<T> *this_hami = NULL);
@@ -249,16 +276,16 @@ class System
     const B* _b3;
     const B* _b4;
 
-    QN qnt;
+    QN qnt{0};
     QN qn;
     double precision;
 
-    size_t _ntargets;
-    Vector<VectorState<T> > _target;   
-    Vector<double> _target_weight;
+    size_t _ntargets{1};
+    Vector<VectorState<T> > _target{1};
+    Vector<double> _target_weight{1};
     Vector<VectorState<T> *> _project_states;
 
-    size_t _nstates;  // excited states for diagonalization
+    size_t _nstates{1};  // excited states for diagonalization
     Vector<VectorState<T> > _state; // gs and excited states  
     Vector<VectorState<T> > _propagate_state; // states that we want to transform as we sweep (besides the ground state)
 
@@ -282,84 +309,17 @@ class System
 
 //  Constructor
   
-    System()
-    : _in_warmup(true)
-    , _sweep(1)
-    , iter(1)
-    , _use_hc(false)
-    , _grand_canonical(QN::default_mask())
-    , m(10)
-    , m1(2)
-    , m2(2)
-    , m3(2)
-    , m4(2)
-    , _use_error(false)
-    , _error_max_size(-1)
-    , _target_subspaces(false)
-    , _nsub(1)
-    , _verbose(0)
-    , _calc_gap(0)
-    , _project(false)
-    , _use_k(false)
-    , _use_seed(true)
-    , _use_basic_seed(false)
-    , _use_composite(true)
-    , _grow_symmetric(true)
-    , _grow_outward(false)
-    , _custom_qns(true)
-    , _store_products(true)
-    , _measure_symmetric(false)
-    , _apply_hami(true)
-    , _apply_extern(true)
-    , _rotate_terms(true)
-    , _full_sweep(false)
-    , _use_coef_tol(false)
-    , _coef_tol(1.e-5) 
-    , _numsweeps(0)
-    , _lanczos_tol(1.e-7)
-    , _lanczos_maxiter(-1)
-    , qnt(0)
-    , _ntargets(1)
-    , _nstates(1)
-    { _sweeps.resize(2,10); _target.resize(1); _target_weight.resize(1); set_name(""); init_signals(); };
+    System() { set_name(""); init_signals(); }
 
-    System(const Hami<T> &_h, const Lattice& lattice, const char *the_name)
-     : _lattice(lattice)
-     , _in_warmup(true)
-     , _sweep(1)
-     , iter(1)
-     , _use_hc(false)
-     , _grand_canonical(QN::default_mask())
-     , _use_error(false)
-     , _error_max_size(-1)
-     , _target_subspaces(false)
-     , _nsub(1)
-     , _verbose(0)
-     , _calc_gap(0)
-     , _project(false)
-     , _use_k(false)
-     , _use_seed(true)
-     , _use_basic_seed(false)
-     , _use_composite(true)
-     , _grow_symmetric(true)
-     , _grow_outward(false)
-     , _custom_qns(true)
-     , _store_products(true)
-     , _measure_symmetric(false)
-     , _apply_hami(true)
-     , _apply_extern(true)
-     , _rotate_terms(true)
-     , _full_sweep(false)
-     , _use_coef_tol(false)
-     , _coef_tol(1.e-5) 
-     , _numsweeps(0)
-     , _lanczos_tol(1.e-7)
-     , _lanczos_maxiter(-1)
-     , qnt(0)
-     , _ntargets(1)
-     , _nstates(1)
-     , h(_h)
-      { set_name(the_name); m1 = m2 = m3 = m4 = _h.get_site(0).dim(); m = m1 * m2; _sweeps.resize(2,10); _target.resize(1); _target_weight.resize(1); _target_weight[0] = double(1); init_signals(); }
+    System(const Hami<T>& hamiltonian, const Lattice& lattice, const char* name)
+      : _lattice(lattice), h(hamiltonian)
+    {
+      set_name(name);
+      m1 = m2 = m3 = m4 = hamiltonian.get_site(0).dim();
+      m = m1 * m2;
+      _target_weight[0] = 1;
+      init_signals();
+    }
 
     virtual ~System() {}
 //  Methods
@@ -1169,6 +1129,53 @@ System<T>::warmup_loop(size_t t, const Vector<QN> &qns)
 // in the main program with growing t1(t2) until we reach convergence
 // with the final desired number of states.
 /////////////////////////////////////////////////////////////////////////
+// One ordinary sweep step. Loop bounds and end-of-iteration signals remain
+// with the callers, including the special final symmetric step.
+template<class T>
+void System<T>::sweep_iteration(size_t kept_states, std::ostream& outputfile, bool final)
+{
+  signal_emit(SYSTEM_SIGNAL_START_ITER);
+  int ls = lattice().ls();
+  bool right = dir == RIGHT2LEFT;
+  if (right && !final) {
+    read_block(leftblock, ls-iter-2, LEFT);
+    read_block(rightblock, iter, RIGHT);
+  } else {
+    read_block(rightblock, right ? iter : ls-iter-2, RIGHT);
+    read_block(leftblock, right ? ls-iter-2 : iter, LEFT);
+  }
+  int site = right ? ls-2-iter : iter;
+  const Block<T>& site1 = h.get_site(site);
+  const Block<T>& site2 = h.get_site(site+1);
+  m1 = leftblock.dim();
+  m4 = rightblock.dim();
+  m2 = site1.dim();
+  m3 = site2.dim();
+
+  _timer.Lap();
+  for (auto* out : {static_cast<std::ostream*>(&cout), &outputfile}) {
+    if (final) *out << "FINAL SWEEP ITERATION " << endl;
+    *out << (right ? "RIGHT-TO-LEFT ITERATION " : "LEFT-TO-RIGHT ITERATION ") << iter << endl;
+  }
+  init_iteration(leftblock, site1, site2, rightblock, _use_seed);
+  diagonalize(_use_seed);
+  m = kept_states;
+  int position = right ? RIGHT : LEFT;
+  if (right) m4 = std::min(m4*m3, m);
+  else m1 = std::min(m1*m2, m);
+  truncate(position, right ? m4 : m1);
+  rotate(position, newblock);
+  write_iter(position);
+  if (!_store_products && signal_emit(SYSTEM_SIGNAL_MEASURE)) measure();
+  if (verbose() > 0) {
+    for (auto* out : {static_cast<std::ostream*>(&cout), &outputfile}) {
+      *out << "===========================================\n";
+      *out << "Iteration time: " << _timer.LapTime().c_str() << endl;
+      *out << "===========================================\n";
+    }
+  }
+}
+
 template<class T>
 void
 System<T>::sweep(size_t t1, size_t t2, size_t _dir, int start)
@@ -1198,42 +1205,7 @@ System<T>::sweep(size_t t1, size_t t2, size_t _dir, int start)
   if(dir == RIGHT2LEFT){
     for(iter = start; iter < sweep_max; iter++)
     {
-      signal_emit(SYSTEM_SIGNAL_START_ITER);
-      read_block(leftblock, ls-iter-2, LEFT);
-      read_block(rightblock, iter, RIGHT);
-      const Block<T>& site1 = h.get_site(ls-2-iter);
-      const Block<T>& site2 = h.get_site(ls-2-iter+1);
-
-      m1 = leftblock.dim();
-      m4 = rightblock.dim();
-      m2 = site1.dim();
-      m3 = site2.dim();
-
-      _timer.Lap();
-      cout << "RIGHT-TO-LEFT ITERATION " << iter << endl;
-      outputfile << "RIGHT-TO-LEFT ITERATION " << iter << endl;
-
-      init_iteration(leftblock, site1, site2, rightblock, _use_seed); 
-      diagonalize(_use_seed); 
-
-      m = t1;
-      m4 = std::min(m4*m3,m);
-
-      truncate(RIGHT, m4);
-      rotate(RIGHT, newblock);
-      write_iter(RIGHT);
-      if(!_store_products){
-        if (signal_emit(SYSTEM_SIGNAL_MEASURE)) measure();
-      }
-
-      if(verbose() > 0) {
-        cout << "===========================================\n";
-        cout << "Iteration time: " << _timer.LapTime().c_str() << endl;
-        cout << "===========================================\n";
-        outputfile << "===========================================\n";
-        outputfile << "Iteration time: " << _timer.LapTime().c_str() << endl;
-        outputfile << "===========================================\n";
-      }
+      sweep_iteration(t1, outputfile, false);
       signal_emit(SYSTEM_SIGNAL_END_ITER);
     }
 
@@ -1246,42 +1218,7 @@ System<T>::sweep(size_t t1, size_t t2, size_t _dir, int start)
 
   for(iter = start; iter < sweep_max; iter++)
   {
-    signal_emit(SYSTEM_SIGNAL_START_ITER);
-    read_block(rightblock, ls-iter-2, RIGHT);
-    read_block(leftblock, iter, LEFT);
-    const Block<T>& site1 = h.get_site(iter);
-    const Block<T>& site2 = h.get_site(iter+1);
-
-    m1 = leftblock.dim();
-    m4 = rightblock.dim();
-    m2 = site1.dim();
-    m3 = site2.dim();
-
-    _timer.Lap();
-    cout << "LEFT-TO-RIGHT ITERATION " << iter << endl;
-    outputfile << "LEFT-TO-RIGHT ITERATION " << iter << endl;
-
-    init_iteration(leftblock, site1, site2, rightblock, _use_seed); 
-    diagonalize(_use_seed);
-
-    m = t2;
-    m1 = std::min(m1*m2,m);
-
-    truncate(LEFT, m1);
-    rotate(LEFT, newblock);
-    write_iter(LEFT);
-    if(!_store_products){
-      if (signal_emit(SYSTEM_SIGNAL_MEASURE)) measure();
-    }
-
-    if(verbose() > 0) {
-      cout << "===========================================\n";
-      cout << "Iteration time: " << _timer.LapTime().c_str() << endl;
-      cout << "===========================================\n";
-      outputfile << "===========================================\n";
-      outputfile << "Iteration time: " << _timer.LapTime().c_str() << endl;
-      outputfile << "===========================================\n";
-    }
+    sweep_iteration(t2, outputfile, false);
     signal_emit(SYSTEM_SIGNAL_END_ITER);
   }
 
@@ -1336,45 +1273,7 @@ System<T>::final_sweep(size_t t, size_t _dir, int _start, bool _rotate )
   if(dir == RIGHT2LEFT){
     for(iter = _start; iter < sweep_max; iter++) // ls/2-1; iter++);
     {
-      signal_emit(SYSTEM_SIGNAL_START_ITER);
-      read_block(rightblock, iter, RIGHT);
-      read_block(leftblock, ls-iter-2, LEFT);
-      const Block<T>& site1 = h.get_site(ls-2-iter);
-      const Block<T>& site2 = h.get_site(ls-2-iter+1);
-
-      m1 = leftblock.dim();
-      m4 = rightblock.dim();
-      m2 = site1.dim();
-      m3 = site2.dim();
-   
-      _timer.Lap();
-      cout << "FINAL SWEEP ITERATION " << endl;
-      outputfile << "FINAL SWEEP ITERATION " << endl;
-      cout << "RIGHT-TO-LEFT ITERATION " << iter << endl;
-      outputfile << "RIGHT-TO-LEFT ITERATION " << iter << endl;
-  
-      init_iteration(leftblock, site1, site2, rightblock, _use_seed);
-  
-      diagonalize(_use_seed);
-  
-      m = t;
-      m4 = std::min(m4*m3,m);
-  
-      truncate(RIGHT, m4);
-      rotate(RIGHT, newblock);
-      write_iter(RIGHT);
-      if(!_store_products){
-        if (signal_emit(SYSTEM_SIGNAL_MEASURE)) measure();
-      }
-
-      if(verbose() > 0) {
-        cout << "===========================================\n";
-        cout << "Iteration time: " << _timer.LapTime().c_str() << endl;
-        cout << "===========================================\n";
-        outputfile << "===========================================\n";
-        outputfile << "Iteration time: " << _timer.LapTime().c_str() << endl;
-        outputfile << "===========================================\n";
-      }
+      sweep_iteration(t, outputfile, true);
       signal_emit(SYSTEM_SIGNAL_END_ITER);
     }
     _start = 1;
@@ -1385,45 +1284,7 @@ System<T>::final_sweep(size_t t, size_t _dir, int _start, bool _rotate )
 
   for(iter = _start; iter < sweep_max; iter++)
   {
-    signal_emit(SYSTEM_SIGNAL_START_ITER);
-    read_block(rightblock, ls-iter-2, RIGHT);
-    read_block(leftblock, iter, LEFT);
-    const Block<T>& site1 = h.get_site(iter);
-    const Block<T>& site2 = h.get_site(iter+1);
-
-    m1 = leftblock.dim();
-    m4 = rightblock.dim();
-    m2 = site1.dim();
-    m3 = site2.dim();
-
-    _timer.Lap();
-    cout << "FINAL SWEEP ITERATION " << endl;
-    outputfile << "FINAL SWEEP ITERATION " << endl;
-    cout << "LEFT-TO-RIGHT ITERATION " << iter << endl;
-    outputfile << "LEFT-TO-RIGHT ITERATION " << iter << endl;
-
-    init_iteration(leftblock, site1, site2, rightblock, _use_seed); 
-
-    diagonalize(_use_seed);
-
-    m = t;
-    m1 = std::min(m1*m2,m);
-
-    truncate(LEFT, m1);
-    rotate(LEFT, newblock);
-    write_iter(LEFT);
-    if(!_store_products){
-      if (signal_emit(SYSTEM_SIGNAL_MEASURE)) measure();
-    }
-
-    if(verbose() > 0) {
-      cout << "===========================================\n";
-      cout << "Iteration time: " << _timer.LapTime().c_str() << endl;
-      cout << "===========================================\n";
-      outputfile << "===========================================\n";
-      outputfile << "Iteration time: " << _timer.LapTime().c_str() << endl;
-      outputfile << "===========================================\n";
-    }
+    sweep_iteration(t, outputfile, true);
   }
 
 // Calculate the ground state in the symmetric system
@@ -1565,142 +1426,42 @@ System<T>::init_iteration(const B&b1, const B&b2, const B&b3, const B&b4, bool u
       if(_grand_canonical & (1 << i)) cout << QN::qn_name(i) << " = " << qn[i] << endl;
 
   if(use_seed){
-     BMatrix<T> rho1;
-     Basis basis1;
-     BMatrix<T> rho2;
-     Basis basis2;
+    if(_use_basic_seed){
+      seed.set_qn_mask(qn, _grand_canonical);
+      seed.resize(_b1->_basis,_b2->_basis,_b3->_basis,_b4->_basis);
+      seed = T(1);
+    } else if(iter == 1 && lattice().ls() == 4){
+      seed = gs;
+    } else {
+      CTimer clock;
+      clock.Start();
+      seed.set_qn_mask(qn, _grand_canonical);
+      seed.resize(_b1->_basis,_b2->_basis,_b3->_basis,_b4->_basis);
 
-     CTimer clock;
-     clock.Start(); 
+      const bool first = iter == 1;
+      int position = dir == LEFT2RIGHT ? LEFT : RIGHT;
+      // At the start of a sweep, the seed comes from the opposite direction.
+      if(first) position = position == LEFT ? RIGHT : LEFT;
+      const int opposite = position == LEFT ? RIGHT : LEFT;
+      BMatrix<T> rho1, rho2;
+      Basis basis1, basis2;
+      read_rho(rho1, basis1, first ? lattice().ls()-3 : iter, position);
+      read_rho(rho2, basis2, first ? 2 : lattice().ls()-iter-1, opposite);
+      read_gs(gs, first ? lattice().ls()-4 : iter-1, position);
+      gs.resize(_grand_canonical);
 
-     if(_use_basic_seed){
-       seed.set_qn_mask(qn, _grand_canonical);   
-       seed.resize(_b1->_basis,_b2->_basis,_b3->_basis,_b4->_basis);
-       seed = T(1);
+      if(verbose() > 0) cout << "NEW SEED " << gs.size() << endl;
+      new_seed(gs, seed, rho1, rho2, basis1, basis2, position);
 
-     } else if(iter == 1){
-
-       if(lattice().ls() != 4) {
-         seed.set_qn_mask(qn, _grand_canonical);   
-         seed.resize(_b1->_basis,_b2->_basis,_b3->_basis,_b4->_basis);
-
-         if(dir == RIGHT2LEFT){
-           read_rho(rho1, basis1, lattice().ls()-3, LEFT);
-           read_rho(rho2, basis2, 2, RIGHT);
-           read_gs(gs, lattice().ls()-4,LEFT);
-           gs.resize(_grand_canonical);
-
-           if(verbose() > 0) cout << "NEW SEED " << gs.size() << endl; 
-/*
-           if(_target.size() > 1) {
-             gs *= T(_target_weight[0]);
-             for(int i = 1; i < _target.size(); i++){
-               gs += T(_target_weight[i])*_target[i];
-             }
-           }
-*/
-           new_seed(gs, seed, rho1, rho2, basis1, basis2, LEFT);
-
-           VectorState<T> aux;
-           for(int i = 0; i < _propagate_state.size(); i++){
-             aux = _propagate_state[i]; 
-             aux.resize(_b1->_basis,_b2->_basis,_b3->_basis,_b4->_basis);
-             new_seed(_propagate_state[i], aux, rho1, rho2, basis1, basis2, LEFT);
-             _propagate_state[i] = aux;
-           }
-           if(verbose() > 0)
-             cout << "Lap: " << clock.LapTime().c_str() << endl;
-         } else {
-           read_rho(rho1, basis1, lattice().ls()-3, RIGHT);
-           read_rho(rho2, basis2, 2, LEFT);
-           read_gs(gs, lattice().ls()-4,RIGHT);
-           gs.resize(_grand_canonical);
-
-           if(verbose() > 0) cout << "NEW SEED " << gs.size() << endl; 
-/*
-           if(_target.size() > 1){
-             gs *= T(_target_weight[0]);
-             for(int i = 1; i < _target.size(); i++){
-               gs += T(_target_weight[i])*_target[i];
-             }
-           }
-*/
-           new_seed(gs, seed, rho1, rho2, basis1, basis2, RIGHT);
-
-           VectorState<T> aux;
-           for(int i = 0; i < _propagate_state.size(); i++){
-             aux = _propagate_state[i]; 
-             aux.resize(_b1->_basis,_b2->_basis,_b3->_basis,_b4->_basis);
-             new_seed(_propagate_state[i], aux, rho1, rho2, basis1, basis2, RIGHT);
-             _propagate_state[i] = aux;
-           }
-           if(verbose() > 0)
-             cout << "Lap: " << clock.LapTime().c_str() << endl;
-         }
-       } else {
-         seed = gs;
-       }
-     } else {
-
-       seed.set_qn_mask(qn, _grand_canonical);   
-       seed.resize(_b1->_basis,_b2->_basis,_b3->_basis,_b4->_basis);
-
-       if(dir == LEFT2RIGHT){
-         read_rho(rho1, basis1, iter, LEFT);
-         read_rho(rho2, basis2, lattice().ls()-iter-2+1, RIGHT);
-         read_gs(gs, iter-1, LEFT);
-         gs.resize(_grand_canonical);
-
-         if(verbose() > 0) cout << "NEW SEED " << gs.size() << endl; 
-/*
-         if(_target.size() > 1){
-           gs *= T(_target_weight[0]);
-           for(int i = 1; i < _target.size(); i++){
-             gs += T(_target_weight[i])*_target[i];
-           }
-         }
-*/
-         new_seed(gs, seed, rho1, rho2, basis1, basis2, LEFT);
-
-         VectorState<T> aux;
-         for(int i = 0; i < _propagate_state.size(); i++){
-           aux = _propagate_state[i]; 
-           aux.resize(_b1->_basis,_b2->_basis,_b3->_basis,_b4->_basis);
-           new_seed(_propagate_state[i], aux, rho1, rho2, basis1, basis2, LEFT);
-           _propagate_state[i] = aux;
-         }
-         if(verbose() > 0)
-           cout << "Lap: " << clock.LapTime().c_str() << endl;
-       } else {
-         read_rho(rho1, basis1, iter, RIGHT);
-         read_rho(rho2, basis2, lattice().ls()-iter-2+1, LEFT);
-         read_gs(gs, iter-1, RIGHT);
-         gs.resize(_grand_canonical);
-
-         if(verbose() > 0) cout << "NEW SEED " << gs.size() << endl; 
-/*
-         if(_target.size() > 1){
-           gs *= T(_target_weight[0]);
-           for(int i = 1; i < _target.size(); i++){
-             gs += T(_target_weight[i])*_target[i];
-           }
-         }
-*/
-         new_seed(gs, seed, rho1, rho2, basis1, basis2, RIGHT);
-
-         VectorState<T> aux;
-         for(int i = 0; i < _propagate_state.size(); i++){
-           aux = _propagate_state[i]; 
-           aux.resize(_b1->_basis,_b2->_basis,_b3->_basis,_b4->_basis);
-           new_seed(_propagate_state[i], aux, rho1, rho2, basis1, basis2, RIGHT);
-           _propagate_state[i] = aux;
-         }
-         if(verbose() > 0)
-           cout << "Lap: " << clock.LapTime().c_str() << endl;
-       }
-
-     }
- 
+      VectorState<T> aux;
+      for(int i = 0; i < _propagate_state.size(); i++){
+        aux = _propagate_state[i];
+        aux.resize(_b1->_basis,_b2->_basis,_b3->_basis,_b4->_basis);
+        new_seed(_propagate_state[i], aux, rho1, rho2, basis1, basis2, position);
+        _propagate_state[i] = aux;
+      }
+      if(verbose() > 0) cout << "Lap: " << clock.LapTime().c_str() << endl;
+    }
   }
 
   gs.set_qn_mask(qn, _grand_canonical);
@@ -2784,11 +2545,7 @@ System<T>::rotate_terms(int position, Block<T> &b, Basis &basis, Basis &rho_basi
          doit = true;
 
       if(doit){ // we found a piece of a composite operator
-        BasicOp<T> top1;
-        if(aux_term.size() == 1) // the piece contains a single operator
-          top1 = aux_term[0];
-        else
-          top1 = aux_term; // the piece contains more than one operator
+        BasicOp<T> top1 = term_operator(aux_term);
 
         const BasicOp<T>* op1 = operator()(top1);
 
@@ -2912,6 +2669,13 @@ System<T>::rotate_corr(int position, Block<T> &b, Basis &basis, Basis &rho_basis
     the_block = BLOCK4;
   }
 
+  auto operator_blocks = [&](Term<T> const& term) {
+    int blocks = 0;
+    for (auto const& op : term)
+      if (!op.is_hami()) blocks |= mask(block(op.site()));
+    return blocks;
+  };
+
   CTimer clock;
   clock.Start();
 
@@ -2931,32 +2695,13 @@ System<T>::rotate_corr(int position, Block<T> &b, Basis &basis, Basis &rho_basis
       if(t.size() == 1 && (!_store_products && !t[0].is_hami())) continue;
  
       bool found = false; 
-      typename Term<T>::const_iterator oiter;
-      int bmask = 0;
-      for(oiter = t.begin(); oiter != t.end(); oiter++){
-        if(!oiter->is_hami()) {
-          bmask |= mask(block(oiter->site()));
-        } else {
-          continue;
-        }
-      }
+      int bmask = operator_blocks(t);
       if(position == LEFT && (bmask & MASK_BLOCK2) && !(bmask & MASK_BLOCK1)) found = true;
       if(position == RIGHT && (bmask & MASK_BLOCK3) && !(bmask & MASK_BLOCK4)) found = true;
   
       if(found){
-        Term<T> aux_term;
-        BasicOp<T> top2;
-        for(int i = 0; i < t.size(); i++){
-          BasicOp<T> top = t[i];
-          if(block(top.site()) == site_block){
-            aux_term *= top;
-          }
-        }
-        BasicOp<T> top1;
-        if(aux_term.size() == 1) // the piece contains a single operator
-          top1 = aux_term[0];
-        else
-          top1 = aux_term; // the piece contains more than one operator
+        auto aux_term = term_on_blocks(t, mask(site_block));
+        BasicOp<T> top1 = term_operator(aux_term);
   
         const BasicOp<T>* _op = operator()(top1);
   
@@ -3017,21 +2762,10 @@ System<T>::rotate_corr(int position, Block<T> &b, Basis &basis, Basis &rho_basis
     if(position == RIGHT && (bmask & MASK_BLOCK3) && !(bmask & MASK_BLOCK4)) found = true;
 
     if(found){
-      Term<T> aux_term;
-      BasicOp<T> top2;
-      for(int i = 0; i < t.size(); i++){
-        BasicOp<T> top = t[i];
-        if(block(top.site()) == site_block){
-          aux_term *= top;
-        }
-      }
+      auto aux_term = term_on_blocks(t, mask(site_block));
       if(aux_term.size() == t.size()) aux_term.coef() = t.coef();
 
-      BasicOp<T> top1;
-      if(aux_term.size() == 1) // the piece contains a single operator
-        top1 = aux_term[0];
-      else
-        top1 = aux_term; // the piece contains more than one operator
+      BasicOp<T> top1 = term_operator(aux_term);
 
       const BasicOp<T>* _op = operator()(top1);
 
@@ -3071,34 +2805,15 @@ System<T>::rotate_corr(int position, Block<T> &b, Basis &basis, Basis &rho_basis
 
       if(t.size() == 1 && (!_store_products && !t[0].is_hami())) continue;
   
-      typename Term<T>::const_iterator oiter;
-      int bmask = 0;
-      for(oiter = t.begin(); oiter != t.end(); oiter++){
-        if(!oiter->is_hami()) {
-          bmask |= mask(block(oiter->site()));
-        } else {
-          continue;
-        }
-      }
+      int bmask = operator_blocks(t);
       if(position == LEFT && (bmask & MASK_BLOCK1) && !(bmask & MASK_BLOCK2)) found = true;
       if(position == RIGHT && (bmask & MASK_BLOCK4) && !(bmask & MASK_BLOCK3)) found = true;
   
       if(found){ // we found a piece of a composite operator
-        Term<T> aux_term;
-        BasicOp<T> top2;
-        for(int i = 0; i < t.size(); i++){
-          BasicOp<T> top = t[i];
-          if(block(top.site()) == the_block){
-            aux_term *= top;
-          }
-        }
+        auto aux_term = term_on_blocks(t, mask(the_block));
         if(aux_term.size() == t.size()) aux_term.coef() = t.coef();
   
-        BasicOp<T> top1;
-        if(aux_term.size() == 1) // the piece contains a single operator
-          top1 = aux_term[0];
-        else
-          top1 = aux_term; // the piece contains more than one operator
+        BasicOp<T> top1 = term_operator(aux_term);
   
         const BasicOp<T>* _op = operator()(top1);
   
@@ -3138,33 +2853,14 @@ cout << "NEW MEAS. OPERATOR " << t.name() << " " << new_op.name() << endl;
     if(t.size() == 1 && (!_store_products && !t[0].is_hami())) continue;
     bool found = false;
 
-    typename Term<T>::const_iterator oiter;
-    int bmask = 0;
-    for(oiter = t.begin(); oiter != t.end(); oiter++){
-      if(!oiter->is_hami()) {
-        bmask |= mask(block(oiter->site()));
-      } else {
-        continue;
-      }
-    }
+    int bmask = operator_blocks(t);
     if(position == LEFT && (bmask & MASK_BLOCK1) && !(bmask & MASK_BLOCK2)) found = true;
     if(position == RIGHT && (bmask & MASK_BLOCK4) && !(bmask & MASK_BLOCK3)) found = true;
 
     if(found){ // we found a piece of a composite operator
-      Term<T> aux_term;
-      BasicOp<T> top2;
-      for(int i = 0; i < t.size(); i++){
-        BasicOp<T> top = t[i];
-        if(block(top.site()) == the_block){
-          aux_term *= top;
-        }
-      }
+      auto aux_term = term_on_blocks(t, mask(the_block));
 
-      BasicOp<T> top1;
-      if(aux_term.size() == 1) // the piece contains a single operator
-        top1 = aux_term[0];
-      else
-        top1 = aux_term; // the piece contains more than one operator
+      BasicOp<T> top1 = term_operator(aux_term);
 
       const BasicOp<T>* _op = operator()(top1);
 
@@ -3197,31 +2893,12 @@ cout << "NEW MEAS. OPERATOR " << t.name() << " " << new_op.name() << endl;
   if(_store_products){
     for(titer = _h.begin(); titer != _h.end(); titer++){
       const Term<T>& t = (*titer);
-      bool found1 = false;
-      bool found2 = false;
       if(t.type() == TERM_PRODUCT && t.size() >= 2){
-        Term<T> aux_term1, aux_term2;
-        for(int i = 0; i < t.size(); i++){
-          BasicOp<T> top = t[i];
-          if(block(top.site()) == pos1){
-            aux_term1 *= top;
-            found1 = true;
-          }
-          if(block(top.site()) == pos2){
-            aux_term2 *= top;
-            found2 = true;
-          }
-        } 
-        if(found1 && found2){ // we have a new composite operator
-          BasicOp<T> top1, top2;
-          if(aux_term1.size() == 1) // the piece contains a single operator
-            top1 = aux_term1[0];
-          else
-            top1 = aux_term1; // the piece contains more than one operator
-          if(aux_term2.size() == 1) // the piece contains a single operator
-            top2 = aux_term2[0];
-          else
-            top2 = aux_term2; // the piece contains more than one operator
+        auto aux_term1 = term_on_blocks(t, mask(pos1));
+        auto aux_term2 = term_on_blocks(t, mask(pos2));
+        if(!aux_term1.empty() && !aux_term2.empty()){
+          auto top1 = term_operator(aux_term1);
+          auto top2 = term_operator(aux_term2);
           const BasicOp<T>* op1 = operator()(top1);
           const BasicOp<T>* op2 = operator()(top2);
   
@@ -3234,13 +2911,7 @@ cout << "NEW MEAS. OPERATOR " << t.name() << " " << new_op.name() << endl;
             continue;
           }
  
-          Term<T> new_term; 
-          for(int i = 0; i < t.size(); i++){
-            BasicOp<T> top = t[i];
-            if(block(top.site()) == pos1 || block(top.site()) == pos2){
-              new_term *= top;
-            }
-          }
+          auto new_term = term_on_blocks(t, mask(pos1) | mask(pos2));
 
           BasicOp<T> new_op(new_term); 
           new_op.dqn = op1->dqn + op2->dqn;
@@ -4562,72 +4233,44 @@ init_term_composite(System<T> &ss, const AuxTerm<T> &auxt, const Term<T> &t, con
 }
 
 
-template <class T>
-size_t 
-System<T>::block(int site) const
+template<class T>
+typename System<T>::site_location
+System<T>::locate_site(int site) const
 {
-  typename Lattice::const_iterator iter;
-  std::vector<const Block<T>* > b(4);
-  std::vector<int> offset(4);
-  b[0] = _b1;
-  b[1] = _b2;
-  b[2] = _b3;
-  b[3] = _b4;
-  offset[0] = _in_warmup && _grow_symmetric && _grow_outward && size() < h.lattice().size() ? h.lattice().size()/2 - _b1->lattice().size() - _b2->lattice().size() : 0;
-  offset[1] = _in_warmup && _grow_symmetric && _grow_outward && size() < h.lattice().size() ? offset[0] + _b1->lattice().size() : _b1->lattice().size();
-  offset[2] = offset[1] + _b2->lattice().size();
-  offset[3] = offset[2] + _b3->lattice().size();
-
-  if(_in_warmup && _grow_symmetric && size() < h.lattice().size() && !_grow_outward){
+  std::array<B const*, 4> blocks{_b1, _b2, _b3, _b4};
+  std::array<int, 4> offset{};
+  bool growing = _in_warmup && _grow_symmetric && size() < h.lattice().size();
+  if (growing && _grow_outward)
+    offset[0] = h.lattice().size()/2 - _b1->lattice().size() - _b2->lattice().size();
+  for (size_t i = 1; i < blocks.size(); ++i)
+    offset[i] = offset[i-1] + blocks[i-1]->lattice().size();
+  if (growing && !_grow_outward) {
     offset[3] = h.lattice().size() - _b4->lattice().size();
     offset[2] = offset[3] - _b3->lattice().size();
   }
-
-  for(size_t i = 0; i < 4; i++){
-    const Lattice &l = b[i]->lattice();
-    int n = 0;
-    for(iter = l.begin(); iter != l.end(); iter++){
-        if((n++)+offset[i] == site){
-           return (size_t)(i+1); 
-        }
-    }
+  // Site numbers are positions within each block, independent of lattice labels.
+  for (size_t i = 0; i < blocks.size(); ++i) {
+    auto local = static_cast<long long>(site) - offset[i];
+    if (local >= 0 && static_cast<size_t>(local) < blocks[i]->lattice().size())
+      return {blocks[i], i+1, static_cast<int>(local)};
   }
-  return BLOCK_NONE;
+  return {nullptr, BLOCK_NONE, 0};
 }
 
 template<class T>
-const BasicOp<T>* 
-System<T>::operator()(const BasicOp<T>& op) const
+size_t System<T>::block(int site) const
 {
-  typename Lattice::const_iterator iter;
-  std::vector<const Block<T>* > b(4);
-  std::vector<int> offset(4);
-  b[0] = _b1;
-  b[1] = _b2;
-  b[2] = _b3;
-  b[3] = _b4;
-  offset[0] = _in_warmup && _grow_symmetric && _grow_outward && size() < h.lattice().size() ? h.lattice().size()/2 - _b1->lattice().size() - _b2->lattice().size() : 0;
-  offset[1] = _in_warmup && _grow_symmetric && _grow_outward && size() < h.lattice().size() ? offset[0] + _b1->lattice().size() : _b1->lattice().size();
-  offset[2] = offset[1] + _b2->lattice().size();
-  offset[3] = offset[2] + _b3->lattice().size();
+  return locate_site(site).index;
+}
 
-  if(_in_warmup && _grow_symmetric && size() < h.lattice().size() && !_grow_outward){
-    offset[3] = h.lattice().size() - _b4->lattice().size();
-    offset[2] = offset[3] - _b3->lattice().size();
-  }
-  for(int i = 0; i < 4; i++){
-    const Lattice &l = b[i]->lattice();
-    int n = 0;
-    for(iter = l.begin(); iter != l.end(); iter++){
-        if((n++)+offset[i] == op.site()){
-           BasicOp<T> _op(op);
-           if(b[i]->single_site()) _op.set_site(op.site() - offset[i]);
-           
-           return (b[i]->operator()(_op));
-        }
-    }
-  }
-  return 0;
+template<class T>
+const BasicOp<T>* System<T>::operator()(const BasicOp<T>& op) const
+{
+  auto location = locate_site(op.site());
+  if (!location.block) return nullptr;
+  BasicOp<T> local_op(op);
+  if (location.block->single_site()) local_op.set_site(location.local);
+  return (*location.block)(local_op);
 }
 
 //////////////////////////////////////////////////////////////////

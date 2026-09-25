@@ -21,6 +21,21 @@
 #include "on.h"
 #include "potts.h"
 
+namespace {
+template<class Moment>
+alps::scheduler::Worker* make_vector_spin(int count, alps::ProcessList const& where,
+                                         alps::Parameters const& parms, int node) {
+  constexpr int dim = Moment::dim;
+  switch (count) {
+    case 1: return new SpinSim<Moment, MIdMatrix<double, dim>>(where, parms, node);
+    case dim: return new SpinSim<Moment, DiagMatrix<double, dim>>(where, parms, node);
+    case dim * (dim + 1) / 2:
+    case dim * dim: return new SpinSim<Moment, SquareMatrix<double, dim>>(where, parms, node);
+    default: return nullptr;
+  }
+}
+}
+
 void SpinFactory::print_copyright(std::ostream& out) const
 {
   out << "Generic classical Monte Carlo program using local or cluster updates\n"
@@ -63,31 +78,8 @@ int SpinFactory::countElements(const std::string& str) const
 int SpinFactory::findDominantMatrixString(const alps::Parameters& parms) const
 {
   int count = 0;
-  /* should be done more elegantly ... */
-  if (parms.defined("J")) 
-    count = std::max BOOST_PREVENT_MACRO_SUBSTITUTION (count, countElements(parms["J"]));
-  if (parms.defined("J'"))
-    count = std::max BOOST_PREVENT_MACRO_SUBSTITUTION (count, countElements(parms["J'"]));
-  if (parms.defined("J0"))
-    count = std::max BOOST_PREVENT_MACRO_SUBSTITUTION (count, countElements(parms["J0"]));
-  if (parms.defined("J1"))
-    count = std::max BOOST_PREVENT_MACRO_SUBSTITUTION (count, countElements(parms["J1"]));
-  if (parms.defined("J2"))
-    count = std::max BOOST_PREVENT_MACRO_SUBSTITUTION (count, countElements(parms["J2"]));
-  if (parms.defined("J3"))
-    count = std::max BOOST_PREVENT_MACRO_SUBSTITUTION (count, countElements(parms["J3"]));
-  if (parms.defined("D"))
-    count = std::max BOOST_PREVENT_MACRO_SUBSTITUTION (count, countElements(parms["D"]));
-  if (parms.defined("D'"))
-    count = std::max BOOST_PREVENT_MACRO_SUBSTITUTION (count, countElements(parms["D'"]));
-  if (parms.defined("D0"))
-    count = std::max BOOST_PREVENT_MACRO_SUBSTITUTION (count, countElements(parms["D0"]));
-  if (parms.defined("D1"))
-    count = std::max BOOST_PREVENT_MACRO_SUBSTITUTION (count, countElements(parms["D1"]));
-  if (parms.defined("D2"))
-    count = std::max BOOST_PREVENT_MACRO_SUBSTITUTION (count, countElements(parms["D2"]));
-  if (parms.defined("D3"))
-    count = std::max BOOST_PREVENT_MACRO_SUBSTITUTION (count, countElements(parms["D3"]));
+  for (auto key : {"J", "J'", "J0", "J1", "J2", "J3", "D", "D'", "D0", "D1", "D2", "D3"})
+    if (parms.defined(key)) count = (std::max)(count, countElements(parms[key]));
 
   return count;
 }
@@ -118,52 +110,16 @@ alps::scheduler::Worker* SpinFactory::make_worker(
         const alps::Parameters& parms,int node) const
 {
   int maxElemCount = findDominantMatrixString(parms);
-  if (parms["MODEL"]=="Ising")
-    if (maxElemCount == 1) 
+  if (parms["MODEL"]=="Ising") {
+    if (maxElemCount == 1)
       return new SpinSim<IsingMoment,MIdMatrix<double,1> >(where,parms,node);
-    else {
-      produceError(parms);
-      return 0;
-    }
-  else if (parms["MODEL"]=="O(4)")
+  } else if (parms["MODEL"]=="O(4)") {
     return new SpinSim<ONMoment<4>,MIdMatrix<double,4> >(where,parms,node);
-  else if (parms["MODEL"]=="Heisenberg")
-    switch (maxElemCount) {
-      case 1:
-        return new SpinSim< ONMoment<3>, MIdMatrix<double,3> >(where, parms, node);
-        break;
-      case 3:
-        return new SpinSim< ONMoment<3>, DiagMatrix<double,3> >(where, parms, node);
-        break;
-      case 6:
-        return new SpinSim< ONMoment<3>, SquareMatrix<double,3> >(where, parms, node);
-        break;
-      case 9:
-        return new SpinSim< ONMoment<3>, SquareMatrix<double,3> >(where, parms, node);
-        break;
-      default:
-        produceError(parms);
-        return 0;
-    }
-  else if (parms["MODEL"]=="XY")
-    switch (maxElemCount) {
-      case 1:
-        return new SpinSim< XYMoment, MIdMatrix<double,2> >(where, parms, node);
-        break;
-      case 2:
-        return new SpinSim< XYMoment, DiagMatrix<double,2> >(where, parms, node);
-        break;
-      case 3:
-        return new SpinSim< XYMoment, SquareMatrix<double,2> >(where, parms, node);
-        break;
-      case 4:
-        return new SpinSim< XYMoment, SquareMatrix<double,2> >(where,parms,node);
-        break;
-      default:
-        produceError(parms);
-        return 0;
-    }
-  
+  } else if (parms["MODEL"]=="Heisenberg") {
+    if (auto* worker = make_vector_spin<ONMoment<3>>(maxElemCount, where, parms, node)) return worker;
+  } else if (parms["MODEL"]=="XY") {
+    if (auto* worker = make_vector_spin<XYMoment>(maxElemCount, where, parms, node)) return worker;
+  }
   else if (parms["MODEL"]=="Potts")
     switch (int(parms["q"])) {
     case 3:
@@ -179,5 +135,6 @@ alps::scheduler::Worker* SpinFactory::make_worker(
   else 
     boost::throw_exception(std::runtime_error(std::string(parms["MODEL"])
               + " model not implemented in file factory.C"));
+  produceError(parms);
   return 0;
 }

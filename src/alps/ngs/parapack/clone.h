@@ -25,6 +25,7 @@
 #include <alps/parapack/types.h>
 
 namespace alps {
+namespace detail { struct clone_workflow; }
 namespace ngs_parapack {
 
 class abstract_clone : public boost::noncopyable {
@@ -45,6 +46,7 @@ public:
 };
 
 class ALPS_DECL clone : public abstract_clone {
+  friend struct alps::detail::clone_workflow;
 public:
   clone(boost::filesystem::path const& basedir, dump_policy_t dump_policy, 
     clone_timer::duration_t const& check_interval, tid_t tid, cid_t cid, alps::params const& p,
@@ -134,6 +136,7 @@ struct clone_halt_msg_t {
 };
 
 class ALPS_DECL clone_mpi : public abstract_clone {
+  friend struct alps::detail::clone_workflow;
 public:
   clone_mpi(boost::mpi::communicator const& ctrl, boost::mpi::communicator const& work,
     boost::filesystem::path const& basedir, dump_policy_t dump_policy,
