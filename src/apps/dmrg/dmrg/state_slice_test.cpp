@@ -142,6 +142,75 @@ void check_ranges() {
   require(view.stride1() == r.stride()*8*9 && view.stride2() == 9);
 }
 
+template<int A, class View>
+void check_subslice(View& view) {
+  coordinates i{1,1,1,1};
+  auto sub = one<A>(view, std::slice(1,2,2), i);
+  for (size_t n = 0; n < 2; ++n) {
+    i[A] = 1+2*n;
+    require(sub[n] == view(i[0],i[1],i[2],i[3]));
+  }
+}
+
+template<int A, int B, class View>
+void check_subslice_pair(View& view) {
+  coordinates i{1,1,1,1};
+  auto sub = two<A,B>(view, std::slice(1,2,2), std::slice(0,2,3), i);
+  for (size_t a = 0; a < 2; ++a) for (size_t b = 0; b < 2; ++b) {
+    i[A] = 1+2*a; i[B] = 3*b;
+    require(sub(a,b) == view(i[0],i[1],i[2],i[3]));
+    require(sub.column(a)[b] == sub(a,b));
+    require(sub.row(b)[a] == sub(a,b));
+    require(*sub.get_pointer(a,b) == sub(a,b));
+    require(sub.transpose()(b,a) == sub(a,b));
+  }
+}
+
+template<class View>
+void check_subslices(View& view) {
+  require(view.size() == 4*5*6*7);
+  check_subslice<0>(view); check_subslice<1>(view);
+  check_subslice<2>(view); check_subslice<3>(view);
+  check_subslice_pair<0,1>(view); check_subslice_pair<0,2>(view);
+  check_subslice_pair<0,3>(view); check_subslice_pair<1,2>(view);
+  check_subslice_pair<1,3>(view); check_subslice_pair<2,3>(view);
+}
+
+void check_view_storage() {
+  std::vector<double> data(4000), target(4000, -1);
+  std::iota(data.begin(), data.end(), 0.0);
+  state_slice<double> writable(&data, {1,4,1000}, {2,5,100}, {3,6,10}, {4,7,1});
+  cstate_slice<double> readable(&data, {1,4,1000}, {2,5,100}, {3,6,10}, {4,7,1});
+  check_subslices(writable); check_subslices(readable);
+  state_slice<double> destination(&target, {1,4,1000}, {2,5,100}, {3,6,10}, {4,7,1});
+  destination = writable;
+  destination(1,2,3,4) = -7;
+  require(target[1244] == -7 && data[1244] == 1244 && target[0] == -1);
+
+  gslice_iter<double> matrix(&data, {3,3,20}, {5,4,2});
+  gslice_iter<double> copy(&target, {1,2,20}, {2,3,2});
+  cgslice_iter<double> source(&data, {3,3,20}, {5,4,2});
+  copy = source;
+  require(target[3] == data[8] && target[27] == data[32]);
+  copy(0,0) = -9;
+  require(data[8] == 8 && target[3] == -9);
+  auto cursor = matrix.begin();
+  require((*cursor)[0] == data[8]);
+  ++cursor;
+  require((*cursor)[1] == data[30]);
+
+  slice_iter<double> line(&data, {3,5,2}), line_copy(&target, {4,3,3});
+  line_copy = line;
+  require(target[4] == 3 && target[10] == 7);
+  auto it = line.begin();
+  require(*it++ == 3 && *it == 5 && it.current() == 1);
+  require(line.end().current() == 5 && line.begin() < line.end());
+  cslice_iter<double> read(&data, {3,5,2}), rebound(&target, {4,3,3});
+  rebound = read;
+  require(*rebound.get_pointer(2) == 7 && rebound.size() == 5);
+  static_assert(!std::is_assignable_v<decltype(read[0]), double>);
+}
+
 void check_quantum(bool constrained) {
   QN::init(); QN::add_qn_index("N", true); QN::set_qn_mask(1);
   PackedBasis basis;
@@ -177,6 +246,7 @@ void check_quantum(bool constrained) {
 }
 
 int main() {
+  check_view_storage();
   check_ordering();
   check_copy_ranges();
   check_ranges(); check_quantum(false); check_quantum(true);

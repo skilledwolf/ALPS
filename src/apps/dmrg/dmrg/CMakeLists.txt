@@ -7,7 +7,7 @@ target_link_libraries(dmrg PRIVATE ALPS::alps)
 alps_install_applications(dmrg)
 
 if(ALPS_BUILD_TESTING)
-  foreach(test product state_slice system_layout)
+  foreach(test product state_slice system_layout block_matrix seed)
     add_executable(dmrg_${test}_test ${test}_test.cpp)
     target_include_directories(dmrg_${test}_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
     target_link_libraries(dmrg_${test}_test PRIVATE ALPS::alps)

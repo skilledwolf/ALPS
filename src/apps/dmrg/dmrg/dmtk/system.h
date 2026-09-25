@@ -145,6 +145,8 @@ FileList tmp_files;
 template<class T>
 class System
 {
+    void sweep_iteration(size_t kept_states, std::ostream& outputfile, bool final);
+
   protected:
     typedef typename dmtk::Block<T> B;
 
@@ -1127,6 +1129,53 @@ System<T>::warmup_loop(size_t t, const Vector<QN> &qns)
 // in the main program with growing t1(t2) until we reach convergence
 // with the final desired number of states.
 /////////////////////////////////////////////////////////////////////////
+// One ordinary sweep step. Loop bounds and end-of-iteration signals remain
+// with the callers, including the special final symmetric step.
+template<class T>
+void System<T>::sweep_iteration(size_t kept_states, std::ostream& outputfile, bool final)
+{
+  signal_emit(SYSTEM_SIGNAL_START_ITER);
+  int ls = lattice().ls();
+  bool right = dir == RIGHT2LEFT;
+  if (right && !final) {
+    read_block(leftblock, ls-iter-2, LEFT);
+    read_block(rightblock, iter, RIGHT);
+  } else {
+    read_block(rightblock, right ? iter : ls-iter-2, RIGHT);
+    read_block(leftblock, right ? ls-iter-2 : iter, LEFT);
+  }
+  int site = right ? ls-2-iter : iter;
+  const Block<T>& site1 = h.get_site(site);
+  const Block<T>& site2 = h.get_site(site+1);
+  m1 = leftblock.dim();
+  m4 = rightblock.dim();
+  m2 = site1.dim();
+  m3 = site2.dim();
+
+  _timer.Lap();
+  for (auto* out : {static_cast<std::ostream*>(&cout), &outputfile}) {
+    if (final) *out << "FINAL SWEEP ITERATION " << endl;
+    *out << (right ? "RIGHT-TO-LEFT ITERATION " : "LEFT-TO-RIGHT ITERATION ") << iter << endl;
+  }
+  init_iteration(leftblock, site1, site2, rightblock, _use_seed);
+  diagonalize(_use_seed);
+  m = kept_states;
+  int position = right ? RIGHT : LEFT;
+  if (right) m4 = std::min(m4*m3, m);
+  else m1 = std::min(m1*m2, m);
+  truncate(position, right ? m4 : m1);
+  rotate(position, newblock);
+  write_iter(position);
+  if (!_store_products && signal_emit(SYSTEM_SIGNAL_MEASURE)) measure();
+  if (verbose() > 0) {
+    for (auto* out : {static_cast<std::ostream*>(&cout), &outputfile}) {
+      *out << "===========================================\n";
+      *out << "Iteration time: " << _timer.LapTime().c_str() << endl;
+      *out << "===========================================\n";
+    }
+  }
+}
+
 template<class T>
 void
 System<T>::sweep(size_t t1, size_t t2, size_t _dir, int start)
@@ -1156,42 +1205,7 @@ System<T>::sweep(size_t t1, size_t t2, size_t _dir, int start)
   if(dir == RIGHT2LEFT){
     for(iter = start; iter < sweep_max; iter++)
     {
-      signal_emit(SYSTEM_SIGNAL_START_ITER);
-      read_block(leftblock, ls-iter-2, LEFT);
-      read_block(rightblock, iter, RIGHT);
-      const Block<T>& site1 = h.get_site(ls-2-iter);
-      const Block<T>& site2 = h.get_site(ls-2-iter+1);
-
-      m1 = leftblock.dim();
-      m4 = rightblock.dim();
-      m2 = site1.dim();
-      m3 = site2.dim();
-
-      _timer.Lap();
-      cout << "RIGHT-TO-LEFT ITERATION " << iter << endl;
-      outputfile << "RIGHT-TO-LEFT ITERATION " << iter << endl;
-
-      init_iteration(leftblock, site1, site2, rightblock, _use_seed); 
-      diagonalize(_use_seed); 
-
-      m = t1;
-      m4 = std::min(m4*m3,m);
-
-      truncate(RIGHT, m4);
-      rotate(RIGHT, newblock);
-      write_iter(RIGHT);
-      if(!_store_products){
-        if (signal_emit(SYSTEM_SIGNAL_MEASURE)) measure();
-      }
-
-      if(verbose() > 0) {
-        cout << "===========================================\n";
-        cout << "Iteration time: " << _timer.LapTime().c_str() << endl;
-        cout << "===========================================\n";
-        outputfile << "===========================================\n";
-        outputfile << "Iteration time: " << _timer.LapTime().c_str() << endl;
-        outputfile << "===========================================\n";
-      }
+      sweep_iteration(t1, outputfile, false);
       signal_emit(SYSTEM_SIGNAL_END_ITER);
     }
 
@@ -1204,42 +1218,7 @@ System<T>::sweep(size_t t1, size_t t2, size_t _dir, int start)
 
   for(iter = start; iter < sweep_max; iter++)
   {
-    signal_emit(SYSTEM_SIGNAL_START_ITER);
-    read_block(rightblock, ls-iter-2, RIGHT);
-    read_block(leftblock, iter, LEFT);
-    const Block<T>& site1 = h.get_site(iter);
-    const Block<T>& site2 = h.get_site(iter+1);
-
-    m1 = leftblock.dim();
-    m4 = rightblock.dim();
-    m2 = site1.dim();
-    m3 = site2.dim();
-
-    _timer.Lap();
-    cout << "LEFT-TO-RIGHT ITERATION " << iter << endl;
-    outputfile << "LEFT-TO-RIGHT ITERATION " << iter << endl;
-
-    init_iteration(leftblock, site1, site2, rightblock, _use_seed); 
-    diagonalize(_use_seed);
-
-    m = t2;
-    m1 = std::min(m1*m2,m);
-
-    truncate(LEFT, m1);
-    rotate(LEFT, newblock);
-    write_iter(LEFT);
-    if(!_store_products){
-      if (signal_emit(SYSTEM_SIGNAL_MEASURE)) measure();
-    }
-
-    if(verbose() > 0) {
-      cout << "===========================================\n";
-      cout << "Iteration time: " << _timer.LapTime().c_str() << endl;
-      cout << "===========================================\n";
-      outputfile << "===========================================\n";
-      outputfile << "Iteration time: " << _timer.LapTime().c_str() << endl;
-      outputfile << "===========================================\n";
-    }
+    sweep_iteration(t2, outputfile, false);
     signal_emit(SYSTEM_SIGNAL_END_ITER);
   }
 
@@ -1294,45 +1273,7 @@ System<T>::final_sweep(size_t t, size_t _dir, int _start, bool _rotate )
   if(dir == RIGHT2LEFT){
     for(iter = _start; iter < sweep_max; iter++) // ls/2-1; iter++);
     {
-      signal_emit(SYSTEM_SIGNAL_START_ITER);
-      read_block(rightblock, iter, RIGHT);
-      read_block(leftblock, ls-iter-2, LEFT);
-      const Block<T>& site1 = h.get_site(ls-2-iter);
-      const Block<T>& site2 = h.get_site(ls-2-iter+1);
-
-      m1 = leftblock.dim();
-      m4 = rightblock.dim();
-      m2 = site1.dim();
-      m3 = site2.dim();
-   
-      _timer.Lap();
-      cout << "FINAL SWEEP ITERATION " << endl;
-      outputfile << "FINAL SWEEP ITERATION " << endl;
-      cout << "RIGHT-TO-LEFT ITERATION " << iter << endl;
-      outputfile << "RIGHT-TO-LEFT ITERATION " << iter << endl;
-  
-      init_iteration(leftblock, site1, site2, rightblock, _use_seed);
-  
-      diagonalize(_use_seed);
-  
-      m = t;
-      m4 = std::min(m4*m3,m);
-  
-      truncate(RIGHT, m4);
-      rotate(RIGHT, newblock);
-      write_iter(RIGHT);
-      if(!_store_products){
-        if (signal_emit(SYSTEM_SIGNAL_MEASURE)) measure();
-      }
-
-      if(verbose() > 0) {
-        cout << "===========================================\n";
-        cout << "Iteration time: " << _timer.LapTime().c_str() << endl;
-        cout << "===========================================\n";
-        outputfile << "===========================================\n";
-        outputfile << "Iteration time: " << _timer.LapTime().c_str() << endl;
-        outputfile << "===========================================\n";
-      }
+      sweep_iteration(t, outputfile, true);
       signal_emit(SYSTEM_SIGNAL_END_ITER);
     }
     _start = 1;
@@ -1343,45 +1284,7 @@ System<T>::final_sweep(size_t t, size_t _dir, int _start, bool _rotate )
 
   for(iter = _start; iter < sweep_max; iter++)
   {
-    signal_emit(SYSTEM_SIGNAL_START_ITER);
-    read_block(rightblock, ls-iter-2, RIGHT);
-    read_block(leftblock, iter, LEFT);
-    const Block<T>& site1 = h.get_site(iter);
-    const Block<T>& site2 = h.get_site(iter+1);
-
-    m1 = leftblock.dim();
-    m4 = rightblock.dim();
-    m2 = site1.dim();
-    m3 = site2.dim();
-
-    _timer.Lap();
-    cout << "FINAL SWEEP ITERATION " << endl;
-    outputfile << "FINAL SWEEP ITERATION " << endl;
-    cout << "LEFT-TO-RIGHT ITERATION " << iter << endl;
-    outputfile << "LEFT-TO-RIGHT ITERATION " << iter << endl;
-
-    init_iteration(leftblock, site1, site2, rightblock, _use_seed); 
-
-    diagonalize(_use_seed);
-
-    m = t;
-    m1 = std::min(m1*m2,m);
-
-    truncate(LEFT, m1);
-    rotate(LEFT, newblock);
-    write_iter(LEFT);
-    if(!_store_products){
-      if (signal_emit(SYSTEM_SIGNAL_MEASURE)) measure();
-    }
-
-    if(verbose() > 0) {
-      cout << "===========================================\n";
-      cout << "Iteration time: " << _timer.LapTime().c_str() << endl;
-      cout << "===========================================\n";
-      outputfile << "===========================================\n";
-      outputfile << "Iteration time: " << _timer.LapTime().c_str() << endl;
-      outputfile << "===========================================\n";
-    }
+    sweep_iteration(t, outputfile, true);
   }
 
 // Calculate the ground state in the symmetric system
@@ -1523,142 +1426,42 @@ System<T>::init_iteration(const B&b1, const B&b2, const B&b3, const B&b4, bool u
       if(_grand_canonical & (1 << i)) cout << QN::qn_name(i) << " = " << qn[i] << endl;
 
   if(use_seed){
-     BMatrix<T> rho1;
-     Basis basis1;
-     BMatrix<T> rho2;
-     Basis basis2;
+    if(_use_basic_seed){
+      seed.set_qn_mask(qn, _grand_canonical);
+      seed.resize(_b1->_basis,_b2->_basis,_b3->_basis,_b4->_basis);
+      seed = T(1);
+    } else if(iter == 1 && lattice().ls() == 4){
+      seed = gs;
+    } else {
+      CTimer clock;
+      clock.Start();
+      seed.set_qn_mask(qn, _grand_canonical);
+      seed.resize(_b1->_basis,_b2->_basis,_b3->_basis,_b4->_basis);
 
-     CTimer clock;
-     clock.Start(); 
+      const bool first = iter == 1;
+      int position = dir == LEFT2RIGHT ? LEFT : RIGHT;
+      // At the start of a sweep, the seed comes from the opposite direction.
+      if(first) position = position == LEFT ? RIGHT : LEFT;
+      const int opposite = position == LEFT ? RIGHT : LEFT;
+      BMatrix<T> rho1, rho2;
+      Basis basis1, basis2;
+      read_rho(rho1, basis1, first ? lattice().ls()-3 : iter, position);
+      read_rho(rho2, basis2, first ? 2 : lattice().ls()-iter-1, opposite);
+      read_gs(gs, first ? lattice().ls()-4 : iter-1, position);
+      gs.resize(_grand_canonical);
 
-     if(_use_basic_seed){
-       seed.set_qn_mask(qn, _grand_canonical);   
-       seed.resize(_b1->_basis,_b2->_basis,_b3->_basis,_b4->_basis);
-       seed = T(1);
+      if(verbose() > 0) cout << "NEW SEED " << gs.size() << endl;
+      new_seed(gs, seed, rho1, rho2, basis1, basis2, position);
 
-     } else if(iter == 1){
-
-       if(lattice().ls() != 4) {
-         seed.set_qn_mask(qn, _grand_canonical);   
-         seed.resize(_b1->_basis,_b2->_basis,_b3->_basis,_b4->_basis);
-
-         if(dir == RIGHT2LEFT){
-           read_rho(rho1, basis1, lattice().ls()-3, LEFT);
-           read_rho(rho2, basis2, 2, RIGHT);
-           read_gs(gs, lattice().ls()-4,LEFT);
-           gs.resize(_grand_canonical);
-
-           if(verbose() > 0) cout << "NEW SEED " << gs.size() << endl; 
-/*
-           if(_target.size() > 1) {
-             gs *= T(_target_weight[0]);
-             for(int i = 1; i < _target.size(); i++){
-               gs += T(_target_weight[i])*_target[i];
-             }
-           }
-*/
-           new_seed(gs, seed, rho1, rho2, basis1, basis2, LEFT);
-
-           VectorState<T> aux;
-           for(int i = 0; i < _propagate_state.size(); i++){
-             aux = _propagate_state[i]; 
-             aux.resize(_b1->_basis,_b2->_basis,_b3->_basis,_b4->_basis);
-             new_seed(_propagate_state[i], aux, rho1, rho2, basis1, basis2, LEFT);
-             _propagate_state[i] = aux;
-           }
-           if(verbose() > 0)
-             cout << "Lap: " << clock.LapTime().c_str() << endl;
-         } else {
-           read_rho(rho1, basis1, lattice().ls()-3, RIGHT);
-           read_rho(rho2, basis2, 2, LEFT);
-           read_gs(gs, lattice().ls()-4,RIGHT);
-           gs.resize(_grand_canonical);
-
-           if(verbose() > 0) cout << "NEW SEED " << gs.size() << endl; 
-/*
-           if(_target.size() > 1){
-             gs *= T(_target_weight[0]);
-             for(int i = 1; i < _target.size(); i++){
-               gs += T(_target_weight[i])*_target[i];
-             }
-           }
-*/
-           new_seed(gs, seed, rho1, rho2, basis1, basis2, RIGHT);
-
-           VectorState<T> aux;
-           for(int i = 0; i < _propagate_state.size(); i++){
-             aux = _propagate_state[i]; 
-             aux.resize(_b1->_basis,_b2->_basis,_b3->_basis,_b4->_basis);
-             new_seed(_propagate_state[i], aux, rho1, rho2, basis1, basis2, RIGHT);
-             _propagate_state[i] = aux;
-           }
-           if(verbose() > 0)
-             cout << "Lap: " << clock.LapTime().c_str() << endl;
-         }
-       } else {
-         seed = gs;
-       }
-     } else {
-
-       seed.set_qn_mask(qn, _grand_canonical);   
-       seed.resize(_b1->_basis,_b2->_basis,_b3->_basis,_b4->_basis);
-
-       if(dir == LEFT2RIGHT){
-         read_rho(rho1, basis1, iter, LEFT);
-         read_rho(rho2, basis2, lattice().ls()-iter-2+1, RIGHT);
-         read_gs(gs, iter-1, LEFT);
-         gs.resize(_grand_canonical);
-
-         if(verbose() > 0) cout << "NEW SEED " << gs.size() << endl; 
-/*
-         if(_target.size() > 1){
-           gs *= T(_target_weight[0]);
-           for(int i = 1; i < _target.size(); i++){
-             gs += T(_target_weight[i])*_target[i];
-           }
-         }
-*/
-         new_seed(gs, seed, rho1, rho2, basis1, basis2, LEFT);
-
-         VectorState<T> aux;
-         for(int i = 0; i < _propagate_state.size(); i++){
-           aux = _propagate_state[i]; 
-           aux.resize(_b1->_basis,_b2->_basis,_b3->_basis,_b4->_basis);
-           new_seed(_propagate_state[i], aux, rho1, rho2, basis1, basis2, LEFT);
-           _propagate_state[i] = aux;
-         }
-         if(verbose() > 0)
-           cout << "Lap: " << clock.LapTime().c_str() << endl;
-       } else {
-         read_rho(rho1, basis1, iter, RIGHT);
-         read_rho(rho2, basis2, lattice().ls()-iter-2+1, LEFT);
-         read_gs(gs, iter-1, RIGHT);
-         gs.resize(_grand_canonical);
-
-         if(verbose() > 0) cout << "NEW SEED " << gs.size() << endl; 
-/*
-         if(_target.size() > 1){
-           gs *= T(_target_weight[0]);
-           for(int i = 1; i < _target.size(); i++){
-             gs += T(_target_weight[i])*_target[i];
-           }
-         }
-*/
-         new_seed(gs, seed, rho1, rho2, basis1, basis2, RIGHT);
-
-         VectorState<T> aux;
-         for(int i = 0; i < _propagate_state.size(); i++){
-           aux = _propagate_state[i]; 
-           aux.resize(_b1->_basis,_b2->_basis,_b3->_basis,_b4->_basis);
-           new_seed(_propagate_state[i], aux, rho1, rho2, basis1, basis2, RIGHT);
-           _propagate_state[i] = aux;
-         }
-         if(verbose() > 0)
-           cout << "Lap: " << clock.LapTime().c_str() << endl;
-       }
-
-     }
- 
+      VectorState<T> aux;
+      for(int i = 0; i < _propagate_state.size(); i++){
+        aux = _propagate_state[i];
+        aux.resize(_b1->_basis,_b2->_basis,_b3->_basis,_b4->_basis);
+        new_seed(_propagate_state[i], aux, rho1, rho2, basis1, basis2, position);
+        _propagate_state[i] = aux;
+      }
+      if(verbose() > 0) cout << "Lap: " << clock.LapTime().c_str() << endl;
+    }
   }
 
   gs.set_qn_mask(qn, _grand_canonical);

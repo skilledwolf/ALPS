@@ -16,6 +16,8 @@
 
 #include <iosfwd>
 #include <vector>
+#include <type_traits>
+#include <valarray>
 #include "conj.h"
 #include "meta.h"
 #include "array_util.h"
@@ -23,24 +25,73 @@
 namespace dmtk
 {
 
-template<class T> class cslice_iter;
+namespace detail {
+// Share cursor and addressing logic; writable views keep their copy-through
+// assignment while readonly views retain ordinary cursor assignment.
+template<class T, class View>
+class slice_cursor {
+public:
+  using value_type = std::remove_const_t<T>;
+  using _V = std::vector<value_type>;
+  using storage = std::conditional_t<std::is_const_v<T>, const _V, _V>;
+  using reference = std::conditional_t<std::is_const_v<T>, value_type, T&>;
+  using const_reference = std::conditional_t<std::is_const_v<T>, value_type, const T&>;
 
-template <class T>
-class slice_iter
-{
-  public:
-    typedef typename std::vector<T> _V;
-    slice_iter():v(0),s(0,0,0),curr(0){};
-    slice_iter(_V* vv, std::slice ss):v(vv),s(ss),curr(0){};
-    slice_iter(const slice_iter<T>& ss):v(ss.v),s(ss.s),curr(ss.curr){}
+  slice_cursor() = default;
+  slice_cursor(storage* vv, std::slice ss): v(vv), s(ss) {}
+  size_t size() const { return s.size(); }
+  size_t size1() const { return 1; }
+  size_t size2() const { return size(); }
+  size_t current() const { return curr; }
+  View begin() const { View t = view(); t.curr = 0; return t; }
+  View end() const { View t = view(); t.curr = size(); return t; }
+  View& operator++() { ++curr; return view(); }
+  View operator++(int) { View t = view(); ++curr; return t; }
+  View& operator--() { --curr; return view(); }
+  View operator--(int) { View t = view(); --curr; return t; }
+  reference operator[](size_t i) { return ref(curr = i); }
+  const_reference operator[](size_t i) const { return ref(i); }
+  reference operator()(size_t i) { return ref(curr = i); }
+  const_reference operator()(size_t i) const { return ref(i); }
+  reference operator*() const { return ref(curr); }
+  const value_type* get_pointer(size_t i) const { return &(*v)[s.start()+i*s.stride()]; }
+  bool operator==(const View& q) const { return same_slice(q) && curr == q.curr; }
+  bool operator!=(const View& q) const { return !(*this == q); }
+  bool operator<(const View& q) const { return same_slice(q) && curr < q.curr; }
+  bool operator>(const View& q) const { return same_slice(q) && curr > q.curr; }
 
-    size_t size() const { return s.size(); }
-    slice_iter begin() const {slice_iter t = *this; t.curr = 0; return t; }
-    slice_iter end() const {slice_iter t = *this; t.curr = size(); return t; }
-    size_t current() const { return curr; }
+protected:
+  storage* v = nullptr;
+  std::slice s{0, 0, 0};
+  size_t curr = 0;
+  reference ref(size_t i) const { return (*v)[s.start()+i*s.stride()]; }
 
-//  Asignment
+private:
+  View& view() { return static_cast<View&>(*this); }
+  const View& view() const { return static_cast<const View&>(*this); }
+  bool same_slice(const View& q) const {
+    return s.stride() == q.s.stride() && s.start() == q.s.start();
+  }
+};
+} // namespace detail
 
+template<class T>
+class cslice_iter : public detail::slice_cursor<const T, cslice_iter<T>> {
+  using base = detail::slice_cursor<const T, cslice_iter<T>>;
+public:
+  using base::base;
+};
+
+template<class T>
+class slice_iter : public detail::slice_cursor<T, slice_iter<T>> {
+  using base = detail::slice_cursor<T, slice_iter<T>>;
+  friend base;
+  using base::curr;
+  using base::ref;
+public:
+  using typename base::_V;
+  using base::base;
+  using base::size;
     slice_iter& operator=(slice_iter<T> ss)
       { 
         int n = std:: min(ss.size(), size());
@@ -87,92 +138,6 @@ class slice_iter
     template<class Expr>
     slice_iter& operator/=(const IterExpr<T,Expr>&);
 
-//  Operators
-
-    slice_iter& operator++() { curr++; return *this; }
-    slice_iter  operator++(int) {slice_iter t = *this; curr++; return t;}
-    slice_iter& operator--() { curr--; return *this; }
-    slice_iter  operator--(int) {slice_iter t = *this; curr--; return t;}
-    T& operator[](size_t i){return ref(curr=i);}
-    const T& operator[](size_t i) const {return ref(i);}
-    T& operator()(size_t i){return ref(curr=i);}
-    const T& operator()(size_t i) const {return ref(i);}
-    T& operator*() { return ref(curr);}
-    T& operator*() const { return ref(curr);}
-
-    bool operator==(const slice_iter<T>& q)
-      {return curr==q.curr && s.stride()==q.s.stride() && s.start() == q.s.start();}
-
-    bool operator!=(const slice_iter<T>& q){return !(*this==q);}
-
-    bool operator<(const slice_iter<T>& q)
-      {return curr<q.curr && s.stride()==q.s.stride() && s.start() == q.s.start();}
-
-    bool operator>(const slice_iter<T>& q)
-      {return curr>q.curr && s.stride()==q.s.stride() && s.start() == q.s.start();}
-
-//  IterExpr auxiliary methods
-
-    size_t size1() const { return 1; }
-    size_t size2() const { return s.size(); }
-
-  private:
-    _V* v;
-    std::slice s;
-    size_t curr;
-    T& ref(size_t i) const { return (*v)[s.start()+i*s.stride()];}
-};
-
-template <class T>
-class cslice_iter
-{
-  public:
-    typedef typename std::vector<T> _V;
-
-    cslice_iter():v(0),s(0,0,0),curr(0){};
-    cslice_iter(const _V* vv, std::slice ss):v(vv),s(ss),curr(0){};
-    cslice_iter(const cslice_iter<T>& ss):v(ss.v),s(ss.s),curr(ss.curr){}
-
-    size_t size() const { return s.size(); }
-    cslice_iter begin() const {cslice_iter t = *this; t.curr = 0; return t; }
-    cslice_iter end() const {cslice_iter t = *this; t.curr = size(); return t; }
-    size_t current() const { return curr; }
-
-//  Operators
-
-    const cslice_iter& operator++() { curr++; return *this; }
-    const cslice_iter operator++(int) {cslice_iter t = *this; curr++; return t;}
-    T operator[](size_t i) {return ref(curr=i);}
-    T operator()(size_t i) {return ref(curr=i);}
-    T operator*() { return ref(curr);}
-    T operator*() const { return ref(curr);}
-
-// Dirty hack to get the exact address
-    const T* get_pointer(size_t i) const
-      { return &(const_cast<vector<T>&>(*v)[s.start()+i*s.stride()]); }
-
-
-    bool operator==(const cslice_iter<T>& q)
-      {return curr==q.curr && s.stride()==q.s.stride() && s.start() == q.s.start();}
-
-    bool operator!=(const cslice_iter<T>& q){return !(*this==q);}
-
-    bool operator<(const cslice_iter<T>& q)
-      {return curr < q.curr && s.stride()==q.s.stride() && s.start() == q.s.start();}
-
-    bool operator>(const cslice_iter<T>& q)
-      {return curr > q.curr && s.stride()==q.s.stride() && s.start() == q.s.start();}
-
-//  IterExpr auxiliary methods
-
-    size_t size1() const { return 1; }
-    size_t size2() const { return s.size(); }
-
-  private:
-    const _V* v;
-    std::slice s;
-    size_t curr;
-    T ref(size_t i) const { return (*v)[s.start()+i*s.stride()];}
 };
 
 
@@ -297,5 +262,4 @@ product(slice_iter<T> a, slice_iter<T> b)
 } // namespace dmtk 
 
 #endif // __DMTK_SLICE_ITER_H__
-
 

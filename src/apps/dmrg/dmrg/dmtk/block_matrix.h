@@ -483,107 +483,16 @@ template<class T>
 SubMatrix<T>*
 BMatrix<T>::get_block(const QN &qn)
 {
-#ifdef USE_HASH
-  int qn_index = _get_index(qn);
-  if(qn_index < 0 || qn_index >= _hash_index.size()) return NULL;
-  int idx = _hash_index[qn_index];
-  if(idx >= 0 && idx < size()) 
-    return operator[](idx);
-  return NULL;
-#endif // USE_HASH
-/*
-  for(int i = 0; i < this->size(); i++){
-    SubMatrix<T> *_s = operator[](i);
-    cout  << "HOLA BLOCK " << _s->qn() << endl;
-//    if(_s->qn() == qn) return _s; 
-  }
-*/
-
-  int origin = 0;
-  int end = _V::size() - 1;
-  int index = -1;
-
-  while(origin <= end){
-    int index_old = index;
-    index = (origin + end) / 2;
-
-    SubMatrix<T> *_s = operator[](index);
-
-    if(_s->qn() == qn) return _s; 
-    if(_s->qn() > qn)
-      end = index;
-    else
-      origin = index;
-
-    if(index == index_old){
-      if(index == end)
-        end = end - 1;
-      else
-        origin = origin + 1;
-    }
-  }
-
-/*
-cout << "HOLA BLOCK NOT FOUND " << qn[0] << endl;
-  for(int i = 0; i < this->size(); i++){
-    const SubMatrix<T> *_s = operator[](i);
-    if(_s->qn() == qn) cout << qn[0] << endl; 
-  }
-*/
-  return NULL;
+  int index = get_block_index(qn);
+  return index < 0 ? nullptr : operator[](index);
 }
 
 template<class T>
 const SubMatrix<T>*
 BMatrix<T>::get_block(const QN &qn) const
 {
-#ifdef USE_HASH
-  int qn_index = _get_index(qn);
-  if(qn_index < 0 || qn_index >= _hash_index.size()) return NULL;
-  int idx = _hash_index[qn_index];
-  if(idx >= 0 && idx < size()) 
-    return operator[](idx);
-  return NULL;
-#endif // USE_HASH
-/*
-  for(int i = 0; i < this->size(); i++){
-    const SubMatrix<T> *_s = operator[](i);
-    if(_s->qn() == qn) return _s; 
-  }
-*/
-
-  int origin = 0;
-  int end = _V::size() - 1;
-  int index = -1;
-
-  while(origin <= end){
-    int index_old = index;
-    index = (origin + end) / 2;
-
-    const SubMatrix<T> *_s = operator[](index);
-
-    if(_s->qn() == qn) return _s; 
-    if(_s->qn() > qn)
-      end = index;
-    else
-      origin = index;
-
-    if(index == index_old){
-      if(index == end)
-        end = end - 1;
-      else
-        origin = origin + 1;
-    }
-  }
-
-/*
-cout << "HOLA BLOCK NOT FOUND " << qn[0] << endl;
-  for(int i = 0; i < this->size(); i++){
-    const SubMatrix<T> *_s = operator[](i);
-    if(_s->qn() == qn) cout << qn[0] << endl; 
-  }
-*/
-  return NULL;
+  int index = get_block_index(qn);
+  return index < 0 ? nullptr : operator[](index);
 }
 
 template<class T>
@@ -592,7 +501,7 @@ BMatrix<T>::get_block_index(const QN &qn) const
 {
 #ifdef USE_HASH
   int qn_index = _get_index(qn);
-  if(qn_index < 0 || qn_index >= _hash_index.size()) return NULL;
+  if(qn_index < 0 || qn_index >= _hash_index.size()) return -1;
   int idx = _hash_index[qn_index];
   if(idx >= 0 && idx < size()) 
     return idx;
