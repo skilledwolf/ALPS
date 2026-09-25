@@ -45,7 +45,7 @@ Welcome! This is the user documentation for the third version of the ALPS\cite{A
 This documentation, as well as version $3$ of the hybridization expansion code, is open source. Bug reports and bug fixes, problem reports, and suggestion for improvements are most welcome.
 
 \section{Prerequisites}
-The hybridization solver is built with the ALPS applications as the executable \verb#hybridization#. Follow the current build instructions in \verb#CONTRIBUTING.md# at the repository root; the adjacent \verb#README.md# links to the build guide and Python tutorials. Source builds require CMake 4.3 or newer and the documented ALPS dependencies. Configure with \verb#ALPS_BUILD_APPLICATIONS=ON# and build the \verb#hybridization# and \verb#p2h5# targets.
+The hybridization solver is built with the ALPS applications as the executable \verb#hybridization#. Follow the current build instructions in \verb#CONTRIBUTING.md# at the repository root; the adjacent \verb#README.md# links to the build guide and Python tutorials. Source builds require CMake 3.27 or newer and the documented ALPS dependencies. Configure with \verb#ALPS_BUILD_APPLICATIONS=ON# and build the \verb#hybridization# and \verb#p2h5# targets.
 
 MPI is optional. Serial builds and Python solver calls require no MPI initialization. For MPI-enabled native runs, build the SDK with \verb#ALPS_ENABLE_MPI=ON# and use the MPI launcher provided by your installation.
 

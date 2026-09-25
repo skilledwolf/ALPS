@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 4.3)
+cmake_minimum_required(VERSION 3.27...4.3)
 project(alps_sdk_contract LANGUAGES C CXX)
 
 # A parent may already use MPI and have its own numerical-provider preferences.

@@ -30,6 +30,8 @@ jobs:
       CCACHE_DIR: ${{ github.workspace }}/_build/ccache
       CCACHE_MAXSIZE: 1G
       PIP_ONLY_BINARY: ':all:'
+      # Keep a Windows minimum-version build alongside current-CMake wheels.
+      CMAKE_REQUIREMENT: ${{ inputs.architecture == 'x64' && inputs.configuration == 'Debug' && 'cmake==3.27.9' || 'cmake>=3.27' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -63,7 +65,7 @@ jobs:
       - name: Configure SDK
         shell: pwsh
         run: |
-          python -m pip install --only-binary=:all: "cmake>=4.3" ninja
+          python -m pip install --only-binary=:all: $env:CMAKE_REQUIREMENT ninja
           if ($LASTEXITCODE) { throw 'Build tool installation failed' }
           # Executables share one DLL directory; serialize vcpkg's app-local
           # copy steps to avoid concurrent writes while keeping compilation parallel.

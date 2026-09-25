@@ -1,7 +1,7 @@
 #  Copyright Synge Todo 2011.
 #   SPDX-License-Identifier: MIT
 
-cmake_minimum_required(VERSION 4.3)
+cmake_minimum_required(VERSION 3.27...4.3)
 project(alps_fortran_examples LANGUAGES C CXX Fortran)
 find_package(ALPS CONFIG REQUIRED COMPONENTS fortran)
 option(ALPS_BUILD_TESTING "Build and register ALPS tests" ON)

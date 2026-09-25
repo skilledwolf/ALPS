@@ -54,7 +54,7 @@ def test_embedded_in_source_build_is_rejected_before_project(tmp_path):
     # The guard must run before any project setup or dependency discovery.
     shutil.copy2(SOURCE / "CMakeLists.txt", source)
     (tmp_path / "CMakeLists.txt").write_text(
-        "cmake_minimum_required(VERSION 4.3)\n"
+        "cmake_minimum_required(VERSION 3.27...4.3)\n"
         "project(parent LANGUAGES NONE)\n"
         'add_subdirectory(source "${CMAKE_CURRENT_SOURCE_DIR}/source")\n')
     result = subprocess.run([
@@ -73,7 +73,7 @@ def test_embedded_build_keeps_parent_defaults(tmp_path, ctest_first, shared, alp
     parent_testing = "OFF" if alps_tests else "ON"
     ctest = f'option(BUILD_TESTING "Parent tests" {parent_testing})\ninclude(CTest)\n'
     (tmp_path / "CMakeLists.txt").write_text(
-        'cmake_minimum_required(VERSION 4.3)\n'
+        'cmake_minimum_required(VERSION 3.27...4.3)\n'
         'project(parent LANGUAGES C CXX)\n'
         + (ctest if ctest_first else "") + '''
 file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/parent.c" "int parent(void) { return 0; }\\n")
@@ -184,7 +184,7 @@ def test_tutorials_are_an_explicit_install_component(tmp_path):
     build = tmp_path / "build"
     install = tmp_path / "install"
     (tmp_path / "CMakeLists.txt").write_text(
-        "cmake_minimum_required(VERSION 4.3)\n"
+        "cmake_minimum_required(VERSION 3.27...4.3)\n"
         "project(tutorial_install LANGUAGES NONE)\n"
         "set(CMAKE_INSTALL_DATADIR share)\n"
         f'add_subdirectory("{SOURCE.as_posix()}/tutorials" tutorials)\n')

@@ -9,7 +9,7 @@ requires-pixi = ">=0.81.0"
 [dependencies]
 python = "3.13.*"
 pip = "*"
-cmake = ">=4.3,<5"
+cmake = ">=3.27,<5"
 ninja = ">=1.12"
 ccache = ">=4.8"
 libboost-devel = "1.91.*"

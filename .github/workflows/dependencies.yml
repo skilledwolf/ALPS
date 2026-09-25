@@ -170,7 +170,7 @@ jobs:
           $env:VCPKG_ROOT = "$pwd/_build/vcpkg"
           & "$env:VCPKG_ROOT/bootstrap-vcpkg.bat" -disableMetrics
           if ($LASTEXITCODE) { throw 'vcpkg bootstrap failed' }
-          python -m pip install --only-binary=:all: "cmake>=4.3" ninja
+          python -m pip install --only-binary=:all: "cmake>=3.27" ninja
           if ($LASTEXITCODE) { throw 'Build tool installation failed' }
           cmake --preset windows-${{ matrix.architecture }}
           if ($LASTEXITCODE) { throw 'Dependency preparation failed' }
