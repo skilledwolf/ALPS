@@ -19,6 +19,33 @@ from .floatwitherror import FloatWithError as fwe
 from .floatwitherror import get_mean
 from .hlist import flatten
 
+def _values_and_errors(values):
+    """Normalize scalar/array data, including FloatWithError, for plotting."""
+    if hasattr(values, 'error'):
+        return np.atleast_1d(get_mean(values)), np.atleast_1d(values.error)
+    values = np.atleast_1d(values)
+    if not len(values):
+        return values, None
+    try:
+        errors = np.array([value.error for value in values])
+    except AttributeError:
+        return values, None
+    return np.array([get_mean(value) for value in values]), errors
+
+
+def _plot_columns(data):
+    x, dx = _values_and_errors(data.x)
+    y, dy = _values_and_errors(data.y)
+    error_axes = ('x' if dx is not None else '') + ('y' if dy is not None else '')
+    return error_axes, [column for column in (x, y, dx, dy) if column is not None]
+
+
+def _format_columns(columns):
+    if any(len(column) != len(columns[0]) for column in columns[1:]):
+        raise ValueError('Plot columns must have the same length')
+    return ''.join('\t'.join(map(str, row)) + '\n' for row in zip(*columns))
+
+
 def read_xml(filename):
     root = ElementTree.parse(filename).getroot()
     data = DataSet()
@@ -124,6 +151,7 @@ def convert_to_text(desc):
 
             
 def makeGracePlot(data,title=None,xaxis=None,yaxis=None,legend=None):
+        data = list(flatten(data))
         output =  '# Grace project file\n'
         output += '#\n@    g0 on\n@    with g0\n'
         output += '@     frame linewidth 2.0\n'
@@ -197,7 +225,10 @@ def makeGracePlot(data,title=None,xaxis=None,yaxis=None,legend=None):
         
         num = 0
         symnum = 0
-        for q in flatten(data):
+        for q in data:
+            errors, columns = _plot_columns(q)
+            if not len(columns[1]):
+                continue
             output += '@target G0.S'+str(num)+'\n'
             output += '@    s'+str(num)+' symbol ' + str(num+1) +'\n'
             output += '@    s'+str(num)+' symbol size 0.500000\n'
@@ -214,36 +245,10 @@ def makeGracePlot(data,title=None,xaxis=None,yaxis=None,legend=None):
                 output += '@    s'+str(num)+' legend "' + q.props['filename'] + '"\n'
             output += '\n'
 
-            if len(q.y):
-                try:
-                    xerrors = np.array([xx.error for xx in q.x])
-                except AttributeError:
-                    xerrors = None
-                
-                try:
-                    yerrors = np.array([xx.error for xx in q.y])
-                except AttributeError:
-                    yerrors = None
-                    
-                if xerrors is None and yerrors is None:
-                    output += '@type xy\n'
-                    for i in range(len(q.x)):
-                        output += str(q.x[i]) + '\t' + str(q.y[i]) + '\n'
-                if xerrors is None and yerrors is not None:
-                    output += '@type xydy\n'
-                    for i in range(len(q.x)):
-                        output += str(q.x[i]) + '\t' + str(q.y[i].mean) + '\t' + str(q.y[i].error) + '\n'
-                if xerrors is not None and yerrors is None:
-                    output += '@type xydx\n'
-                    for i in range(len(q.x)):
-                        output += str(q.x[i]) + '\t' + str(q.y[i].mean) + '\t' + str(q.x[i].error) + '\n'
-                if xerrors is not None and yerrors is not None:
-                    output += '@type xydxdy\n'
-                    for i in range(len(q.x)):
-                        output += str(q.x[i]) + '\t' + str(q.y[i].mean) + '\t' + str(q.x[i].error) + '\t' + str(q.x[i].error) + '\n'
-                output += '&\n'
-                num+=1
-                     
+            output += '@type xy' + ''.join('d' + axis for axis in errors) + '\n'
+            output += _format_columns(columns) + '&\n'
+            num += 1
+
         return output
 
 def convert_to_grace(desc):
@@ -310,85 +315,23 @@ def makeGnuplotPlot(data,title=None,xaxis=None,yaxis=None,legend=None, outfile=N
     if legend is not None and legend != False:
         output += 'set key top right\n'
         
-    num = 0
-    output += 'plot '
-    
+    entries = []
+    datasets = []
     for q in flatten(data):
-        if len(q.y):
-            try:
-                xerrors = np.array([xx.error for xx in q.x])
-            except AttributeError:
-                xerrors = None
-                
-            try:
-                yerrors = np.array([xx.error for xx in q.y])
-            except AttributeError:
-                yerrors = None
-        if 'line' in q.props and q.props['line'] == 'scatter':
-            if 'label' in q.props:
-                if xerrors is None and yerrors is None:
-                    output += ' "-" using 1:2 title "' + q.props['label'] + '",'
-                if xerrors is None and yerrors is not None:
-                    output += ' "-" using 1:2:3 w yerrorbars  title "' + q.props['label'] + '",'
-                if xerrors is not None and yerrors is None:
-                    output += ' "-" using 1:2:3 w xerrorbars  title "' + q.props['label'] + '",'
-                if xerrors is not None and yerrors is not None:
-                    output += ' "-" using 1:2:3:4 w xyerrorbars  title "' + q.props['label'] + '",'
-            else:
-                if xerrors is None and yerrors is None:
-                    output += ' "-" using 1:2 notitle ,"' 
-                if xerrors is None and yerrors is not None:
-                    output += ' "-" using 1:2:3 w yerrorbars  notitle ,' 
-                if xerrors is not None and yerrors is None:
-                    output += ' "-" using 1:2:3 w xerrorbars  notitle ,' 
-                if xerrors is not None and yerrors is not None:
-                    output += ' "-" using 1:2:3:4 w xyerrorbars  notitle ,'
-        else:
-            if 'label' in q.props:
-                if xerrors is None and yerrors is None:
-                    output += ' "-" using 1:2 title "' + q.props['label'] + '",'
-                if xerrors is None and yerrors is not None:
-                    output += ' "-" using 1:2:3 w yerrorline  title "' + q.props['label'] + '",'
-                if xerrors is not None and yerrors is None:
-                    output += ' "-" using 1:2:3 w xerrorline  title "' + q.props['label'] + '",'
-                if xerrors is not None and yerrors is not None:
-                    output += ' "-" using 1:2:3:4 w xyerrorline  title "' + q.props['label'] + '",'
-            else:
-                if xerrors is None and yerrors is None:
-                    output += ' "-" using 1:2 notitle ,"' 
-                if xerrors is None and yerrors is not None:
-                    output += ' "-" using 1:2:3 w yerrorline  notitle ,' 
-                if xerrors is not None and yerrors is None:
-                    output += ' "-" using 1:2:3 w xerrorline  notitle ,' 
-                if xerrors is not None and yerrors is not None:
-                    output += ' "-" using 1:2:3:4 w xyerrorline  notitle ,'
-    output=output[:-1]
-    output+='\n'
-    
-    for q in flatten(data):    
-            if xerrors is None and yerrors is None:
-                output += '# X Y \n'
-                for i in range(len(q.x)):
-                    output += str(q.x[i]) + '\t' + str(q.y[i]) + '\n'
-                output += 'end \n'
-            if xerrors is None and yerrors is not None:
-                output += '# X Y DY \n'
-                for i in range(len(q.x)):
-                    output += str(q.x[i]) + '\t' + str(q.y[i].mean) + '\t' + str(q.y[i].error) + '\n'
-                output += 'end \n'
-            if xerrors is not None and yerrors is None:
-                output += '# X Y DX \n'
-                for i in range(len(q.x)):
-                    output += str(q.x[i].mean) + '\t' + str(q.y[i]) + '\t' + str(q.x[i].error) + '\n'
-                output += 'end \n'
-            if xerrors is not None and yerrors is not None:
-                output += '# X Y DXY \n'
-                for i in range(len(q.x)):
-                    output += str(q.x[i].mean) + '\t' + str(q.y[i].mean) + '\t' + str(q.x[i].error) + '\t' + str(q.y[i].error) + '\n'
-                output += 'end \n'
-            output += '\n'
-            num+=1
-                     
+        errors, columns = _plot_columns(q)
+        if not len(columns[1]):
+            continue
+        using = ':'.join(str(i) for i in range(1, len(columns) + 1))
+        label = 'title "' + q.props['label'] + '"' if 'label' in q.props else 'notitle'
+        style = ''
+        if errors:
+            style = ' w ' + errors + 'error' + ('bars' if q.props.get('line') == 'scatter' else 'lines')
+        entries.append(' "-" using ' + using + style + ' ' + label)
+        header = '# X Y' + ''.join(' D' + axis.upper() for axis in errors) + '\n'
+        datasets.append(header + _format_columns(columns) + 'end \n\n')
+    if entries:
+        output += 'plot' + ','.join(entries) + '\n' + ''.join(datasets)
+
     return output
 
 def convert_to_gnuplot(desc, outfile=None, terminal=None, fontsize=24):
@@ -402,8 +345,6 @@ def convert_to_gnuplot(desc, outfile=None, terminal=None, fontsize=24):
     if 'legend' in desc: l = desc['legend'] 
     else: l = None
     return makeGnuplotPlot(desc['data'],title=t,xaxis=x,yaxis=y,legend=l,outfile=outfile, terminal=terminal,fontsize=fontsize)    
-
-
 
 
 

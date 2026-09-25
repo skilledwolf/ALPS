@@ -22,7 +22,7 @@ from .hlist import flatten
 from .dataset import DataSet
 from matplotlib.font_manager import FontProperties
 import platform
-from .plot_core import convertToText, makeGracePlot, makeGnuplotPlot
+from .plot_core import convertToText, makeGracePlot, makeGnuplotPlot, _values_and_errors
 
 colors = ['k','b','g','m','c','y']
 markers = ['s', 'o', '^', '>', 'v', '<', 'd', 'p', 'h', '8', '+', 'x']
@@ -53,25 +53,9 @@ def plot(data):
     else:
       s = data
     for q in flatten(s):
-        try:
-            xmeans = np.array([xx.mean for xx in q.x])
-            xerrors = np.array([xx.error for xx in q.x])
-        except AttributeError:
-            xmeans = [float(vvv) for vvv in q.x]
-            xerrors = None
-        except TypeError:
-            xmeans = [q.x]
-            xerrors = None
-        
-        try:
-            ymeans = np.array([xx.mean for xx in q.y])
-            yerrors = np.array([xx.error for xx in q.y])
-        except AttributeError:
-            ymeans = [float(vvv) for vvv in q.y]
-            yerrors = None
-        except TypeError: # this usually means that it's scalar
-            ymeans = [q.y]
-            yerrors = None
+        xmeans, xerrors = _values_and_errors(q.x)
+        ymeans, yerrors = _values_and_errors(q.y)
+        xmeans, ymeans = np.asarray(xmeans, dtype=float), np.asarray(ymeans, dtype=float)
 
         if 'label' in q.props and q.props['label'] != 'none':
             lab = q.props['label']
@@ -179,19 +163,9 @@ class MplXYPlot_core:
             ylog = self.plt['yaxis']['logarithmic']
         
         for q in flatten(self.plt['data']):
-            try:
-                xmeans = np.array([xx.mean for xx in q.x])
-                xerrors = np.array([xx.error for xx in q.x])
-            except AttributeError:
-                xmeans = [float(vvv) for vvv in q.x]
-                xerrors = None
-            
-            try:
-                ymeans = np.array([xx.mean for xx in q.y])
-                yerrors = np.array([xx.error for xx in q.y])
-            except AttributeError:
-                ymeans = [float(vvv) for vvv in q.y]
-                yerrors = None
+            xmeans, xerrors = _values_and_errors(q.x)
+            ymeans, yerrors = _values_and_errors(q.y)
+            xmeans, ymeans = np.asarray(xmeans, dtype=float), np.asarray(ymeans, dtype=float)
             
             thiscolor = self.colors[self.icolor]
             self.icolor = (self.icolor+1)%len(self.colors)
