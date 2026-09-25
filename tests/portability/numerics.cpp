@@ -41,7 +41,8 @@ int main() {
     double b[] = {9., 8.};
     fortran_int_t pivot[2] = {}, info = -1;
     FORTRAN_ID(dgesv)(&n, &nrhs, a, &n, pivot, b, &n, &info);
-    if (info != 0 || std::abs(b[0] - 2.) > 1e-12 || std::abs(b[1] - 3.) > 1e-12)
+    // Negated <= comparisons also reject NaN results.
+    if (info != 0 || !(std::abs(b[0] - 2.) <= 1e-12) || !(std::abs(b[1] - 3.) <= 1e-12))
         throw std::runtime_error("LAPACK solve failed");
 
     const double matrix[] = {3., 1., 1., 2.}, one = 1., zero = 0.;
@@ -49,7 +50,7 @@ int main() {
     const char normal = 'N';
     FORTRAN_ID(dgemm)(&normal, &normal, &n, &nrhs, &n, &one,
                      matrix, &n, b, &n, &zero, result, &n);
-    if (std::abs(result[0] - 9.) > 1e-12 || std::abs(result[1] - 8.) > 1e-12)
+    if (!(std::abs(result[0] - 9.) <= 1e-12) || !(std::abs(result[1] - 8.) <= 1e-12))
         throw std::runtime_error("BLAS matrix multiplication failed");
 
     // A mixed f2c/native BLAS ABI can return success but the wrong factor:

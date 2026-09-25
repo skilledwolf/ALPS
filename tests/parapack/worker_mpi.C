@@ -18,7 +18,7 @@
 #include <iostream>
 #include <boost/filesystem/path.hpp>
 #include <boost/filesystem/operations.hpp>
-#include <boost/timer.hpp>
+#include <ctime>
 
 namespace mpi = boost::mpi;
 
@@ -53,7 +53,7 @@ int main(int argc, char **argv) {
   worker->init_observables(p, obs);
 
   world.barrier();
-  boost::timer tm;
+  const std::clock_t tm = std::clock();
 
   bool dumped = false;
   while (worker->progress() < 1) {
@@ -72,7 +72,7 @@ int main(int argc, char **argv) {
   }
 
   world.barrier();
-  double t = tm.elapsed();
+  double t = static_cast<double>(std::clock() - tm) / CLOCKS_PER_SEC;
 
   worker.reset();
 

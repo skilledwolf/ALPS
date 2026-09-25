@@ -124,7 +124,7 @@ target_include_directories(
             $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/third_party/xdr/include>
             $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 target_link_libraries(alps_headers INTERFACE Boost::headers)
-set(ALPS_HEADER_DEPENDENCIES ${ALPS_HDF5_TARGETS})
+set(ALPS_HEADER_DEPENDENCIES HDF5::HDF5)
 if(ALPS_ENABLE_MPI)
   list(APPEND ALPS_HEADER_DEPENDENCIES MPI::MPI_CXX)
 endif()
@@ -132,9 +132,7 @@ if(ALPS_ENABLE_OPENMP)
   list(APPEND ALPS_HEADER_DEPENDENCIES OpenMP::OpenMP_CXX)
 endif()
 target_link_libraries(alps_headers INTERFACE "$<COMPILE_ONLY:${ALPS_HEADER_DEPENDENCIES}>")
-target_compile_definitions(alps PRIVATE BOOST_TIMER_ENABLE_DEPRECATED
-                                        BOOST_ALLOW_DEPRECATED_HEADERS)
-target_link_libraries(alps PUBLIC alps_headers ${ALPS_HDF5_TARGETS} Threads::Threads
+target_link_libraries(alps PUBLIC alps_headers HDF5::HDF5 Threads::Threads
                                   ${ALPS_BLAS_TARGET} ${ALPS_LAPACK_TARGET})
 foreach(component IN LISTS ALPS_BOOST_COMPONENTS)
   target_link_libraries(alps PUBLIC Boost::${component})
@@ -156,6 +154,39 @@ set_target_properties(
   PROPERTIES VERSION ${PROJECT_VERSION}
              SOVERSION ${PROJECT_VERSION_MAJOR}
              INSTALL_RPATH "${ALPS_LOADER_ORIGIN}")
+
+if(ALPS_LOADER_ORIGIN)
+  # CMake's automatic install RPATH omits dependency prefixes inside the source
+  # or build tree. Imported shared libraries still need to be found after the
+  # SDK is installed, including when CI extracts its dependencies in _build/.
+  get_target_property(dependencies alps LINK_LIBRARIES)
+  # FindHDF5's aggregate preserves configuration-aware provider targets, or
+  # absolute library paths when the provider has no CMake package.
+  get_target_property(hdf5_dependencies HDF5::HDF5 INTERFACE_LINK_LIBRARIES)
+  list(APPEND dependencies ${hdf5_dependencies})
+  foreach(dependency IN LISTS dependencies)
+    if(TARGET "${dependency}")
+      get_target_property(dependency_type "${dependency}" TYPE)
+      if(dependency_type MATCHES "^(SHARED|UNKNOWN)_LIBRARY$")
+        set_property(TARGET alps APPEND PROPERTY INSTALL_RPATH "$<TARGET_FILE_DIR:${dependency}>")
+      endif()
+    elseif(IS_ABSOLUTE "${dependency}")
+      get_filename_component(dependency_directory "${dependency}" DIRECTORY)
+      set_property(TARGET alps APPEND PROPERTY INSTALL_RPATH "${dependency_directory}")
+    endif()
+  endforeach()
+endif()
+
+if(WIN32 AND BUILD_SHARED_LIBS)
+  # Follow imported configurations: a Debug consumer may use a Release C-ABI
+  # dependency that vcpkg's configuration-specific DLL search does not find.
+  set(runtime_copy_script "${CMAKE_CURRENT_BINARY_DIR}/copy-runtime-$<CONFIG>.cmake")
+  file(GENERATE OUTPUT "${runtime_copy_script}" CONTENT
+    "set(dlls \"$<TARGET_RUNTIME_DLLS:alps>\")\nfile(COPY \${dlls} DESTINATION \"$<TARGET_FILE_DIR:alps>\")\n")
+  add_custom_command(TARGET alps POST_BUILD
+    COMMAND "${CMAKE_COMMAND}" -P "${runtime_copy_script}"
+    VERBATIM)
+endif()
 target_sources(alps_headers INTERFACE
   FILE_SET HEADERS
   BASE_DIRS "${PROJECT_BINARY_DIR}/src"

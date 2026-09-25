@@ -1,75 +1,116 @@
-name: Native Windows
+# Shared implementation; source and packaging workflows own the triggers.
+name: Windows SDK and wheel
 on:
-  push:
-  pull_request:
-  merge_group:
-  workflow_dispatch:
+  workflow_call:
+    inputs:
+      architecture:
+        type: string
+        required: true
+      configuration:
+        type: string
+        required: true
+      wheel:
+        type: boolean
+        default: false
+      sdist:
+        type: boolean
+        default: false
 permissions:
   contents: read
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   msvc:
-    name: MSVC ${{ matrix.arch }} ${{ matrix.config }}
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 90
+    name: MSVC ${{ inputs.architecture }} ${{ inputs.configuration }}
+    runs-on: ${{ inputs.architecture == 'arm64' && 'windows-11-arm' || 'windows-latest' }}
+    timeout-minutes: 120
     env:
-      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/.cache/vcpkg
-      CMAKE_BUILD_PARALLEL_LEVEL: 2
+      CMAKE_BUILD_PARALLEL_LEVEL: 4
       CTEST_PARALLEL_LEVEL: 2
+      CMAKE_C_COMPILER_LAUNCHER: ccache
+      CMAKE_CXX_COMPILER_LAUNCHER: ccache
+      CCACHE_DIR: ${{ github.workspace }}/_build/ccache
+      CCACHE_MAXSIZE: 1G
+      PIP_ONLY_BINARY: ':all:'
       # Keep a Windows minimum-version build alongside current-CMake wheels.
-      CMAKE_REQUIREMENT: ${{ matrix.arch == 'x64' && matrix.config == 'Debug' && 'cmake==3.27.9' || 'cmake>=3.27' }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { os: windows-latest, arch: x64, config: Release }
-          - { os: windows-latest, arch: x64, config: Debug }
-          - { os: windows-11-arm, arch: arm64, config: Release }
+      CMAKE_REQUIREMENT: ${{ inputs.architecture == 'x64' && inputs.configuration == 'Debug' && 'cmake==3.27.9' || 'cmake>=3.27' }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-      - name: Create dependency cache directory
-        shell: pwsh
-        run: New-Item -ItemType Directory -Force $env:VCPKG_DEFAULT_BINARY_CACHE
-      - uses: actions/cache@v6
-        with:
-          path: .cache/vcpkg
-          key: windows-${{ matrix.arch }}-vcpkg-${{ hashFiles('vcpkg.json', 'CMakePresets.json', 'cmake/vcpkg*/**') }}
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: '3.13'
-          architecture: ${{ matrix.arch }}
-      - uses: ilammy/msvc-dev-cmd@v1
+          architecture: ${{ inputs.architecture }}
+      - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1
         with:
-          arch: ${{ matrix.arch }}
+          arch: ${{ inputs.architecture }}
+      - name: Install native compiler cache
+        shell: pwsh
+        run: .github/scripts/install-ccache.ps1 -Architecture ${{ inputs.architecture }} -Destination _build/ccache-tool
+      - name: Restore compiler cache
+        id: compiler-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: _build/ccache
+          key: ccache-windows-${{ inputs.architecture }}-${{ inputs.configuration }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: ccache-windows-${{ inputs.architecture }}-${{ inputs.configuration }}-
+      - name: Reset compiler cache counters
+        run: ccache --zero-stats
+      - name: Download pinned dependency SDK
+        shell: pwsh
+        run: |
+          python .github/scripts/build_metrics.py run 'Dependency download' python .github/scripts/ci_dependencies.py windows-${{ inputs.architecture }} _build/dependencies
+          if ($LASTEXITCODE) { throw 'Dependency download failed' }
+          # MSVC activation sets VCPKG_ROOT to Visual Studio's bundled checkout.
+          "VCPKG_ROOT=$env:GITHUB_WORKSPACE/_build/dependencies" >> $env:GITHUB_ENV
       - name: Configure SDK
         shell: pwsh
         run: |
-          python -m pip install $env:CMAKE_REQUIREMENT
-          $env:VCPKG_ROOT = $env:VCPKG_INSTALLATION_ROOT
-          cmake --preset windows-${{ matrix.arch }}
+          python -m pip install --only-binary=:all: $env:CMAKE_REQUIREMENT ninja
+          if ($LASTEXITCODE) { throw 'Build tool installation failed' }
+          # Executables share one DLL directory; serialize vcpkg's app-local
+          # copy steps to avoid concurrent writes while keeping compilation parallel.
+          # Embed Debug information in each object so it can be cached independently.
+          python .github/scripts/build_metrics.py run 'SDK configure' cmake --preset windows-${{ inputs.architecture }} `
+            '-DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=$<$<CONFIG:Debug,RelWithDebInfo>:Embedded>' `
+            -DVCPKG_MANIFEST_MODE=OFF -DX_VCPKG_APPLOCAL_DEPS_SERIALIZED=ON `
+            "-DVCPKG_INSTALLED_DIR=$env:VCPKG_ROOT/installed"
       - name: Build SDK
-        run: cmake --build --preset windows-${{ matrix.arch }} --config ${{ matrix.config }}
+        run: python .github/scripts/build_metrics.py run 'SDK build' cmake --build --preset windows-${{ inputs.architecture }} --config ${{ inputs.configuration }}
       - name: Test SDK
-        run: ctest --preset windows-${{ matrix.arch }} -C ${{ matrix.config }} --output-junit ctest.xml --no-tests=error
+        run: python .github/scripts/build_metrics.py run 'SDK tests' ctest --preset windows-${{ inputs.architecture }} -C ${{ inputs.configuration }} --output-junit ctest.xml --no-tests=error
       - name: Install SDK
-        run: cmake --install _build/windows-${{ matrix.arch }} --config ${{ matrix.config }}
-      - name: Install Python build requirements
-        if: matrix.config == 'Release'
-        run: python -m pip install build "nanobind>=2.10,<3" numpy scipy matplotlib h5py pytest "scikit-build-core>=1.0" abi3audit
-      - name: Build and audit Python wheel
-        if: matrix.config == 'Release'
+        run: cmake --install _build/windows-${{ inputs.architecture }} --config ${{ inputs.configuration }}
+      - name: Stage installed SDK runtime checks
+        if: inputs.wheel
         shell: pwsh
         run: |
-          $env:ALPS_DIR = "$pwd/_build/windows-${{ matrix.arch }}/install/share/alps"
-          python -m build --wheel --no-isolation --outdir _build/python-wheel python/pyalps `
-            --config-setting "cmake.define.CMAKE_TOOLCHAIN_FILE=$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" `
-            --config-setting "cmake.define.VCPKG_INSTALLED_DIR=$pwd/_build/windows-${{ matrix.arch }}/vcpkg_installed" `
+          Copy-Item -Recurse _build/windows-${{ inputs.architecture }}/install/bin _build/sdk-runtime
+          foreach ($probe in @('portability', 'numerics', 'hdf5_complex')) {
+            Copy-Item "_build/windows-${{ inputs.architecture }}/bin/${{ inputs.configuration }}/$probe.exe" _build/sdk-runtime/
+          }
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: inputs.wheel
+        with:
+          name: sdk-runtime-windows-${{ inputs.architecture }}
+          path: _build/sdk-runtime
+          if-no-files-found: error
+      - name: Install Python build requirements
+        if: inputs.wheel
+        run: python -m pip install build "nanobind>=2.10,<3" numpy scipy matplotlib h5py pytest "scikit-build-core>=1.0" abi3audit
+      - name: Build and audit Python wheel
+        if: inputs.wheel
+        env:
+          # CMake compiler launchers are supported by Ninja, not Visual Studio.
+          CMAKE_GENERATOR: Ninja
+        shell: pwsh
+        run: |
+          $env:ALPS_DIR = "$pwd/_build/windows-${{ inputs.architecture }}/install/share/alps"
+          python .github/scripts/build_metrics.py run 'Wheel build' python -m build --wheel --no-isolation --outdir _build/python-wheel python/pyalps `
+            --config-setting "build-dir=$pwd/_build/python-wheel-build" `
+            --config-setting "cmake.define.CMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
+            --config-setting "cmake.define.VCPKG_INSTALLED_DIR=$env:VCPKG_ROOT/installed" `
             --config-setting cmake.define.VCPKG_MANIFEST_MODE=OFF `
-            --config-setting cmake.define.VCPKG_TARGET_TRIPLET=${{ matrix.arch }}-windows
+            --config-setting cmake.define.VCPKG_TARGET_TRIPLET=${{ inputs.architecture }}-windows
           if ($LASTEXITCODE) { throw 'Python wheel build failed' }
           Get-ChildItem _build/python-wheel/*.whl | ForEach-Object {
             python -m abi3audit --strict --verbose $_.FullName
@@ -84,65 +125,62 @@ jobs:
           if ($LASTEXITCODE) { throw 'Shared nanobind stable ABI audit failed' }
           Remove-Item -LiteralPath _build/python-wheel/pyalps_nanobind.pyd
       - name: Test Python bindings
-        if: matrix.config == 'Release'
+        if: inputs.wheel
         shell: pwsh
         run: |
-          $env:ALPS_DIR = "$pwd/_build/windows-${{ matrix.arch }}/install/share/alps"
+          $env:ALPS_DIR = "$pwd/_build/windows-${{ inputs.architecture }}/install/share/alps"
           $env:PYALPS_TEST_DOWNSTREAM_EXPORT = '1'
-          $env:ALPS_TEST_CMAKE_ARGS = @('-G', 'Ninja', "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake", "-DVCPKG_INSTALLED_DIR=$pwd/_build/windows-${{ matrix.arch }}/vcpkg_installed", '-DVCPKG_MANIFEST_MODE=OFF', '-DVCPKG_TARGET_TRIPLET=${{ matrix.arch }}-windows') | ConvertTo-Json -Compress
-          python -m pytest tests/pyalps tests/cmake -q --junitxml=_build/windows-${{ matrix.arch }}/pytest.xml
-      - uses: actions/upload-artifact@v7
-        if: matrix.config == 'Release'
+          $env:ALPS_TEST_CMAKE_ARGS = @('-G', 'Ninja', "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake", "-DVCPKG_INSTALLED_DIR=$env:VCPKG_ROOT/installed", '-DVCPKG_MANIFEST_MODE=OFF', '-DVCPKG_TARGET_TRIPLET=${{ inputs.architecture }}-windows') | ConvertTo-Json -Compress
+          python .github/scripts/build_metrics.py run --timeout 900 'Wheel and downstream tests' python -m pytest tests/pyalps tests/cmake -q --junitxml=_build/windows-${{ inputs.architecture }}/pytest.xml
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        if: inputs.sdist
         with:
-          name: windows-abi3-${{ matrix.arch }}
+          name: cibw-sdist
+          path: _build/release-sdist
+      - name: Build and import the release sdist with the existing SDK
+        if: inputs.sdist
+        shell: pwsh
+        run: |
+          $env:ALPS_DIR = "$pwd/_build/windows-${{ inputs.architecture }}/install/share/alps"
+          $env:CMAKE_GENERATOR = 'Ninja'
+          $archives = @(Get-ChildItem _build/release-sdist/*.tar.gz)
+          if ($archives.Count -ne 1) { throw 'Expected one release sdist' }
+          python .github/scripts/build_metrics.py run --timeout 900 'Release sdist rebuild' python .github/scripts/check_sdist.py $archives[0].FullName `
+            --config-setting "cmake.define.CMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
+            --config-setting "cmake.define.VCPKG_INSTALLED_DIR=$env:VCPKG_ROOT/installed" `
+            --config-setting cmake.define.VCPKG_MANIFEST_MODE=OFF `
+            --config-setting cmake.define.VCPKG_TARGET_TRIPLET=${{ inputs.architecture }}-windows
+          if ($LASTEXITCODE) { throw 'Release sdist rebuild failed' }
+      - name: Check whether compiler cache changed
+        id: cache-policy
+        if: always()
+        run: python .github/scripts/build_metrics.py cache-policy
+      - name: Save compiler cache
+        if: ${{ !cancelled() && steps.compiler-cache.outcome == 'success' && steps.cache-policy.outputs.changed == 'true' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: _build/ccache
+          key: ${{ steps.compiler-cache.outputs.cache-primary-key }}
+      - name: Summarize build performance
+        if: always()
+        env:
+          CCACHE_RESTORED_KEY: ${{ steps.compiler-cache.outputs.cache-matched-key }}
+        run: python .github/scripts/build_metrics.py summary
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: inputs.wheel
+        with:
+          name: cibw-wheels-windows-${{ inputs.architecture }}
           path: _build/python-wheel/*.whl
       - name: Summarize SDK and binding tests
         if: always()
-        run: python .github/scripts/junit_summary.py _build/windows-${{ matrix.arch }}/ctest.xml _build/windows-${{ matrix.arch }}/pytest.xml
-      - uses: actions/upload-artifact@v7
+        run: python .github/scripts/junit_summary.py _build/windows-${{ inputs.architecture }}/ctest.xml _build/windows-${{ inputs.architecture }}/pytest.xml
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: always()
         with:
-          name: native-windows-${{ matrix.arch }}-${{ matrix.config }}-logs
+          name: native-windows-${{ inputs.architecture }}-${{ inputs.configuration }}-logs
           path: |
-            _build/windows-${{ matrix.arch }}/Testing/Temporary/**
-            _build/windows-${{ matrix.arch }}/CMakeFiles/CMakeConfigureLog.yaml
-            _build/windows-${{ matrix.arch }}/ctest.xml
-            _build/windows-${{ matrix.arch }}/pytest.xml
-
-  python_compatibility:
-    name: Windows ${{ matrix.platform.arch }} / Python ${{ matrix.python }}
-    needs: msvc
-    runs-on: ${{ matrix.platform.os }}
-    timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        platform:
-          - { os: windows-latest, arch: x64 }
-          - { os: windows-11-arm, arch: arm64 }
-        python: ['3.12', '3.13', '3.14']
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - uses: actions/setup-python@v7
-        with:
-          python-version: ${{ matrix.python }}
-          architecture: ${{ matrix.platform.arch }}
-      - uses: actions/download-artifact@v8
-        with:
-          name: windows-abi3-${{ matrix.platform.arch }}
-          path: wheelhouse
-      - name: Test the same wheel across Python versions
-        run: |
-          python -m pip install numpy scipy pytest h5py
-          python -m pip install --no-index --find-links wheelhouse pyalps
-          python -m pytest tests/pyalps -q --junitxml=pytest.xml
-      - name: Summarize compatibility tests
-        if: always()
-        run: python .github/scripts/junit_summary.py pytest.xml
-      - uses: actions/upload-artifact@v7
-        if: always()
-        with:
-          name: windows-${{ matrix.platform.arch }}-py${{ matrix.python }}-tests
-          path: pytest.xml
+            _build/windows-${{ inputs.architecture }}/Testing/Temporary/**
+            _build/windows-${{ inputs.architecture }}/CMakeFiles/CMakeConfigureLog.yaml
+            _build/windows-${{ inputs.architecture }}/ctest.xml
+            _build/windows-${{ inputs.architecture }}/pytest.xml
+            _build/metrics/**

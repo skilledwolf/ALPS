@@ -2,13 +2,14 @@
 #   SPDX-License-Identifier: MIT
 
 cmake_minimum_required(VERSION 3.27...4.3)
-if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
-  project(alps_examples LANGUAGES C CXX)
-  find_package(ALPS CONFIG REQUIRED)
-  set(ALPS_ENABLE_MPI "${ALPS_MPI_ENABLED}")
-  include(CTest)
-  include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/ALPSTesting.cmake")
+project(alps_examples LANGUAGES C CXX)
+find_package(ALPS CONFIG REQUIRED)
+set(ALPS_ENABLE_MPI "${ALPS_MPI_ENABLED}")
+option(ALPS_BUILD_TESTING "Build and register ALPS tests" ON)
+if(ALPS_BUILD_TESTING)
+  enable_testing()
 endif()
+include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/ALPSTesting.cmake")
 
 add_subdirectory(alea)
 add_subdirectory(parapack)

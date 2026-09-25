@@ -49,7 +49,13 @@ Before opening a new issue, please search existing issues to avoid duplicates.
 
 ## Getting started with the code
 
-### Prerequisites
+### One-command developer setup
+
+After cloning, run `pixi run --locked dev` on Linux/macOS or `python tools/dev.py` on Windows. The helper downloads binary dependencies, builds and installs the C++ SDK, and sets up editable Python bindings. Only ALPS and its bindings are compiled. Subsequent runs reuse the environment and build directories.
+
+See [the developer setup guide](docs/development.md) for one-time prerequisites, commands, editor integration, and dependency updates. The manual build below remains available for custom toolchains and MPI/HPC installations.
+
+### Manual prerequisites
 
 - CMake ≥ 3.27; Ninja for the `default`, `sdk`, and `distribution` presets ([installation instructions](#install-cmake-and-ninja))
 - A C++17 compiler and C11 compiler (GCC, Clang, or MSVC 2022)
@@ -111,7 +117,7 @@ ninja --version
 
 Both CMake and CTest must report 3.27 or newer. If an older executable still wins, check its location with `command -v cmake` on Linux/macOS or `Get-Command cmake` in PowerShell and put the virtual environment's executable directory first on `PATH`.
 
-You can also use [official CMake downloads](https://cmake.org/download/) without Python: install or unpack a release ≥ 3.27 for your OS and architecture, and add its executable directory to `PATH`. For the macOS application bundle this is `/Applications/CMake.app/Contents/bin`. Install Ninja separately if using a Ninja preset; the Windows Visual Studio presets do not require it. A system package is equally suitable when `cmake --version` confirms it meets the requirement.
+You can also use [official CMake downloads](https://cmake.org/download/) without Python: install or unpack a release ≥ 3.27 for your OS and architecture, and add its executable directory to `PATH`. For the macOS application bundle this is `/Applications/CMake.app/Contents/bin`. Install Ninja separately when using the bundled presets, including the Windows Ninja Multi-Config presets. A system package is equally suitable when `cmake --version` confirms it meets the requirement.
 
 ### Build
 
@@ -139,7 +145,16 @@ Dependencies are discovered through their CMake packages. Set `CMAKE_PREFIX_PATH
 
 ### Native Windows (MSVC)
 
-Install Visual Studio 2022's **Desktop development with C++** workload, [CMake ≥ 3.27](#install-cmake-and-ninja), Git, and [vcpkg](https://github.com/microsoft/vcpkg). Set `VCPKG_ROOT` to its checkout. Use the preset matching your native architecture. On Windows x64, run in PowerShell:
+Install Visual Studio 2022 or newer with the **Desktop development with C++** workload, [CMake ≥ 3.27 and Ninja](#install-cmake-and-ninja), Git, and [vcpkg](https://github.com/microsoft/vcpkg). Open a Visual Studio developer PowerShell with the compiler targeting your native architecture (`x64` or `arm64`), and set `VCPKG_ROOT` to a dedicated vcpkg checkout. From the ALPS repository, fetch and bootstrap the revision pinned by the manifest:
+
+```powershell
+$revision = (Get-Content -Raw vcpkg.json | ConvertFrom-Json).'builtin-baseline'
+git -C $env:VCPKG_ROOT fetch origin
+git -C $env:VCPKG_ROOT checkout --detach $revision
+& "$env:VCPKG_ROOT/bootstrap-vcpkg.bat" -disableMetrics
+```
+
+Use a full vcpkg clone: resolving port versions requires historical Git trees. The Windows presets use Ninja Multi-Config with the active MSVC environment, so they work across Visual Studio versions. Use a fresh build directory when switching from a Visual Studio generator. On Windows x64:
 
 ```powershell
 cmake --preset windows-x64
@@ -161,7 +176,7 @@ cmake --install _build/windows-arm64 --config Release
 
 This preset uses `arm64-windows` dependencies and a [small numerical-package overlay](cmake/vcpkg-arm64-overlay/README.md) for the official OpenBLAS ARM64 binaries, including LAPACK 3.12.0. The overlay supplies compatible BLAS/LAPACK interfaces, needs no separate Fortran compiler, and uses the upstream Release C-ABI DLL for both Release and Debug consumers. Use Python and dependencies matching the target architecture: x64 for `windows-x64`, ARM64 for `windows-arm64`. The install contains the required non-system DLLs in `bin`. Keep separate dependency install directories for x64 and ARM64: vcpkg manifest installation synchronizes its directory to the requested target and removes packages for other targets.
 
-For a Ninja build, start a matching Visual Studio developer shell and pass the vcpkg toolchain and triplet explicitly. Build outputs use `bin` for executables/DLLs and `lib` for link libraries; multi-configuration generators add their configuration subdirectory automatically.
+Build outputs use `bin` for executables/DLLs and `lib` for link libraries, with a configuration subdirectory for Release or Debug.
 
 Keep machine-specific paths, job limits and disk preferences in an untracked `CMakeUserPresets.json`. To reclaim dependency intermediates automatically, set `VCPKG_INSTALL_OPTIONS` to `--clean-buildtrees-after-build;--clean-packages-after-build`. On machines with limited disk space, setting the Debug executable/shared/module linker flags to `/DEBUG /INCREMENTAL:NO` retains symbols without large incremental-link caches.
 
@@ -171,13 +186,23 @@ For everyday work, reuse one build directory per configuration and build only th
 cmake --build --preset windows-x64 --config Debug --target spinmc
 ```
 
-That builds the target and its dependencies without building every application and test. The `sdk` preset disables tests, applications and MPI for a small library build. The default and Windows presets include full native validation. `BUILD_TESTING` is the single test switch; `ALPS_BUILD_APPLICATIONS` controls simulation applications and command-line tools together. Examples and tutorial installation are opt-in. SDK headers are always installed.
+That builds the target and its dependencies without building every application and test. The `sdk` preset disables tests, applications and MPI for a small library build. The default and Windows presets include full native validation. `ALPS_BUILD_TESTING` is the single test switch; `ALPS_BUILD_APPLICATIONS` controls simulation applications and command-line tools together. Examples build separately against the installed SDK; tutorial installation is opt-in. SDK headers are always installed.
 
-`ALPS_BUILD_EXTENSIVE_TESTS=ON` adds the expensive graph and HDF5 type-matrix tests to `BUILD_TESTING`. The HDF5 matrix compiles each type once and exercises dataset, attribute and compression modes at runtime; unavailable SZIP encoding is reported as a skipped test.
+`ALPS_BUILD_EXTENSIVE_TESTS=ON` adds the expensive graph and HDF5 type-matrix tests to `ALPS_BUILD_TESTING`. The HDF5 matrix compiles each type once and exercises dataset, attribute and compression modes at runtime; unavailable SZIP encoding is reported as a skipped test.
 
 `add_subdirectory(ALPS)` defaults to the library alone, with MPI disabled. An embedding project can explicitly enable the capabilities it needs. MPI is opt-in in every build. `ALPS_ENABLE_OPENMP=ON` enables OpenMP, including worker scheduling; select the worker's thread count at runtime.
 
-`ALPS_BUILD_EXAMPLES=ON` builds the C++ examples. The Fortran examples are a separate consumer of the installed SDK, so ordinary builds need no Fortran compiler:
+Use `ALPS_BUILD_TESTING` to select ALPS's tests independently of a parent project's `BUILD_TESTING`. This replaces the old ALPS `-DBUILD_TESTING=...` argument; update custom presets and scripts accordingly. `BUILD_SHARED_LIBS` still selects shared or static ALPS libraries. When it is unset, ALPS defaults to shared libraries within its own directory without changing the parent's library defaults.
+
+The C++ and Fortran examples are standalone consumers of the installed SDK. This replaces the root `ALPS_BUILD_EXAMPLES` option. Build the C++ examples with:
+
+```bash
+cmake -S tutorials/examples -B build/examples -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=/path/to/alps
+cmake --build build/examples --parallel 2
+ctest --test-dir build/examples --output-on-failure
+```
+
+Fortran examples additionally require a Fortran compiler:
 
 ```bash
 cmake -S tutorials/examples/fortran -B build/fortran -DCMAKE_PREFIX_PATH=/path/to/alps
@@ -185,9 +210,11 @@ cmake --build build/fortran
 ctest --test-dir build/fortran --output-on-failure
 ```
 
+Both example projects register tests by default. Pass `-DALPS_BUILD_TESTING=OFF` to build them without registering tests. Ordinary `ctest` commands and CMake test presets work without the optional CTest/CDash dashboard targets.
+
 ### Numerical libraries
 
-The SDK uses LP64 BLAS/LAPACK: 32-bit integers and lowercase symbols with a trailing underscore. Alternate integer widths and symbol spellings are unsupported. `BLA_VENDOR` and `BLA_STATIC` are passed to CMake's numerical-library finders. Both numerical libraries are required; missing dependencies cause a configuration error. The default build prefers provider targets to preserve Debug/Release library selection. The regression suite checks LAPACK's integer ABI and a numerical solve. `BUILD_TESTING=OFF` also leaves Boost.Test out of the vcpkg manifest features and the installed SDK never requires it.
+The SDK uses LP64 BLAS/LAPACK: 32-bit integers and lowercase symbols with a trailing underscore. Alternate integer widths and symbol spellings are unsupported. `BLA_VENDOR` and `BLA_STATIC` are passed to CMake's numerical-library finders. Both numerical libraries are required; missing dependencies cause a configuration error. The default build prefers provider targets to preserve Debug/Release library selection. The regression suite checks LAPACK's integer ABI and a numerical solve. `ALPS_BUILD_TESTING=OFF` also leaves Boost.Test out of the vcpkg manifest features and the installed SDK never requires it.
 
 ### Consuming the C++ SDK
 
@@ -201,6 +228,8 @@ target_link_libraries(my_simulation PRIVATE ALPS::alps)
 ```
 
 The exported target carries the include paths, C++17 requirement, compile definitions and transitive dependencies. Consumers choose their own compiler and build flags. Use the same ABI and build configuration as the SDK. Dependency discovery preserves the parent's numerical-provider variables. `ALPS::headers` exposes the compile interface without linking the library.
+
+Unix SDK installations use externally installed Boost, HDF5, and numerical libraries; relocating the SDK does not bundle those dependencies. Python wheels bundle their required native libraries during wheel repair. Windows SDK installations bundle their non-system DLLs in `bin`. Packaging CI tests the repaired wheels on fresh runners and runs the Windows SDK's portability, numerical, and HDF5 probes there without the dependency SDK or compiler environment. The local SDK relocation test clears loader search paths, but is not a substitute for those deployment checks.
 
 The SDK also exports the C++ Fortran bridge as `ALPS::fortran`. It carries the GNU Fortran compatibility flag needed by the legacy untyped Fortran bridge; the flag applies only to Fortran consumers of that target. The two installed Fortran tutorials also require Fortran OpenMP because their source calls the OpenMP runtime directly. An SDK with applications exports their executable targets (for example, `ALPS::spinmc`), listed in `ALPS_APPLICATION_TARGETS`. Consumers may request `find_package(ALPS CONFIG REQUIRED COMPONENTS applications)` to require them.
 
@@ -293,13 +322,29 @@ For substantial changes — new simulation applications, new libraries, signific
 
 ## CI coverage
 
-Pull requests against any branch, merge-queue entries, and pushes to `master` run four source configurations: GCC 11 with the minimum Boost 1.76, GCC 14 with installed examples and XML tools, Clang 18 with C++23, and Apple Clang on macOS ARM64. The separate Windows workflow retains x64 Release/Debug and ARM64 Release builds. Packaging workflows test the same `cp312-abi3` wheel across Python 3.12–3.14, including native Windows and macOS forward compatibility.
+Pull requests and merge-queue entries always report the `Source CI` and `Packaging CI` aggregate checks. Documentation-only changes skip compilation. Ordinary native-code changes run one Linux GCC configuration and Windows x64 Debug; the Linux job builds the SDK once and reuses it for editable bindings, Python tests, and installed-SDK contracts. Python-only changes build one manylinux wheel and test that artifact on Python 3.12 and 3.14. Changes to public headers, dependencies, build configuration, or packaging helpers select the complete packaging matrix. Mixed changes select both relevant paths. Unknown paths or unavailable Git diffs conservatively select broad packaging coverage.
 
-The source workflow runs its full fourteen-configuration matrix weekly and on release tags. The full tier adds GCC 15, Clang 14 and 22, Linux ARM64, macOS Intel and macOS 26, representative intermediate Boost releases, C++20 with the extensive graph and HDF5 tests, and AddressSanitizer plus UndefinedBehaviorSanitizer. Sanitizer runs disable MPI and dependency leak detection; address and undefined-behavior errors fail the job. This tests supported boundaries and representative combinations without rebuilding every compiler/Boost permutation on every pull request.
+Pushes to `master` run four representative Unix source configurations, Windows Debug, and full packaging. Weekly runs and manual `full` source runs cover fourteen Unix configurations, including older/newer compilers, intermediate Boost versions, C++20/23, extensive graph/HDF5 tests, and AddressSanitizer plus UndefinedBehaviorSanitizer. Sanitizer runs disable MPI and dependency leak detection. MPI remains covered by the other source configurations and the separate two-rank Python adapter test. The primary Linux job uses an MPI-disabled SDK for downstream contracts. Full source runs and broadly selected PRs also build and test the documented Pixi developer environment on Linux and macOS.
 
-To request the full matrix before merging, open **Actions → ALPS source CI → Run workflow**, select the branch and the `full` tier. The single manifest [`.github/ci-matrix.json`](.github/ci-matrix.json) defines both tiers and pins the Boost archive checksums. The `Source CI` check aggregates matrix results and is suitable as a required branch check. Workflow linting and CI-helper tests run before compilation; native and installed-wheel jobs retain test reports and display result counts in their job summaries. Manual packaging runs build and test artifacts; only a pushed release tag can publish to PyPI.
+Full packaging builds five native wheels: Linux glibc x64, Linux musl x64, macOS ARM64 (macOS 15+), and Windows x64/ARM64. The glibc, Windows, and macOS stable-ABI artifacts are installed on clean runners across Python 3.12-3.14, including a newer macOS release. The musl wheel is tested inside its build container. Linux ARM64 and macOS Intel receive source coverage; no wheels are currently published for them. Their source installations require a matching installed SDK.
+
+Use **Actions > ALPS source CI > Run workflow > full** for exhaustive pre-merge coverage. The `quick` tier selects the primary Unix build; `routine` selects the four representative builds. Manual packaging runs validate every wheel without publishing. Workflow lint and helper tests run before compilation, and native/installed-wheel jobs retain reports and display result counts. Keep the aggregate checks required rather than individual matrix jobs; intentionally skipped jobs are accepted only when the selection step says they are unnecessary.
+
+Release tags enter through the packaging workflow, which also calls full source validation. Publication requires both aggregate results to succeed and uploads the artifacts already tested in that run. The release sdist is also extracted outside the checkout, rebuilt into a wheel with the existing Windows x64 SDK, and imported from a separate environment.
+
+### CI dependency binaries
+
+Source and wheel jobs use ccache to reuse ALPS object files between runs. Caches are separated by build configuration and capped at 1 GB each; ccache checks source, headers, compiler and flags before reusing an object. Windows Debug builds embed debug information in objects (`/Z7`) so they can be cached independently. Normal Linux and Windows builds use four compiler processes; macOS, sanitizer and extensive-test builds use two to limit memory pressure. All-hit runs avoid uploading a duplicate compiler-cache archive. Each job's performance summary shows timed phases and actual cache hits: restoring a cache archive alone does not establish that compilation was avoided. A cold run still compiles ALPS itself, and linking, wheel repair and tests still run with a warm cache.
+
+Source and packaging CI download checksum-pinned dependency archives from the GitHub repository and release recorded in the dependency manifest. Forks reuse the same public binaries. Missing archives or checksum mismatches fail immediately; ordinary CI has no dependency-build fallback. Unix system libraries still come from apt or Homebrew bottles. Separate Linux wheel jobs use Boost built in the pinned manylinux image for glibc and Alpine's binary Boost package for musl; their SDK builds and compiler caches remain separate. Windows jobs consume a standalone vcpkg export containing both Release and Debug libraries, without checking out vcpkg, running its installer, or downloading its build tools. Local Windows presets retain the usual vcpkg developer workflow.
+
+The separate **Publish CI dependencies** workflow prepares missing public binary variants once, using the existing Boost build script and vcpkg manifest. Compatible Linux compiler jobs share GCC 11/libstdc++ binaries; macOS 15 and newer share one archive per architecture. There is no additional package server or custom container image to maintain. Dependency releases are prereleases with a `ci-dependencies-` tag, never product release tags or the repository's latest release.
+
+To refresh dependencies, choose a new release tag in [`.github/dependencies.json`](.github/dependencies.json), update the relevant Boost checksums, vcpkg baseline/overlays, or manylinux image, and run **Publish CI dependencies** on that branch. The workflow publishes to the repository where it runs; record that repository in the manifest. Once all archives are published, download `SHA256SUMS` and import it with `python .github/scripts/pin_ci_dependencies.py SHA256SUMS --repository OWNER/ALPS --release ci-dependencies-YYYY-MM-DD-N`. The importer rejects missing, duplicate, and unexpected archives before changing the manifest. Run full source CI and packaging CI before merging the new pins. Upstream dependency releases should be published under `ALPSim/ALPS`; keep the current repository pin until a complete release actually exists there. Published dependency sets are never overwritten. The publisher caches unchanged Boost archives and Windows packages so a refresh can reuse them.
 
 ## Preparing a release
+
+Windows x64 and ARM64 wheels are part of the Python packaging workflow and release artifact set. Publication requires successful SDK tests, stable-ABI audits, and Python 3.12–3.14 installed-wheel checks, along with the Linux/macOS wheel checks, MPI adapter tests, and source distribution validation. Manual workflow runs validate artifacts without publishing.
 
 Review the Unreleased entries in [CHANGELOG.md](CHANGELOG.md), group related changes, and check the migration guidance. At release time, give the section the release version and date, then start a new Unreleased section for subsequent work.
 

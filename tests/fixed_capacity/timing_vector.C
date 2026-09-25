@@ -15,7 +15,7 @@
 
 #include <alps/fixed_capacity_vector.h>
 #include <iostream>
-#include <boost/timer.hpp>
+#include <ctime>
 #include <vector>
 
 const std::size_t n = (2<<20);
@@ -30,7 +30,7 @@ int main()
   std::cout << "allocating " << n << " short vectors of length " << m
             << std::endl;
 
-  boost::timer t0;
+  const std::clock_t t0 = std::clock();
   std::vector<sv_type0> vec0;
   for (std::size_t i = 0; i < n; ++i) {
     vec0.push_back(sv_type0());
@@ -38,9 +38,10 @@ int main()
       vec0.back().push_back(i);
     }
   }
-  std::cout << "fixed_capacity_vector  " << t0.elapsed() << " sec\n";
+  std::cout << "fixed_capacity_vector  "
+            << static_cast<double>(std::clock() - t0) / CLOCKS_PER_SEC << " sec\n";
 
-  boost::timer t1;
+  const std::clock_t t1 = std::clock();
   std::vector<sv_type1> vec1;
   for (std::size_t i = 0; i < n; ++i) {
     vec1.push_back(sv_type1());
@@ -48,7 +49,8 @@ int main()
       vec1.back().push_back(i);
     }
   }
-  std::cout << "std::vector            " << t1.elapsed() << " sec\n";
+  std::cout << "std::vector            "
+            << static_cast<double>(std::clock() - t1) / CLOCKS_PER_SEC << " sec\n";
   
   return 0;
 }

@@ -26,6 +26,7 @@ tutorials/dmrg-*/my_lattice.xml
 semantic.cache
 
 # Python tooling
+/.pixi/
 /.venv/
 .pytest_cache/
 .ruff_cache/

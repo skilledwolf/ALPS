@@ -20,6 +20,10 @@ Python projects live under [`python/`](python/README.md); see the [pyalps build 
 
 See [CHANGELOG.md](CHANGELOG.md) for release notes and upgrade guidance.
 
+## Develop from source
+
+After cloning, run `pixi run --locked dev` on Linux/macOS, or `python tools/dev.py` on Windows. The managed setup downloads binary dependencies, builds ALPS, and installs editable Python bindings. See [developer setup and one-time prerequisites](docs/development.md).
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development and contribution guidance.

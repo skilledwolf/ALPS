@@ -1,0 +1,39 @@
+[workspace]
+name = "alps-dev"
+channels = ["conda-forge"]
+platforms = ["linux-64", "linux-aarch64", "osx-64", "osx-arm64"]
+requires-pixi = ">=0.81.0"
+
+# The environment contains binary dependencies and build tools only. ALPS is
+# compiled from this checkout by tools/dev.py, not by a package-manager recipe.
+[dependencies]
+python = "3.13.*"
+pip = "*"
+cmake = ">=3.27,<5"
+ninja = ">=1.12"
+ccache = ">=4.8"
+libboost-devel = "1.91.*"
+hdf5 = { version = ">=1.14,<2", build = "nompi_*" }
+libblas = { version = "*", build = "*openblas" }
+liblapack = { version = "*", build = "*openblas" }
+numpy = ">=1.26"
+scipy = ">=1.13"
+matplotlib-base = ">=3.8"
+h5py = "*"
+pytest = ">=8"
+nanobind = ">=2.10,<3"
+scikit-build-core = ">=1.0"
+python-build = "*"
+
+[target.linux.dependencies]
+c-compiler = "*"
+cxx-compiler = "*"
+patchelf = ">=0.14"
+
+[target.osx.dependencies]
+c-compiler = "*"
+cxx-compiler = "*"
+
+[tasks]
+dev = "python tools/dev.py"
+test = "python tools/dev.py test"

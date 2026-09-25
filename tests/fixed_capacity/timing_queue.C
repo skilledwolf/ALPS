@@ -14,7 +14,7 @@
 /* $Id$ */
 
 #include <alps/fixed_capacity_deque.h>
-#include <boost/timer.hpp>
+#include <ctime>
 #include <deque>
 #include <iostream>
 #include <queue>
@@ -27,7 +27,7 @@ int main()
   typedef std::queue<int, alps::fixed_capacity_deque<int, m> > Queue0;
   typedef std::queue<int> Queue1;
 
-  boost::timer t0;
+  const std::clock_t t0 = std::clock();
   Queue0 queue0;
   int sum0 = 0;
   for (std::size_t i = 0; i < m; ++i) queue0.push(i);
@@ -39,9 +39,9 @@ int main()
     queue0.push(i + m);
   }
   std::cout << "std::queue with fixed_capacity_deque "
-            << t0.elapsed() << " sec\n";
+            << static_cast<double>(std::clock() - t0) / CLOCKS_PER_SEC << " sec\n";
 
-  boost::timer t1;
+  const std::clock_t t1 = std::clock();
   Queue1 queue1;
   int sum1 = 0;
   for (std::size_t i = 0; i < m; ++i) queue1.push(i);
@@ -53,7 +53,7 @@ int main()
     queue1.push(i + m);
   }
   std::cout << "std::queue with std::deque           "
-            << t1.elapsed() << " sec\n";
+            << static_cast<double>(std::clock() - t1) / CLOCKS_PER_SEC << " sec\n";
 
   if (sum0 != sum1) {
     std::cout << "results are inconsistent!\n";

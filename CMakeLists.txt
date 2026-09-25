@@ -9,35 +9,29 @@ endif()
 include(cmake/ALPSVersion.cmake)
 # These options must precede project(): vcpkg reads manifest features when the
 # toolchain is loaded. Embedded builds default to just the library.
-set(_alps_top_level OFF)
-if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
-  set(_alps_top_level ON)
-endif()
-option(BUILD_TESTING "Build and register tests" ${_alps_top_level})
+string(COMPARE EQUAL "${CMAKE_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}" _alps_top_level)
+option(ALPS_BUILD_TESTING "Build and register ALPS tests" ${_alps_top_level})
 option(ALPS_ENABLE_MPI "Enable MPI parallelization" OFF)
 option(ALPS_BUILD_APPLICATIONS "Build simulation applications and command-line tools"
        ${_alps_top_level})
-if(BUILD_TESTING)
+if(ALPS_BUILD_TESTING)
   list(APPEND VCPKG_MANIFEST_FEATURES tests)
 endif()
 if(ALPS_ENABLE_MPI)
   list(APPEND VCPKG_MANIFEST_FEATURES mpi)
 endif()
-project(
-  alps
-  VERSION ${ALPS_VERSION_CORE}
-  LANGUAGES C CXX)
+project(alps VERSION ${ALPS_VERSION_CORE} LANGUAGES C CXX)
 
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 
-option(BUILD_SHARED_LIBS "Build shared libraries" ON)
+# A local default must not change later add_library() calls in a parent project.
+if(NOT DEFINED BUILD_SHARED_LIBS)
+  set(BUILD_SHARED_LIBS ON)
+endif()
 option(ALPS_ENABLE_OPENMP "Enable OpenMP parallelization" OFF)
-option(ALPS_BUILD_EXAMPLES "Build examples" OFF)
 option(ALPS_BUILD_EXTENSIVE_TESTS "Build expensive graph and HDF5 type-matrix tests" OFF)
-set(ALPS_VERSION_PRERELEASE
-    ""
-    CACHE STRING "Optional prerelease version label")
+set(ALPS_VERSION_PRERELEASE "" CACHE STRING "Optional prerelease version label")
 
 # Language requirements belong to ALPS::headers and propagate to every consumer.
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -62,16 +56,7 @@ endif()
 string(TIMESTAMP ALPS_YEAR "%Y" UTC)
 
 find_package(Threads REQUIRED)
-set(ALPS_BOOST_COMPONENTS
-    filesystem
-    serialization
-    program_options
-    regex
-    thread
-    date_time
-    chrono
-    timer
-    iostreams)
+set(ALPS_BOOST_COMPONENTS filesystem serialization program_options regex thread date_time chrono)
 if(ALPS_ENABLE_MPI)
   find_package(MPI REQUIRED COMPONENTS CXX)
   list(APPEND ALPS_BOOST_COMPONENTS mpi)
@@ -80,21 +65,12 @@ if(ALPS_ENABLE_MPI)
 endif()
 find_package(Boost 1.76 CONFIG REQUIRED COMPONENTS ${ALPS_BOOST_COMPONENTS})
 
-find_package(HDF5 REQUIRED COMPONENTS C)
-# Prefer HDF5's exported targets: older FindHDF5 aggregate targets flatten
-# Debug/Release import libraries into whichever configuration was found first.
-set(ALPS_HDF5_TARGETS hdf5::hdf5)
-if(TARGET hdf5::hdf5-shared AND NOT HDF5_USE_STATIC_LIBRARIES)
-  set(ALPS_HDF5_TARGETS hdf5::hdf5-shared)
-elseif(TARGET hdf5::hdf5-static)
-  set(ALPS_HDF5_TARGETS hdf5::hdf5-static)
+# FindHDF5 supplies HDF5::HDF5 and preserves the provider's configurations.
+find_package(HDF5 MODULE REQUIRED COMPONENTS C)
+if(HDF5_IS_PARALLEL AND NOT ALPS_ENABLE_MPI)
+  message(FATAL_ERROR "Parallel HDF5 requires ALPS_ENABLE_MPI=ON")
 endif()
-if(HDF5_IS_PARALLEL)
-  if(NOT ALPS_ENABLE_MPI)
-    message(FATAL_ERROR "Parallel HDF5 requires ALPS_ENABLE_MPI=ON")
-  endif()
-  set(ALPS_HAVE_HDF5_PARALLEL 1)
-endif()
+set(ALPS_HAVE_HDF5_PARALLEL "${HDF5_IS_PARALLEL}")
 if(ALPS_ENABLE_OPENMP)
   find_package(OpenMP REQUIRED COMPONENTS CXX)
 endif()
@@ -117,7 +93,9 @@ if(ALPS_LOADER_ORIGIN)
 endif()
 set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 
-include(CTest)
+if(ALPS_BUILD_TESTING)
+  enable_testing()
+endif()
 include(cmake/ALPSTesting.cmake)
 add_subdirectory(src/alps)
 if(ALPS_BUILD_APPLICATIONS)
@@ -126,7 +104,7 @@ if(ALPS_BUILD_APPLICATIONS)
   get_target_property(ALPS_APPLICATION_TARGETS alps ALPS_APPLICATION_TARGETS)
 endif()
 add_subdirectory(tutorials)
-if(BUILD_TESTING)
+if(ALPS_BUILD_TESTING)
   add_subdirectory(tests)
 endif()
 

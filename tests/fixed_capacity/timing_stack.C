@@ -14,7 +14,7 @@
 /* $Id$ */
 
 #include <alps/fixed_capacity_vector.h>
-#include <boost/timer.hpp>
+#include <ctime>
 #include <deque>
 #include <iostream>
 #include <stack>
@@ -27,7 +27,7 @@ int main()
   typedef std::stack<int, alps::fixed_capacity_vector<int, m> > Stack0;
   typedef std::stack<int> Stack1;
 
-  boost::timer t0;
+  const std::clock_t t0 = std::clock();
   Stack0 stack0;
   int sum0 = 0;
   for (std::size_t i = 0; i < m; ++i) stack0.push(i);
@@ -38,9 +38,9 @@ int main()
     stack0.push(i + m);
   }
   std::cout << "std::stack with fixed_capacity_vector "
-            << t0.elapsed() << " sec\n";
+            << static_cast<double>(std::clock() - t0) / CLOCKS_PER_SEC << " sec\n";
 
-  boost::timer t1;
+  const std::clock_t t1 = std::clock();
   Stack1 stack1;
   int sum1 = 0;
   for (std::size_t i = 0; i < m; ++i) stack1.push(i);
@@ -51,7 +51,7 @@ int main()
     stack1.push(i + m);
   }
   std::cout << "std::stack with std::deque            "
-            << t1.elapsed() << " sec\n";
+            << static_cast<double>(std::clock() - t1) / CLOCKS_PER_SEC << " sec\n";
 
   if (sum0 != sum1) {
     std::cout << "results are inconsistent!\n";

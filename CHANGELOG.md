@@ -6,6 +6,7 @@ Release notes and migration guidance for ALPS. Changes awaiting release are coll
 
 ### Added
 
+- A managed developer setup: `pixi run --locked dev` on Linux/macOS and `python tools/dev.py` on Windows download binary dependencies, build the SDK, and install editable Python bindings with persistent build directories.
 - Native Windows x64 and ARM64 builds with CMake presets, pinned vcpkg dependencies, and SDK installation containing the required runtime DLLs.
 - A relocatable CMake SDK with `ALPS::alps`, `ALPS::headers`, and `ALPS::fortran`. Builds with applications also export executable targets and the solver libraries `ALPS::maxent`, `ALPS::cthyb`, and `ALPS::ctint`.
 - The Unix `alps-xml` command for plot rendering, result conversion, and data extraction, including Python 3 Matplotlib output.
@@ -13,10 +14,15 @@ Release notes and migration guidance for ALPS. Changes awaiting release are coll
 
 ### Changed
 
+- Ordinary source and wheel CI consume checksum-pinned dependency binaries. A separate maintenance workflow publishes Boost archives and standalone Windows dependency SDKs only when needed; missing binaries fail instead of triggering source builds.
+- Source and wheel CI cache ALPS compilation with ccache, including MSVC Debug builds. Normal Linux and Windows jobs use four compiler processes; macOS and memory-heavy jobs retain two. Job summaries report phase timings and actual cache hits separately from cache restoration.
 - Python requires GIL-enabled CPython 3.12 or newer. Native wheels use the CPython 3.12 stable ABI (`cp312-abi3`), with one build per platform/architecture tested across Python 3.12–3.14. Downstream nanobind extensions exchanging ALPS objects must also enable `STABLE_ABI` and be rebuilt. Free-threaded Python is unsupported.
 - Source builds require CMake 3.27 or newer and C++17. Dependencies and compiler requirements propagate through exported CMake targets.
-- Source CI uses four routine configurations and fourteen weekly, release-tag, or manually requested configurations, including sanitizer coverage. Windows and stable-ABI wheel checks remain separate; workflow linting, verified Boost downloads, and test summaries make failures easier to diagnose.
-- MPI is opt-in. Embedded builds default to the library alone. `BUILD_TESTING` controls the tests; `ALPS_BUILD_APPLICATIONS` controls applications and CLI tools; `ALPS_BUILD_EXTENSIVE_TESTS` adds the expensive graph and HDF5 tests. C++ examples are opt-in, and tutorials are a separate installation component.
+- CI selects a smaller PR tier from coarse change categories, keeps stable aggregate checks for documentation-only changes, and retains broader merge, weekly, and release coverage. The primary Linux build reuses its SDK for Python and downstream tests. PyPI publication now waits for full source validation and a wheel rebuilt from the actual release sdist. All-hit builds avoid duplicate compiler-cache uploads.
+- MPI is opt-in. Embedded builds default to the library alone. `ALPS_BUILD_TESTING` controls the tests; `ALPS_BUILD_APPLICATIONS` controls applications and CLI tools; `ALPS_BUILD_EXTENSIVE_TESTS` adds the expensive graph and HDF5 tests. Examples build separately against the installed SDK, and tutorials are a separate installation component.
+- Replace ALPS's `-DBUILD_TESTING=...` argument with `-DALPS_BUILD_TESTING=...` in custom presets and scripts, including standalone examples. Embedded ALPS no longer changes the parent's testing or default library type. Test registration uses `enable_testing()` directly; unused CTest/CDash dashboard targets are no longer generated.
+- The root `ALPS_BUILD_EXAMPLES` option is removed. Build the C++ and Fortran examples through their standalone SDK consumer projects under `tutorials/examples` and `tutorials/examples/fortran`.
+- The SDK no longer requires Boost.Timer or Boost.Iostreams. Timing diagnostics use the standard library with the same `std::clock()` semantics as the former inline Boost timer.
 - BLAS and LAPACK are required and use one LP64 ABI: 32-bit integers and lowercase symbols with a trailing underscore.
 - Python bindings build as a separate `scikit-build-core` project against an installed C++ SDK. Python extensions reuse the SDK's solver libraries.
 - Python builds require a shared SDK with the same numeric release version. `PYALPS_BUILD_SOLVERS` controls solver bindings; `PYALPS_BUNDLE_APPLICATIONS` independently controls bundled command-line programs. Required runtime libraries are always included, and extensions share a package-specific nanobind library.
@@ -49,6 +55,12 @@ Release notes and migration guidance for ALPS. Changes awaiting release are coll
 - Obsolete application-test scaffolding, the unused SSE2 tutorial, a committed editor cache, and the generated hybridization PDF. The active XML CLI fixture now lives beside its test.
 
 ### Fixed
+
+- Linux wheels give copied SDK programs the wheel's library lookup path even when the SDK uses `lib64` or a custom library directory. Installed SDKs retain lookup paths for imported dependencies staged inside the project tree.
+
+- Windows dependency publication fetches and bootstraps the manifest's pinned vcpkg revision, including its port history. Windows presets use Ninja Multi-Config with an activated MSVC environment instead of requiring a particular Visual Studio generator.
+- GitHub Actions use verified full commit pins, allowing the workflows to run in repositories that require immutable action references.
+- Windows shared-library builds copy runtime dependencies using their imported CMake configurations, including the Release OpenBLAS DLL needed by ARM64 Debug applications and tests.
 
 - Default observable data initializes its thermalization state. Integer ranges retain valid bounds across the entire integer domain; `size()` returns `std::uintmax_t` and throws `std::overflow_error` when the count cannot fit that type.
 - Simulation-help issues route Worm and SSE to their respective maintainers without an external form parser. DMFT startup notices preserve scientific credit while removing duplicate citation requests and mandatory-citation wording.

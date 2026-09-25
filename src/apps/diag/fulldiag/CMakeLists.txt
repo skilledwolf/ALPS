@@ -9,7 +9,7 @@ add_executable(fulldiag_evaluate fulldiag_evaluate.C)
 target_link_libraries(fulldiag PRIVATE fulldiag_impl)
 target_link_libraries(fulldiag_evaluate PRIVATE fulldiag_impl)
 
-if(BUILD_TESTING)
+if(ALPS_BUILD_TESTING)
   add_test(NAME fulldiag_evaluate_help COMMAND fulldiag_evaluate --help)
   set_tests_properties(fulldiag_evaluate_help PROPERTIES PASS_REGULAR_EXPRESSION "Usage:")
   add_test(NAME fulldiag_evaluate_license COMMAND fulldiag_evaluate --license)

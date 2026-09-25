@@ -41,12 +41,11 @@
 #include <boost/filesystem/operations.hpp>
 #include <boost/foreach.hpp>
 #include <boost/regex.hpp>
-#include <boost/timer.hpp>
 
+#include <ctime>
 #include <iostream>
 #include <string>
 #include <vector>
-#include <time.h>
 
 
 #ifdef _OPENMP
@@ -353,10 +352,10 @@ int run_sequential(int argc, char **argv) {
     for (alps::Parameters::const_iterator itr = parameterlist[i].begin(); itr != parameterlist[i].end(); ++itr) {
       p[itr->key()] = itr->value();
     }
-    boost::timer tm;
+    const std::clock_t tm = std::clock();
     if (!p.defined("DIR_NAME")) p["DIR_NAME"] = ".";
     if (!p.defined("BASE_NAME")) p["BASE_NAME"] = "task" + boost::lexical_cast<std::string>(i+1);
-    if (!p.defined("SEED")) p["SEED"] = static_cast<unsigned int>(time(0));
+    if (!p.defined("SEED")) p["SEED"] = static_cast<unsigned int>(std::time(0));
     p["WORKER_SEED"] = p["SEED"];
     p["DISORDER_SEED"] = p["SEED"];
     std::cout << "[input parameters]\n" << p << std::flush;
@@ -365,7 +364,8 @@ int run_sequential(int argc, char **argv) {
     while (worker->fraction_completed() < 1.0) {
       worker->run(stop_callback(0), boost::function<void (double)>());
     }
-    std::cerr << "[speed]\nelapsed time = " << tm.elapsed() << " sec\n";
+    std::cerr << "[speed]\nelapsed time = "
+              << static_cast<double>(std::clock() - tm) / CLOCKS_PER_SEC << " sec\n";
     // std::cout << "[results]\n" << collect_results(*worker);
     std::cout << std::flush;
   }
@@ -718,10 +718,10 @@ int run_sequential_mpi(int argc, char** argv) {
       p[itr->key()] = itr->value();
     }
     world.barrier();
-    boost::timer tm;
+    const std::clock_t tm = std::clock();
     if (!p.defined("DIR_NAME")) p["DIR_NAME"] = ".";
     if (!p.defined("BASE_NAME")) p["BASE_NAME"] = "task" + boost::lexical_cast<std::string>(i+1);
-    if (!p.defined("SEED")) p["SEED"] = static_cast<unsigned int>(time(0));
+    if (!p.defined("SEED")) p["SEED"] = static_cast<unsigned int>(std::time(0));
     p["WORKER_SEED"] = static_cast<unsigned int>(p["SEED"]) ^ (world.rank() << 11);
     p["DISORDER_SEED"] = p["SEED"];
     if (world.rank() == 0) std::cout << "[input parameters]\n" << p << std::flush;
@@ -732,7 +732,8 @@ int run_sequential_mpi(int argc, char** argv) {
     }
     world.barrier();
     if (world.rank() == 0) {
-      std::cerr << "[speed]\nelapsed time = " << tm.elapsed() << " sec" << std::endl;
+      std::cerr << "[speed]\nelapsed time = "
+                << static_cast<double>(std::clock() - tm) / CLOCKS_PER_SEC << " sec" << std::endl;
     }
     for (int r = 0; r < world.size(); ++r) {
       if (world.rank() == r) {

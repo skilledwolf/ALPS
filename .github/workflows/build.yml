@@ -3,24 +3,28 @@ name: ALPS source CI
 on:
   push:
     branches: [master]
-    tags: ['v*']
   pull_request:
   merge_group:
   schedule:
     - cron: '23 4 * * 1'
+  workflow_call:
+    inputs:
+      tier:
+        type: string
+        default: full
   workflow_dispatch:
     inputs:
       tier:
         description: Source-build coverage
         type: choice
-        options: [quick, full]
+        options: [quick, routine, full]
         default: quick
 
 permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  group: source-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 defaults:
@@ -28,8 +32,8 @@ defaults:
     shell: bash
 
 env:
-  CMAKE_BUILD_PARALLEL_LEVEL: 2
   CTEST_PARALLEL_LEVEL: 2
+  PIP_ONLY_BINARY: ':all:'
 
 jobs:
   prepare:
@@ -38,11 +42,14 @@ jobs:
     timeout-minutes: 10
     outputs:
       matrix: ${{ steps.matrix.outputs.matrix }}
+      source: ${{ steps.matrix.outputs.source }}
+      developer: ${{ steps.matrix.outputs.developer }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-      - uses: actions/setup-python@v7
+          fetch-depth: 0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: '3.12'
       - name: Lint workflows and shell helpers
@@ -66,7 +73,7 @@ jobs:
       - name: Summarize helper tests
         if: always()
         run: python .github/scripts/junit_summary.py ci-tests.xml
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: always()
         with:
           name: ci-helper-tests
@@ -74,6 +81,7 @@ jobs:
 
   build:
     name: Source / ${{ matrix.id }}
+    if: needs.prepare.outputs.source == 'true'
     needs: prepare
     runs-on: ${{ matrix.os }}
     timeout-minutes: 120
@@ -82,24 +90,29 @@ jobs:
       max-parallel: 4
       matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
     env:
+      # Keep the small macOS runners and memory-heavy jobs at two compilers.
+      CMAKE_BUILD_PARALLEL_LEVEL: ${{ (startsWith(matrix.os, 'macos-') || matrix.sanitizer || matrix.extensive) && '2' || '4' }}
+      CMAKE_C_COMPILER_LAUNCHER: ccache
+      CMAKE_CXX_COMPILER_LAUNCHER: ccache
+      CCACHE_DIR: ${{ github.workspace }}/_build/ccache
+      CCACHE_MAXSIZE: 1G
       CC: ${{ matrix.cc }}
       CXX: ${{ matrix.cxx }}
       ALPS_BOOST_MPI: ${{ matrix.mpi }}
-      BOOST_VERSION: ${{ matrix.boost }}
-      BOOST_SHA256: ${{ matrix.boost_sha256 }}
+      DEPENDENCY: ${{ matrix.dependency }}
       COMPILER_PACKAGES: ${{ matrix.packages }}
       COMPILER_REPOSITORY: ${{ matrix.repository }}
       EXTRAS: ${{ matrix.extras }}
       EXTENSIVE: ${{ matrix.extensive }}
       SANITIZER: ${{ matrix.sanitizer }}
       CXX_STANDARD: ${{ matrix.standard }}
-      # Exercise the minimum with both minimum Boost and the extra build features.
-      CMAKE_REQUIREMENT: ${{ (matrix.id == 'gcc-extras' || matrix.id == 'gcc-minimum') && 'cmake==3.27.9' || 'cmake>=3.27' }}
+      # Exercise the minimum in the primary SDK/Python job and the MPI job.
+      CMAKE_REQUIREMENT: ${{ (matrix.python || matrix.id == 'gcc-minimum') && 'cmake==3.27.9' || 'cmake>=3.27' }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: '3.12'
       - name: Install CMake and test tools
@@ -121,27 +134,30 @@ jobs:
           fi
           sudo apt-get update
           read -r -a compiler_packages <<< "$COMPILER_PACKAGES"
-          sudo apt-get install -y liblapack-dev libblas-dev libopenmpi-dev libhdf5-dev "${compiler_packages[@]}"
+          sudo apt-get install -y ccache liblapack-dev libblas-dev libopenmpi-dev libhdf5-dev \
+            libbz2-dev zlib1g-dev liblzma-dev libzstd-dev "${compiler_packages[@]}"
           if [[ "$EXTRAS" == true ]]; then sudo apt-get install -y gfortran xsltproc; fi
       - name: Install macOS dependencies
         if: runner.os == 'macOS'
         timeout-minutes: 30
-        run: brew install open-mpi hdf5
-      - name: Build verified Boost sources
-        timeout-minutes: 30
-        run: |
-          archive="$RUNNER_TEMP/boost.tar.gz"
-          directory="boost_${BOOST_VERSION//./_}"
-          curl --fail --location --retry 3 --connect-timeout 30 --max-time 600 \
-            "https://archives.boost.io/release/$BOOST_VERSION/source/$directory.tar.gz" -o "$archive"
-          printf '%s  %s\n' "$BOOST_SHA256" "$archive" | shasum -a 256 --check
-          tar -xzf "$archive" -C "$RUNNER_TEMP"
-          bash .github/scripts/build-boost.sh "$RUNNER_TEMP/$directory" "$PWD/_build/boost-install"
-      - name: Configure and build SDK
+        run: brew install --force-bottle ccache open-mpi hdf5 zstd xz
+      - name: Restore compiler cache
+        id: compiler-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: _build/ccache
+          key: ccache-source-${{ matrix.id }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: ccache-source-${{ matrix.id }}-
+      - name: Reset compiler cache counters
+        run: ccache --zero-stats
+      - name: Download pinned Boost binaries
+        timeout-minutes: 10
+        run: python .github/scripts/build_metrics.py run 'Dependency download' python .github/scripts/ci_dependencies.py "$DEPENDENCY" _build/boost-install
+      - name: Configure SDK
         run: |
           extra_args=()
           if [[ "$EXTRAS" == true ]]; then
-            extra_args+=(-DALPS_BUILD_EXAMPLES=ON -DALPS_ENABLE_OPENMP=ON)
+            extra_args+=(-DALPS_ENABLE_OPENMP=ON)
           fi
           if [[ "$EXTENSIVE" == true ]]; then extra_args+=(-DALPS_BUILD_EXTENSIVE_TESTS=ON); fi
           if [[ "$SANITIZER" == true ]]; then
@@ -151,13 +167,14 @@ jobs:
                          "-DCMAKE_C_FLAGS=$flags" "-DCMAKE_CXX_FLAGS=$flags"
                          "-DCMAKE_EXE_LINKER_FLAGS=$flags" "-DCMAKE_SHARED_LINKER_FLAGS=$flags")
           fi
-          cmake -S . -B _build/ci -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON \
+          python .github/scripts/build_metrics.py run 'SDK configure' cmake -S . -B _build/ci -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release -DALPS_BUILD_TESTING=ON \
             "-DALPS_ENABLE_MPI=$ALPS_BOOST_MPI" \
             "-DCMAKE_PREFIX_PATH=$PWD/_build/boost-install" \
             "-DCMAKE_INSTALL_PREFIX=$PWD/_build/ci/install" \
             "-DCMAKE_CXX_STANDARD=$CXX_STANDARD" "${extra_args[@]}"
-          cmake --build _build/ci
+      - name: Build SDK
+        run: python .github/scripts/build_metrics.py run 'SDK build' cmake --build _build/ci
       - name: Test SDK
         env:
           # Allocation-limit tests deliberately request impossible allocations.
@@ -165,7 +182,21 @@ jobs:
           # the address and undefined-behavior checks in this job.
           ASAN_OPTIONS: detect_leaks=0:allocator_may_return_null=1
           UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
-        run: ctest --test-dir _build/ci --output-on-failure --output-junit ctest.xml --no-tests=error
+        run: python .github/scripts/build_metrics.py run 'SDK tests' ctest --test-dir _build/ci --output-on-failure --output-junit ctest.xml --no-tests=error
+      - name: Test bindings and installed SDK with the primary build
+        if: matrix.python
+        env:
+          ALPS_DIR: ${{ github.workspace }}/_build/ci/install/share/alps
+          CMAKE_PREFIX_PATH: ${{ github.workspace }}/_build/boost-install
+          CMAKE_GENERATOR: Ninja
+          PYALPS_TEST_DOWNSTREAM_EXPORT: '1'
+        run: |
+          cmake --install _build/ci
+          python -m pip install build 'nanobind>=2.10,<3' 'scikit-build-core>=1.0' numpy scipy matplotlib h5py patchelf
+          python .github/scripts/build_metrics.py run 'Editable bindings' python -m pip install --no-build-isolation --no-deps -e python/pyalps \
+            --config-settings "build-dir=$PWD/_build/ci-python"
+          python .github/scripts/build_metrics.py run --timeout 900 'Bindings and SDK contracts' \
+            python -m pytest tests/pyalps tests/cmake -q --junitxml=_build/ci/python.xml
       - name: Test installed XML tools after relocation
         if: matrix.extras
         env:
@@ -182,41 +213,105 @@ jobs:
             cmake -S "$source" -B "$output" -G Ninja \
               "-DALPS_DIR=$PWD/_build/ci/install/share/alps" \
               "-DCMAKE_PREFIX_PATH=$PWD/_build/boost-install"
-            cmake --build "$output"
+            python .github/scripts/build_metrics.py run "Tutorial ${source#"$tutorials/"}" cmake --build "$output"
             ctest --test-dir "$output" --output-on-failure --output-junit ctest.xml --no-tests=error
           done
           find "$tutorials" -mindepth 1 -path "$tutorials/examples" -prune -o -name CMakeLists.txt -print0 | while IFS= read -r -d '' file; do
             source="${file%/CMakeLists.txt}"
+            # The root file installs tutorials; it is not a tutorial project.
+            if [[ "$source" == "$tutorials" ]]; then continue; fi
             output="_build/consumers/${source#"$tutorials/"}"
             cmake -S "$source" -B "$output" -G Ninja \
               "-DALPS_DIR=$PWD/_build/ci/install/share/alps" \
               "-DCMAKE_PREFIX_PATH=$PWD/_build/boost-install"
-            cmake --build "$output"
+            python .github/scripts/build_metrics.py run "Tutorial ${source#"$tutorials/"}" cmake --build "$output"
             ctest --test-dir "$output" --output-on-failure --output-junit ctest.xml
           done
+      - name: Check whether compiler cache changed
+        id: cache-policy
+        if: always()
+        run: python .github/scripts/build_metrics.py cache-policy
+      - name: Save compiler cache
+        if: ${{ !cancelled() && steps.compiler-cache.outcome == 'success' && steps.cache-policy.outputs.changed == 'true' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: _build/ccache
+          key: ${{ steps.compiler-cache.outputs.cache-primary-key }}
+      - name: Summarize build performance
+        if: always()
+        env:
+          CCACHE_RESTORED_KEY: ${{ steps.compiler-cache.outputs.cache-matched-key }}
+        run: python .github/scripts/build_metrics.py summary
       - name: Summarize test results
         if: always()
-        run: python .github/scripts/junit_summary.py '_build/**/ctest.xml' _build/ci/cli.xml
+        run: python .github/scripts/junit_summary.py '_build/**/ctest.xml' _build/ci/cli.xml _build/ci/python.xml
       - name: Retain test and configure evidence
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: source-${{ matrix.id }}-reports
           path: |
             _build/**/ctest.xml
             _build/ci/cli.xml
+            _build/ci/python.xml
             _build/**/Testing/Temporary/**
             _build/**/CMakeFiles/CMakeConfigureLog.yaml
+            _build/metrics/**
+
+  windows-debug:
+    if: needs.prepare.outputs.source == 'true'
+    name: Windows Debug
+    needs: prepare
+    uses: ./.github/workflows/windows.yml
+    with:
+      architecture: x64
+      configuration: Debug
+
+  developer-setup:
+    name: Developer setup / ${{ matrix.os }}
+    needs: prepare
+    if: needs.prepare.outputs.developer == 'true'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: prefix-dev/setup-pixi@d3f436a425481402e6a95a1d1fc10331c708cd9e # v0.10.2
+        with:
+          pixi-version: v0.81.0
+          cache: false
+      - name: Build and test the documented developer environment
+        run: pixi run --locked python tools/dev.py --jobs 2 test
 
   source-status:
     name: Source CI
     if: always()
-    needs: [prepare, build]
+    needs: [prepare, build, windows-debug, developer-setup]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - name: Require successful validation and builds
         env:
+          DEVELOPER_REQUIRED: ${{ needs.prepare.outputs.developer }}
+          DEVELOPER_RESULT: ${{ needs.developer-setup.result }}
+          SOURCE_REQUIRED: ${{ needs.prepare.outputs.source }}
           PREPARE_RESULT: ${{ needs.prepare.result }}
           BUILD_RESULT: ${{ needs.build.result }}
-        run: test "$PREPARE_RESULT" = success && test "$BUILD_RESULT" = success
+          WINDOWS_RESULT: ${{ needs.windows-debug.result }}
+        run: |
+          test "$PREPARE_RESULT" = success
+          if [[ "$DEVELOPER_REQUIRED" == true ]]; then
+            test "$DEVELOPER_RESULT" = success
+          else
+            test "$DEVELOPER_RESULT" = skipped
+          fi
+          if [[ "$SOURCE_REQUIRED" == true ]]; then
+            test "$BUILD_RESULT" = success && test "$WINDOWS_RESULT" = success
+          else
+            test "$BUILD_RESULT" = skipped && test "$WINDOWS_RESULT" = skipped
+          fi

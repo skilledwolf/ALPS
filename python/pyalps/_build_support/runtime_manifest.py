@@ -43,6 +43,19 @@ def write_manifest(tree: Path, version: str | None = None, *, repaired=False):
                     raise ValueError(f"Expected one install name for {library}: {names}")
                 entry["install_name"] = names.pop()
             libraries.append(entry)
+    if sys.platform == "darwin" and not repaired:
+        # Resolve our own runtimes unambiguously before delocate follows SDK
+        # RPATHs and copies a second libalps into .dylibs. Separate copies have
+        # separate global state, which breaks downstream C++ extensions.
+        changes = []
+        for entry in libraries:
+            if "install_name" in entry:
+                changes.extend(("-change", entry["install_name"],
+                                f"@loader_path/../{entry['path']}"))
+        for binary in [*(package / "_ext").glob("*.so"), *(package / "bin").glob("*")]:
+            if binary.is_file() and changes:
+                subprocess.run(["install_name_tool", *changes, str(binary)], check=True)
+                subprocess.run(["codesign", "--force", "--sign", "-", str(binary)], check=True)
     manifest.write_text(json.dumps({
         "schema": 1,
         "alps_version": version,
