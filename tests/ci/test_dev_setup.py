@@ -10,7 +10,7 @@ import pytest
 
 
 ROOT = Path(__file__).resolve().parents[2]
-SPEC = importlib.util.spec_from_file_location("alps_dev", ROOT / "tools/dev.py")
+SPEC = importlib.util.spec_from_file_location("alps_dev", ROOT / ".github/scripts/dev.py")
 dev = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(dev)
 
@@ -66,7 +66,7 @@ def test_requirements_are_not_reinstalled_on_every_developer_command(tmp_path, m
     environment = tmp_path / "venv"
     (environment / "Scripts").mkdir(parents=True)
     (environment / "Scripts/python.exe").touch()
-    (environment / "alps-requirements.sha256").write_text(dev.hashlib.sha256((ROOT / "tools/dev-requirements.txt").read_bytes()).hexdigest())
+    (environment / "alps-requirements.sha256").write_text(dev.hashlib.sha256((ROOT / ".github/scripts/dev-requirements.txt").read_bytes()).hexdigest())
     commands = []
     monkeypatch.setattr(dev, "run", lambda command, **kwargs: commands.append(command) or type("Result", (), {"returncode": 0})())
     assert dev.windows_environment(tmp_path, "x64") == 0

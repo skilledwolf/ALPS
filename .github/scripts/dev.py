@@ -13,7 +13,7 @@ import sysconfig
 import venv
 
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 
 
 def run(command, *, env=None, capture=False):
@@ -87,7 +87,7 @@ def windows_environment(directory, architecture):
     if Path(sys.prefix).resolve() != environment.resolve():
         if not python.is_file():
             venv.EnvBuilder(with_pip=True).create(environment)
-        requirements = ROOT / "tools/dev-requirements.txt"
+        requirements = ROOT / ".github/scripts/dev-requirements.txt"
         digest = hashlib.sha256(requirements.read_bytes()).hexdigest()
         stamp = environment / "alps-requirements.sha256"
         if not stamp.is_file() or stamp.read_text() != digest:
@@ -186,11 +186,11 @@ def main():
         if not args.arguments:
             parser.error("run needs a command, for example: run python -c \"import pyalps\"")
         if not (directory / "install/share/alps/ALPSConfig.cmake").is_file():
-            raise RuntimeError("Build this checkout first: python tools/dev.py")
+            raise RuntimeError("Build this checkout first: python .github/scripts/dev.py")
         return run(args.arguments, env=environment).returncode
     # CMake otherwise preserves package locations from the previous dependency
     # set. SDK and bindings have separate stamps because either can build alone.
-    inputs = ([ROOT / ".github/dependencies.json", ROOT / "tools/dev-requirements.txt"]
+    inputs = ([ROOT / ".github/dependencies.json", ROOT / ".github/scripts/dev-requirements.txt"]
               if windows else [ROOT / "pixi.lock"])
     fingerprint = hashlib.sha256(b"\0".join(path.read_bytes() for path in inputs)).hexdigest()
     stamps = {name: directory / name / "alps-environment.sha256" for name in ("sdk", "bindings")}
@@ -220,7 +220,7 @@ def main():
             environment["PYALPS_TEST_DOWNSTREAM_EXPORT"] = "1"
             run([sys.executable, "-m", "pytest", "tests/pyalps", "tests/cmake", "-q"], env=environment)
     print(f"ALPS is ready. SDK: {directory / 'install'}\n"
-          "Run programs with: python tools/dev.py run <command>\n"
+          "Run programs with: python .github/scripts/dev.py run <command>\n"
           "After C++ changes, rerun this command; Python edits are already live.")
     return 0
 

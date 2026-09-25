@@ -49,7 +49,7 @@ Windows wheels place DLLs in `pyalps/bin` alongside the programs; package initia
 
 ## Editable development
 
-For the complete checkout, prefer the [managed developer setup](../../docs/development.md): `pixi run --locked dev` on Linux/macOS or `python tools/dev.py` on Windows. It supplies binary dependencies and handles SDK installation, `ALPS_DIR`, toolchain arguments, and a persistent binding build directory. Rerun it after C++ changes; Python source edits are live in a new interpreter.
+For the complete checkout, prefer the [managed developer setup](../../docs/development.md): `pixi run --locked dev` on Linux/macOS or `python .github/scripts/dev.py` on Windows. It supplies binary dependencies and handles SDK installation, `ALPS_DIR`, toolchain arguments, and a persistent binding build directory. Rerun it after C++ changes; Python source edits are live in a new interpreter.
 
 After installing the matching SDK, install build dependencies in your active Python environment and use pip's editable mode:
 

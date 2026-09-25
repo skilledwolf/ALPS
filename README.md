@@ -22,7 +22,7 @@ See [CHANGELOG.md](CHANGELOG.md) for release notes and upgrade guidance.
 
 ## Develop from source
 
-After cloning, run `pixi run --locked dev` on Linux/macOS, or `python tools/dev.py` on Windows. The managed setup downloads binary dependencies, builds ALPS, and installs editable Python bindings. See [developer setup and one-time prerequisites](docs/development.md).
+After cloning, run `pixi run --locked dev` on Linux/macOS, or `python .github/scripts/dev.py` on Windows. The managed setup downloads binary dependencies, builds ALPS, and installs editable Python bindings. See [developer setup and one-time prerequisites](docs/development.md).
 
 ## Contributing
 

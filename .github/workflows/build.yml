@@ -286,7 +286,7 @@ jobs:
           pixi-version: v0.81.0
           cache: false
       - name: Build and test the documented developer environment
-        run: pixi run --locked python tools/dev.py --jobs 2 test
+        run: pixi run --locked python .github/scripts/dev.py --jobs 2 test
 
   source-status:
     name: Source CI

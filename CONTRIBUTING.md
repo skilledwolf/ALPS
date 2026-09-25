@@ -51,7 +51,7 @@ Before opening a new issue, please search existing issues to avoid duplicates.
 
 ### One-command developer setup
 
-After cloning, run `pixi run --locked dev` on Linux/macOS or `python tools/dev.py` on Windows. The helper downloads binary dependencies, builds and installs the C++ SDK, and sets up editable Python bindings. Only ALPS and its bindings are compiled. Subsequent runs reuse the environment and build directories.
+After cloning, run `pixi run --locked dev` on Linux/macOS or `python .github/scripts/dev.py` on Windows. The helper downloads binary dependencies, builds and installs the C++ SDK, and sets up editable Python bindings. Only ALPS and its bindings are compiled. Subsequent runs reuse the environment and build directories.
 
 See [the developer setup guide](docs/development.md) for one-time prerequisites, commands, editor integration, and dependency updates. The manual build below remains available for custom toolchains and MPI/HPC installations.
 
@@ -121,7 +121,7 @@ You can also use [official CMake downloads](https://cmake.org/download/) without
 
 ### Build
 
-Shared C++ libraries live under `src/alps/`; command-line utilities live under `src/tools/`. Solver implementations, including MaxEnt, currently live under `src/apps/`. Python bindings have their own project under `python/pyalps/`. Bundled dependencies live under `third_party/`: the temporary [Numeric Bindings headers](third_party/boost_numeric_bindings/README.md) and the [XDR serialization implementation](third_party/xdr/README.md). Shared XML definitions and stylesheets live under `src/alps/resources/`, tests under `tests/`, and CI/release helpers under `.github/scripts/`. The [tutorial guide](tutorials/README.md) is the learning entry point; solver references live beside the tutorials, and focused library examples live under `tutorials/examples/`.
+Shared C++ libraries live under `src/alps/`; command-line utilities live under `src/tools/`. Solver implementations, including MaxEnt, currently live under `src/apps/`. Python bindings have their own project under `python/pyalps/`. Bundled dependencies live under `third_party/`: the temporary [Numeric Bindings headers](third_party/boost_numeric_bindings/README.md) and the [XDR serialization implementation](third_party/xdr/README.md). Shared XML definitions and stylesheets live under `src/alps/resources/`, tests under `tests/`, and developer setup, CI, and release helpers under `.github/scripts/`. The [tutorial guide](tutorials/README.md) is the learning entry point; solver references live beside the tutorials, and focused library examples live under `tutorials/examples/`.
 
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release

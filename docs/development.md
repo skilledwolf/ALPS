@@ -17,7 +17,7 @@ The committed `pixi.lock` supplies binary Python, CMake, Ninja, compilers, Boost
 Install standard, GIL-enabled 64-bit CPython 3.12+ and Visual Studio's **Desktop development with C++** workload once. Include the target tools for your architecture. From an ordinary PowerShell in the checkout:
 
 ```powershell
-python tools/dev.py
+python .github/scripts/dev.py
 ```
 
 The helper finds and activates MSVC, creates a checkout-local virtual environment, and downloads the checksum-pinned dependency SDK used by CI. It does not clone or bootstrap vcpkg, compile dependencies, or change your global Python environment. The selected architecture follows Python: x64 Python builds x64 ALPS, including on an ARM64 computer. Use ARM64 Python for a native ARM64 build.
@@ -28,11 +28,11 @@ Windows reuses the existing binary exports because the needed conda-forge packag
 
 | Operation | Linux/macOS | Windows |
 | --- | --- | --- |
-| Build SDK and editable bindings | `pixi run --locked dev` | `python tools/dev.py` |
-| Build and run native/Python/SDK tests | `pixi run --locked test` | `python tools/dev.py test` |
-| Configure without compiling ALPS | `pixi run --locked python tools/dev.py configure` | `python tools/dev.py configure` |
-| Build without Python bindings | `pixi run --locked python tools/dev.py --cpp-only` | `python tools/dev.py --cpp-only` |
-| Run with the installed SDK programs on PATH | `pixi run --locked python tools/dev.py run <command>` | `python tools/dev.py run <command>` |
+| Build SDK and editable bindings | `pixi run --locked dev` | `python .github/scripts/dev.py` |
+| Build and run native/Python/SDK tests | `pixi run --locked test` | `python .github/scripts/dev.py test` |
+| Configure without compiling ALPS | `pixi run --locked python .github/scripts/dev.py configure` | `python .github/scripts/dev.py configure` |
+| Build without Python bindings | `pixi run --locked python .github/scripts/dev.py --cpp-only` | `python .github/scripts/dev.py --cpp-only` |
+| Run with the installed SDK programs on PATH | `pixi run --locked python .github/scripts/dev.py run <command>` | `python .github/scripts/dev.py run <command>` |
 
 For example, replace `<command>` with `python my_simulation.py`, `spinmc --help`, or `python -c "import pyalps; print(pyalps.__file__)"`. The `run` command uses the existing build and does not rebuild it. On Unix, `pixi shell` also exposes the Python environment for interactive work.
 
@@ -42,6 +42,6 @@ Configure your editor to use `.pixi/envs/default/bin/python` on Unix or `_build/
 
 ## Maintain the environments
 
-Use `pixi update` to intentionally refresh the Unix lockfile, then validate the developer setup on Linux and macOS. Ordinary setup uses `--locked` so it cannot silently change dependencies. Windows Python requirements are in `tools/dev-requirements.txt` and are installed as binary wheels. The helper updates its isolated environment when that file changes. Native Windows library pins come from `.github/dependencies.json`; changing a checksum selects a new verified dependency directory. Changes to the lockfile or Windows dependency inputs automatically refresh the SDK and binding CMake configurations, preventing stale package locations.
+Use `pixi update` to intentionally refresh the Unix lockfile, then validate the developer setup on Linux and macOS. Ordinary setup uses `--locked` so it cannot silently change dependencies. Windows Python requirements are in `.github/scripts/dev-requirements.txt` and are installed as binary wheels. The helper updates its isolated environment when that file changes. Native Windows library pins come from `.github/dependencies.json`; changing a checksum selects a new verified dependency directory. Changes to the lockfile or Windows dependency inputs automatically refresh the SDK and binding CMake configurations, preventing stale package locations.
 
 The binary exports currently come from the repository recorded in that manifest. Before moving upstream ownership, publish a complete dependency release under `ALPSim/ALPS`, import its checksums, and validate it. Do not change the repository field to a location that has not published the archives. See [CI dependency maintenance](../CONTRIBUTING.md#ci-dependency-binaries).

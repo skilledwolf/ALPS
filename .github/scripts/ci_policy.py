@@ -42,7 +42,7 @@ def select(event, paths):
         Path(path).name == "CMakeLists.txt"
         or path.endswith((".h", ".hh", ".hpp", ".hxx", ".ipp", ".tpp", ".inl",
                           ".h.in", ".hpp.in", ".hxx.in", ".cmake"))
-        or path.startswith((".github/", "cmake/", "third_party/", "tools/",
+        or path.startswith((".github/", "cmake/", "third_party/",
                             "python/pyalps/_build_support/"))
         or path in {"CMakePresets.json", "vcpkg.json", "ALPS_VERSION.txt",
                     "pixi.toml", "pixi.lock", "python/pyalps/pyproject.toml"}

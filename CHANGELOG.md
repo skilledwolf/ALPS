@@ -6,7 +6,7 @@ Release notes and migration guidance for ALPS. Changes awaiting release are coll
 
 ### Added
 
-- A managed developer setup: `pixi run --locked dev` on Linux/macOS and `python tools/dev.py` on Windows download binary dependencies, build the SDK, and install editable Python bindings with persistent build directories.
+- A managed developer setup: `pixi run --locked dev` on Linux/macOS and `python .github/scripts/dev.py` on Windows download binary dependencies, build the SDK, and install editable Python bindings with persistent build directories.
 - Native Windows x64 and ARM64 builds with CMake presets, pinned vcpkg dependencies, and SDK installation containing the required runtime DLLs.
 - A relocatable CMake SDK with `ALPS::alps`, `ALPS::headers`, and `ALPS::fortran`. Builds with applications also export executable targets and the solver libraries `ALPS::maxent`, `ALPS::cthyb`, and `ALPS::ctint`.
 - The Unix `alps-xml` command for plot rendering, result conversion, and data extraction, including Python 3 Matplotlib output.

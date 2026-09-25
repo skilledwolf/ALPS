@@ -29,7 +29,7 @@ SPEC.loader.exec_module(policy)
     (["cmake/ALPSConfig.cmake.in"], True, "full"),
     ([".github/workflows/build.yml"], True, "full"),
     (["pixi.lock"], True, "full"),
-    (["tools/dev.py"], True, "full"),
+    ([".github/scripts/dev.py"], True, "full"),
     (["future-source-directory/new.cpp"], True, "full"),
     (None, True, "full"),
 ])
