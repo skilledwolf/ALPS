@@ -162,12 +162,15 @@ endforeach()
     capture.write_text(
         'file(GENERATE OUTPUT "${CMAKE_BINARY_DIR}/runtime-$<CONFIG>.txt"\n'
         '  CONTENT "$<TARGET_GENEX_EVAL:alps,$<TARGET_PROPERTY:alps,INSTALL_RPATH>>;'
-        '$<TARGET_RUNTIME_DLLS:alps>" TARGET alps)\n')
+        '$<TARGET_RUNTIME_DLLS:alps>" TARGET alps)\n'
+        'file(GENERATE OUTPUT "${CMAKE_BINARY_DIR}/program-runtime-$<CONFIG>.txt"\n'
+        '  CONTENT "$<TARGET_GENEX_EVAL:dmrg,$<TARGET_PROPERTY:dmrg,INSTALL_RPATH>>"\n'
+        '  TARGET dmrg)\n')
     result = subprocess.run([
         "cmake", "-S", str(SOURCE), "-B", str(build),
         *json.loads(os.environ.get("ALPS_TEST_CMAKE_ARGS", "[]")),
         "-G", "Ninja Multi-Config", "-DCMAKE_CONFIGURATION_TYPES=Debug;Release",
-        "-DALPS_BUILD_TESTING=OFF", "-DALPS_BUILD_APPLICATIONS=OFF", "-DALPS_ENABLE_MPI=OFF",
+        "-DALPS_BUILD_TESTING=OFF", "-DALPS_BUILD_APPLICATIONS=ON", "-DALPS_ENABLE_MPI=OFF",
         "-DBUILD_SHARED_LIBS=ON", "-DHDF5_USE_STATIC_LIBRARIES=OFF",
         # This contract deliberately selects a fixture provider instead of
         # the managed developer environment's HDF5 wrapper.
@@ -181,6 +184,10 @@ endforeach()
         suffix = "/hdf5.dll" if os.name == "nt" else ""
         assert f"{provider.as_posix()}/{config}{suffix}" in runtime
         assert f"{provider.as_posix()}/{other}{suffix}" not in runtime
+        if os.name != "nt":
+            program_runtime = (build / f"program-runtime-{config}.txt").read_text().split(";")
+            assert f"{provider.as_posix()}/{config}" in program_runtime
+            assert f"{provider.as_posix()}/{other}" not in program_runtime
 
 
 def test_tutorials_are_an_explicit_install_component(tmp_path):

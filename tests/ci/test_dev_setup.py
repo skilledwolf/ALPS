@@ -70,9 +70,8 @@ find_package(Boost 1.76 CONFIG REQUIRED COMPONENTS program_options)
 find_package(HDF5 MODULE REQUIRED COMPONENTS C)
 find_package(BLAS REQUIRED)
 find_package(LAPACK REQUIRED)
-get_target_property(boost_library Boost::program_options IMPORTED_LOCATION_RELEASE)
-file(WRITE "${CMAKE_BINARY_DIR}/libraries.txt"
-  "${boost_library}\\n${HDF5_C_LIBRARY_hdf5}\\n${BLAS_LIBRARIES}\\n${LAPACK_LIBRARIES}\\n")
+file(GENERATE OUTPUT "${CMAKE_BINARY_DIR}/libraries.txt" CONTENT
+  "$<TARGET_FILE:Boost::program_options>\\n$<TARGET_FILE:hdf5::hdf5>\\n${BLAS_LIBRARIES}\\n${LAPACK_LIBRARIES}\\n")
 ''')
     _, shared = dev.configuration(tmp_path / "dev", prefix)
     build = tmp_path / "build"

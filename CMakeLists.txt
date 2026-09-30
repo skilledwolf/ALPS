@@ -99,6 +99,16 @@ endif()
 include(cmake/ALPSTesting.cmake)
 add_subdirectory(src/alps)
 if(ALPS_BUILD_APPLICATIONS)
+  if(ALPS_LOADER_ORIGIN)
+    # Programs also link directly to the SDK's dependencies. ELF RUNPATH is
+    # not transitive, and automatic RPATH discovery omits dependency archives
+    # staged inside the source/build tree. Reuse the configuration-aware paths
+    # already derived for libalps, preserving the programs' relative SDK path.
+    get_target_property(_alps_dependency_rpaths alps INSTALL_RPATH)
+    list(REMOVE_ITEM _alps_dependency_rpaths "${ALPS_LOADER_ORIGIN}")
+    list(APPEND CMAKE_INSTALL_RPATH ${_alps_dependency_rpaths})
+    list(REMOVE_DUPLICATES CMAKE_INSTALL_RPATH)
+  endif()
   add_subdirectory(src/tools)
   add_subdirectory(src/apps)
   get_target_property(ALPS_APPLICATION_TARGETS alps ALPS_APPLICATION_TARGETS)

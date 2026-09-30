@@ -232,7 +232,7 @@ def test_every_bundled_program_can_be_loaded():
         output = f"{proc.stdout}\n{proc.stderr}"
         hit = next((sig for sig in loader_errors if sig in output), None)
         if hit is not None:
-            failures.append(f"{program.name}: loader error ({hit!r})")
+            failures.append(f"{program.name}: loader error ({hit!r}): {output.strip()[:500]}")
         elif proc.returncode == 127 or (proc.returncode & 0xFFFFFFFF) in {
             0xC0000135,  # STATUS_DLL_NOT_FOUND
             0xC0000139,  # STATUS_ENTRYPOINT_NOT_FOUND

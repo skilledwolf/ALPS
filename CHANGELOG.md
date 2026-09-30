@@ -56,6 +56,7 @@ Release notes and migration guidance for ALPS. Changes awaiting release are coll
 
 ### Fixed
 
+- Installed and Python-bundled programs retain runtime search paths for dependencies staged inside the source/build tree, including direct Boost dependencies on Linux where library RUNPATH is not transitive.
 - Managed Unix development builds select Pixi's Boost, HDF5, and LP64 BLAS/LAPACK for both the SDK and Python bindings, avoiding incompatible Homebrew runtime libraries. Helper updates refresh cached CMake discovery automatically.
 - The parameter-conversion regression finds source XML resources before SDK installation. MPI wheel validation installs Matplotlib before its offline wheel install, and developer setup CI exercises ordinary Windows x64/ARM64 shells.
 - Source-build documentation routes contributors to the current checkout instructions and includes wheel tooling, Linux editable-build dependencies, persistent build directories, and the core-only SDK/Python recipe.
