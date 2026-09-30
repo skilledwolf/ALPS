@@ -62,9 +62,9 @@ See [the developer setup guide](docs/development.md) for one-time prerequisites,
 - An installed Boost ≥ 1.76, HDF5 with its C library, and BLAS/LAPACK
 - MPI and Boost.MPI when configuring with `-DALPS_ENABLE_MPI=ON`
 - For Fortran examples and simulations: gfortran (or a compatible Fortran compiler). The SDK always includes the C++ bridge `ALPS::fortran`; building it needs no Fortran compiler.
-- For Python bindings: GIL-enabled CPython ≥ 3.12, plus `numpy` and `scipy`
+- For Python bindings: GIL-enabled CPython ≥ 3.12, plus `numpy`, `scipy`, and `matplotlib`; see the [Python build instructions](python/pyalps/README.md) for wheel and editable build dependencies
 
-See the [installation page](https://alps.comp-phys.org/install/) for full platform-specific instructions.
+Use the [managed setup guide](docs/development.md) for platform-specific binary dependencies. For a manual build, install the dependencies above with your package manager and use matching dependency prefixes for the SDK and Python builds. The website's upstream instructions describe a combined Boost.Python build; this SDK checkout uses nanobind and externally installed Boost, and provides no `alpsvars` scripts.
 
 ### Fork and clone
 
@@ -324,7 +324,7 @@ For substantial changes — new simulation applications, new libraries, signific
 
 Pull requests and merge-queue entries always report the `Source CI` and `Packaging CI` aggregate checks. Documentation-only changes skip compilation. Ordinary native-code changes run one Linux GCC configuration and Windows x64 Debug; the Linux job builds the SDK once and reuses it for editable bindings, Python tests, and installed-SDK contracts. Python-only changes build one manylinux wheel and test that artifact on Python 3.12 and 3.14. Changes to public headers, dependencies, build configuration, or packaging helpers select the complete packaging matrix. Mixed changes select both relevant paths. Unknown paths or unavailable Git diffs conservatively select broad packaging coverage.
 
-Pushes to `master` run four representative Unix source configurations, Windows Debug, and full packaging. Weekly runs and manual `full` source runs cover fourteen Unix configurations, including older/newer compilers, intermediate Boost versions, C++20/23, extensive graph/HDF5 tests, and AddressSanitizer plus UndefinedBehaviorSanitizer. Sanitizer runs disable MPI and dependency leak detection. MPI remains covered by the other source configurations and the separate two-rank Python adapter test. The primary Linux job uses an MPI-disabled SDK for downstream contracts. Full source runs and broadly selected PRs also build and test the documented Pixi developer environment on Linux and macOS.
+Pushes to `master` run four representative Unix source configurations, Windows Debug, and full packaging. Weekly runs and manual `full` source runs cover fourteen Unix configurations, including older/newer compilers, intermediate Boost versions, C++20/23, extensive graph/HDF5 tests, and AddressSanitizer plus UndefinedBehaviorSanitizer. Sanitizer runs disable MPI and dependency leak detection. MPI remains covered by the other source configurations and the separate two-rank Python adapter test. The primary Linux job uses an MPI-disabled SDK for downstream contracts. Full source runs and broadly selected PRs also build and test the documented Pixi developer environment on Linux and macOS, and the Python helper from ordinary PowerShell on Windows x64 and ARM64.
 
 Full packaging builds five native wheels: Linux glibc x64, Linux musl x64, macOS ARM64 (macOS 15+), and Windows x64/ARM64. The glibc, Windows, and macOS stable-ABI artifacts are installed on clean runners across Python 3.12-3.14, including a newer macOS release. The musl wheel is tested inside its build container. Linux ARM64 and macOS Intel receive source coverage; no wheels are currently published for them. Their source installations require a matching installed SDK.
 

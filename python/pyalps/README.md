@@ -18,8 +18,9 @@ The `distribution` CMake preset builds the SDK exactly as the wheel CI does. Fro
 cmake --preset distribution
 cmake --build --preset distribution
 
-ALPS_DIR="$PWD/_build/distribution/install/share/alps" \
-  python -m build --wheel python/pyalps
+export ALPS_DIR="$PWD/_build/distribution/install/share/alps"
+python -m pip install build
+python -m build --wheel python/pyalps
 ```
 
 The wheel is written to `python/pyalps/dist` and can be installed with `python -m pip install`. With ccache installed, configure with `cmake --preset distribution -DCMAKE_CXX_COMPILER_LAUNCHER=ccache` and set `CMAKE_ARGS="-DCMAKE_CXX_COMPILER_LAUNCHER=ccache"` for the wheel build to speed up rebuilds.
@@ -54,13 +55,29 @@ For the complete checkout, prefer the [managed developer setup](../../docs/devel
 After installing the matching SDK, install build dependencies in your active Python environment and use pip's editable mode:
 
 ```sh
-python -m pip install "scikit-build-core>=1.0" "nanobind>=2.10,<3" "cmake>=3.27" ninja
-python -m pip install --no-build-isolation -e python/pyalps
+export ALPS_DIR="$PWD/_build/distribution/install/share/alps"
+python -m pip install "scikit-build-core>=1.0" "nanobind>=2.10,<3" "cmake>=3.27" ninja \
+  "patchelf>=0.14; sys_platform == 'linux'"
+python -m pip install --no-build-isolation -e python/pyalps \
+  --config-setting "build-dir=$PWD/_build/manual-python"
 ```
 
-Set `ALPS_DIR` as above. On Windows, pass the same `--config-setting` toolchain and triplet arguments as for a wheel build. For a core-only installation, add `--config-setting cmake.define.PYALPS_BUILD_SOLVERS=OFF --config-setting cmake.define.PYALPS_BUNDLE_APPLICATIONS=OFF`.
+The example uses the SDK installed by the `distribution` preset above. For another SDK, change `ALPS_DIR` to its installed `share/alps` directory. On Windows, set `$env:ALPS_DIR` and pass the same `--config-setting` toolchain and triplet arguments as for a wheel build. The Linux `patchelf` dependency is required when bundling applications; `--no-build-isolation` makes installing build dependencies your responsibility. Pip installs NumPy, SciPy, and Matplotlib as runtime dependencies.
 
-Python edits take effect in a new interpreter without reinstalling. Rerun the editable install after changing C++ sources, build configuration, or packaged runtime resources. Scikit-build-core owns the Python source mapping; CMake installs the native modules, libraries, XML, downstream headers, and CMake package. Resource lookup uses the installed runtime manifest, so it also works when these files live separately from the Python sources.
+For a smaller SDK and core-only editable Python installation on Linux/macOS, use the `sdk` preset and disable both solver bindings and bundled programs. After installing the build dependencies above:
+
+```sh
+cmake --preset sdk
+cmake --build --preset sdk --parallel 2
+cmake --install _build/sdk
+export ALPS_DIR="$PWD/_build/sdk/install/share/alps"
+python -m pip install --no-build-isolation -e python/pyalps \
+  --config-setting "build-dir=$PWD/_build/manual-python-core" \
+  --config-setting cmake.define.PYALPS_BUILD_SOLVERS=OFF \
+  --config-setting cmake.define.PYALPS_BUNDLE_APPLICATIONS=OFF
+```
+
+Python edits take effect in a new interpreter without reinstalling. Rebuild and reinstall the SDK after SDK C++ changes, then rerun the editable install after changing binding C++ sources, build configuration, or packaged runtime resources. If you switch SDKs, compilers, or dependency providers while reusing a manual binding build directory, add `--config-setting cmake.args=--fresh` once to clear cached discovery. Scikit-build-core owns the Python source mapping; CMake installs the native modules, libraries, XML, downstream headers, and CMake package. Resource lookup uses the installed runtime manifest, so it also works when these files live separately from the Python sources.
 
 ## Native runtime layout
 

@@ -169,6 +169,9 @@ endforeach()
         "-G", "Ninja Multi-Config", "-DCMAKE_CONFIGURATION_TYPES=Debug;Release",
         "-DALPS_BUILD_TESTING=OFF", "-DALPS_BUILD_APPLICATIONS=OFF", "-DALPS_ENABLE_MPI=OFF",
         "-DBUILD_SHARED_LIBS=ON", "-DHDF5_USE_STATIC_LIBRARIES=OFF",
+        # This contract deliberately selects a fixture provider instead of
+        # the managed developer environment's HDF5 wrapper.
+        "-UHDF5_ROOT", "-DHDF5_NO_FIND_PACKAGE_CONFIG_FILE=OFF",
         "-DCMAKE_FIND_PACKAGE_PREFER_CONFIG=ON", f"-DHDF5_DIR={provider}",
         f"-DCMAKE_PROJECT_alps_INCLUDE={capture}",
     ], text=True, capture_output=True)

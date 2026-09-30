@@ -7,10 +7,10 @@ This checkout is for **skilledwolf/ALPS**, even when its directory is named
   tracking, and push remote.
 - `alpsim` is `https://github.com/ALPSim/ALPS.git`, the original project. Use it
   as a task's target only when the user explicitly requests that project.
-- The CMake/SDK/CI overhaul currently targets
-  `codex/windows-ci-runner-setup`, tracking
-  `origin/codex/windows-ci-runner-setup`. An explicit user instruction to use
-  another branch takes precedence.
+- Current development targets `master`, tracking `origin/master`. The
+  CMake/SDK/CI overhaul has merged there; do not use the old
+  `codex/windows-ci-runner-setup` branch as the development baseline. An
+  explicit user instruction to use another branch takes precedence.
 - The sibling `../ALPS` checkout is a separate repository (`skilledwolf/alpsx`);
   do not substitute it for this checkout.
 
