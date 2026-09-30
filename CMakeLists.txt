@@ -21,6 +21,7 @@ if(ALPS_ENABLE_MPI)
   list(APPEND VCPKG_MANIFEST_FEATURES mpi)
 endif()
 project(alps VERSION ${ALPS_VERSION_CORE} LANGUAGES C CXX)
+include(cmake/ALPSBuildConcurrency.cmake)
 
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)

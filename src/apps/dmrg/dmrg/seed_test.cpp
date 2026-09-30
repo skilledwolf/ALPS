@@ -89,6 +89,9 @@ void check_seeds() {
 
 int main() {
   QN::init();
+  // System's built-in operators require these quantum-number indices.
+  QN::add_qn_index("Sz");
+  QN::add_qn_index("N", true);
   auto directory = boost::filesystem::temp_directory_path() / boost::filesystem::unique_path("alps-seed-%%%%-%%%%");
   boost::filesystem::create_directory(directory);
   tmp_files.set_temp_dir(directory.string().c_str());

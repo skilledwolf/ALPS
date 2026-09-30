@@ -48,6 +48,9 @@ void check(std::array<int, 4> lengths, int total, std::vector<int> normal,
 
 int main() {
   QN::init();
+  // System's built-in operators require these quantum-number indices.
+  QN::add_qn_index("Sz");
+  QN::add_qn_index("N", true);
   check({2,1,1,3}, 7, {1,1,2,3,4,4,4}, {1,1,2,3,4,4,4}, {1,1,2,3,4,4,4});
   check({2,1,1,3}, 12,
         {1,1,2,3,4,4,4,0,0,0,0,0}, {1,1,2,0,0,0,0,0,3,4,4,4},

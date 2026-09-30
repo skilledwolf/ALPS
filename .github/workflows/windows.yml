@@ -67,17 +67,17 @@ jobs:
         run: |
           python -m pip install --only-binary=:all: $env:CMAKE_REQUIREMENT ninja
           if ($LASTEXITCODE) { throw 'Build tool installation failed' }
-          # Executables share one DLL directory; serialize vcpkg's app-local
-          # copy steps to avoid concurrent writes while keeping compilation parallel.
+          # The project serializes link/DLL-staging edges in a Ninja pool while
+          # keeping compilation parallel.
           # Embed Debug information in each object so it can be cached independently.
           python .github/scripts/build_metrics.py run 'SDK configure' cmake --preset windows-${{ inputs.architecture }} `
             '-DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=$<$<CONFIG:Debug,RelWithDebInfo>:Embedded>' `
-            -DVCPKG_MANIFEST_MODE=OFF -DX_VCPKG_APPLOCAL_DEPS_SERIALIZED=ON `
+            -DVCPKG_MANIFEST_MODE=OFF `
             "-DVCPKG_INSTALLED_DIR=$env:VCPKG_ROOT/installed"
       - name: Build SDK
         run: python .github/scripts/build_metrics.py run 'SDK build' cmake --build --preset windows-${{ inputs.architecture }} --config ${{ inputs.configuration }}
       - name: Test SDK
-        run: python .github/scripts/build_metrics.py run 'SDK tests' ctest --preset windows-${{ inputs.architecture }} -C ${{ inputs.configuration }} --output-junit ctest.xml --no-tests=error
+        run: python .github/scripts/build_metrics.py run 'SDK tests' ctest --preset windows-${{ inputs.architecture }} -C ${{ inputs.configuration }} --output-junit ctest.xml --no-tests=error --timeout 600
       - name: Install SDK
         run: cmake --install _build/windows-${{ inputs.architecture }} --config ${{ inputs.configuration }}
       - name: Stage installed SDK runtime checks

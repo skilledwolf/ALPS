@@ -126,7 +126,7 @@ def configuration(directory, dependency_prefix=None, architecture=None, testing=
             f"-DCMAKE_TOOLCHAIN_FILE={dependency_prefix / 'scripts/buildsystems/vcpkg.cmake'}",
             f"-DVCPKG_INSTALLED_DIR={dependency_prefix / 'installed'}",
             f"-DVCPKG_TARGET_TRIPLET={architecture}-windows",
-            "-DVCPKG_MANIFEST_MODE=OFF", "-DX_VCPKG_APPLOCAL_DEPS_SERIALIZED=ON",
+            "-DVCPKG_MANIFEST_MODE=OFF",
         ]
         options += ["-DCMAKE_C_COMPILER=cl", "-DCMAKE_CXX_COMPILER=cl"]
     else:

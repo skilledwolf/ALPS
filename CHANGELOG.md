@@ -56,6 +56,8 @@ Release notes and migration guidance for ALPS. Changes awaiting release are coll
 
 ### Fixed
 
+- Windows Ninja builds serialize linking and post-link DLL staging with a dedicated pool, preventing concurrent writes to shared runtime files while keeping compilation parallel.
+- DMRG layout and seed test fixtures register the quantum numbers required by built-in operators, avoiding assertions in Debug builds. Windows CI bounds individual native tests to ten minutes.
 - Installed and Python-bundled programs retain runtime search paths for dependencies staged inside the source/build tree, including direct Boost dependencies on Linux where library RUNPATH is not transitive.
 - Managed Unix development builds select Pixi's Boost, HDF5, and LP64 BLAS/LAPACK for both the SDK and Python bindings, avoiding incompatible Homebrew runtime libraries. Helper updates refresh cached CMake discovery automatically.
 - The parameter-conversion regression finds source XML resources before SDK installation. MPI wheel validation installs Matplotlib before its offline wheel install, and developer setup CI exercises ordinary Windows x64/ARM64 shells.
