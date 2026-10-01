@@ -242,7 +242,8 @@ jobs:
           }
 
       - name: Install validation requirements
-        run: python -m pip install twine numpy scipy pytest h5py
+        # Install every runtime dependency before the offline artifact install.
+        run: python -m pip install twine 'numpy>=1.26' 'scipy>=1.13' 'matplotlib>=3.8' pytest h5py
 
       - name: Check wheel metadata
         run: python -m twine check wheelhouse/*.whl
