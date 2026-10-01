@@ -1,6 +1,6 @@
 # Hybridization-expansion solver reference
 
-The CT-HYB solver computes quantum impurity models using continuous-time hybridization-expansion Monte Carlo. Start with the [Python interface tutorial](../hybridization-01-python/), then continue with [Kondo physics](../hybridization-02-kondo/), [retarded interactions](../hybridization-03-retarded-interaction/), and [multiorbital spin freezing](../hybridization-04-spinfreezing/).
+The CT-HYB solver computes quantum impurity models using continuous-time hybridization-expansion Monte Carlo. Start with the [Python interface tutorial](01-python/), then continue with [Kondo physics](02-kondo/), [retarded interactions](03-retarded-interaction/), and [multiorbital spin freezing](04-spinfreezing/).
 
 ## Build and run
 

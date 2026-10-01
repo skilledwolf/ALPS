@@ -2,7 +2,7 @@
 
 ALPS Looper implements multi-cluster quantum Monte Carlo for generic spin systems in path-integral and stochastic series expansion (SSE) representations. It supports arbitrary spin size and lattices, XXZ two-spin interactions, single-ion anisotropy for spin greater than 1/2, and longitudinal and transverse magnetic fields. Freezing graphs support easy-axis anisotropy.
 
-For a guided simulation, start with the [susceptibility](../mc-02-susceptibilities/) or [measurement](../mc-04-measurements/) tutorials. This reference describes the `loop` program supplied by the ALPS application build.
+For a guided simulation, start with the [susceptibility](../mc/02-susceptibilities/) or [measurement](../mc/04-measurements/) tutorials. This reference describes the `loop` program supplied by the ALPS application build.
 
 ## Build and run
 

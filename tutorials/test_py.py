@@ -20,8 +20,10 @@ pycmd = sys.executable
 # Store current working directory
 cwd = os.getcwd()
 
-# Find .py files in subdirectories
-pyfiles = glob.glob('[d-z]*/*.py')
+# Find scripts in numbered simulation lessons (not developer examples).
+pyfiles = []
+for group in ('dmft', 'dmrg', 'ed', 'hybridization', 'intro', 'mc'):
+    pyfiles.extend(glob.glob(os.path.join(group, '[0-9]*', '*.py')))
 pyfiles.sort()
 
 # Test all Python tutorials
