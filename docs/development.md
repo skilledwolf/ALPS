@@ -10,7 +10,7 @@ Install [Pixi](https://pixi.sh/latest/installation/) once. On macOS, install App
 pixi run --locked dev
 ```
 
-The committed `pixi.lock` supplies binary Python, CMake, Ninja, compilers, Boost, serial HDF5, OpenBLAS/LAPACK, and Python dependencies. Linux x64/ARM64 and macOS Intel/ARM64 are included. The lockfile targets Linux with glibc 2.28+/kernel 4.18+ and macOS 13+. Linux uses an environment-provided compiler and sysroot; system development packages are unnecessary. The default build disables MPI.
+The committed `pixi.lock` supplies binary Python, CMake, Ninja, compilers, Boost, serial HDF5, OpenBLAS/LAPACK, and Python dependencies. The helper selects these libraries for both the SDK and bindings, including on machines with Homebrew or other system installations. Linux x64/ARM64 and macOS Intel/ARM64 are included. The lockfile targets Linux with glibc 2.28+/kernel 4.18+ and macOS 13+. Linux uses an environment-provided compiler and sysroot; system development packages are unnecessary. The default build disables MPI.
 
 ## Windows
 
@@ -42,6 +42,6 @@ Configure your editor to use `.pixi/envs/default/bin/python` on Unix or `_build/
 
 ## Maintain the environments
 
-Use `pixi update` to intentionally refresh the Unix lockfile, then validate the developer setup on Linux and macOS. Ordinary setup uses `--locked` so it cannot silently change dependencies. Windows Python requirements are in `.github/scripts/dev-requirements.txt` and are installed as binary wheels. The helper updates its isolated environment when that file changes. Native Windows library pins come from `.github/dependencies.json`; changing a checksum selects a new verified dependency directory. Changes to the lockfile or Windows dependency inputs automatically refresh the SDK and binding CMake configurations, preventing stale package locations.
+Use `pixi update` to intentionally refresh the Unix lockfile, then validate the developer setup on Linux and macOS. Ordinary setup uses `--locked` so it cannot silently change dependencies. Windows Python requirements are in `.github/scripts/dev-requirements.txt` and are installed as binary wheels. The helper updates its isolated environment when that file changes. Native Windows library pins come from `.github/dependencies.json`; changing a checksum selects a new verified dependency directory. Changes to the helper, lockfile, or Windows dependency inputs automatically refresh the SDK and binding CMake configurations, preventing stale package locations.
 
 The binary exports currently come from the repository recorded in that manifest. Before moving upstream ownership, publish a complete dependency release under `ALPSim/ALPS`, import its checksums, and validate it. Do not change the repository field to a location that has not published the archives. See [CI dependency maintenance](../CONTRIBUTING.md#ci-dependency-binaries).

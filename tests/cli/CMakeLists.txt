@@ -7,7 +7,8 @@ add_test(NAME parameter_conversion
   COMMAND ${CMAKE_COMMAND} -Dxml_program=$<TARGET_FILE:parameter2xml>
     -Dhdf5_program=$<TARGET_FILE:parameter2hdf5>
     -P ${CMAKE_CURRENT_SOURCE_DIR}/parameter_conversion.cmake)
-set_property(TEST parameter_conversion PROPERTY LABELS cli)
+set_tests_properties(parameter_conversion PROPERTIES LABELS cli
+  ENVIRONMENT_MODIFICATION "ALPS_XML_PATH=set:${PROJECT_SOURCE_DIR}/src/alps/resources")
 
 add_executable(spin_simulation spin_simulation.cpp)
 target_link_libraries(spin_simulation PRIVATE spinmc_impl)

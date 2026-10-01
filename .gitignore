@@ -1,3 +1,6 @@
+# Local contributor/agent instructions
+/AGENTS.md
+
 # Build and generated directories
 /build/
 /_build/
@@ -17,7 +20,7 @@ compile_commands.json
 /tutorials/hybridization/hybdoc.pdf
 
 # Lattice files the tutorials tell the reader to generate with build_lattice.py
-tutorials/dmrg-*/my_lattice.xml
+tutorials/dmrg/*/my_lattice.xml
 
 # Editors and operating systems
 .idea/

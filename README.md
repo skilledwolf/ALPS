@@ -12,7 +12,7 @@ Start with the [tutorial guide](tutorials/README.md): run your first simulation,
 
 ## Installation
 
-For current binary, source, and Spack installation instructions, see the [ALPS installation website](https://alps.comp-phys.org/install/).
+For this checkout, start with the [managed developer setup](docs/development.md) to build the C++ SDK and editable Python package with binary dependencies. Use [CONTRIBUTING.md](CONTRIBUTING.md#getting-started-with-the-code) for manual source builds and custom toolchains. The [ALPS installation website](https://alps.comp-phys.org/install/) also covers upstream releases and Spack; its combined Boost.Python source-build instructions use a different interface from this SDK checkout.
 
 Source builds require **CMake 3.27 or newer**. If your system provides an older version, follow the [CMake and Ninja setup](CONTRIBUTING.md#install-cmake-and-ninja) for pip installation on Linux, macOS, and Windows, or official binary downloads. For the full build instructions, including MSVC/vcpkg presets for Windows x64 and ARM64 and the exported CMake SDK target, see [the development setup](CONTRIBUTING.md#getting-started-with-the-code).
 

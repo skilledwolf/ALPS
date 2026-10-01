@@ -126,11 +126,23 @@ def configuration(directory, dependency_prefix=None, architecture=None, testing=
             f"-DCMAKE_TOOLCHAIN_FILE={dependency_prefix / 'scripts/buildsystems/vcpkg.cmake'}",
             f"-DVCPKG_INSTALLED_DIR={dependency_prefix / 'installed'}",
             f"-DVCPKG_TARGET_TRIPLET={architecture}-windows",
-            "-DVCPKG_MANIFEST_MODE=OFF", "-DX_VCPKG_APPLOCAL_DEPS_SERIALIZED=ON",
+            "-DVCPKG_MANIFEST_MODE=OFF",
         ]
         options += ["-DCMAKE_C_COMPILER=cl", "-DCMAKE_CXX_COMPILER=cl"]
     else:
-        shared = [f"-DCMAKE_PREFIX_PATH={dependency_prefix}"]
+        # A prefix alone does not isolate FindHDF5: it can discover a system
+        # config package before trying the environment's h5cc wrapper. Generic
+        # selects Conda's LP64 libblas/liblapack dispatch libraries rather than
+        # Apple's Accelerate or a differently named system OpenBLAS library.
+        shared = [
+            f"-DCMAKE_PREFIX_PATH={dependency_prefix}",
+            f"-DBoost_ROOT={dependency_prefix}",
+            f"-DHDF5_ROOT={dependency_prefix}",
+            "-DHDF5_NO_FIND_PACKAGE_CONFIG_FILE=ON",
+            "-DBLA_VENDOR=Generic", "-DBLA_STATIC=OFF", "-DBLA_PREFER_PKGCONFIG=OFF",
+            "-DCMAKE_FIND_USE_PACKAGE_REGISTRY=OFF",
+            "-DCMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY=OFF",
+        ]
     return options + shared, shared
 
 
@@ -190,7 +202,7 @@ def main():
         return run(args.arguments, env=environment).returncode
     # CMake otherwise preserves package locations from the previous dependency
     # set. SDK and bindings have separate stamps because either can build alone.
-    inputs = ([ROOT / ".github/dependencies.json", ROOT / ".github/scripts/dev-requirements.txt"]
+    inputs = [ROOT / ".github/scripts/dev.py"] + ([ROOT / ".github/dependencies.json", ROOT / ".github/scripts/dev-requirements.txt"]
               if windows else [ROOT / "pixi.lock"])
     fingerprint = hashlib.sha256(b"\0".join(path.read_bytes() for path in inputs)).hexdigest()
     stamps = {name: directory / name / "alps-environment.sha256" for name in ("sdk", "bindings")}
@@ -218,7 +230,7 @@ def main():
         run(["ctest", "--test-dir", directory / "sdk", "--output-on-failure", "--no-tests=error"], env=environment)
         if not args.cpp_only:
             environment["PYALPS_TEST_DOWNSTREAM_EXPORT"] = "1"
-            run([sys.executable, "-m", "pytest", "tests/pyalps", "tests/cmake", "-q"], env=environment)
+            run([sys.executable, "-m", "pytest", "tests/ci/test_dev_setup.py", "tests/pyalps", "tests/cmake", "-q"], env=environment)
     print(f"ALPS is ready. SDK: {directory / 'install'}\n"
           "Run programs with: python .github/scripts/dev.py run <command>\n"
           "After C++ changes, rerun this command; Python edits are already live.")

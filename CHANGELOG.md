@@ -14,6 +14,7 @@ Release notes and migration guidance for ALPS. Changes awaiting release are coll
 
 ### Changed
 
+- Numbered tutorials are grouped by topic, for example `tutorials/alpsize/01-cmake` and `tutorials/mc/02-susceptibilities`. The optional tutorials installation uses the same layout.
 - Ordinary source and wheel CI consume checksum-pinned dependency binaries. A separate maintenance workflow publishes Boost archives and standalone Windows dependency SDKs only when needed; missing binaries fail instead of triggering source builds.
 - Source and wheel CI cache ALPS compilation with ccache, including MSVC Debug builds. Normal Linux and Windows jobs use four compiler processes; macOS and memory-heavy jobs retain two. Job summaries report phase timings and actual cache hits separately from cache restoration.
 - Python requires GIL-enabled CPython 3.12 or newer. Native wheels use the CPython 3.12 stable ABI (`cp312-abi3`), with one build per platform/architecture tested across Python 3.12–3.14. Downstream nanobind extensions exchanging ALPS objects must also enable `STABLE_ABI` and be rebuilt. Free-threaded Python is unsupported.
@@ -55,6 +56,13 @@ Release notes and migration guidance for ALPS. Changes awaiting release are coll
 - Obsolete application-test scaffolding, the unused SSE2 tutorial, a committed editor cache, and the generated hybridization PDF. The active XML CLI fixture now lives beside its test.
 
 ### Fixed
+
+- Windows Ninja builds serialize linking and post-link DLL staging with a dedicated pool, preventing concurrent writes to shared runtime files while keeping compilation parallel.
+- DMRG layout and seed test fixtures register the quantum numbers required by built-in operators, avoiding assertions in Debug builds. Windows CI bounds individual native tests to ten minutes.
+- Installed and Python-bundled programs retain runtime search paths for dependencies staged inside the source/build tree, including direct Boost dependencies on Linux where library RUNPATH is not transitive.
+- Managed Unix development builds select Pixi's Boost, HDF5, and LP64 BLAS/LAPACK for both the SDK and Python bindings, avoiding incompatible Homebrew runtime libraries. Helper updates refresh cached CMake discovery automatically.
+- The parameter-conversion regression finds source XML resources before SDK installation. MPI wheel validation installs Matplotlib before its offline wheel install, and developer setup CI exercises ordinary Windows x64/ARM64 shells.
+- Source-build documentation routes contributors to the current checkout instructions and includes wheel tooling, Linux editable-build dependencies, persistent build directories, and the core-only SDK/Python recipe.
 
 - Linux wheels give copied SDK programs the wheel's library lookup path even when the SDK uses `lib64` or a custom library directory. Installed SDKs retain lookup paths for imported dependencies staged inside the project tree.
 

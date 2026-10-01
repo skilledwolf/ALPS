@@ -48,7 +48,7 @@ def test_embedded_defaults_and_mpi_isolation(tmp_path):
 
 
 @pytest.mark.parametrize("source", [
-    "tutorials/examples", "tutorials/code-07-mcmain-mcbase/heisenberg/o_n_model",
+    "tutorials/examples", "tutorials/code/07-mcmain-mcbase/heisenberg/o_n_model",
 ])
 @pytest.mark.parametrize("testing", ["ON", "OFF"])
 def test_standalone_examples_respect_build_testing(tmp_path, source, testing):

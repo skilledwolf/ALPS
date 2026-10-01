@@ -48,7 +48,43 @@ def test_sdk_and_binding_configuration_disable_vcpkg_builds(tmp_path):
 def test_unix_build_and_bindings_use_the_same_binary_environment(tmp_path):
     sdk, bindings = dev.configuration(tmp_path / "dev", tmp_path / "pixi")
     assert f"-DCMAKE_PREFIX_PATH={tmp_path / 'pixi'}" in sdk
-    assert bindings == [f"-DCMAKE_PREFIX_PATH={tmp_path / 'pixi'}"]
+    assert all(option in sdk for option in bindings)
+    assert f"-DHDF5_ROOT={tmp_path / 'pixi'}" in bindings
+    assert "-DBLA_VENDOR=Generic" in bindings
+
+
+@pytest.mark.skipif(sys.platform == "win32" or not os.environ.get("PIXI_PROJECT_ROOT"),
+                    reason="requires the managed Unix binary dependencies")
+def test_managed_dependencies_ignore_a_competing_hdf5_config(tmp_path):
+    prefix = Path(os.environ["CONDA_PREFIX"]).resolve()
+    competitor = tmp_path / "system-hdf5"
+    competitor.mkdir()
+    (competitor / "hdf5-config.cmake").write_text(
+        'message(FATAL_ERROR "Selected a competing system HDF5 config")\n')
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "CMakeLists.txt").write_text('''
+cmake_minimum_required(VERSION 3.27)
+project(managed_dependencies LANGUAGES C CXX)
+find_package(Boost 1.76 CONFIG REQUIRED COMPONENTS program_options)
+find_package(HDF5 MODULE REQUIRED COMPONENTS C)
+find_package(BLAS REQUIRED)
+find_package(LAPACK REQUIRED)
+file(GENERATE OUTPUT "${CMAKE_BINARY_DIR}/libraries.txt" CONTENT
+  "$<TARGET_FILE:Boost::program_options>\\n$<TARGET_FILE:hdf5::hdf5>\\n${BLAS_LIBRARIES}\\n${LAPACK_LIBRARIES}\\n")
+''')
+    _, shared = dev.configuration(tmp_path / "dev", prefix)
+    build = tmp_path / "build"
+    result = subprocess.run(["cmake", "-S", str(source), "-B", str(build), "-G", "Ninja",
+                             f"-DHDF5_DIR={competitor}", *shared],
+                            capture_output=True, text=True)
+    assert result.returncode == 0, result.stdout + result.stderr
+    libraries = (build / "libraries.txt").read_text().splitlines()
+    assert len(libraries) == 4
+    for group in libraries:
+        assert group
+        for library in group.split(";"):
+            assert Path(library).is_relative_to(prefix), library
 
 
 def test_bootstrap_does_not_install_into_callers_python(tmp_path, monkeypatch):
@@ -101,6 +137,9 @@ def test_dependency_update_refreshes_sdk_and_bindings_independently(tmp_path, mo
     monkeypatch.setenv("CONDA_PREFIX", str(tmp_path / "environment"))
     lock = tmp_path / "pixi.lock"
     lock.write_text("first dependencies")
+    helper = tmp_path / ".github/scripts/dev.py"
+    helper.parent.mkdir(parents=True)
+    helper.write_text("first helper")
     commands = []
     def execute(command, **kwargs):
         commands.append([str(value) for value in command])
@@ -123,4 +162,7 @@ def test_dependency_update_refreshes_sdk_and_bindings_independently(tmp_path, mo
     lock.write_text("updated dependencies")
     assert build("--cpp-only") == (True, False)
     assert build() == (False, True)
+    assert build() == (False, False)
+    helper.write_text("updated dependency selection")
+    assert build() == (True, True)
     assert build() == (False, False)
