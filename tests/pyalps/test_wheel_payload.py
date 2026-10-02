@@ -151,6 +151,18 @@ def _library_stem(name: str) -> str:
     return re.sub(r"-[0-9a-f]{6,}$", "", stem)
 
 
+def test_alps_runtime_components_are_bundled():
+    library_dirs = _library_dirs()
+    if not library_dirs:
+        pytest.skip("no bundled libraries in this install")
+    stems = {_library_stem(path.name) for directory in library_dirs
+             for path in directory.iterdir() if path.is_file()}
+    prefix = "" if sys.platform == "win32" else "lib"
+    assert {prefix + name for name in
+            ("alps", "alps_utilities", "alps_hdf5", "alps_params", "alps_osiris",
+             "alps_xml", "alps_cli")} <= stems
+
+
 def test_no_shared_library_is_bundled_twice():
     library_dirs = _library_dirs()
     if not library_dirs:
