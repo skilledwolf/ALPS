@@ -15,7 +15,7 @@
 
 #include <alps/parseargs.hpp>
 #include <alps/stop_callback.hpp>
-#include <alps/ngs/make_parameters_from_xml.hpp>
+#include "spin_config.hpp"
 
 #include <boost/chrono.hpp>
 #include <boost/filesystem/path.hpp>
@@ -33,15 +33,7 @@ int main(int argc, char *argv[]) {
         // TODO: make load_params
         alps::parameters_type<heisenberg_sim>::type parameters;
         // TODO: better check the first few bytes. provide an ALPS function to do so
-        if (boost::filesystem::path(options.input_file).extension().string() == ".xml") {
-            parameters = alps::make_parameters_from_xml(options.input_file);
-        }
-        else if (boost::filesystem::path(options.input_file).extension().string() == ".h5") {
-            alps::hdf5::archive(options.input_file)["/parameters"] >> parameters;
-        }
-        else {
-            parameters = alps::parameters_type<heisenberg_sim>::type(options.input_file);
-        }
+        parameters = load_spin_parameters(options.input_file);
         //~ alps::Parameters old_parameters = alps::make_deprecated_parameters(parameters);
 
         //~ heisenberg_sim sim(parameters, old_parameters);

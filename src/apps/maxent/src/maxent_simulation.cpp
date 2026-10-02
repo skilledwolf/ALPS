@@ -16,6 +16,7 @@
 #include "maxent.hpp"
 #include <alps/config.h> // needed to set up correct bindings
 #include <alps/hdf5/ublas/vector.hpp>
+#include <alps/hdf5/vector.hpp>
 #include <alps/ngs/signal.hpp>
 #include <boost/filesystem/operations.hpp>
 #include <boost/numeric/bindings/lapack/driver/gesv.hpp>
@@ -26,21 +27,19 @@
 
 
 
-MaxEntSimulation::MaxEntSimulation(const alps::params &parms,const std::string &outfile)
-: MaxEntHelper(parms)
+MaxEntSimulation::MaxEntSimulation(const alps::params &parms,const alps::maxent::data& data,const std::string &outfile,bool write_text)
+: MaxEntHelper(parms, data)
 , alpha((int)parms["N_ALPHA"])              //This is the # of \alpha parameters that should be tried.
-, norm(parms["NORM"]|1.0)                                             //The integral is normalized to NORM (use e.g. for self-energies
-, max_it(parms["MAX_IT"]|1000)                                       //The number of iterations done in the root finding procedure
-, name(outfile,0,outfile.size()-6)
-, Kernel_type(parms["KERNEL"]|"")
+, norm(parms["NORM"])                                             //The integral is normalized to NORM (use e.g. for self-energies
+, max_it(parms["MAX_IT"])                                       //The number of iterations done in the root finding procedure
+, name(boost::filesystem::path(outfile).replace_extension().string()+".")
+, Kernel_type(parms["KERNEL"])
+, output_file_(outfile)
 , finished(false)
-, verbose(parms["VERBOSE"]|false)
-, text_output(parms["TEXT_OUTPUT"]|false)
-, self(parms["SELF"]|false)
+, verbose(parms["VERBOSE"])
+, text_output(write_text)
+, self(parms["SELF"])
 {
-  // Preserve the seed conversion and archive signal setup previously supplied
-  // by mcbase, even though deterministic MaxEnt does not consume random values.
-  (void)static_cast<int>(parms["SEED"] | 42);
   alps::ngs::signal::listen();
   if(norm != 1.) std::cerr<<"WARNING: Redefinition of parameter NORM: Input (and output) data are assumed to be normalized to NORM."<<std::endl;
   const double alpha_min = parms["ALPHA_MIN"];                                          //Smallest value of \alpha that is tried
@@ -57,12 +56,9 @@ MaxEntSimulation::~MaxEntSimulation()
 
 bool MaxEntSimulation::run(boost::function<bool()> const& stop_callback)
 {
-  // Keep mcbase's callback ordering: check before a step and once after it,
-  // even when the step finished. One step computes the complete alpha sweep.
-  bool stopped = false;
-  while (!(stopped = stop_callback()) && !finished)
-    dostep();
-  return !stopped;
+  // One step computes the complete alpha sweep and writes the result.
+  while (!finished && !stop_callback()) dostep();
+  return finished;
 }
 
 
@@ -137,7 +133,10 @@ void MaxEntSimulation::dostep()
   const double factor = chi_scale_factor(spectra[max_a], chi_sq[max_a], alpha[max_a]);
   if (verbose) std::cerr << "chi scale factor: " << factor << std::endl;
   
-  alps::hdf5::archive ar(name+"out.h5", alps::hdf5::archive::WRITE);
+  alps::hdf5::archive ar(output_file_, alps::hdf5::archive::WRITE);
+  std::vector<double> widths(nfreq());
+  for(int i=0;i<nfreq();++i) widths[i]=bin_width(i);
+  ar["/spectrum/widths"] << widths;
   ar << alps::make_pvp("/alpha/values",alpha);
   
   vector_type om(spectra[0].size());
@@ -191,19 +190,22 @@ void MaxEntSimulation::dostep()
   ar << alps::make_pvp("/spectrum/variance",varspec);
   
   if(Kernel_type=="anomalous"){ //for the anomalous function: use A(omega)=Im Sigma(omega)/(pi omega).
-    std::ofstream maxspec_anom_str((name+"maxspec_anom.dat").c_str());
-    std::ofstream avspec_anom_str (boost::filesystem::absolute(name+"avspec_anom.dat", dir).string().c_str());
+    std::ofstream maxspec_anom_str, avspec_anom_str;
+    if (text_output) {
+      maxspec_anom_str.open(boost::filesystem::absolute(name+"maxspec_anom.dat", dir).string());
+      avspec_anom_str.open(boost::filesystem::absolute(name+"avspec_anom.dat", dir).string());
+    }
     vector_type spec(avspec.size());
     for (std::size_t  i=0; i<avspec.size(); ++i){ 
       //if(omega_coord(i)>=0.)
       spec[i] = avspec[i]*omega_coord(i)*boost::math::constants::pi<double>();
-      avspec_anom_str << omega_coord(i) << " " << avspec[i]*omega_coord(i)*boost::math::constants::pi<double>()<<std::endl;
+      if (text_output) avspec_anom_str << omega_coord(i) << " " << avspec[i]*omega_coord(i)*boost::math::constants::pi<double>()<<std::endl;
     }
     ar << alps::make_pvp("/spectrum/anomalous/average",spec);
     for (std::size_t i=0; i<spectra[0].size(); ++i){
       //if(omega_coord(i)>=0.)
       spec[i] = spectra[max_a][i]*norm*omega_coord(i)*boost::math::constants::pi<double>();
-      maxspec_anom_str << omega_coord(i) << " " << spectra[max_a][i]*norm*omega_coord(i)*boost::math::constants::pi<double>() << std::endl;
+      if (text_output) maxspec_anom_str << omega_coord(i) << " " << spectra[max_a][i]*norm*omega_coord(i)*boost::math::constants::pi<double>() << std::endl;
     }
     ar << alps::make_pvp("/spectrum/anomalous/maximum",spec);
   }
@@ -216,7 +218,7 @@ void MaxEntSimulation::dostep()
       std::ofstream avspec_anom_str(boost::filesystem::absolute(name+"maxspec_bose.dat", dir).string().c_str());
       for (std::size_t  i=0; i<avspec.size(); ++i){
       //if(omega_coord(i)>=0.)
-        avspec_anom_str << omega_coord(i) << " " << avspec[i]*omega_coord(i)*boost::math::constants::pi<double>()<<std::endl;
+        if (text_output) avspec_anom_str << omega_coord(i) << " " << avspec[i]*omega_coord(i)*boost::math::constants::pi<double>()<<std::endl;
       }
     }
     ar << alps::make_pvp("/spectrum/bosonic/average",spec);
@@ -227,14 +229,14 @@ void MaxEntSimulation::dostep()
     if (text_output) {
       std::ofstream maxspec_anom_str (boost::filesystem::absolute(name+"avspec_bose.dat", dir).string().c_str());
       for (std::size_t i=0; i<spectra[0].size(); ++i){
-        maxspec_anom_str << omega_coord(i) << " " << spectra[max_a][i]*norm*omega_coord(i)*boost::math::constants::pi<double>() << std::endl;
+        if (text_output) maxspec_anom_str << omega_coord(i) << " " << spectra[max_a][i]*norm*omega_coord(i)*boost::math::constants::pi<double>() << std::endl;
       }
     }
     ar << alps::make_pvp("/spectrum/bosonic/maximum",spec);
   }
 
   //don't understand why this was commented out...
-  if(self){
+  if(self && text_output){
     // A quick word about normalization here. Usually we have G(iomega_n) = -1/pi \int_{-\infty}^\infty Im G(omega)/(omega_n - omega).
     // However, we are not interested in Im G but instead in A. In the case of the self-energy we have, analogously,
     // Sigma(i\omega_n) = -1/pi \int_{-\infty}^\infty Im \Sigma(omega)/(omega_n - omega); and we define A_\Sigma(omega) = -1/pi Sigma(omega). This makes

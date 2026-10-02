@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: MIT
-#include <alps/ngs/params.hpp>
+#include <alps/params.hpp>
+#include <alps/hdf5/archive.hpp>
+#include <boost/serialization/complex.hpp>
+#include <filesystem>
 #include <boost/archive/text_iarchive.hpp>
 #include <boost/archive/text_oarchive.hpp>
 #include <sstream>
@@ -14,14 +17,12 @@ int main() {
     parameters["count"] = 3;
     parameters["values"] = std::vector<double>{1., 2.};
     parameters["label"] = "sample";
-    require(parameters.size() == 3 && !parameters.defined("absent"));
-    require((parameters["absent"] | 7) == 7 && parameters.find("absent") == nullptr);
-    require(parameters["values"] + std::vector<double>{3., 4.}
-            == std::vector<double>({4., 6.}));
+    require(parameters.size() == 3 && !parameters.exists("absent"));
+    require(parameters.value_or("absent",7) == 7 && parameters.find("absent") == parameters.end());
     const alps::params copy(parameters);
-    require(copy["count"].cast<int>() == 3 && copy.begin()->first == "count");
+    require(copy["count"].as<int>() == 3 && copy.begin()->first == "count");
     bool caught = false;
-    try { (void)copy["absent"].cast<int>(); }
+    try { (void)copy["absent"].as<int>(); }
     catch (const std::runtime_error&) { caught = true; }
     require(caught);
 
@@ -32,18 +33,18 @@ int main() {
     }
     {
         alps::hdf5::archive archive(filename, "r");
-        alps::params restored(archive);
-        require(restored["values"].cast<std::vector<double>>() == std::vector<double>({1., 2.}));
-        require(restored["label"].cast<std::string>() == "sample");
+        alps::params restored; archive["/parameters"] >> restored;
+        require(restored["values"].as<std::vector<double>>() == std::vector<double>({1., 2.}));
+        require(restored["label"].as<std::string>() == "sample");
     }
-    boost::filesystem::remove(filename);
+    std::filesystem::remove(filename);
     std::stringstream buffer;
     { boost::archive::text_oarchive archive(buffer); archive << copy; }
     alps::params restored;
     { boost::archive::text_iarchive archive(buffer); archive >> restored; }
-    require(restored["count"].cast<int>() == 3);
+    require(restored["count"].as<int>() == 3);
     restored.erase("count");
-    require(restored.size() == 2 && !restored.defined("count"));
+    require(restored.size() == 2 && !restored.exists("count"));
     std::ostringstream output;
     output << restored;
     require(output.str().find("label = sample") != std::string::npos);

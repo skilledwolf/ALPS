@@ -18,7 +18,7 @@
 #include <alps/ngs/mutex.hpp>
 #include <alps/ngs/config.hpp>
 #include <alps/ngs/signal.hpp>
-#include <alps/ngs/params.hpp>
+#include <alps/params.hpp>
 #include <alps/ngs/mcresults.hpp> // TODO: replace by new alea
 #include <alps/ngs/mcobservables.hpp> // TODO: replace by new alea
 #include <alps/ngs/thread_exceptions.hpp>
@@ -75,7 +75,7 @@ namespace alps {
 
             mcbase_ng(parameters_type const & p, std::size_t seed_offset = 0)
                   // TODO: this ist not the best solution - any idea?
-                : random(boost::mt19937((p["SEED"] | 42) + seed_offset), boost::uniform_real<>())
+                : random(boost::mt19937((p.value_or("SEED", 42)) + seed_offset), boost::uniform_real<>())
                 , params(p)
                 , data_mutex(new noop_lockable())
                 , result_mutex(new noop_lockable())

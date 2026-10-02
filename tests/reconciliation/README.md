@@ -14,6 +14,12 @@ silently changes a value. `--expect` additionally rejects any measurement change
 from an earlier report. A known defect recorded in a baseline is not a desired
 contract: review and update that expectation when fixing it.
 
+The recorded pre-consolidation baseline is historical: `alps.params.v1` deliberately
+breaks old parameter checkpoint interchange. Rerunning the updated probe against
+this branch must produce a new report, not match the old `--expect` file. The
+archive payload checks still apply; ALPSCore's INI/argv/default bookkeeping is
+not part of the new params layer.
+
 ## Build and run
 
 Use the already installed ALPS SDK and its compiler/dependencies. Install only

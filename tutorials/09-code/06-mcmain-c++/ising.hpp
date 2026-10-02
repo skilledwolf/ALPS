@@ -17,7 +17,7 @@
 #include <alps/hdf5/archive.hpp>
 #include <alps/hdf5/vector.hpp>
 
-#include <alps/ngs/params.hpp>
+#include <alps/params.hpp>
 #include <alps/ngs/mcobservables.hpp>
 #include <alps/ngs/mcresults.hpp>
 #include <alps/ngs/observablewrappers.hpp>

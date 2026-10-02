@@ -1,31 +1,25 @@
-/*****************************************************************************
-*
-* ALPS Project Applications
-*
-* Copyright (C) 2010 by Sebastian  Fuchs <fuchs@comp-phys.org>
-*                       Thomas Pruschke <pruschke@comp-phys.org>
-*                       Matthias Troyer <troyer@comp-phys.org>
-*
-* ALPS Project: https://alps.comp-phys.org/
-* SPDX-License-Identifier: MIT
-*
-*****************************************************************************/
-
+// Copyright (C) 2010 Sebastian Fuchs, Thomas Pruschke, Matthias Troyer.
+// Modifications (C) 2026 ALPS Collaboration. SPDX-License-Identifier: MIT
 #include "maxent.hpp"
+#include <alps/hdf5/archive.hpp>
+#include <alps/maxent.hpp>
 #include <alps/ngs/signal.hpp>
-#include <alps/solvers.hpp>
-#include <boost/bind/bind.hpp>
 #include <boost/date_time/posix_time/posix_time.hpp>
-
-namespace {
-bool stop_requested(boost::posix_time::ptime const& end_time) {
-  static alps::ngs::signal signal;
-  return !signal.empty() || boost::posix_time::second_clock::local_time() > end_time;
-}
-}
-
-void alps::solvers::maxent(alps::params const& parms, std::string const& output_file) {
-  MaxEntSimulation simulation(parms, output_file);
-  simulation.run(boost::bind(&stop_requested, boost::posix_time::second_clock::local_time()
-      + boost::posix_time::seconds(static_cast<int>(parms["MAX_TIME"] | 60))));
+bool alps::solvers::maxent(const params &supplied, const alps::maxent::data &data,
+                           const std::string &output_file, int time_limit, bool text_output) {
+    if (time_limit < 0)
+        throw std::invalid_argument("MaxEnt time limit must be nonnegative");
+    const auto parameters = alps::maxent::prepare(supplied, data);
+    MaxEntSimulation simulation(parameters, data, output_file, text_output);
+    const auto end =
+        boost::posix_time::second_clock::local_time() + boost::posix_time::seconds(time_limit);
+    alps::ngs::signal signal;
+    if (simulation.run([&] {
+            return !signal.empty() || boost::posix_time::second_clock::local_time() > end;
+        })) {
+        alps::hdf5::archive archive(output_file, "a");
+        archive["/parameters"] << parameters;
+        return true;
+    }
+    return false;
 }

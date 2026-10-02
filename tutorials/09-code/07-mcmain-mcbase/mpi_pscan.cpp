@@ -16,7 +16,7 @@
 #include <alps/parseargs.hpp>
 #include <alps/mcmpiadapter.hpp>
 #include <alps/stop_callback.hpp>
-#include <alps/ngs/make_parameters_from_xml.hpp>
+#include "spin_config.hpp"
 
 #include <boost/chrono.hpp>
 #include <boost/tokenizer.hpp>
@@ -71,13 +71,9 @@ int main(int argc, char *argv[]) {
 
             alps::parameters_type<ising_sim>::type parameters;
             if (comm_local.rank() > 0);
-            else if (boost::filesystem::path(infile).extension().string() == ".xml")
-                parameters = alps::make_parameters_from_xml(infile);
-            else if (boost::filesystem::path(infile).extension().string() == ".h5")
-                alps::hdf5::archive(infile)["/parameters"] >> parameters;
-            else
-                parameters = alps::parameters_type<ising_sim>::type(infile);
-            broadcast(comm_local, parameters);
+            else parameters = load_spin_parameters(infile);
+
+        broadcast(comm_local, parameters);
 
             alps::mcmpiadapter<ising_sim> sim(parameters, comm_local, alps::check_schedule(options.tmin, options.tmax));
 

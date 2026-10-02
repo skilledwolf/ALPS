@@ -1,6 +1,6 @@
 # Module layout and ALPSCore reconciliation
 
-ALPS sources are grouped by responsibility to prepare MaxEnt, HDF5 and typed params for ALPSCore reconciliation. Utilities, HDF5, params, Osiris, XML and command-line parsing have separate runtime libraries. Other source modules contribute to the existing `ALPS::alps` library or its shared compile interface. This cleanup imports no ALPSCore implementation and preserves scientific algorithms.
+ALPS sources are grouped by responsibility to prepare MaxEnt, HDF5 and typed params for ALPSCore reconciliation. Utilities, HDF5, params, Osiris, XML and command-line parsing have separate runtime libraries. Other source modules contribute to the existing `ALPS::alps` library or its shared compile interface. The first consolidation adapts the ALPSCore dictionary/value model in `params`; MaxEnt now reads TOML configurations through `run_config`. Scientific algorithms are preserved.
 
 The [separate-process probes](../../tests/reconciliation/README.md) record the pinned ALPSCore reference and reproduce measured archive/params compatibility checks.
 
@@ -8,7 +8,7 @@ Before replacing HDF5, agree on the generic serialization contract with the new 
 
 ## Source ownership
 
-Each module uses `include/`, `src/` and `tests/` where applicable. Public include spellings describe the API, independently of the physical owner: for example, NGS measurement headers live in `alea/include/alps/ngs/`, while typed parameters live in `params/include/alps/ngs/`.
+Each module uses `include/`, `src/` and `tests/` where applicable. Public include spellings describe the API, independently of the physical owner: for example, NGS measurement headers live in `alea/include/alps/ngs/`, while typed parameters live in `params/include/alps/`.
 
 | Source module under `src/alps/` | Responsibility | Binary or compile owner |
 | --- | --- | --- |
@@ -18,7 +18,8 @@ Each module uses `include/`, `src/` and `tests/` where applicable. Public includ
 | `numeric_io/` | HDF5 adapters for numerical matrices and vectors | `ALPS::numeric_io` |
 | `ietl/` | Iterative eigensolver headers under `include/ietl/` | `ALPS::headers` |
 | `hdf5/` | Archive API, container adapters, shared context registry and signal cleanup | `ALPS::hdf5` |
-| `params/` | Typed values, lookup/proxies, iteration and HDF5 checkpoints | `ALPS::params`; `adapters/` contributes to `ALPS::alps` |
+| `params/` | ALPSCore-derived owning values, checked lookup/conversion and versioned HDF5 checkpoints | `ALPS::params`; `adapters/` contributes to `ALPS::alps` |
+| `run_config/` | TOML run files, application schemas, defaults, validation and provenance | `ALPS::run_config` |
 | `osiris/` | Dump serialization, process/communication state and XDR implementation | `ALPS::osiris` |
 | `xml/` | XML parsing, handlers, attributes and output streams | `ALPS::xml` |
 | `cli/` | Existing `mcoptions` and `parseargs` command-line grammars | `ALPS::cli` |
@@ -48,15 +49,17 @@ All first-party public headers have explicit CMake `HEADERS` file sets. These de
 
 `ALPS::hdf5` owns archive symbols, exception exports, shared archive state and the NGS signal handler that closes archives. It links utilities, HDF5, Boost.Filesystem, Boost.Thread and platform threads. Archive and signal code remain together to preserve cleanup behavior. A parallel HDF5 provider can bring its own MPI dependency.
 
-`ALPS::params` owns typed values, proxies, checkpoint I/O and the `paramvalue_source` interface used by Python bindings. It links HDF5 and Boost.Serialization; MPI builds additionally link MPI and Boost.MPI. Its parameter-file constructor, XML input and older `Parameters` conversion remain in `params/adapters/`, compiled into `ALPS::alps`. The two conversion headers now live in `params/adapters/include/alps/ngs/`, retaining their public names through the aggregate interface rather than the typed params target. The older `alps::Parameters` implementation itself belongs to `legacy_parameters/`.
+`ALPS::params` owns ALPSCore-derived dictionary/value storage and explicit `alps.params.v1` checkpoints. It links HDF5 and Boost.Serialization; MPI builds also use MPI and Boost.MPI. Python values are eagerly copied into native storage. The file constructor, XML reader, proxies and Python `paramvalue_source` interface are removed. The remaining `params/adapters/` function converts typed scalars to the older model/lattice `Parameters` API for live internal callers; it is compiled into `ALPS::alps`.
+
+`ALPS::run_config` applies separate application TOML schemas, defaults, type/range checks, relative-path resolution and run provenance. It uses toml++ headers privately in one translation unit, including when the package manager provides a compiled toml++ library. Parsing and application orchestration do not belong to the dictionary.
 
 `ALPS::osiris` owns dump/process APIs, XDR symbols and the communication state used by `comm_init()` and `is_master()`. It links Boost.Serialization/Filesystem and, when enabled, MPI. This gives communication state one owner and permits MaxEnt to preserve existing diagnostic gating without linking the simulation runtime.
 
-`ALPS::xml` owns XML parsing, attributes, handlers, output streams and stylesheet lookup, with Boost.Filesystem and Boost.Regex dependencies. XML file-to-parameter conversion still belongs to the params adapters in `ALPS::alps`. The separate `plotting/` header owner keeps `<alps/plot.h>` and its older `Parameters` dependency outside the XML component.
+`ALPS::xml` owns XML parsing, attributes, handlers, output streams and stylesheet lookup, with Boost.Filesystem and Boost.Regex dependencies. The separate `plotting/` header owner keeps `<alps/plot.h>` and its older `Parameters` dependency outside the XML component.
 
 `ALPS::cli` owns the existing `mcoptions` and `parseargs` implementations, linking utilities and Boost.ProgramOptions. Their installed headers remain `<alps/ngs/mcoptions.hpp>` and `<alps/parseargs.hpp>`. The two existing option grammars, defaults, filename rules and error behavior are preserved; these parsers do not read parameter files.
 
-`ALPS::maxent` links params, HDF5, utilities, Osiris and its Boost/numerical providers. It owns its deterministic run loop; its numerical calculations and stop-callback ordering are preserved. The `maxent` executable adds `ALPS::cli` for the existing `mcoptions` parser and reads typed params from HDF5 directly. Neither the solver nor executable links `ALPS::alps`. Its public callable API remains `<alps/solvers.hpp>`.
+`ALPS::maxent` links run configuration, params, HDF5, utilities, Osiris and its Boost/numerical providers. Numerical algorithms are preserved. Its entry point takes resolved parameters, a separate scientific-data object and explicit output/execution settings; its return value reports whether a result was produced. The CLI reads a TOML run file and supports validation before output creation. Neither the solver nor executable links `ALPS::alps`. Public declarations are in `<alps/maxent.hpp>` and `<alps/solvers.hpp>`.
 
 `ALPS::alps` links the extracted runtime components publicly. These libraries follow `BUILD_SHARED_LIBS`, with component-specific generated export headers. Python extensions require shared runtime libraries and package one copy of every component in `ALPS_RUNTIME_TARGETS`. Rebuild downstream binaries after the XML and CLI extractions, as after the earlier library splits.
 
@@ -78,7 +81,7 @@ Update the owning module's CMake declarations when adding files or dependencies;
 
 ### Recorded architectural debt
 
-With application builds enabled, `alps-module-architecture.json` inventories 35 source owners, 517 public include spellings and 654 production files. The owners include `numeric_io`, `cli`, `plotting`, separate MaxEnt solver/executable owners, and eight [tool groups](../tools/README.md). Tool ownership includes historical inactive C++ sources without adding executable targets. These are ownership counts, not counts of independent libraries or passing tests. The earlier code checkpoint `f6f4501c0` had 24 owners, before the CLI and plotting modules were separated.
+With application builds enabled, `alps-module-architecture.json` inventories 36 source owners, 507 public include spellings and 637 production files. The owners include `numeric_io`, `cli`, `plotting`, separate MaxEnt solver/executable owners, and eight [tool groups](../tools/README.md). Tool ownership includes historical inactive C++ sources without adding executable targets. These are ownership counts, not counts of independent libraries or passing tests. The earlier code checkpoint `f6f4501c0` had 24 owners, before the CLI and plotting modules were separated.
 
 The foundation include cycle involving containers, HDF5, numerics, utilities and XML is removed. The current observed include graph retains the separate two-module cycle between `expression` and `legacy_parameters`; it still needs deliberate reconciliation. Dependency declarations constrain new include edges. Regenerate the report after changing module ownership or dependencies.
 
@@ -94,4 +97,4 @@ With `ALPS_BUILD_TESTING=ON`, CTest runs `module_architecture` and writes `<buil
 ctest --test-dir <build-dir> --output-on-failure -L '^(utility|hdf5|params|osiris|parser|cli|maxent)$'
 ```
 
-Run the full native suite for shared-interface changes. The SDK consumers in `tests/cmake/consumer/` exercise aggregate and component links; integration tests for older inputs and observables keep `ALPS::alps`. Check shared/static consumers, installed-header ownership, SDK relocation and Python extension interoperability. The CLI contract checks existing defaults, option spellings, filename rules, help and execution-mode handling. The MaxEnt regression also exercises early stop, callback exceptions and completion ordering. These are validation requirements; this ownership map does not assert that every platform/configuration has passed them.
+Run the full native suite for shared-interface changes. The SDK consumers in `tests/cmake/consumer/` exercise aggregate and component links; integration tests for older inputs and observables keep `ALPS::alps`. Check shared/static consumers, installed-header ownership, SDK relocation and Python extension interoperability. The MaxEnt CLI contract checks TOML schema validation, help, and rejection before output creation. The MaxEnt regression also exercises early stop, callback exceptions and completion and cancellation semantics. These are validation requirements; this ownership map does not assert that every platform/configuration has passed them.

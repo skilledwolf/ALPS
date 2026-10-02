@@ -3,7 +3,7 @@
 #ifdef PROBE_ALPSCORE
 #include <alps/params.hpp>
 #else
-#include <alps/ngs/params.hpp>
+#include <alps/params.hpp>
 #endif
 #include <alps/hdf5/archive.hpp>
 #include <alps/hdf5/complex.hpp>
@@ -33,11 +33,7 @@ template<class F> void report(std::string const& key, F action) {
 }
 
 template<class T, class P> T get(P const& p, std::string const& key) {
-#ifdef PROBE_ALPSCORE
     return p[key].template as<T>();
-#else
-    return p[key].template cast<T>();
-#endif
 }
 
 void semantics() {

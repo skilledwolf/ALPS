@@ -7,7 +7,8 @@ target_sources(alps_solver_headers INTERFACE
   FILE_SET solvers_headers TYPE HEADERS
   BASE_DIRS "${CMAKE_CURRENT_SOURCE_DIR}/include"
   FILES
-    include/alps/solvers.hpp)
+    include/alps/solvers.hpp
+    include/alps/maxent.hpp)
 
 alps_register_module(NAME solvers HEADER_SET solvers_headers
   HEADER_TARGETS alps_solver_headers

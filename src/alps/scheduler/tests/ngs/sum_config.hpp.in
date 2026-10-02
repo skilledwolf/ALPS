@@ -1,0 +1,4 @@
+#include <alps/run_config.hpp>
+inline alps::params load_sum_parameters(const std::string& file) {
+    return alps::load_run_configuration(file,R"schema(@SUM_SCHEMA@)schema").parameters;
+}

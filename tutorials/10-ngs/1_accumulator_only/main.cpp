@@ -12,6 +12,7 @@
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
 #include "ising.hpp"
+#include "spin_config.hpp"
 
 #include <alps/ngs.hpp>
 
@@ -54,7 +55,7 @@ int main(int argc, char *argv[]) {
         boost::filesystem::path checkpoint_file = basename + ".clone0.h5";
         boost::filesystem::path output_file = basename +  ".out.h5";
 
-        alps::parameters_type<ising_sim>::type parameters(input_file);
+        auto parameters = load_spin_parameters(input_file.string());
 
         ising_sim sim(parameters);
 

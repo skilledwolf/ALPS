@@ -1,0 +1,190 @@
+# Copyright (C) 2026 ALPS Collaboration. SPDX-License-Identifier: MIT
+application = "maxent"
+schema_version = 1
+
+[parameters.BETA]
+type = "float64"
+
+[parameters.T]
+type = "float64"
+
+[parameters.NFREQ]
+type = "int64"
+max = 2147483647
+required = true
+min = 4
+
+[parameters.N_ALPHA]
+type = "int64"
+max = 2147483647
+default = 60
+min = 2
+
+[parameters.ALPHA_MIN]
+type = "float64"
+default = 0.01
+
+[parameters.ALPHA_MAX]
+type = "float64"
+default = 10000.0
+
+[parameters.MAX_IT]
+type = "int64"
+max = 2147483647
+default = 1000
+min = 1
+
+[parameters.OMEGA_MIN]
+type = "float64"
+
+[parameters.OMEGA_MAX]
+type = "float64"
+required = true
+
+[parameters.NORM]
+type = "float64"
+default = 1.0
+
+[parameters.DEFAULT_MODEL]
+type = "string"
+default = "flat"
+choices = ["flat", "gaussian", "twogaussians", "shifted gaussian", "double gaussian", "general double gaussian", "linear rise exp decay", "quadratic rise exp decay", "tabulated"]
+
+[parameters.DATASPACE]
+type = "string"
+default = "time"
+choices = ["time", "frequency"]
+
+[parameters.KERNEL]
+type = "string"
+default = "fermionic"
+choices = ["fermionic", "bosonic", "anomalous", "Boris"]
+
+[parameters.FREQUENCY_GRID]
+type = "string"
+default = "linear"
+choices = ["linear", "Lorentzian", "half Lorentzian", "quadratic", "log"]
+
+[parameters.CUT]
+type = "float64"
+default = 0.01
+
+[parameters.SPREAD]
+type = "float64"
+default = 4.0
+
+[parameters.LOG_MIN]
+type = "float64"
+default = 0.0001
+
+[parameters.PARTICLE_HOLE_SYMMETRY]
+type = "bool"
+default = false
+
+[parameters.VERBOSE]
+type = "bool"
+default = false
+
+[parameters.SELF]
+type = "bool"
+default = false
+
+[parameters.ENFORCE_NORMALIZATION]
+type = "bool"
+default = false
+
+[parameters.SIGMA_NORMALIZATION]
+type = "float64"
+
+[parameters.BLOW_UP]
+type = "float64"
+default = 1.0
+
+[parameters.SHIFT1]
+type = "float64"
+default = 0.0
+
+[parameters.NORM1]
+type = "float64"
+default = 0.5
+
+[parameters.SIGMA]
+type = "float64"
+
+[parameters.SIGMA1]
+type = "float64"
+
+[parameters.SIGMA2]
+type = "float64"
+
+[parameters.SHIFT]
+type = "float64"
+
+[parameters.SHIFT2]
+type = "float64"
+
+[parameters.LAMBDA]
+type = "float64"
+
+[parameters.BOSE_NORM]
+type = "float64"
+
+[input.values]
+type = "float64[]"
+
+[input.errors]
+type = "float64[]"
+
+[input.covariance]
+type = "float64[]"
+
+[input.tau]
+type = "float64[]"
+
+[input.prior_omega]
+type = "float64[]"
+
+[input.prior_density]
+type = "float64[]"
+
+[input.data]
+type = "path"
+
+[input.covariance_file]
+type = "path"
+
+[input.prior]
+type = "path"
+
+[input.format]
+type = "string"
+default = "hdf5"
+choices = ["hdf5", "text"]
+
+[input.values_dataset]
+type = "string"
+default = "/Data"
+
+[input.errors_dataset]
+type = "string"
+default = "/Error"
+
+[input.covariance_dataset]
+type = "string"
+
+[input.tau_dataset]
+type = "string"
+
+[output.results]
+type = "path"
+required = true
+
+[output.text]
+type = "bool"
+default = false
+
+[execution.time_limit]
+type = "int64"
+max = 2147483647
+default = 60
+min = 0

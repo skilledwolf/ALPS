@@ -1,5 +1,5 @@
 // A separately compiled consumer catches ABI, cross-module and GIL errors.
-#include <alps/ngs/params.hpp>
+#include <alps/params.hpp>
 #include <nanobind/nanobind.h>
 #include <nanobind/stl/vector.h>
 #include <nanobind/stl/string.h>
@@ -10,11 +10,11 @@
 namespace nb = nanobind;
 NB_MODULE(parameter_probe, module) {
     nb::module_::import_("pyalps.ngs");
-    module.def("vector", [](alps::params const & p) { return p["value"].cast<std::vector<double>>(); });
-    module.def("complex_vector", [](alps::params const & p) { return p["value"].cast<std::vector<std::complex<double>>>(); });
-    module.def("integer_vector", [](alps::params const & p) { return p["value"].cast<std::vector<long long>>(); });
-    module.def("text", [](alps::params const & p) { return p["value"].cast<std::string>(); });
-    module.def("string_vector", [](alps::params const & p) { return p["value"].cast<std::vector<std::string>>(); });
+    module.def("vector", [](alps::params const & p) { return p["value"].as<std::vector<double>>(); });
+    module.def("complex_vector", [](alps::params const & p) { return p["value"].as<std::vector<std::complex<double>>>(); });
+    module.def("integer_vector", [](alps::params const & p) { return p["value"].as<std::vector<long long>>(); });
+    module.def("text", [](alps::params const & p) { return p["value"].as<std::string>(); });
+    module.def("string_vector", [](alps::params const & p) { return p["value"].as<std::vector<std::string>>(); });
     module.def("string_parameters", [] {
         alps::params p;
         p["value"] = std::vector<std::string>{"Sz"};
@@ -23,10 +23,10 @@ NB_MODULE(parameter_probe, module) {
     module.def("native_text", [] {
         alps::params p;
         p["value"] = std::vector<std::string>{"", "middle", ""};
-        return p["value"].cast<std::string>();
+        return p["value"].as<std::string>();
     });
-    module.def("integer", [](alps::params const & p) { return p["value"].cast<int>(); });
-    module.def("wide_integer", [](alps::params const & p) { return p["value"].cast<long long>(); });
+    module.def("integer", [](alps::params const & p) { return p["value"].as<int>(); });
+    module.def("wide_integer", [](alps::params const & p) { return p["value"].as<long long>(); });
     module.def("clone", [](alps::params const & p) { return alps::params(p); });
     module.def("replace", [](alps::params & p) { p["value"] = std::vector<double>{5., 6.}; });
     module.def("empty_vectors", [] {
@@ -48,7 +48,7 @@ NB_MODULE(parameter_probe, module) {
         std::vector<double> values;
         std::exception_ptr error;
         std::thread worker([&] {
-            try { values = p["value"].cast<std::vector<double>>(); }
+            try { values = p["value"].as<std::vector<double>>(); }
             catch (...) { error = std::current_exception(); }
         });
         worker.join();

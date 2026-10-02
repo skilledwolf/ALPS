@@ -1,3 +1,7 @@
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/sum-schema.toml" SUM_SCHEMA)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/sum-schema.toml")
+configure_file(sum_config.hpp.in sum_config.hpp @ONLY)
+include_directories("${CMAKE_CURRENT_BINARY_DIR}")
 #  Copyright Matthias Troyer 2009 - 2010
 #            Lukas Gamper 2012
 #   Permission is hereby granted, free of charge, to any person obtaining
@@ -22,10 +26,10 @@ if(ALPS_ENABLE_MPI)
 
   add_executable(scheduler_sum_mpi sum_mpi.cpp)
 
-  target_link_libraries(scheduler_sum_mpi PRIVATE ALPS::alps)
+  target_link_libraries(scheduler_sum_mpi PRIVATE ALPS::alps ALPS::run_config)
 
 endif(ALPS_ENABLE_MPI)
 
 add_executable(scheduler_sum_single sum_single.cpp)
 
-target_link_libraries(scheduler_sum_single PRIVATE ALPS::alps)
+target_link_libraries(scheduler_sum_single PRIVATE ALPS::alps ALPS::run_config)

@@ -15,7 +15,7 @@
 
 #include <alps/ngs.hpp>
 #include <alps/mcmpiadapter.hpp>
-#include <alps/ngs/make_parameters_from_xml.hpp>
+#include "spin_config.hpp"
 
 #include <boost/chrono.hpp>
 #include <boost/lexical_cast.hpp>
@@ -38,12 +38,8 @@ int main(int argc, char *argv[]) {
         alps::parameters_type<ising_sim>::type parameters;
         if (comm.rank() > 0)
           /* do nothing*/ ;
-        else if (boost::filesystem::path(options.input_file).extension().string() == ".xml")
-            parameters = alps::make_parameters_from_xml(options.input_file);
-        else if (boost::filesystem::path(options.input_file).extension().string() == ".h5")
-            alps::hdf5::archive(options.input_file)["/parameters"] >> parameters;
-        else
-            parameters = alps::parameters_type<ising_sim>::type(options.input_file);
+        else parameters = load_spin_parameters(options.input_file);
+
         broadcast(comm, parameters);
 
         alps::mcmpiadapter<ising_sim> sim(parameters, comm, alps::check_schedule(options.tmin, options.tmax));

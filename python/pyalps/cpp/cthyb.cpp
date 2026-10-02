@@ -7,7 +7,7 @@ NB_MODULE(cthyb, module) {
   module.def("solve", [](nanobind::dict const& values) {
     pyalps::scoped_signal_handlers signal_handlers;
     auto parameters = pyalps::params_from_dict(values);
-    auto output_file = static_cast<std::string>(parameters["BASENAME"] | "results") + ".out.h5";
+    auto output_file = static_cast<std::string>(parameters.value_or("BASENAME", "results")) + ".out.h5";
     alps::solvers::cthyb(parameters, output_file);
   });
 }

@@ -14,7 +14,7 @@
 #include <alps/ngs.hpp>
 #include <alps/mcbase.hpp>
 #include <alps/stop_callback.hpp>
-#include <alps/ngs/make_parameters_from_xml.hpp>
+#include "sum_config.hpp"
 
 #include <boost/lambda/lambda.hpp>
 
@@ -60,7 +60,7 @@ class my_sim_type : public alps::mcbase {
         }
 
     private:
-        int count;
+        int count = 0;
         int total_count;
         double value;
 };
@@ -70,12 +70,7 @@ int main(int argc, char *argv[]) {
     alps::mcoptions options(argc, argv);
 
     alps::parameters_type<my_sim_type>::type params;
-    if (boost::filesystem::path(options.input_file).extension().string() == ".xml")
-        params = alps::make_parameters_from_xml(options.input_file);
-    else if (boost::filesystem::path(options.input_file).extension().string() == ".h5")
-        alps::hdf5::archive(options.input_file)["/parameters"] >> params;
-    else
-        params = alps::parameters_type<my_sim_type>::type(options.input_file);
+    params = load_sum_parameters(options.input_file);
 
     my_sim_type my_sim(params); // creat a simulation
     my_sim.run(alps::stop_callback(options.time_limit)); // run the simulation

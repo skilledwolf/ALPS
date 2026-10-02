@@ -34,10 +34,12 @@ public :
   typedef MaxEntParameters::vector_type vector_type;
   typedef MaxEntParameters::omega_complex_type omega_complex_type;
 
-  MaxEntHelper(const alps::params& p);
+  MaxEntHelper(const alps::params& p, const alps::maxent::data& data);
 
   double omega_coord(const int i) const { return MaxEntParameters::omega_coord(i); }
 
+  int nfreq() const { return MaxEntParameters::nfreq(); }
+  double bin_width(int i) const { return MaxEntParameters::delta_omega(i); }
   double Default(const int i) const { return def_[i]; }  
   const vector_type& Default() const { return def_; }
 
@@ -120,7 +122,7 @@ class MaxEntSimulation : private MaxEntHelper
 
 public:
   
-  MaxEntSimulation(alps::params const & parms,const std::string &outfile);
+  MaxEntSimulation(alps::params const & parms,const alps::maxent::data& data,const std::string &outfile,bool write_text=false);
   ~MaxEntSimulation();
   bool run(boost::function<bool()> const& stop_callback);
   void dostep();
@@ -132,7 +134,7 @@ private:
   vector_type alpha;
   const double norm;
   const int max_it;
-  std::string name,Kernel_type;
+  std::string name,Kernel_type,output_file_;
   bool finished,verbose,text_output,self;
   boost::filesystem::path dir;
   std::ofstream spex_str;

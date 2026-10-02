@@ -15,7 +15,7 @@
 #define ALPS_NGS_API_HPP
 
 #include <alps/ngs/config.hpp>
-#include <alps/ngs/params.hpp>
+#include <alps/params.hpp>
 #include <alps/ngs/mcresults.hpp>
 #include <alps/ngs/mcobservables.hpp>
 

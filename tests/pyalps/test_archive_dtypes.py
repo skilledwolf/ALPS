@@ -220,7 +220,7 @@ def test_boolean_mask_remains_a_mask_after_reload(tmp_path):
         # Cover the native vector<bool> writer as well as ndarray dispatch.
         archive["parameters"] = ngs.params({"mask": [True, False, True]})
         np.testing.assert_array_equal(
-            np.array([10, 20, 30])[archive["parameters/mask"]], [10, 30]
+            np.array([10, 20, 30])[ngs.params(archive, "/parameters")["mask"]], [10, 30]
         )
 
 

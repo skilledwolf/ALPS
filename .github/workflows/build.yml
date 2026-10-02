@@ -150,13 +150,13 @@ jobs:
           fi
           sudo apt-get update
           read -r -a compiler_packages <<< "$COMPILER_PACKAGES"
-          sudo apt-get install -y ccache liblapack-dev libblas-dev libopenmpi-dev libhdf5-dev \
+          sudo apt-get install -y ccache liblapack-dev libblas-dev libopenmpi-dev libhdf5-dev libtomlplusplus-dev \
             libbz2-dev zlib1g-dev liblzma-dev libzstd-dev "${compiler_packages[@]}"
           if [[ "$EXTRAS" == true ]]; then sudo apt-get install -y gfortran xsltproc; fi
       - name: Install macOS dependencies
         if: runner.os == 'macOS'
         timeout-minutes: 30
-        run: brew install --force-bottle ccache open-mpi hdf5 zstd xz
+        run: brew install --force-bottle ccache open-mpi hdf5 zstd xz tomlplusplus
       - name: Restore compiler cache
         id: compiler-cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
@@ -304,12 +304,12 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential libboost-all-dev libhdf5-dev libblas-dev liblapack-dev
+          sudo apt-get install -y build-essential libboost-all-dev libhdf5-dev libblas-dev liblapack-dev libtomlplusplus-dev
       - name: Install macOS native prerequisites
         if: runner.os == 'macOS'
         run: |
-          brew install --force-bottle boost hdf5 openblas
-          echo "CMAKE_PREFIX_PATH=$(brew --prefix boost):$(brew --prefix hdf5):$(brew --prefix openblas)" >> "$GITHUB_ENV"
+          brew install --force-bottle boost hdf5 openblas tomlplusplus
+          echo "CMAKE_PREFIX_PATH=$(brew --prefix boost):$(brew --prefix hdf5):$(brew --prefix openblas):$(brew --prefix tomlplusplus)" >> "$GITHUB_ENV"
       - name: Install Python build and test prerequisites
         run: |
           python -m pip install 'cmake>=3.27' ninja 'scikit-build-core>=1.0' 'nanobind==2.15.0' build pytest h5py

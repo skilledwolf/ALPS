@@ -9,7 +9,7 @@
 #ifndef PYALPS_DICT_TO_PARAMS_HPP
 #define PYALPS_DICT_TO_PARAMS_HPP
 #include "numpy_compat.hpp"
-#include <alps/ngs/params.hpp>
+#include <alps/params.hpp>
 #include <nanobind/nanobind.h>
 #include <nanobind/stl/complex.h>
 #include <nanobind/stl/string.h>
@@ -88,7 +88,7 @@ inline scalar_kind classify_scalar(nb::handle value) {
     return scalar_kind::unsupported;
 }
 
-inline int integer_value(nb::handle value, std::string const & key) {
+inline std::int64_t integer_value(nb::handle value, std::string const & key) {
     PyObject * indexed = PyNumber_Index(value.ptr());
     if (!indexed)
         throw nb::python_error();
@@ -100,20 +100,25 @@ inline int integer_value(nb::handle value, std::string const & key) {
         overflow = 1;
     }
     if (overflow
-        || converted < std::numeric_limits<int>::min()
-        || converted > std::numeric_limits<int>::max())
+        || converted < std::numeric_limits<std::int64_t>::min()
+        || converted > std::numeric_limits<std::int64_t>::max())
         throw nb::type_error(("parameter '" + key
             + "' contains an integer that does not fit params'"
-              " 32-bit integer type").c_str());
-    return static_cast<int>(converted);
+              " 64-bit signed integer type").c_str());
+    return static_cast<std::int64_t>(converted);
 }
 
 inline double real_value(nb::handle value, std::string const & key) {
     if (classify_scalar(value) == scalar_kind::integer)
-        return static_cast<double>(integer_value(value, key));
+        return alps::params_ns::detail::convert<double>(integer_value(value,key),key);
     double const converted = PyFloat_AsDouble(value.ptr());
     if (PyErr_Occurred())
         throw nb::python_error();
+    if (detail::numpy_scalar_kind(value) == 'f' && !std::isnan(converted)) {
+        int const equal = PyObject_RichCompareBool(value.ptr(), nb::float_(converted).ptr(), Py_EQ);
+        if (equal < 0) throw nb::python_error();
+        if (!equal) throw nb::type_error(("lossy float64 conversion for parameter '" + key + "'").c_str());
+    }
     return converted;
 }
 
@@ -122,7 +127,7 @@ inline std::complex<double> complex_value(nb::handle value,
     scalar_kind const kind = classify_scalar(value);
     if (kind == scalar_kind::integer || kind == scalar_kind::real)
         return std::complex<double>(real_value(value, key), 0.0);
-    return nb::cast<std::complex<double>>(value);
+    return {real_value(value.attr("real"), key), real_value(value.attr("imag"), key)};
 }
 
 inline std::string string_value(nb::handle value) {
@@ -144,13 +149,7 @@ inline std::string string_value(nb::handle value) {
     return nb::cast<std::string>(decoded);
 }
 } // namespace detail
-// Materialize a checked native snapshot. paramvalue's only integral
-// alternative is a 32-bit int and libalps static_casts wider integer
-// types down to it, so out-of-range integers are rejected loudly here
-// — for scalars and inside lists alike — rather than truncated or
-// silently widened to double. Sequence elements are classified before
-// conversion so integers round-trip as ints, mixed real numerics widen to
-// double, and complex values can never be coerced through a real-number path.
+// Copy Python input into the shared typed parameter contract.
 inline void set_native_param_value(alps::params & p, std::string const & key, nb::handle value) {
     if (value.is_none())
         throw nb::type_error(("cannot store None for parameter '" + key
@@ -164,10 +163,8 @@ inline void set_native_param_value(alps::params & p, std::string const & key, nb
             throw nb::python_error();
         p[key] = (truth == 1);
     } else if (detail::is_numpy_array(value)) {
-        // A native consumer can request scalar/vector values. The original
-        // Python object (including higher-rank metadata) remains owned by
-        // python_paramvalue_source; only this snapshot has the native shape
-        // restrictions.
+        // Scientific arrays belong in the application's data interface.
+        // Parameter values are owning scalar/vector snapshots.
         std::size_t const ndim = nb::cast<std::size_t>(value.attr("ndim"));
         if (ndim == 0) {
             set_native_param_value(p, key, value.attr("item")());
@@ -185,7 +182,7 @@ inline void set_native_param_value(alps::params & p, std::string const & key, nb
             std::string const kind = nb::cast<std::string>(
                 value.attr("dtype").attr("kind"));
             if (kind == "b") p[key] = std::vector<bool>();
-            else if (kind == "i" || kind == "u") p[key] = std::vector<int>();
+            else if (kind == "i" || kind == "u") p[key] = std::vector<std::int64_t>();
             else if (kind == "f") p[key] = std::vector<double>();
             else if (kind == "c") p[key] = std::vector<std::complex<double>>();
             else if (kind == "S" || kind == "U") p[key] = std::vector<std::string>();
@@ -273,7 +270,7 @@ inline void set_native_param_value(alps::params & p, std::string const & key, nb
         } else {
             // An empty untyped Python sequence follows the historic native
             // ladder's first vector alternative (vector<int>).
-            std::vector<int> numbers;
+            std::vector<std::int64_t> numbers;
             numbers.reserve(length);
             for (std::size_t i = 0; i < length; ++i)
                 numbers.push_back(detail::integer_value(value[i], key));
@@ -286,136 +283,12 @@ inline void set_native_param_value(alps::params & p, std::string const & key, nb
               " numpy array, or a sequence of those scalar types)").c_str());
     }
 }
-// Keep interpreter ownership in the binding, not in libalps. Copies share the
-// provider (matching the original object-valued parameters), native consumers
-// request a checked snapshot, and Python lookups/saves see all mutations.
-class python_paramvalue_source final : public alps::detail::paramvalue_source {
-public:
-    python_paramvalue_source(nb::handle value, std::string key)
-        : value_(value.inc_ref().ptr()), key_(std::move(key)) {}
-    ~python_paramvalue_source() override {
-        if (Py_IsInitialized()) {
-            nb::gil_scoped_acquire gil;
-            Py_DECREF(value_);
-        }
-    }
-    bool native_elements(std::vector<alps::detail::paramvalue> & elements) const override {
-        nb::gil_scoped_acquire gil;
-        nb::object items = nb::borrow<nb::object>(value_);
-        if (detail::is_numpy_array(items)) {
-            if (nb::cast<int>(items.attr("ndim")) != 1)
-                return false;
-            items = items.attr("tolist")();
-        }
-        if (!nb::isinstance<nb::list>(items) && !nb::isinstance<nb::tuple>(items))
-            return false;
-        elements.reserve(nb::len(items));
-        for (std::size_t i = 0; i < nb::len(items); ++i)
-            elements.push_back(python_paramvalue_source(items[i], key_).native_value());
-        return true;
-    }
-    bool native_text(std::string & text) const override {
-        nb::gil_scoped_acquire gil;
-        nb::handle items(value_);
-        if (!nb::isinstance<nb::list>(items) && !nb::isinstance<nb::tuple>(items))
-            return false;
-        // The original reader joined Python element strings. Converting a
-        // mixed sequence to one native vector first both rejects valid text
-        // parameters and changes representations such as True and 3.0.
-        text.clear();
-        for (std::size_t i = 0; i < nb::len(items); ++i) {
-            if (i) text += ',';
-            nb::object item = items[i];
-            text += nb::cast<std::string>(nb::str(item));
-        }
-        return true;
-    }
-    alps::detail::paramvalue native_value() const override {
-        nb::gil_scoped_acquire gil;
-        // Defer large integers to ALPS' checked text-to-target conversion.
-        // Narrowing to the native variant's int first would corrupt values.
-        nb::object normalized = nb::borrow<nb::object>(value_);
-        if (detail::is_numpy_array(normalized)
-            && nb::cast<int>(normalized.attr("ndim")) == 0)
-            normalized = normalized.attr("item")();
-        nb::handle value(normalized);
-        if (!detail::is_numpy_array(value)
-            && detail::classify_scalar(value) == detail::scalar_kind::integer) {
-            nb::object integer = nb::steal<nb::object>(PyNumber_Index(value.ptr()));
-            if (!integer.is_valid()) throw nb::python_error();
-            int overflow = 0;
-            long long number = PyLong_AsLongLongAndOverflow(integer.ptr(), &overflow);
-            if (PyErr_Occurred()) throw nb::python_error();
-            if (overflow || number < std::numeric_limits<int>::min()
-                         || number > std::numeric_limits<int>::max())
-                return alps::detail::paramvalue(nb::cast<std::string>(nb::str(integer)));
-        }
-        nb::object items = nb::borrow<nb::object>(value);
-        if (detail::is_numpy_array(value) && nb::cast<int>(value.attr("ndim")) == 1)
-            items = value.attr("tolist")();
-        if (nb::isinstance<nb::list>(items) || nb::isinstance<nb::tuple>(items)) {
-            bool integral = nb::len(items) > 0, wide = false;
-            std::vector<std::string> integers;
-            for (std::size_t i = 0; i < nb::len(items); ++i) {
-                nb::object item = items[i];
-                if (detail::classify_scalar(item) != detail::scalar_kind::integer) {
-                    integral = false;
-                    break;
-                }
-                nb::object integer = nb::steal<nb::object>(PyNumber_Index(item.ptr()));
-                if (!integer.is_valid()) throw nb::python_error();
-                int overflow = 0;
-                long long number = PyLong_AsLongLongAndOverflow(integer.ptr(), &overflow);
-                if (PyErr_Occurred()) throw nb::python_error();
-                wide |= overflow || number < std::numeric_limits<int>::min()
-                                 || number > std::numeric_limits<int>::max();
-                integers.push_back(nb::cast<std::string>(nb::str(integer)));
-            }
-            if (integral && wide)
-                return alps::detail::paramvalue(integers);
-        }
-        alps::params snapshot;
-        set_native_param_value(snapshot, key_, value);
-        return *snapshot.find(key_);
-    }
-    void save(alps::hdf5::archive & ar) const override {
-        nb::gil_scoped_acquire gil;
-        nb::module_::import_("pyalps.cxx.pyngshdf5_c");
-        nb::cast(&ar, nb::rv_policy::reference).attr("__setitem__")("", nb::handle(value_));
-    }
-    void print(std::ostream & stream) const override {
-        nb::gil_scoped_acquire gil;
-        stream << nb::cast<std::string>(nb::str(nb::handle(value_)));
-    }
-    void * object(char const * binding) const override {
-        return std::strcmp(binding, "python") == 0 ? value_ : nullptr;
-    }
-private:
-    PyObject * value_;
-    std::string key_;
-};
-
-inline void set_param_value(alps::params & p, std::string const & key, nb::handle value) {
-    p[key] = alps::detail::paramvalue(std::make_shared<python_paramvalue_source>(value, key));
+inline void set_param_value(alps::params& p, const std::string& key, nb::handle value) {
+    set_native_param_value(p,key,value);
 }
-
-inline void enable_python_param_reader(alps::params & params) {
-    params.set_value_reader([](alps::hdf5::archive & ar) {
-        nb::gil_scoped_acquire gil;
-        nb::module_::import_("pyalps.cxx.pyngshdf5_c");
-        nb::object value = nb::cast(&ar, nb::rv_policy::reference).attr("__getitem__")("");
-        return alps::detail::paramvalue(
-            std::make_shared<python_paramvalue_source>(value, ar.get_context()));
-    });
-}
-
-inline alps::params params_from_dict(nb::dict const & values) {
+inline alps::params params_from_dict(const nb::dict& values) {
     alps::params result;
-    enable_python_param_reader(result);
-    for (auto item : values)
-        set_param_value(result,
-                        nb::cast<std::string>(nb::str(item.first)),
-                        item.second);
+    for(auto item:values) set_param_value(result,nb::cast<std::string>(nb::str(item.first)),item.second);
     return result;
 }
 } // namespace pyalps

@@ -52,7 +52,7 @@ else()
     message(FATAL_ERROR "The C++ SDK still installs Python-owned headers")
   endif()
   foreach(private_directory IN ITEMS alps/utilities alps/hdf5/include alps/hdf5/src
-                                     alps/hdf5/tests alps/params alps/common alps/runtime
+                                     alps/hdf5/tests alps/params/include alps/params/src alps/common alps/runtime
                                      alps/fortran/include alps/fortran/src alps/fortran/tests)
     if(EXISTS "${expected_prefix}/include/${private_directory}")
       message(FATAL_ERROR "The SDK installs a module's private layout: ${private_directory}")

@@ -1,0 +1,8 @@
+cmake_minimum_required(VERSION 3.27)
+project(ngs_spin_tutorial LANGUAGES C CXX)
+find_package(ALPS CONFIG REQUIRED)
+include("${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/SpinParameters.cmake")
+if(ALPS_MPI_ENABLED)
+add_executable(ising ising.cpp main.cpp)
+target_link_libraries(ising PRIVATE ALPS::alps ALPS::run_config)
+endif()

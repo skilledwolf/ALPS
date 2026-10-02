@@ -124,10 +124,8 @@ def test_params_from_parameter_file():
         path = os.path.join(directory, "input.parm")
         with open(path, "w") as parameter_file:
             parameter_file.write('LATTICE="chain lattice";\nL=10;\nT=2.25;\n')
-        loaded = params(path)
-        assert str(loaded["LATTICE"]) == "chain lattice"
-        assert int(loaded["L"]) == 10
-        assert float(loaded["T"]) == 2.25
+        with pytest.raises(TypeError):
+            params(path)
 
 
 def test_alea_mcanalyze_surface():
@@ -257,7 +255,7 @@ def test_ctqmc_solvers_restore_python_signal_handlers(tmp_path, monkeypatch):
         "DELTA": str(delta_path),
         "N_TAU": 10,
         "BETA": 1.0,
-        "TEXT_OUTPUT": 0,
+        "TEXT_OUTPUT": False,
         "BASENAME": str(tmp_path / "cthyb-signal"),
     }
 
@@ -319,16 +317,13 @@ def test_maxent_restores_python_signal_handlers(tmp_path, monkeypatch):
 
     ndat = 6
     parms = {
-        "BETA": 2.0, "NDAT": ndat, "NFREQ": 20, "N_ALPHA": 2,
+        "BETA": 2.0, "NFREQ": 20, "N_ALPHA": 2,
         "ALPHA_MIN": 0.1, "ALPHA_MAX": 1.0, "MAX_IT": 2,
         "OMEGA_MAX": 4.0, "FREQUENCY_GRID": "linear", "KERNEL": "fermionic",
-        "DATASPACE": "time", "TEXT_OUTPUT": 0, "VERBOSE": 0,
-        "PARTICLE_HOLE_SYMMETRY": 1, "NORM": 1.0, "MAX_TIME": 1,
-        "BASENAME": str(tmp_path / "maxent-signal"),
+        "DATASPACE": "time", "VERBOSE": False,
+        "PARTICLE_HOLE_SYMMETRY": True, "NORM": 1.0,
     }
-    for index in range(ndat):
-        parms["X_%d" % index] = -0.5
-        parms["SIGMA_%d" % index] = 0.01
+    data = {"values": [-0.5] * ndat, "errors": [0.01] * ndat}
 
     calls = []
 
@@ -340,7 +335,7 @@ def test_maxent_restores_python_signal_handlers(tmp_path, monkeypatch):
         # Twice: restoring once is not enough if ALPS' own handlers are not
         # reinstalled for the next embedded call.
         for _ in range(2):
-            maxent.AnalyticContinuation(parms)
+            maxent.AnalyticContinuation(parms, data, str(tmp_path / "maxent-signal.out.h5"), time_limit=1)
             signal.raise_signal(signal.SIGINT)
     finally:
         signal.signal(signal.SIGINT, previous_handler)
@@ -665,6 +660,10 @@ def test_params_mapping_equality_and_value_ladder():
     assert ngs.params({"a": 1}) == ngs.params({"a": 1})
     assert ngs.params({"a": 1}) != ngs.params({"a": 2})
     assert ngs.params({"a": 1}) == {"a": 1}
+    arrays = {"x": [1., 2.], "z": [1+2j, 3+4j]}
+    assert ngs.params(arrays) == ngs.params(arrays)
+    assert ngs.params(arrays) == arrays
+    assert ngs.params(arrays) != ngs.params({"x": [1., 3.], "z": arrays["z"]})
     # and, like a Mapping with __eq__, unhashable
     try:
         hash(ngs.params({}))
@@ -672,59 +671,43 @@ def test_params_mapping_equality_and_value_ladder():
     except TypeError:
         pass
 
-    # Python values must retain their user-visible behavior. Native C++
-    # conversion is tested by the downstream parameter probe, not by forcing
-    # Python lookups to adopt the restricted native variant's types.
     values = [
-        None, 2 ** 40, [2 ** 53 + 1], [True, False], [True, 1],
-        np.bool_(True), np.int64(8), np.float32(1.25), np.longdouble("1.125"),
-        np.complex64(1 + 2j), np.clongdouble(3 + 4j), np.bytes_(b"native"),
-        [np.int64(1), np.int64(2)], np.array([1, 2], dtype=np.int64),
-        np.ma.array([1, 2], mask=False), np.array([1.5, 2.5], dtype=np.float32),
+        2 ** 40, [2 ** 53 + 1], [True, False], np.bool_(True), np.int64(8),
+        np.float32(1.25), np.longdouble("1.125"), np.complex64(1 + 2j),
+        np.clongdouble(3 + 4j), [np.int64(1), np.int64(2)],
+        np.array([1, 2], dtype=np.int64), np.array([1.5, 2.5], dtype=np.float32),
         np.array([1 + 2j, 3 + 4j], dtype=np.complex64),
-        np.array([1 + 2j, 3 + 4j], dtype=np.clongdouble),
-        [np.complex64(5 + 6j), np.clongdouble(7 + 8j)],
-        np.array(["a", "b"]), np.array([b"a", b"b"], dtype="S1"),
-        np.array(7, dtype=np.int64), np.array([], dtype=np.bool_),
-        np.ones((2, 2)), [np.int64(2 ** 40)], [1, 2, 3], [1.5, 2.5],
-        ["a", "b"], [1, 2.5], 1 + 2j, {"nested": 1}, object(), (1, 2),
+        np.array(["a", "b"]), np.array(7, dtype=np.int64),
+        np.array([], dtype=np.bool_), [1, 2.5], (1, 2),
     ]
     p = ngs.params({})
     for index, value in enumerate(values):
         p[str(index)] = value
-        assert p[str(index)] is value
+        np.testing.assert_array_equal(p[str(index)], value)
+    for value in (None, [True, 1], [1, "2"], np.ones((2, 2)), {"nested": 1}, object()):
+        with pytest.raises(TypeError):
+            p["invalid"] = value
+        assert "invalid" not in p
+    p["bytes"] = np.bytes_(b"native")
+    assert p["bytes"] == "native"
 
 
-def test_params_mapping_mixins_handle_none_getitem():
-    """get/pop/setdefault must honour their contracts on params.
-
-    params.__getitem__ returns None for an undefined key rather than raising
-    KeyError, so MutableMapping's mixins -- which are written against the
-    KeyError contract -- silently misbehaved: get() ignored its default,
-    setdefault() returned None and stored nothing, and pop() surfaced the C++
-    "key does not exist" error instead of KeyError or the default.
-    """
+def test_params_mapping_mixins():
+    """The native dictionary follows the mapping missing-key contract."""
     from pyalps import ngs
-
     p = ngs.params({"a": 1})
-
-    assert p["absent"] is None          # the preserved legacy quirk
+    with pytest.raises(KeyError):
+        p["absent"]
     assert p.get("a") == 1
     assert p.get("absent") is None
     assert p.get("absent", 9) == 9
-
     assert p.setdefault("a", 5) == 1 and p["a"] == 1
     assert p.setdefault("new", 4) == 4
     assert "new" in p and p["new"] == 4
-
     assert p.pop("new") == 4 and "new" not in p
     assert p.pop("absent", 7) == 7
     with pytest.raises(KeyError):
         p.pop("absent")
-
-    # observables and results raise KeyError natively, so get() is fine there,
-    # but pop() needs the same replacement: MutableMapping.pop reads
-    # self._MutableMapping__marker, which a copied method cannot resolve.
     obs = ngs.observables()
     obs.createRealObservable("x")
     assert obs.get("absent", 3) == 3
@@ -839,7 +822,7 @@ def test_params_native_bool_vector_hdf5_roundtrip(tmp_path):
         original.save(archive)
     with hdf5.archive(filename, "r") as archive:
         loaded = ngs.params(archive, "/")
-    assert loaded["flags"] == [True, False, True]
+    np.testing.assert_array_equal(loaded["flags"], [True, False, True])
 
 
 def test_observable_lshift_chains():
@@ -1059,7 +1042,7 @@ def test_archive_setitem_saves_registered_alps_types():
             for key in cases:
                 assert archive.is_group("/" + key), key
                 assert archive.list_children("/" + key), key
-            assert sorted(archive.list_children("/parameters")) == ["L", "MODEL", "T"]
+            assert archive["/parameters/format"] == "alps.params.v1"
             assert archive.list_children("/observables") == ["Magnetization"]
 
         restored = ngs.params()
@@ -1096,7 +1079,7 @@ def test_archive_setitem_reaches_registered_types_nested_in_containers():
                 "Energy", "Magnetization"]
             assert archive.list_children("/measurements/Energy")
             assert sorted(archive.list_children("/sequence")) == ["0", "1"]
-            assert archive.list_children("/sequence/0") == ["A"]
+            assert archive["/sequence/0/entries/0/name"] == "A"
             assert archive.list_children("/deep/clone/Energy")
 
 
@@ -1266,7 +1249,7 @@ if __name__ == "__main__":
         test_accumulator_surface,
         test_optional_application_extension_surface,
         test_params_mapping_equality_and_value_ladder,
-        test_params_mapping_mixins_handle_none_getitem,
+        test_params_mapping_mixins,
         test_observable_lshift_chains,
         test_standalone_observables_accept_samples,
         test_observables_item_deletion,

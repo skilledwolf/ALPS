@@ -30,13 +30,13 @@ void evaluate_basics(const alps::results_type<hybridization>::type &results,
 
   boost::uint64_t sweeps = results["Sign"].count()+(boost::uint64_t)parms["THERMALIZATION"];
 
-  if(parms["TEXT_OUTPUT"]|false){
+  if(parms.value_or("TEXT_OUTPUT", false)){
     std::ofstream sim_file("simulation.dat");
     sim_file << "simulation details:" << std::endl;
     sim_file << "average sign: " << results["Sign"].mean<double>() << std::endl;
     sim_file << "total number of Monte Carlo updates: " << sweeps*(int)parms["N_MEAS"] << std::endl;
     sim_file << "total number of Monte Carlo measurements: " << results["Sign"].count() << std::endl;
-    if(parms["MEASURE_time"]|true)
+    if(parms.value_or("MEASURE_time", true))
       sim_file << "total number of imaginary time measurements: " << results["Sign"].count()*N_meas << std::endl;
     sim_file << "number thermalization sweeps: " << parms["THERMALIZATION"] << std::endl;
     sim_file << "inverse temperature: " << beta << std::endl;
@@ -68,7 +68,7 @@ void evaluate_basics(const alps::results_type<hybridization>::type &results,
       std::stringstream density_name; density_name<<"density_"<<i;
       double density=results[density_name.str()].mean<double>();
       obs_file << "n" << i << "=" << density << ";" << std::endl;
-      if(parms["MEASURE_nn"]|false){
+      if(parms.value_or("MEASURE_nn", false)){
         for(std::size_t j=0;j<i;++j){
           std::stringstream nn_name; nn_name<<"nn_"<<i<<"_"<<j;
           double nn=results[nn_name.str()].mean<double>();
@@ -103,12 +103,12 @@ void evaluate_time(const alps::results_type<hybridization>::type &results,
                    const alps::parameters_type<hybridization>::type &parms,
                    alps::hdf5::archive &solver_output){
 
-  if(!(parms["MEASURE_time"]|true)) return;
+  if(!(parms.value_or("MEASURE_time", true))) return;
   std::size_t N_t = parms["N_TAU"];
   double beta = parms["BETA"];
   std::size_t n_orbitals = parms["N_ORBITALS"];
   std::size_t n_sites    = 1;
-  bool accurate = parms["ACCURATE_COVARIANCE"]|true;
+  bool accurate = parms.value_or("ACCURATE_COVARIANCE", true);
 
   //Imaginary time Green function
   itime_green_function_t G_tau(N_t+1, n_sites, n_orbitals);
@@ -136,8 +136,8 @@ void evaluate_time(const alps::results_type<hybridization>::type &results,
   }
 
   //store in hdf5
-  G_tau.write_hdf5(solver_output, boost::lexical_cast<std::string>(parms["BASEPATH"]|"")+"/G_tau");
-  F_tau.write_hdf5(solver_output, boost::lexical_cast<std::string>(parms["BASEPATH"]|"")+"/F_tau");
+  G_tau.write_hdf5(solver_output, boost::lexical_cast<std::string>(parms.value_or("BASEPATH", ""))+"/G_tau");
+  F_tau.write_hdf5(solver_output, boost::lexical_cast<std::string>(parms.value_or("BASEPATH", ""))+"/F_tau");
 
   // ERROR
   for(std::size_t i=0; i<n_orbitals; i++){
@@ -148,12 +148,12 @@ void evaluate_time(const alps::results_type<hybridization>::type &results,
      err = results[g_name.str()].error<std::vector<double> >();
      err[0] = err[N_t] = density_err;
      std::stringstream data_path;
-     data_path << boost::lexical_cast<std::string>(parms["BASEPATH"]|"")+"/G_tau/"<<i<< "/mean/error";
+     data_path << boost::lexical_cast<std::string>(parms.value_or("BASEPATH", ""))+"/G_tau/"<<i<< "/mean/error";
      solver_output<<alps::make_pvp(data_path.str(),err);
      g_name.str(""); g_name<<"f_"<<i;
      err = results[g_name.str()].error<std::vector<double> >();
      data_path.str("");
-     data_path << boost::lexical_cast<std::string>(parms["BASEPATH"]|"")+"/F_tau/"<<i<< "/mean/error";
+     data_path << boost::lexical_cast<std::string>(parms.value_or("BASEPATH", ""))+"/F_tau/"<<i<< "/mean/error";
      solver_output<<alps::make_pvp(data_path.str(),err);
   }
     
@@ -173,7 +173,7 @@ void evaluate_time(const alps::results_type<hybridization>::type &results,
         data[t1*(N_t+1)+t2]=cov(t1,t2);
 
     std::stringstream data_path;
-    data_path << boost::lexical_cast<std::string>(parms["BASEPATH"]|"")+"/G_tau/"<<i<< "/mean/covariance";
+    data_path << boost::lexical_cast<std::string>(parms.value_or("BASEPATH", ""))+"/G_tau/"<<i<< "/mean/covariance";
 
     solver_output<<alps::make_pvp(data_path.str(), data);
     g_name.str(""); g_name<<"f_"<<i;
@@ -188,12 +188,12 @@ void evaluate_time(const alps::results_type<hybridization>::type &results,
          data[t1*(N_t+1)+t2]=cov(t1,t2);
       
     data_path.str("");
-    data_path << boost::lexical_cast<std::string>(parms["BASEPATH"]|"")+"/F_tau/"<<i<< "/mean/covariance";
+    data_path << boost::lexical_cast<std::string>(parms.value_or("BASEPATH", ""))+"/F_tau/"<<i<< "/mean/covariance";
       
     solver_output<<alps::make_pvp(data_path.str(), data);
   }
 
-  if(parms["TEXT_OUTPUT"]|0){
+  if(parms.value_or("TEXT_OUTPUT", false)){
     std::ofstream G_file("Gt.dat");
     for(std::size_t t=0;t<=N_t;++t){
       G_file<<beta*t/N_t;
@@ -220,7 +220,7 @@ void evaluate_freq(const alps::results_type<hybridization>::type &results,
                    const alps::parameters_type<hybridization>::type &parms,
                    alps::hdf5::archive &solver_output){
 
-  if(!(parms["MEASURE_freq"]|false)) return;
+  if(!(parms.value_or("MEASURE_freq", false))) return;
   //evaluate Matsubara Green's function and self-energy
   double beta = parms["BETA"];
   std::size_t N_w=parms["N_MATSUBARA"];
@@ -249,9 +249,9 @@ void evaluate_freq(const alps::results_type<hybridization>::type &results,
   }
 
   //store in hdf5
-  G_omega.write_hdf5(solver_output, boost::lexical_cast<std::string>(parms["BASEPATH"]|"")+"/G_omega");
-  F_omega.write_hdf5(solver_output, boost::lexical_cast<std::string>(parms["BASEPATH"]|"")+"/F_omega");
-  S_omega.write_hdf5(solver_output, boost::lexical_cast<std::string>(parms["BASEPATH"]|"")+"/S_omega");
+  G_omega.write_hdf5(solver_output, boost::lexical_cast<std::string>(parms.value_or("BASEPATH", ""))+"/G_omega");
+  F_omega.write_hdf5(solver_output, boost::lexical_cast<std::string>(parms.value_or("BASEPATH", ""))+"/F_omega");
+  S_omega.write_hdf5(solver_output, boost::lexical_cast<std::string>(parms.value_or("BASEPATH", ""))+"/S_omega");
 
   // ERROR
   for(std::size_t i=0; i<n_orbitals; i++){
@@ -263,7 +263,7 @@ void evaluate_freq(const alps::results_type<hybridization>::type &results,
     err_g_im = results[g_name.str()].error<std::vector<double> >();
     for (int k=0;k<err.size();k++) err[k] = std::complex<double>(err_g_re[k],err_g_im[k]);
     std::stringstream data_path;
-    data_path << boost::lexical_cast<std::string>(parms["BASEPATH"]|"")+"/G_omega/"<<i<< "/mean/error";
+    data_path << boost::lexical_cast<std::string>(parms.value_or("BASEPATH", ""))+"/G_omega/"<<i<< "/mean/error";
     solver_output<<alps::make_pvp(data_path.str(),err);
     g_name.str(""); g_name<<"fw_re_"<<i;
     err_f_re = results[g_name.str()].error<std::vector<double> >();
@@ -271,7 +271,7 @@ void evaluate_freq(const alps::results_type<hybridization>::type &results,
     err_f_im = results[g_name.str()].error<std::vector<double> >();
     for (int k=0;k<err.size();k++) err[k] = std::complex<double>(err_f_re[k],err_f_im[k]);
     data_path.str("");
-    data_path << boost::lexical_cast<std::string>(parms["BASEPATH"]|"")+"/F_omega/"<<i<< "/mean/error";
+    data_path << boost::lexical_cast<std::string>(parms.value_or("BASEPATH", ""))+"/F_omega/"<<i<< "/mean/error";
     solver_output<<alps::make_pvp(data_path.str(),err);
   }
 
@@ -312,7 +312,7 @@ void evaluate_legendre(const alps::results_type<hybridization>::type &results,
                        const alps::parameters_type<hybridization>::type &parms,
                        alps::hdf5::archive &solver_output){
 
-  if(!(parms["MEASURE_legendre"]|0)) return;
+  if(!(parms.value_or("MEASURE_legendre", false))) return;
   double beta = parms["BETA"];
   std::size_t N_l=parms["N_LEGENDRE"];
   std::size_t N_w=parms["N_MATSUBARA"];
@@ -373,13 +373,13 @@ void evaluate_legendre(const alps::results_type<hybridization>::type &results,
   }//i
 
   //store in hdf5
-  G_l_omega.write_hdf5(solver_output, boost::lexical_cast<std::string>(parms["BASEPATH"]|"")+"/G_l_omega");
-  F_l_omega.write_hdf5(solver_output, boost::lexical_cast<std::string>(parms["BASEPATH"]|"")+"/F_l_omega");
-  S_l_omega.write_hdf5(solver_output, boost::lexical_cast<std::string>(parms["BASEPATH"]|"")+"/S_l_omega");
-  G_l_tau.write_hdf5(solver_output, boost::lexical_cast<std::string>(parms["BASEPATH"]|"")+"/G_l_tau");
-  F_l_tau.write_hdf5(solver_output, boost::lexical_cast<std::string>(parms["BASEPATH"]|"")+"/F_l_tau");
+  G_l_omega.write_hdf5(solver_output, boost::lexical_cast<std::string>(parms.value_or("BASEPATH", ""))+"/G_l_omega");
+  F_l_omega.write_hdf5(solver_output, boost::lexical_cast<std::string>(parms.value_or("BASEPATH", ""))+"/F_l_omega");
+  S_l_omega.write_hdf5(solver_output, boost::lexical_cast<std::string>(parms.value_or("BASEPATH", ""))+"/S_l_omega");
+  G_l_tau.write_hdf5(solver_output, boost::lexical_cast<std::string>(parms.value_or("BASEPATH", ""))+"/G_l_tau");
+  F_l_tau.write_hdf5(solver_output, boost::lexical_cast<std::string>(parms.value_or("BASEPATH", ""))+"/F_l_tau");
 
-  if(parms["TEXT_OUTPUT"]|false){
+  if(parms.value_or("TEXT_OUTPUT", false)){
     std::ofstream gc_str("Gl_conv.dat");
     std::ofstream fc_str("Fl_conv.dat");
     gc_str << "#lc";
@@ -456,7 +456,7 @@ void evaluate_nnt(const alps::results_type<hybridization>::type &results,
                   const alps::parameters_type<hybridization>::type &parms,
                   alps::hdf5::archive &solver_output){
 
-  if(!(parms["MEASURE_nnt"]|0)) return;
+  if(!(parms.value_or("MEASURE_nnt", false))) return;
 
   std::size_t N_nn=parms["N_nn"];
   std::size_t n_orbitals=parms["N_ORBITALS"];
@@ -472,7 +472,7 @@ void evaluate_nnt(const alps::results_type<hybridization>::type &results,
     }
   }
 
-  if(parms["TEXT_OUTPUT"]|0){
+  if(parms.value_or("TEXT_OUTPUT", false)){
     std::ofstream nnt_file("nnt.dat");
     nnt_file << "#tau";
     for(std::size_t i=0;i<n_orbitals;++i)
@@ -497,7 +497,7 @@ void evaluate_nnw(const alps::results_type<hybridization>::type &results,
                   const alps::parameters_type<hybridization>::type &parms,
                   alps::hdf5::archive &solver_output){
 
-  if(!(parms["MEASURE_nnw"]|0)) return;
+  if(!(parms.value_or("MEASURE_nnw", false))) return;
 
   std::size_t N_W=parms["N_W"];
   std::size_t n_orbitals=parms["N_ORBITALS"];
@@ -513,7 +513,7 @@ void evaluate_nnw(const alps::results_type<hybridization>::type &results,
     }
   }
 
-  if(parms["TEXT_OUTPUT"]|0){
+  if(parms.value_or("TEXT_OUTPUT", false)){
     std::ofstream nnw_file("nnw.dat");
     nnw_file << "#w";
     for(std::size_t i=0;i<n_orbitals;++i)
@@ -538,7 +538,7 @@ void evaluate_sector_statistics(const alps::results_type<hybridization>::type &r
                                 const alps::parameters_type<hybridization>::type &parms,
                                 alps::hdf5::archive &solver_output){
 
-  if(!(parms["MEASURE_sector_statistics"]|0)) return;
+  if(!(parms.value_or("MEASURE_sector_statistics", false))) return;
 
   std::size_t n_orbitals=parms["N_ORBITALS"];
   std::ofstream stat_file("sector_statistics.dat");
@@ -565,17 +565,17 @@ void evaluate_2p(const alps::results_type<hybridization>::type &results,
                  alps::hdf5::archive &solver_output){
   //write two-particle functions to text file if desired
   //compute the vertex function if needed;
-  bool MEASURE_g2w=parms["MEASURE_g2w"]|false;
-  bool MEASURE_h2w=parms["MEASURE_h2w"]|false;
+  bool MEASURE_g2w=parms.value_or("MEASURE_g2w", false);
+  bool MEASURE_h2w=parms.value_or("MEASURE_h2w", false);
 
   if(!(MEASURE_g2w || MEASURE_h2w)) return;
 
-  //int N_w = parms["N_MATSUBARA"]|0;
-  std::size_t N_W = parms["N_W"]|0;
-  std::size_t N_w2 = parms["N_w2"]|0;
+  //int N_w = parms.value_or("N_MATSUBARA", 0);
+  std::size_t N_W = parms.value_or("N_W", 0);
+  std::size_t N_w2 = parms.value_or("N_w2", 0);
   std::size_t n_orbitals = parms["N_ORBITALS"]; //number of orbitals
-  bool text_output = parms["TEXT_OUTPUT"]|false;
-  bool COMPUTE_VERTEX = parms["COMPUTE_VERTEX"]|false;
+  bool text_output = parms.value_or("TEXT_OUTPUT", false);
+  bool COMPUTE_VERTEX = parms.value_or("COMPUTE_VERTEX", false);
   double beta=parms["BETA"];
 
   std::ofstream g2w_str;

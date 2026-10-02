@@ -15,6 +15,7 @@ import pyalps.hdf5 as hdf5
 import pyalps.ngs as ngs
 import os
 import tempfile
+import pytest
 
 orig_dict = {
     'val1' : 42,
@@ -41,7 +42,8 @@ def test_params():
         assert_type(p, k)
         print(k,'ok!')
     ## Check nonetype
-    assert type(p["undefined"]) == type(None)
+    with pytest.raises(KeyError):
+        p["undefined"]
     
     ## Write to and load from hdf5 without leaving test artifacts in the tree.
     with tempfile.TemporaryDirectory() as directory:
@@ -51,9 +53,7 @@ def test_params():
             p.save(oar) # does not use path '/parameters'
 
         with hdf5.archive(parms2, 'w') as oar:
-            for key in sorted(p.keys()):
-                print(key)
-                oar['parameters/' + key] = p[key]
+            oar["parameters"] = p
 
         # Preserve the existing simultaneous-reader exercise.
         with hdf5.archive(parms2, 'r'):

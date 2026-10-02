@@ -18,7 +18,7 @@ CASES_FILE = (Path(__file__).resolve().parents[2] /
 
 @contextmanager
 def working_directory(directory):
-    # MaxEnt currently writes deltaOmega.dat even with TEXT_OUTPUT disabled.
+    # Exercise relative paths from the run directory.
     previous = Path.cwd()
     os.chdir(directory)
     try:
@@ -49,20 +49,16 @@ def prepare(defaults, case, directory):
         points, errors, values = points[:-1], errors[:-1], values[:-1]
     norm = case.get("norm", 1.0)
     parameters = {
-        "BETA": defaults["beta"], "NDAT": len(values), "NFREQ": defaults["nfreq"],
+        "BETA": defaults["beta"], "NFREQ": defaults["nfreq"],
         "N_ALPHA": defaults["n_alpha"], "ALPHA_MIN": defaults["alpha_min"],
         "ALPHA_MAX": defaults["alpha_max"], "MAX_IT": defaults["max_it"],
         "OMEGA_MIN": defaults["omega_min"], "OMEGA_MAX": defaults["omega_max"],
         "NORM": norm, "KERNEL": case["kernel"], "DATASPACE": case["dataspace"],
         "FREQUENCY_GRID": case["grid"], "DEFAULT_MODEL": "flat",
-        "PARTICLE_HOLE_SYMMETRY": int(case["dataspace"] == "frequency"),
-        "TEXT_OUTPUT": 0, "VERBOSE": 0, "MAX_TIME": 60,
-        "DATA_IN_HDF5": 1, "DATA": str(directory / "input.h5"),
-        "BASENAME": str(directory / "python"),
+        "PARTICLE_HOLE_SYMMETRY": case["dataspace"] == "frequency",
+        "VERBOSE": False,
     }
-    if case["dataspace"] == "time":
-        parameters.update({f"TAU_{index}": float(point) for index, point in enumerate(points)})
-    with hdf5.archive(parameters["DATA"], "w") as archive:
+    with hdf5.archive(str(directory / "input.h5"), "w") as archive:
         archive["/Data"] = values * norm
         archive["/Error"] = errors * norm
         if case.get("covariance", False):
@@ -70,9 +66,16 @@ def prepare(defaults, case, directory):
             if case.get("singular_last", False):
                 diagonal[-1] = 0
             archive["/Covariance"] = np.diag(diagonal).ravel()
-            parameters["COVARIANCE_MATRIX"] = "HDF5"
-        archive["/parameters"] = ngs.params(parameters)
     return parameters, points, values, errors
+
+
+def source_config(case, directory, points):
+    source = {"data": str(directory / "input.h5")}
+    if case["dataspace"] == "time":
+        source["tau"] = points.tolist()
+    if case.get("covariance", False):
+        source["covariance_dataset"] = "/Covariance"
+    return source
 
 
 def read_result(filename, case):
@@ -133,7 +136,7 @@ def reference_runs(tmp_path_factory):
         directory.mkdir()
         parameters, points, values, errors = prepare(definitions["defaults"], case, directory)
         with working_directory(directory):
-            maxent.AnalyticContinuation(parameters)
+            maxent.AnalyticContinuation(parameters, source_config(case, directory, points), str(directory / "python.out.h5"))
         result = read_result(directory / "python.out.h5", case)
         runs[case["name"]] = (case, directory, result, points, values, errors)
     return definitions["defaults"], runs
@@ -181,9 +184,15 @@ def test_maxent_cli_matches_python(reference_runs):
         pytest.skip("requires the MaxEnt CLI from an SDK or ALPS_MAXENT_EXECUTABLE")
     defaults, runs = reference_runs
     for case, directory, expected, points, values, errors in runs.values():
-        input_file = directory / "input.h5"
-        with hdf5.archive(str(input_file), "a") as archive:
-            archive["/parameters/BASENAME"] = str(directory / "cli")
+        parameters, _, _, _ = prepare(defaults, case, directory)
+        input_file = directory / "run.toml"
+        sections = {"parameters": parameters, "input": source_config(case, directory, points),
+                    "output": {"results": str(directory / "cli.out.h5")}}
+        lines = ['format_version = 1', 'application = "maxent"', 'schema_version = 1']
+        for section, entries in sections.items():
+            lines.append("[" + section + "]")
+            lines.extend(json.dumps(key) + " = " + json.dumps(value) for key, value in entries.items())
+        input_file.write_text("\n".join(lines) + "\n")
         process = subprocess.run([str(executable), str(input_file)], cwd=directory,
                                  text=True, capture_output=True, timeout=60)
         assert process.returncode == 0, process.stdout + process.stderr

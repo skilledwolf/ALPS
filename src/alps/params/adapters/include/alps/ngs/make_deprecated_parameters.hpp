@@ -15,7 +15,7 @@
 #ifndef ALPS_NGS_MADE_DEPRECATED_PARAMETERS_HPP
 #define ALPS_NGS_MADE_DEPRECATED_PARAMETERS_HPP
 
-#include <alps/ngs/params.hpp>
+#include <alps/params.hpp>
 #include <alps/config.h>
 #include <alps/parameter.h>
 

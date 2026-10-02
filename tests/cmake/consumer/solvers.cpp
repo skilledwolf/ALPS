@@ -6,7 +6,9 @@
 int main() {
   using solver = void (*)(alps::params const&, std::string const&);
   solver volatile entrypoints[] = {
-      &alps::solvers::maxent, &alps::solvers::cthyb, &alps::solvers::ctint};
+      &alps::solvers::cthyb, &alps::solvers::ctint};
+  auto volatile maxent = &alps::solvers::maxent;
+  if (!maxent) return 1;
   for (auto const& entrypoint : entrypoints)
     if (!entrypoint) return 1;
 }

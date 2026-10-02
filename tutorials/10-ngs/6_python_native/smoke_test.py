@@ -54,8 +54,7 @@ with tempfile.TemporaryDirectory() as directory:
         archive["/"] = simulation
 
     with hdf5.archive(checkpoint, "r") as archive:
-        assert sorted(archive.list_children("/parameters")) == [
-            "L", "SEED", "SWEEPS", "T", "THERMALIZATION"]
+        assert archive["/parameters/format"] == "alps.params.v1"
         clone = "/simulation/realizations/0/clones/0"
         assert sorted(archive.list_children(clone + "/measurements")) == OBSERVABLES
         assert sorted(archive.list_children(clone + "/checkpoint")) == [

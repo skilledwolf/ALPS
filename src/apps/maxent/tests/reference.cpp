@@ -1,8 +1,8 @@
 // Copyright (C) 2026 ALPS collaboration. SPDX-License-Identifier: MIT
 #include <alps/hdf5/archive.hpp>
 #include <alps/hdf5/vector.hpp>
-#include <alps/ngs/params.hpp>
-#include <alps/solvers.hpp>
+#include <alps/params.hpp>
+#include <alps/maxent.hpp>
 
 #include <boost/filesystem.hpp>
 #include <boost/math/constants/constants.hpp>
@@ -111,14 +111,13 @@ output run_case(reference_case const& c, settings const& s,
     int count = s.ndat - (c.omit_last ? 1 : 0);
     vector data(count), error(count), covariance(count * count, 0);
     alps::params p;
+    vector tau(count);
     p["BETA"] = s.beta;
-    p["NDAT"] = count;
     p["NFREQ"] = s.nfreq;
     p["N_ALPHA"] = s.n_alpha;
     p["ALPHA_MIN"] = s.alpha_min;
     p["ALPHA_MAX"] = s.alpha_max;
     p["MAX_IT"] = s.max_it;
-    p["MAX_TIME"] = 600;
     p["OMEGA_MIN"] = s.omega_min;
     p["OMEGA_MAX"] = s.omega_max;
     p["NORM"] = c.norm;
@@ -128,16 +127,12 @@ output run_case(reference_case const& c, settings const& s,
     p["FREQUENCY_GRID"] = c.grid;
     p["CUT"] = 0.01;
     p["PARTICLE_HOLE_SYMMETRY"] = c.dataspace == "frequency";
-    p["TEXT_OUTPUT"] = false;
     p["VERBOSE"] = false;
-    p["DATA_IN_HDF5"] = true;
-    p["DATA"] = std::string("input.h5");
-    if (c.covariance) p["COVARIANCE_MATRIX"] = std::string("input.h5");
     for (int i = 0; i < count; ++i) {
         data[i] = observation(c, s, i);
         error[i] = c.norm * s.sigma * (1.0 + double(i) / s.ndat);
         covariance[i * count + i] = (c.singular_last && i == count - 1) ? 0 : error[i] * error[i];
-        p["TAU_" + std::to_string(i)] = s.beta * i / (s.ndat - 1);
+        tau[i] = s.beta * i / (s.ndat - 1);
     }
     {
         alps::hdf5::archive input("input.h5", "w");
@@ -145,22 +140,13 @@ output run_case(reference_case const& c, settings const& s,
         input["/Error"] << error;
         if (c.covariance) input["/Covariance"] << covariance;
     }
-    alps::solvers::maxent(p, "result.out.h5");
+    alps::params source;source["data"]=std::string("input.h5");source["tau"]=tau;
+    if(c.covariance) source["covariance_dataset"]=std::string("/Covariance");
+    alps::solvers::maxent(p, alps::maxent::read_data(source), "result.out.h5", 600);
     output result;
     result.norm = c.norm;
-    {
-        // This existing diagnostic is the only public-run observation of the
-        // actual quadrature widths. Its text uses six significant digits.
-        std::ifstream widths("deltaOmega.dat");
-        int index;
-        double width, default_weight;
-        while (widths >> index >> width >> default_weight) {
-            if (index != static_cast<int>(result.bin_widths.size()))
-                throw std::runtime_error("Unexpected bin index in deltaOmega.dat");
-            result.bin_widths.push_back(width);
-        }
-    }
     alps::hdf5::archive archive("result.out.h5", "r");
+    archive["/spectrum/widths"] >> result.bin_widths;
     archive["/spectrum/omega"] >> result.omega;
     archive["/spectrum/average"] >> result.average;
     archive["/spectrum/maximum"] >> result.maximum;

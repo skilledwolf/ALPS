@@ -70,8 +70,7 @@ with tempfile.TemporaryDirectory() as directory:
         # writes its own two values at absolute paths under the clone. The
         # asymmetry is the tutorial's; load() reads each back from where it
         # was written.
-        assert sorted(archive.list_children("/parameters")) == [
-            "L", "SWEEPS", "T", "THERMALIZATION"]
+        assert archive["/parameters/format"] == "alps.params.v1"
         assert sorted(archive.list_children("/measurements")) == OBSERVABLES
         assert archive.is_group("/checkpoint/engine")
         assert int(archive[CLONE + "/checkpoint/sweeps"]) == simulation.sweeps

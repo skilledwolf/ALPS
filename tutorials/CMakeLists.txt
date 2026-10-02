@@ -24,6 +24,9 @@ install(
   EXCLUDE_FROM_ALL
   FILES_MATCHING
   PATTERN "*.md"
+  PATTERN "*.toml"
+  PATTERN "*.cmake"
+  PATTERN "*.hpp.in"
   PATTERN "*.jpg"
   PATTERN "*.tex"
   PATTERN "*.bib"

@@ -50,6 +50,36 @@ def prepare_boost(version: str, destination: Path):
     stamp.write_text(fingerprint)
 
 
+def prepare_tomlplusplus(destination: Path):
+    """Install the header-only parser for wheel images without a current package."""
+    pin = json.loads((ROOT / '.github/dependencies.json').read_text())['tomlplusplus']
+    stamp = destination / '.alps-tomlplusplus-sha256'
+    if stamp.is_file() and stamp.read_text() == pin['sha256']:
+        return
+    if destination.exists() and any(destination.iterdir()):
+        raise ValueError(f'Refusing to replace an existing dependency: {destination}')
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix='.alps-toml-', dir=destination.parent) as temporary:
+        archive = Path(temporary) / 'tomlplusplus.tar.gz'
+        url = f'https://codeload.github.com/marzer/tomlplusplus/tar.gz/refs/tags/v{pin["version"]}'
+        with urllib.request.urlopen(url, timeout=120) as response:
+            data = response.read()
+        if hashlib.sha256(data).hexdigest() != pin['sha256']:
+            raise ValueError('Checksum mismatch for tomlplusplus')
+        archive.write_bytes(data)
+        source = Path(temporary) / 'source'
+        with tarfile.open(archive) as package:
+            package.extractall(source, filter='data')
+        extracted, = source.iterdir()
+        build = Path(temporary) / 'build'
+        subprocess.run(['cmake', '-S', str(extracted), '-B', str(build),
+                        '-DTOMLPLUSPLUS_BUILD_TESTS=OFF', '-DTOMLPLUSPLUS_BUILD_EXAMPLES=OFF',
+                        '-DTOMLPLUSPLUS_BUILD_MODULES=OFF',
+                        f'-DCMAKE_INSTALL_PREFIX={destination}'], check=True)
+        subprocess.run(['cmake', '--install', str(build)], check=True)
+    stamp.write_text(pin['sha256'])
+
+
 def prepare_windows(architecture: str, destination: Path, *, environment=None):
     if architecture not in {'x64', 'arm64'}:
         raise ValueError(f'Unsupported architecture: {architecture}')
@@ -77,12 +107,14 @@ def main():
     parser.add_argument('package')
     parser.add_argument('destination', type=Path)
     args = parser.parse_args()
-    if args.package.startswith('windows-'):
+    if args.package == 'tomlplusplus':
+        prepare_tomlplusplus(args.destination.resolve())
+    elif args.package.startswith('windows-'):
         prepare_windows(args.package.removeprefix('windows-'), args.destination.resolve())
     else:
         match = re.fullmatch(r'boost-(\d+\.\d+\.\d+)(?:-[a-z0-9-]+)?', args.package)
         if not match:
-            parser.error('Expected boost-VERSION or windows-{x64,arm64}')
+            parser.error('Expected boost-VERSION, tomlplusplus or windows-{x64,arm64}')
         prepare_boost(match[1], args.destination.resolve())
 
 

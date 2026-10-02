@@ -18,7 +18,8 @@
 #include <boost/numeric/ublas/matrix.hpp>
 #include <boost/numeric/bindings/ublas.hpp>
 #include <boost/numeric/ublas/io.hpp>
-#include <alps/ngs/params.hpp>
+#include <alps/params.hpp>
+#include <alps/maxent.hpp>
 #include <complex>
 #include <utility>
 #include "default_model.hpp"
@@ -33,7 +34,7 @@ public:
   typedef boost::numeric::ublas::vector<std::complex<double> > complex_vector_type;
   typedef std::pair<vector_type, complex_vector_type> omega_complex_type;
 
-  ContiParameters(const alps::params& p);
+  ContiParameters(const alps::params& p, const alps::maxent::data& data);
   
   const DefaultModel& Default() const { return *Default_; }  
   double y(const int i) const { return y_[i]; }
@@ -57,6 +58,7 @@ protected:
   void setup_kernel(const alps::params& p, const int ntab, const vector_type& freq);
   const int nfreq_;
   vector_type y_,sigma_,x_;
+  std::vector<double> tau_;
   matrix_type K_,cov_;
   vector_type t_array_;
 };
@@ -68,7 +70,7 @@ class MaxEntParameters : public ContiParameters
 {
 public:
   
-  MaxEntParameters(const alps::params& p);
+  MaxEntParameters(const alps::params& p, const alps::maxent::data& data);
   
   const vector_type& y() const { return y_; }
   const matrix_type& K() const { return K_; }

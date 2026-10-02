@@ -332,8 +332,8 @@ def writeInputH5Files(filename_,params_list):
       this_filename_ = filename_ + '.task' + str(index+1) + '.in.h5';
     input_files_.append(this_filename_);
     oar = pyalps.hdf5.archive(this_filename_,'w');
-    for key in params_list[index].keys():
-      oar['/parameters/' + key] = params_list[index][key]
+    from .ngs import params
+    oar['/parameters'] = params(params_list[index])
     del oar;
   return input_files_;
 
@@ -356,9 +356,8 @@ def getParameters(infiles_):
    params = [];
    for infile_ in infiles_:
      iar = pyalps.hdf5.archive(infile_);
-     params_dict = {};
-     for key in iar.list_children('/parameters'):
-       params_dict[key] = iar['/parameters/' + key];
+     from .ngs import params as typed_params
+     params_dict = dict(typed_params(iar, '/parameters'));
      params.append(params_dict);
 
    return params;
@@ -811,9 +810,9 @@ def save_parameters(filename, parms):
           filename: the name of the HDF5 file
           parms: the parameter dict
     """
-    f1=h5.archive(filename, 'w')
-    for key in parms.keys():
-        f1['/parameters/'+key] = parms[key]
+    from .ngs import params
+    with h5.archive(filename, 'w') as archive:
+        archive['/parameters'] = params(parms)
 
 def stringListToList(inList):
     """ Convert a string which is of the form [...] with ... a collection of lists of floats and floats separated by commas

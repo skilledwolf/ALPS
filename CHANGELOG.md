@@ -6,6 +6,10 @@ User-facing changes and migration notes are recorded here, starting with the bui
 
 ### Changed
 
+- Consolidate typed params around ALPSCore's owning dictionary/value model (reference `7146b9e1f017938a94e5dae35d88467cc5ba7969`). Store fixed-width integer families, real/complex scalars and homogeneous vectors; reject lossy or string-to-number conversions. TOML loading, schema defaults/validation and run provenance belong to the new `ALPS::run_config` component, using toml++ ≥ 3.4 privately.
+- Migrate MaxEnt to TOML run files and a separate application schema, scientific-data input and explicit output/execution settings. C++ and Python use the same native validation. Preserve numerical algorithms and reference cases; store frequency-bin widths in the result instead of unconditionally writing `deltaOmega.dat`. See the [input guide](src/apps/maxent/README.md).
+- Change params checkpoints to `alps.params.v1`, with explicit logical types and transactional loading. Python params copy values on assignment and retrieval; missing keys raise `KeyError`. Native spin tutorials use TOML input with a shared application schema.
+
 - Export `ALPS::configuration`, `ALPS::containers`, `ALPS::numerics`, `ALPS::numeric_io` and `ALPS::solver_headers` as interface targets. Foundation libraries and interfaces own their header sets without inheriting aggregate `ALPS::headers`. Separate array storage from mathematical helpers and numerical types from HDF5 adapters, removing the foundation include cycle; the expression/older-parameters cycle remains. Numerical algorithms and the moved headers' public include names are preserved, with no ALPSCore implementation imported. Params conversion headers move to `params/adapters/include/` and remain exposed through the aggregate interface with implementations in `ALPS::alps`.
 - Group `src/tools/` commands by parameter preparation, lattice export, scheduler formats, Parapack, diagnostics and XML transformations. Keep historical inactive tools under explicit owners without enabling them. Executable names, installation components and source contents are preserved; `pconfig` now links only the utilities component.
 - Organize `src/alps/` by semantic ownership, including numerical/container helpers, XML, older parameters, models, observables and execution, replacing the transitional `common/` and `runtime/` groups. Modules own their headers, sources and local tests; configuration templates live in `cmake/config/`. Explicit file sets preserve public include names, and generated headers use `<build-dir>/generated/include/alps/`. A CMake-generated module manifest supports ownership and include-dependency checks. Remaining simulation modules use the aggregate header interface; physical owners are not all independent libraries.
@@ -23,6 +27,10 @@ User-facing changes and migration notes are recorded here, starting with the bui
 - Organize tutorials into numbered topic directories, with introductory scripts directly in `tutorials/01-intro/`. `tutorials/00-examples/` is an independent API reference collection. Tutorial sources are installed only when the `tutorials` component is requested. See the [tutorial index](tutorials/README.md).
 
 ### Removed and migration
+
+Typed params no longer accept legacy text/XML files or old parameter checkpoints. Include `<alps/params.hpp>`, use `.exists()` / `.as<T>()` / `.value_or(key, fallback)`, and supply Boolean flags as actual Booleans. Native non-const `[]` inserts an unset entry; const lookup throws, and iteration is lexicographic. A standalone legacy-file/checkpoint converter is deferred rather than included in the runtime.
+
+The unreferenced `alps::ngs_parapack` XML frontend is removed: all its references were internal to that frontend, and the project assumes no external consumers. The active `alps::parapack` implementation and older `alps::Parameters` applications remain; migrating their application orchestration is separate work. The internal typed-to-`Parameters` adapter remains because CT-INT and lattice tutorials call it.
 
 The old build interfaces are removed without compatibility aliases. Reconfigure existing build scripts and downstream projects using [CONTRIBUTING.md](CONTRIBUTING.md#getting-started-with-the-code).
 

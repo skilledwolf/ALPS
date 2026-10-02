@@ -210,9 +210,11 @@ def test_tutorials_are_an_explicit_install_component(tmp_path):
                    check=True, capture_output=True, text=True)
     assert {path.name for path in tutorials.iterdir() if path.is_dir()} == {
         "00-examples", "01-intro", "02-ed", "03-mc", "04-dmrg", "05-dmft",
-        "06-hybridization", "07-looper", "08-alpsize", "09-code", "10-ngs", "11-notebook",
+        "06-hybridization", "07-looper", "08-alpsize", "09-code", "10-ngs", "11-notebook", "cmake",
     }
     assert (tutorials / "10-ngs/1_accumulator_only/CMakeLists.txt").is_file()
+    assert (tutorials / "spin-schema.toml").is_file()
+    assert (tutorials / "cmake/spin_config.hpp.in").is_file()
     assert (tutorials / "README.md").is_file()
     assert (tutorials / "00-examples/README.md").is_file()
     assert (tutorials / "00-examples/CMakeLists.txt").is_file()

@@ -45,7 +45,7 @@ namespace alps {
             mpisim_ng(typename alps::parameters_type<Impl>::type const & p, boost::mpi::communicator & c, double Tmin = 1, double Tmax = 600)
                 : Impl(p, c.rank())
                 , communicator(c)
-                , binnumber(p["binnumber"] | (std::min)(128, 2 * c.size()))
+                , binnumber(p.value_or("binnumber", (std::min)(128, 2 * c.size())))
                 , rank(c.rank())
                 , fraction(0.)
                 , min_check(Tmin)

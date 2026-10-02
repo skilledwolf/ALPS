@@ -12,7 +12,7 @@
 
 #include <alps/hdf5/archive.hpp>
 #include <alps/hdf5/vector.hpp>
-#include <alps/ngs/params.hpp>
+#include <alps/params.hpp>
 #include <boost/filesystem.hpp>
 
 #include <algorithm>
@@ -68,7 +68,7 @@ int main() {
 
   alps::params p;
   p["BETA"] = beta;
-  p["NDAT"] = n_tau;
+
   p["NFREQ"] = 400;
   p["NORM"] = 1.0;
   p["KERNEL"] = std::string("fermionic");
@@ -81,17 +81,17 @@ int main() {
   p["DEFAULT_MODEL"] = std::string("flat");
   p["FREQUENCY_GRID"] = std::string("linear");
   p["MAX_IT"] = 40;
-  p["PARTICLE_HOLE_SYMMETRY"] = 0;
-  p["TEXT_OUTPUT"] = 0;
-  p["DATA_IN_HDF5"] = 1;
-  p["MAX_TIME"] = 600;
-  p["VERBOSE"] = 0;
+  p["PARTICLE_HOLE_SYMMETRY"] = false;
+
+
+
+  p["VERBOSE"] = false;
 
   const std::string base = (boost::filesystem::temp_directory_path() /
       boost::filesystem::unique_path("maxent-numeric-%%%%%%%%")).string();
   const std::string in_h5 = base + ".h5";
   const std::string out_h5 = base + ".out.h5";
-  p["DATA"] = in_h5;
+
   {
     alps::hdf5::archive ar(in_h5, "w");
     ar << alps::make_pvp("/Data", Gin);
@@ -100,7 +100,7 @@ int main() {
   std::remove(out_h5.c_str());
 
   {
-    MaxEntSimulation sim(p, out_h5);
+    MaxEntSimulation sim(alps::maxent::prepare(p,{Gin,errors,{},tau}), {Gin,errors,{},tau}, out_h5);
     int callbacks = 0;
     REQUIRE(!sim.run([&]() { ++callbacks; return true; }), "initial stop request ignored");
     REQUIRE(callbacks == 1, "initial stop callback count changed");
@@ -116,11 +116,11 @@ int main() {
 
     callbacks = 0;
     REQUIRE(sim.run([&]() { ++callbacks; return false; }), "complete run reported stopped");
-    REQUIRE(callbacks == 2, "callback must run before and after the alpha sweep");
+    REQUIRE(callbacks == 1, "callback must run before the alpha sweep");
 
     callbacks = 0;
-    REQUIRE(!sim.run([&]() { ++callbacks; return true; }), "completed run ignored stop callback");
-    REQUIRE(callbacks == 1, "completed run must check the callback once");
+    REQUIRE(sim.run([&]() { ++callbacks; return true; }), "completed result must remain complete");
+    REQUIRE(callbacks == 0, "completed run must not resume or recheck cancellation");
   }
 
   std::vector<double> w, Aavg, Amax, Achi;

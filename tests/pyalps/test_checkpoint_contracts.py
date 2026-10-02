@@ -21,50 +21,43 @@ def result(vector=False, offset=0):
     return ngs.observable2result(observable)
 
 
-def test_parameters_preserve_arithmetic_mutation_and_ownership(tmp_path):
+def test_parameters_own_values_and_require_reassignment(tmp_path):
     array = np.array([1.0, 2.0])
     reference = weakref.ref(array)
-    parameters = ngs.params({"array": array, "list": [1, 2], "tuple": (3, 4)})
-    np.testing.assert_array_equal(parameters["array"] * 2, [2, 4])
+    parameters = ngs.params({"array": array, "integers": [1, 2]})
     array[0] = 9
     del array
     gc.collect()
-    assert reference() is not None
-    parameters["array"] += 1
-    parameters["list"].append(3)
-    parameters["list"][0] = 8
-    assert parameters["tuple"] * 2 == (3, 4, 3, 4)
-    duplicate = copy.deepcopy(parameters)
-    duplicate["array"][0] = -1
-    duplicate["list"].clear()
-    np.testing.assert_array_equal(parameters["array"], [10, 3])
-    assert parameters["list"] == [8, 2, 3]
-    with hdf5.archive(str(tmp_path / "parameters.h5"), "w") as archive:
-        archive["parameters"] = parameters
-        np.testing.assert_array_equal(archive["parameters/array"], [10, 3])
-        np.testing.assert_array_equal(archive["parameters/list"], [8, 2, 3])
-    del parameters["array"]
-    gc.collect()
     assert reference() is None
+    np.testing.assert_array_equal(parameters["array"], [1, 2])
+    detached = parameters["array"]
+    detached[0] = 10
+    np.testing.assert_array_equal(parameters["array"], [1, 2])
+    parameters["array"] = detached
+    duplicate = copy.deepcopy(parameters)
+    parameters["array"] += 1
+    np.testing.assert_array_equal(parameters["array"], [11, 3])
+    np.testing.assert_array_equal(duplicate["array"], [10, 2])
 
 
-def test_parameter_checkpoint_retains_arrays_metadata_and_large_integers(tmp_path):
-    values = {"array": np.arange(6.0).reshape(2, 3), "large": 2 ** 53 + 1,
-              "metadata": {"label": "run", "ids": [1, 2]}, "flags": [True, False]}
+def test_parameter_checkpoint_retains_native_types_and_large_integers(tmp_path):
+    values = {"array": np.arange(6.0), "large": 2 ** 53 + 1,
+              "complex": 2 + 3j, "flags": [True, False], "empty": np.array([], dtype=bool)}
     filename = str(tmp_path / "parameters.h5")
     with hdf5.archive(filename, "w") as archive:
         archive["custom"] = ngs.params(values)
     with hdf5.archive(filename, "r") as archive:
         parameters = ngs.params(archive, "/custom")
         assert archive.context == "/"
-    np.testing.assert_array_equal(parameters["array"] * 2, values["array"] * 2)
+    np.testing.assert_array_equal(parameters["array"], values["array"])
     assert parameters["large"] == 2 ** 53 + 1
-    assert parameters["metadata"]["label"] == "run"
-    assert parameters["flags"] == [True, False]
-    parameters["array"][0, 0] = 99
-    with hdf5.archive(filename, "a") as archive:
-        archive["again"] = parameters
-        assert archive["again/array"][0, 0] == 99
+    assert parameters["complex"] == 2 + 3j
+    np.testing.assert_array_equal(parameters["flags"], [True, False])
+    assert parameters["empty"].dtype.kind == "b"
+    for unsupported in (np.arange(6).reshape(2, 3), {"label": "run"}, [True, 1], None):
+        with pytest.raises(TypeError):
+            parameters["unsupported"] = unsupported
+    assert "unsupported" not in parameters
 
 
 @pytest.mark.parametrize("vector", [False, True])
@@ -130,7 +123,8 @@ def test_failed_loads_preserve_values_and_context(tmp_path):
         parameters = ngs.params({"kept": [1, 2]})
         with pytest.raises(Exception):
             parameters.load(archive, "/missing")
-        assert archive.context == "/" and parameters["kept"] == [1, 2]
+        assert archive.context == "/"
+        np.testing.assert_array_equal(parameters["kept"], [1, 2])
         results = ngs.results()
         results["kept"] = value
         with pytest.raises(Exception):
@@ -170,3 +164,23 @@ def test_empty_result_operations_raise_instead_of_crashing():
         env={**os.environ, "MallocScribble": "1"},
     )
     assert completed.returncode == 0, completed.stdout + completed.stderr
+
+
+def test_parameter_helpers_and_analysis_read_typed_checkpoints(tmp_path):
+    import pyalps
+    values = {"L": 8, "T": 1.5, "wide": 2 ** 53 + 1, "label": "a,b"}
+    paths = pyalps.writeInputH5Files(str(tmp_path / "run"), [values])
+    assert pyalps.getParameters(paths) == [values]
+    props = pyalps.loadProperties(paths)[0]
+    assert props["wide"] == 2 ** 53 + 1 and props["label"] == "a,b"
+    with hdf5.archive(paths[0], "r") as archive:
+        assert archive["/parameters/format"] == "alps.params.v1"
+
+
+def test_extended_parameter_scalars_reject_lossy_conversion():
+    if np.finfo(np.longdouble).nmant <= np.finfo(np.float64).nmant:
+        pytest.skip("platform has no extended floating-point precision")
+    value = np.longdouble(1) + np.finfo(np.longdouble).eps
+    for supplied in (value, np.clongdouble(value + 1j)):
+        with pytest.raises(TypeError, match="lossy"):
+            ngs.params({"x": supplied})

@@ -112,7 +112,7 @@ alps_register_module(NAME configuration ROOT "${PROJECT_SOURCE_DIR}/cmake/config
   GENERATED_HEADERS alps/config.h alps/version.h alps/export.h)
 foreach(module IN ITEMS containers utilities cli numerics ietl solvers xml plotting
                         legacy_parameters expression graph lattice model random
-                        osiris hdf5 numeric_io params alea accumulators mc scheduler parapack fortran)
+                        osiris hdf5 numeric_io params run_config alea accumulators mc scheduler parapack fortran)
   add_subdirectory(${module})
 endforeach()
 target_link_libraries(alps PUBLIC ALPS::utilities ALPS::osiris ALPS::hdf5 ALPS::params
@@ -127,7 +127,7 @@ endif()
 # Install each target's actual public file sets, including generated exports.
 # This keeps header installation policy identical for runtimes and interfaces.
 foreach(target IN ITEMS alps alps_utilities alps_hdf5 alps_params alps_osiris
-                        alps_xml alps_cli alps_headers alps_configuration
+                        alps_xml alps_cli alps_headers alps_configuration alps_run_config
                         alps_containers alps_numerics alps_numeric_io alps_solver_headers)
   get_target_property(header_sets ${target} INTERFACE_HEADER_SETS)
   set(header_install_args "")

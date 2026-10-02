@@ -31,27 +31,27 @@ std::complex<double> *c_or_cdagger::exp_iomegan_tau_;
 
 InteractionExpansion::InteractionExpansion(const alps::params &parms, int node)
 : alps::mcbase(parms,node),
-max_order(parms["MAX_ORDER"] | 2048),
-n_flavors(parms["FLAVORS"] | (parms["N_ORBITALS"] | 2)),
-n_site(parms["SITES"] | 1),
-n_matsubara((int)(parms["NMATSUBARA"]|parms["N_MATSUBARA"])),
-n_matsubara_measurements(parms["NMATSUBARA_MEASUREMENTS"] | (int)n_matsubara),
-n_tau((int)(parms["N"]|parms["N_TAU"])),
+max_order(parms.value_or("MAX_ORDER", 2048)),
+n_flavors(parms.value_or("FLAVORS", (parms.value_or("N_ORBITALS", 2)))),
+n_site(parms.value_or("SITES", 1)),
+n_matsubara((int)((parms.exists("NMATSUBARA") ? parms["NMATSUBARA"].as<int>() : parms["N_MATSUBARA"].as<int>()))),
+n_matsubara_measurements(parms.value_or("NMATSUBARA_MEASUREMENTS", (int)n_matsubara)),
+n_tau((int)((parms.exists("N") ? parms["N"].as<int>() : parms["N_TAU"].as<int>()))),
 n_tau_inv(1./n_tau),
-n_self(parms["NSELF"] | (int)(10*n_tau)),
+n_self(parms.value_or("NSELF", (int)(10*n_tau))),
 mc_steps((boost::uint64_t)parms["SWEEPS"]),
 therm_steps((unsigned int)parms["THERMALIZATION"]),        
-max_time_in_seconds(parms["MAX_TIME"] | 86400),
+max_time_in_seconds(parms.value_or("MAX_TIME", 86400)),
 beta((double)parms["BETA"]),                        
 temperature(1./beta),
 onsite_U((double)parms["U"]),                        
 alpha((double)parms["ALPHA"]),
 U(alps::make_deprecated_parameters(parms)),                         
-recalc_period(parms["RECALC_PERIOD"] | 5000),
-measurement_period(parms["MEASUREMENT_PERIOD"] | (parms["N_MEAS"] | 200)),
-convergence_check_period(parms["CONVERGENCE_CHECK_PERIOD"] | (int)recalc_period),
-almost_zero(parms["ALMOSTZERO"] | 1.e-16),
-seed(parms["SEED"] | 0),
+recalc_period(parms.value_or("RECALC_PERIOD", 5000)),
+measurement_period(parms.value_or("MEASUREMENT_PERIOD", (parms.value_or("N_MEAS", 200)))),
+convergence_check_period(parms.value_or("CONVERGENCE_CHECK_PERIOD", (int)recalc_period)),
+almost_zero(parms.value_or("ALMOSTZERO", 1.e-16)),
+seed(parms.value_or("SEED", 0)),
 green_matsubara(n_matsubara, n_site, n_flavors),
 bare_green_matsubara(n_matsubara,n_site, n_flavors), 
 bare_green_itime(n_tau+1, n_site, n_flavors),
@@ -59,7 +59,7 @@ green_itime(n_tau+1, n_site, n_flavors),
 pert_hist(max_order)
 {
   //initialize measurement method
-  if (parms["HISTOGRAM_MEASUREMENT"] | false)
+  if (parms.value_or("HISTOGRAM_MEASUREMENT", false))
     measurement_method=selfenergy_measurement_itime_rs;
   else
     measurement_method=selfenergy_measurement_matsubara;
@@ -73,9 +73,9 @@ pert_hist(max_order)
   measurement_time=0;
   update_time=0;
   thermalized=therm_steps==0?true:false;
-  if(!parms.defined("ATOMIC")) {
-    alps::hdf5::archive ar(parms["INFILE"].cast<std::string>(),"r");
-    if(parms.defined("DMFT_FRAMEWORK") && parms["DMFT_FRAMEWORK"].cast<bool>()){
+  if(!parms.exists("ATOMIC")) {
+    alps::hdf5::archive ar(parms["INFILE"].as<std::string>(),"r");
+    if(parms.exists("DMFT_FRAMEWORK") && parms["DMFT_FRAMEWORK"].as<bool>()){
       //read in as green_function
 //      std::cerr << "Reading G0 ...";
       bare_green_matsubara.read_hdf5(ar,"/G0");
@@ -175,12 +175,12 @@ void InteractionExpansion::initialize_simulation(const alps::params &parms)
 void c_or_cdagger::initialize_simulation(const alps::params &p)
 {
   beta_=p["BETA"];
-  nm_=p["NMATSUBARA_MEASUREMENTS"] | (p["NMATSUBARA"]|p["N_MATSUBARA"]);
+  nm_=p.value_or("NMATSUBARA_MEASUREMENTS", ((p.exists("NMATSUBARA") ? p["NMATSUBARA"].as<int>() : p["N_MATSUBARA"].as<int>())));
   omegan_ = new double[nm_];
   for(unsigned int i=0;i<nm_;++i) {
     omegan_[i]=(2.*i+1.)*boost::math::constants::pi<double>()/beta_;
   }
-  if(p.defined("TAU_DISCRETIZATION_FOR_EXP")) {
+  if(p.exists("TAU_DISCRETIZATION_FOR_EXP")) {
     ntau_=p["TAU_DISCRETIZATION_FOR_EXP"];
     use_static_exp_=true;
     exp_iomegan_tau_=new std::complex<double> [2*nm_*ntau_];

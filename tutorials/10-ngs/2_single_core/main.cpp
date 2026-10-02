@@ -14,7 +14,7 @@
 #include "ising.hpp"
 
 #include <alps/ngs.hpp>
-#include <alps/ngs/make_parameters_from_xml.hpp>
+#include "spin_config.hpp"
 
 #include <boost/chrono.hpp>
 #include <boost/filesystem/path.hpp>
@@ -30,13 +30,8 @@ int main(int argc, char *argv[]) {
         std::string checkpoint_file = options.input_file.substr(0, options.input_file.find_last_of('.')) +  ".clone0.h5";
 
         alps::parameters_type<ising_sim>::type parameters;
-        // better check the first few bytes. provide an ALPS function to do so
-        if (boost::filesystem::path(options.input_file).extension().string() == ".xml")
-            parameters = alps::make_parameters_from_xml(options.input_file);
-        else if (boost::filesystem::path(options.input_file).extension().string() == ".h5")
-            alps::hdf5::archive(options.input_file)["/parameters"] >> parameters;
-        else
-            parameters = alps::parameters_type<ising_sim>::type(options.input_file);
+        // The application schema defines the parameter types.
+        parameters = load_spin_parameters(options.input_file);
 
         ising_sim sim(parameters);
 

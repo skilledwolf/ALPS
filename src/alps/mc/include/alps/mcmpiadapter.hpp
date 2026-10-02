@@ -36,7 +36,7 @@ namespace alps {
                 , schedule_checker(check)
                 , clone(comm.rank())
 #ifndef ALPS_NGS_USE_NEW_ALEA
-                , binnumber(parameters["BINNUMBER"] | 128)
+                , binnumber(parameters.value_or("BINNUMBER", 128))
 #endif
             {}
 

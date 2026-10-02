@@ -1,16 +1,14 @@
 # Typed parameters have no link dependency on the legacy parameter/parser runtime.
 add_library(alps_params
-  src/paramproxy.cpp
-  src/params.cpp
-  src/paramvalue.cpp)
+  src/dictionary.cpp
+  src/checkpoint.cpp)
 add_library(ALPS::params ALIAS alps_params)
 set_target_properties(alps_params PROPERTIES
   EXPORT_NAME params
   VERSION ${PROJECT_VERSION}
   SOVERSION ${PROJECT_VERSION_MAJOR}
   INSTALL_RPATH "${ALPS_LOADER_ORIGIN}")
-target_link_libraries(alps_params PUBLIC ALPS::configuration ALPS::hdf5 Boost::serialization
-  PRIVATE "$<COMPILE_ONLY:ALPS::numerics>")
+target_link_libraries(alps_params PUBLIC ALPS::configuration ALPS::hdf5 Boost::serialization)
 if(ALPS_ENABLE_MPI)
   target_link_libraries(alps_params PUBLIC MPI::MPI_CXX Boost::mpi)
 endif()
@@ -29,12 +27,10 @@ target_sources(alps_params PUBLIC
   FILE_SET params_headers TYPE HEADERS
   BASE_DIRS "${CMAKE_CURRENT_SOURCE_DIR}/include"
   FILES
-    include/alps/ngs/detail/paramiterator.hpp
-    include/alps/ngs/detail/paramproxy.hpp
-    include/alps/ngs/detail/params_impl_base.hpp
-    include/alps/ngs/detail/paramvalue.hpp
-    include/alps/ngs/detail/paramvalue_reader.hpp
-    include/alps/ngs/params.hpp)
+    include/alps/params.hpp
+    include/alps/dictionary.hpp
+    include/alps/params/dict_value.hpp
+    include/alps/params/dict_exceptions.hpp)
 
 add_subdirectory(adapters)
 
@@ -45,6 +41,9 @@ endif()
 alps_register_module(NAME params HEADER_SET params_headers
   HEADER_TARGETS alps_params alps_headers
   TARGETS alps alps_params
-  DEPENDS configuration hdf5 legacy_parameters numerics utilities
+  DEPENDS configuration hdf5 legacy_parameters
   GENERATED_HEADERS alps/params_export.h
 )
+
+install(FILES ALPSCore-LICENSE.txt ALPSCore-COPYRIGHT.txt
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/alps/licenses/params COMPONENT libraries)

@@ -87,7 +87,7 @@ test-command = 'python {project}/.github/scripts/build_metrics.py run --timeout 
 PIP_ONLY_BINARY = ":all:"
 ALPS_DIR = "$(pwd)/_build/distribution/install/share/alps"
 ALPS_CI_METRICS = "$(pwd)/_build/metrics"
-CMAKE_PREFIX_PATH = "$(pwd)/_build/boost-install"
+CMAKE_PREFIX_PATH = "$(pwd)/_build/boost-install:$(pwd)/_build/tomlplusplus-install"
 CCACHE_DIR = "$(pwd)/_build/ccache"
 CCACHE_NAMESPACE = "pyalps-wheel"
 CCACHE_MAXSIZE = "1G"
@@ -104,6 +104,7 @@ before-all = [
   "cd {project}",
   "ccache --zero-stats",
   "if command -v dnf >/dev/null 2>&1; then ALPS_BOOST_MPI=OFF python .github/scripts/prepare_dependencies.py boost-1.91.0 _build/boost-install; fi",
+  "python .github/scripts/prepare_dependencies.py tomlplusplus _build/tomlplusplus-install",
   "python .github/scripts/build_metrics.py run 'SDK configure' cmake --preset distribution",
   "python .github/scripts/build_metrics.py run 'SDK build and install' cmake --build --preset distribution -j4",
 ]
@@ -118,7 +119,7 @@ repair-wheel-command = [
 
 [tool.cibuildwheel.macos]
 before-all = [
-  "brew install --force-bottle ccache cmake hdf5 ninja zstd xz",
+  "brew install --force-bottle ccache cmake hdf5 ninja zstd xz tomlplusplus",
   "cd {project}",
   "ccache --zero-stats",
   "ALPS_BOOST_MPI=OFF CXX=clang++ python .github/scripts/prepare_dependencies.py boost-1.91.0 _build/boost-install",

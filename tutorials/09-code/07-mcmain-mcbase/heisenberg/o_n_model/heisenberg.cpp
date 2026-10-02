@@ -15,7 +15,7 @@
 
 #include <alps/parseargs.hpp>
 #include <alps/stop_callback.hpp>
-#include <alps/ngs/make_parameters_from_xml.hpp>
+#include "spin_config.hpp"
 
 #include <boost/chrono.hpp>
 #include <boost/filesystem/path.hpp>
@@ -34,17 +34,9 @@ int main(int argc, char *argv[]) {
         // name the checkpoint file after the input file
         std::string checkpoint_file = options.input_file.substr(0, options.input_file.find_last_of('.')) +  ".checkpt.h5";
 
-        // read in parameters from the input file, can be xml, hd5f, or plain text
+        // Read a TOML run file using the application schema.
         alps::parameters_type<sim_type>::type parameters;
-        if (boost::filesystem::path(options.input_file).extension().string() == ".xml") {
-            parameters = alps::make_parameters_from_xml(options.input_file);
-        }
-        else if (boost::filesystem::path(options.input_file).extension().string() == ".h5") {
-            alps::hdf5::archive(options.input_file)["/parameters"] >> parameters;
-        }
-        else {
-            parameters = alps::parameters_type<sim_type>::type(options.input_file);
-        }
+        parameters = load_spin_parameters(options.input_file);
 
         // initialize the simulation
         sim_type sim(parameters);

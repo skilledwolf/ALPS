@@ -1,0 +1,7 @@
+#pragma once
+#include <alps/run_config.hpp>
+inline alps::params load_spin_parameters(const std::string& file) {
+    auto run=alps::load_run_configuration(file,R"schema(@SPIN_SCHEMA@)schema");
+    if(run.parameters["T"].as<double>()<=0) throw std::invalid_argument("T must be positive");
+    return run.parameters;
+}

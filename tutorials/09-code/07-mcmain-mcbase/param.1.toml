@@ -1,0 +1,8 @@
+format_version=1
+application="spin-tutorial"
+schema_version=1
+[parameters]
+L=100
+THERMALIZATION=1000
+SWEEPS=100000
+T=3

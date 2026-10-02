@@ -68,7 +68,7 @@ Python edits take effect in a new interpreter without reinstalling. Rebuild and 
 
 ## Native runtime layout
 
-The extensions share one nanobind library, named `pyalps_nanobind` to avoid filename collisions with other packages, and one packaged copy of each ALPS runtime component (`alps`, `alps_params`, `alps_hdf5`, `alps_utilities`, `alps_osiris`, `alps_xml` and `alps_cli`). The SDK lists these targets in `ALPS_RUNTIME_TARGETS`. On Unix, CMake installs relative runtime paths with the package's `lib` directory first and derives any additional dependency directories from resolved link targets. On macOS, manifest generation also redirects dependencies between the packaged ALPS libraries, so they do not load a second SDK copy. Linux and macOS wheels intended for redistribution must then be repaired with auditwheel or delocate, respectively, to bundle external dependencies and replace build-machine paths; the wheel CI performs this step. See [downstream native extensions](#downstream-native-extensions) for manifest finalization after repair.
+The extensions share one nanobind library, named `pyalps_nanobind` to avoid filename collisions with other packages, and one packaged copy of each ALPS runtime component (`alps`, `alps_params`, `alps_run_config`, `alps_hdf5`, `alps_utilities`, `alps_osiris`, `alps_xml` and `alps_cli`). The SDK lists these targets in `ALPS_RUNTIME_TARGETS`. On Unix, CMake installs relative runtime paths with the package's `lib` directory first and derives any additional dependency directories from resolved link targets. On macOS, manifest generation also redirects dependencies between the packaged ALPS libraries, so they do not load a second SDK copy. Linux and macOS wheels intended for redistribution must then be repaired with auditwheel or delocate, respectively, to bundle external dependencies and replace build-machine paths; the wheel CI performs this step. See [downstream native extensions](#downstream-native-extensions) for manifest finalization after repair.
 
 ## Python compatibility
 
@@ -120,3 +120,24 @@ The same target supplies `<pyalps/export_simulation.hpp>` for exporting a derive
 Wheel installation writes `pyalps/runtime.json`. After auditwheel or delocate repair, regenerate it with `python python/pyalps/_build_support/runtime_manifest.py --wheel path/to/pyalps.whl`. Cibuildwheel runs this automatically. The manifest records the final relative library paths; pyalps exposes these as imported CMake targets. On macOS, wheel finalization sets linkable `@rpath` library IDs and refreshes their signatures, so downstream builds need no binary-patching commands.
 
 CMake derives build-time search paths from the imported targets. If you install or redistribute your extension, set its `INSTALL_RPATH` for the destination layout using normal CMake installation rules. The target does not hard-code the build environment's Python installation into installed extensions. For an extension installed for the same environment, CMake's `INSTALL_RPATH_USE_LINK_PATH` target property can retain the runtime search paths.
+
+## Typed params and TOML migration
+
+`ngs.params` now owns scalar and one-dimensional homogeneous values. Assignment
+copies Python/NumPy input; retrieval returns a detached value. Reassign an edited
+array (`p["x"] = values`) or use augmented assignment (`p["x"] += 1`). Missing
+keys raise `KeyError`. Numeric strings, mixed Boolean/numeric arrays, arbitrary
+objects, nested dictionaries, multidimensional arrays and `None` are rejected.
+Python integers use signed 64-bit storage; integer-to-real conversion rejects
+loss of precision. Boolean flags must use `True`/`False`.
+
+Params checkpoints are explicitly versioned as `alps.params.v1`; old checkpoints
+are not accepted by `ngs.params.load`. A standalone converter is deferred. The
+analysis loaders still handle result groups from the unmigrated `Parameters`
+applications as well as the new typed checkpoints.
+
+MaxEnt accepts `AnalyticContinuation(parameters, input, output_file,
+time_limit=60, text_output=False)`. Parameters and input are separate dictionaries
+validated by the native application schema. Its CLI accepts a TOML run file;
+see the [MaxEnt guide](../../src/apps/maxent/README.md). The previous combined
+parameter dictionary, file constructor and HDF5-as-run-file CLI are removed.

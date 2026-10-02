@@ -18,7 +18,7 @@
 
 ising_sim::ising_sim(parameters_type const & params)
     : parameters(params)
-    , random(boost::mt19937((parameters["SEED"] | 42)), boost::uniform_real<>())
+    , random(boost::mt19937((parameters.value_or("SEED", 42))), boost::uniform_real<>())
     , length(parameters["L"])
     , sweeps(0)
     , thermalization_sweeps(int(parameters["THERMALIZATION"]))

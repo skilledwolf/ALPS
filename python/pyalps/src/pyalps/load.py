@@ -88,6 +88,11 @@ class Hdf5Loader:
         
     def ReadParameters(self,proppath):
         dict = {'filename' : self.h5fname}
+        if self.h5f.is_data(proppath + '/format') and str(self.h5f[proppath + '/format']).startswith('alps.params.'):
+            from .ngs import params
+            dict.update(params(self.h5f, proppath))
+            return dict
+        # Unmigrated applications still write legacy Parameters result groups.
         LOP=self.h5f.list_children(proppath)
         for m in LOP:
                 try:

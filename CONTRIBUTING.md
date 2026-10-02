@@ -32,7 +32,7 @@ git remote add upstream https://github.com/ALPSim/ALPS.git
 ### Prerequisites
 
 - CMake ≥ 3.27, Ninja for the bundled presets, and C++17/C11 compilers such as GCC or Clang.
-- Boost ≥ 1.76 with its compiled libraries and CMake packages, HDF5's C library, and LP64 BLAS/LAPACK. Use serial HDF5 for the default MPI-disabled build; see [numerical libraries](#numerical-libraries).
+- Boost ≥ 1.76 with its compiled libraries and CMake packages, HDF5's C library, LP64 BLAS/LAPACK, and toml++ ≥ 3.4 (header-only). Use serial HDF5 for the default MPI-disabled build; see [numerical libraries](#numerical-libraries).
 - For native tests (`ALPS_BUILD_TESTING=ON`): Python ≥ 3.10 for the CTest module-architecture audit; this does not require building the Python bindings.
 - For Python development: GIL-enabled CPython ≥ 3.10 in a writable Python environment. Pip installs NumPy, SciPy and Matplotlib with pyalps. Free-threaded Python is unsupported.
 - Optional: MPI and Boost.MPI for `ALPS_ENABLE_MPI=ON`; an OpenMP runtime for `ALPS_ENABLE_OPENMP=ON`; a Fortran compiler for the Fortran examples.
@@ -43,14 +43,14 @@ For example, on Ubuntu 24.04:
 
 ```sh
 sudo apt-get update
-sudo apt-get install build-essential libboost-all-dev libhdf5-dev libblas-dev liblapack-dev
+sudo apt-get install build-essential libboost-all-dev libhdf5-dev libblas-dev liblapack-dev libtomlplusplus-dev
 ```
 
 On macOS, install Apple's Command Line Tools with `xcode-select --install` if needed. If you use Homebrew:
 
 ```sh
-brew install boost hdf5 openblas
-export CMAKE_PREFIX_PATH="$(brew --prefix boost):$(brew --prefix hdf5):$(brew --prefix openblas)"
+brew install boost hdf5 openblas tomlplusplus
+export CMAKE_PREFIX_PATH="$(brew --prefix boost):$(brew --prefix hdf5):$(brew --prefix openblas):$(brew --prefix tomlplusplus)"
 ```
 
 These are optional provider examples. For another non-system installation, set the `CMAKE_PREFIX_PATH` environment variable to its dependency prefixes, separated by colons on Linux/macOS. Keep it set for both SDK and Python builds. The CMake command-line form instead uses semicolons: `-DCMAKE_PREFIX_PATH="/prefix/one;/prefix/two"`.
@@ -199,7 +199,7 @@ MaxEnt uses `src/apps/maxent/{src,cli,tests}`; `<alps/solvers.hpp>` lives in `sr
 
 `ALPS::utilities`, `ALPS::hdf5`, `ALPS::params`, `ALPS::osiris`, `ALPS::xml` and `ALPS::cli` are independently linkable libraries; `ALPS::alps` links them transitively and owns the params text/XML and older `Parameters` adapters in `src/alps/params/adapters/`. Their conversion headers live under `adapters/include/`, with unchanged public include names exposed through the aggregate interface. XML parsing/output belongs to `ALPS::xml`; file-to-parameter conversion still belongs to those adapters. `ALPS::cli` owns the unchanged `mcoptions` and `parseargs` implementations under their existing public header names.
 
-`ALPS::maxent` links the foundations, Osiris and numerical providers without `ALPS::alps`; its executable adds `ALPS::cli` for argument parsing and reads HDF5 params directly. These extractions preserve scientific algorithms and existing input grammars. Rebuild downstream binaries after the library splits. This cleanup prepares MaxEnt, HDF5 and params for ALPSCore reconciliation without importing Core implementations. See the [module boundaries and next steps](src/alps/README.md).
+`ALPS::params` now derives its owning dictionary/value model from ALPSCore. `ALPS::run_config` owns TOML loading and application-schema validation, with a private toml++ dependency. `ALPS::maxent` consumes resolved parameters and separate scientific data, without `ALPS::alps`; its CLI reads a TOML run file. See the [MaxEnt input guide](src/apps/maxent/README.md) and [module boundaries](src/alps/README.md). Rebuild downstream binaries after this API and checkpoint-format change.
 
 CMake generates `alps-module-manifest.json` from module declarations and actual header/source lists. After configuration, check ownership and declared include dependencies with:
 
@@ -242,7 +242,7 @@ add_executable(my_simulation main.cpp)
 target_link_libraries(my_simulation PRIVATE ALPS::alps)
 ```
 
-The imported target carries headers, C++17 requirements, compile definitions and transitive dependencies. Use a compiler and configuration compatible with the SDK's ABI. `ALPS::headers` exposes the compile interface without linking; `ALPS::fortran` supplies the C++ Fortran bridge and its GNU Fortran compatibility flag. Programs using only utilities can request `find_package(ALPS CONFIG REQUIRED COMPONENTS utilities)` and link `ALPS::utilities`. Archive-only programs can similarly request the `hdf5` component and link `ALPS::hdf5`, which also owns archive signal cleanup. Typed parameter programs can request the `params` component and link `ALPS::params`. XML parsing/output and command-line parsing are available through the `xml` and `cli` components and targets `ALPS::xml` and `ALPS::cli`. The parameter-file constructor and text/XML conversion adapters still require `ALPS::alps`. Package discovery still checks the SDK's complete dependency set; component-specific configuration is future work.
+The imported target carries headers, C++17 requirements, compile definitions and transitive dependencies. Use a compiler and configuration compatible with the SDK's ABI. `ALPS::headers` exposes the compile interface without linking; `ALPS::fortran` supplies the C++ Fortran bridge and its GNU Fortran compatibility flag. Programs using only utilities can request `find_package(ALPS CONFIG REQUIRED COMPONENTS utilities)` and link `ALPS::utilities`. Archive-only programs can similarly request the `hdf5` component and link `ALPS::hdf5`, which also owns archive signal cleanup. Typed parameter programs can request the `params` component and link `ALPS::params`. XML parsing/output and command-line parsing are available through the `xml` and `cli` components and targets `ALPS::xml` and `ALPS::cli`. The parameter-file constructor and typed XML input adapter are removed. The remaining typed-to-`Parameters` bridge serves CT-INT and lattice tutorials internally through `ALPS::alps`. Package discovery still checks the SDK's complete dependency set; component-specific configuration is future work.
 
 Use `ALPS::containers` for array storage and `ALPS::numerics` for matrix/vector algorithms and array mathematics, including the existing `<alps/multi_array.hpp>` umbrella. Numerical archive consumers link `ALPS::numeric_io` and explicitly include `<alps/hdf5/matrix.hpp>` or `<alps/hdf5/numeric_vector.hpp>`. For example:
 

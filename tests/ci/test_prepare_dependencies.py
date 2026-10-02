@@ -45,3 +45,18 @@ def test_windows_uses_pinned_baseline_and_matching_triplet(tmp_path, monkeypatch
     assert f'--x-manifest-root={ROOT / "cmake/vcpkg"}' in install
     assert '--x-feature=tests' in install
     assert any(arg.startswith('--overlay-ports=') for arg in install) == (architecture == 'arm64')
+
+
+def test_tomlplusplus_checksum_failure_never_installs(tmp_path, monkeypatch):
+    monkeypatch.setattr(dependencies.urllib.request, 'urlopen', lambda *a, **kw: io.BytesIO(b'corrupt'))
+    monkeypatch.setattr(dependencies.subprocess, 'run', lambda *a, **kw: pytest.fail('Unverified parser installed'))
+    with pytest.raises(ValueError, match='Checksum mismatch'):
+        dependencies.prepare_tomlplusplus(tmp_path / 'installed')
+    assert not (tmp_path / 'installed').exists()
+
+
+def test_matching_tomlplusplus_cache_avoids_network(tmp_path, monkeypatch):
+    pin = json.loads((ROOT / '.github/dependencies.json').read_text())['tomlplusplus']
+    (tmp_path / '.alps-tomlplusplus-sha256').write_text(pin['sha256'])
+    monkeypatch.setattr(dependencies.urllib.request, 'urlopen', lambda *a, **kw: pytest.fail('Cached parser downloaded again'))
+    dependencies.prepare_tomlplusplus(tmp_path)
