@@ -188,7 +188,7 @@ def test_maxent_cli_matches_python(reference_runs):
         input_file = directory / "run.toml"
         sections = {"parameters": parameters, "input": source_config(case, directory, points),
                     "output": {"results": str(directory / "cli.out.h5")}}
-        lines = ['format_version = 1', 'application = "maxent"', 'schema_version = 1']
+        lines = []
         for section, entries in sections.items():
             lines.append("[" + section + "]")
             lines.extend(json.dumps(key) + " = " + json.dumps(value) for key, value in entries.items())
@@ -196,6 +196,10 @@ def test_maxent_cli_matches_python(reference_runs):
         process = subprocess.run([str(executable), str(input_file)], cwd=directory,
                                  text=True, capture_output=True, timeout=60)
         assert process.returncode == 0, process.stdout + process.stderr
+        with hdf5.archive(str(directory / "cli.out.h5"), "r") as archive:
+            assert archive["/run_config/application"] == "maxent"
+            assert archive["/run_config/schema_version"] == 1
+            assert archive["/run_config/format"] == "alps.run_config.v1"
         actual = read_result(directory / "cli.out.h5", case)
         validate(defaults, case, actual, points, values, errors)
         compare_results(actual, expected, relative=2e-6, absolute=1e-9)

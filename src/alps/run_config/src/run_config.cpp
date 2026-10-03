@@ -216,24 +216,18 @@ run_configuration load_run_configuration(const std::filesystem::path &filename,
                                          std::string_view schema_text) {
     const auto schema = toml::parse(schema_text);
     const auto document = toml::parse_file(filename.string());
-    const std::set<std::string_view> top{"format_version", "application", "schema_version",
-                                         "parameters",     "input",       "output",
-                                         "execution"};
+    const std::set<std::string_view> top{"parameters", "input", "output", "execution"};
     for (const auto &[key, node] : document)
         if (!top.count(key.str()))
             fail(std::string(key.str()), "unknown run-file key at " + location(node));
-    if (!document["format_version"].is_integer() ||
-        document["format_version"].value<std::int64_t>() != 1)
-        fail("format_version", "expected 1");
     run_configuration run;
-    run.application = text(document["application"], "application");
-    if (run.application != text(schema["application"], "application"))
-        fail("application", "schema does not match application");
-    const auto version = document["schema_version"].value<std::int64_t>();
-    if (!document["schema_version"].is_integer() || !schema["schema_version"].is_integer() ||
-        !version || *version < 1 || version != schema["schema_version"].value<std::int64_t>())
-        fail("schema_version", "unsupported schema version");
-    run.schema_version = params_ns::detail::convert<int>(*version, "schema_version");
+    run.application = text(schema["application"], "schema.application");
+    if (run.application.empty())
+        fail("schema.application", "expected a nonempty application name");
+    const auto version = schema["schema_version"].value<std::int64_t>();
+    if (!schema["schema_version"].is_integer() || !version || *version < 1)
+        fail("schema.schema_version", "expected a positive integer");
+    run.schema_version = params_ns::detail::convert<int>(*version, "schema.schema_version");
     const auto base = std::filesystem::absolute(filename).parent_path();
     for (const auto &item :
          std::vector<std::pair<std::string, params *>>{{"parameters", &run.parameters},

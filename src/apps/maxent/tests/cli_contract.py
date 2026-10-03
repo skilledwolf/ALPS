@@ -29,10 +29,7 @@ class MaxEntCLIContract(unittest.TestCase):
                 self.assertIn('maxent:',result.stderr)
     def config(self,extra=''):
         path=self.directory/'run.toml'
-        path.write_text('''format_version=1
-application="maxent"
-schema_version=1
-[parameters]
+        path.write_text('''[parameters]
 BETA=2.0
 NFREQ=20
 OMEGA_MAX=4.0

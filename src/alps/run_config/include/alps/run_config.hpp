@@ -8,6 +8,7 @@
 namespace alps {
 // Application schemas are TOML supplied by the application. Parser types stay
 // private; native and language-binding callers share the same validation.
+// Identity and version come from the schema, not the user-written run file.
 struct ALPS_RUN_CONFIG_DECL run_configuration {
     std::string application;
     int schema_version = 1;

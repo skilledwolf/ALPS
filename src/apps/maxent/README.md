@@ -5,10 +5,6 @@ creating output. Run `maxent run.toml` to calculate the spectrum. Legacy paramet
 files and HDF5 archives are no longer accepted as run configurations.
 
 ```toml
-format_version = 1
-application = "maxent"
-schema_version = 1
-
 [parameters]
 BETA = 2.0
 NFREQ = 100
@@ -28,7 +24,9 @@ time_limit = 60
 
 The application owns [schema/maxent.toml](schema/maxent.toml), which is embedded
 at build time and installed under `share/alps/schemas`. The run file contains
-values, not validation rules. Unknown keys and unsafe conversions are errors.
+values, not validation rules or version declarations. The executable selects its
+schema and records the application and schema version automatically in results.
+Unknown keys and unsafe conversions are errors.
 Relative paths are resolved against the run file's directory. Scientific
 cross-field checks (such as consistent `T`/`BETA` or covariance shape) remain
 native application code; they apply equally to C++ and Python callers.

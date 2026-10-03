@@ -1,11 +1,12 @@
 // Copyright (C) 2026 ALPS Collaboration. SPDX-License-Identifier: MIT
+#include <alps/hdf5/archive.hpp>
 #include <alps/run_config.hpp>
 #include <filesystem>
 #include <fstream>
 #include <stdexcept>
 const char *schema = R"(
 application="test"
-schema_version=1
+schema_version=7
 [parameters.count]
 type="int64"
 required=true
@@ -41,16 +42,15 @@ template <class F> void rejects(F f, const std::string &needle) {
 }
 int main() {
     const std::filesystem::path file = "run-config-contract.toml";
-    auto load = [&](const std::string &text) {
+    auto load = [&](const std::string &text, std::string_view rules = schema) {
         {
             std::ofstream out(file);
             out << text;
         }
-        return alps::load_run_configuration(file, schema);
+        return alps::load_run_configuration(file, rules);
     };
-    const std::string header = "format_version=1\napplication=\"test\"\nschema_version=1\n";
-    auto run = load(header + "[parameters]\ncount=9007199254740993\nnames=[\"a,b\",\"c\"]\nflags=[]"
-                             "\nz={real=1.0,imag=-2.0}\n[input]\ndata=\"data.h5\"\n");
+    auto run = load("[parameters]\ncount=9007199254740993\nnames=[\"a,b\",\"c\"]\nflags=[]"
+                    "\nz={real=1.0,imag=-2.0}\n[input]\ndata=\"data.h5\"\n");
     require(run.parameters["count"].as<std::int64_t>() == 9007199254740993LL);
     require(run.parameters["names"].as<std::vector<std::string>>() ==
             std::vector<std::string>({"a,b", "c"}));
@@ -61,13 +61,42 @@ int main() {
     require(run.origins.at("parameters.count") == "input");
     require(run.input["data"].as<std::string>() ==
             (std::filesystem::current_path() / "data.h5").string());
-    rejects([&] { load(header + "[parameters]\ncount=0"); }, "minimum");
-    rejects([&] { load(header + "[parameters]\ncount=true"); }, "count");
-    rejects([&] { load(header + "[parameters]\ncount=1\nrate=9007199254740993"); }, "exactly");
-    rejects([&] { load(header + "[parameters]\ncount=1\nnames=[\"a\",1]"); }, "names");
-    rejects([&] { load(header + "[parameters]\ncount=1\ntypo=2"); }, "unknown key");
-    rejects([&] { load(header + "[parameters]\n"); }, "required");
-    rejects([&] { load("format_version=0\n"); }, "format_version");
+    rejects([&] { load("[parameters]\ncount=0"); }, "minimum");
+    rejects([&] { load("[parameters]\ncount=true"); }, "count");
+    rejects([&] { load("[parameters]\ncount=1\nrate=9007199254740993"); }, "exactly");
+    rejects([&] { load("[parameters]\ncount=1\nnames=[\"a\",1]"); }, "names");
+    rejects([&] { load("[parameters]\ncount=1\ntypo=2"); }, "unknown key");
+    rejects([&] { load("[parameters]\n"); }, "required");
+    // Run files cannot override the executable's schema identity or version.
+    for (const auto *metadata : {"format_version=1", "schema_version=7", "application=\"test\""})
+        rejects([&] { load(metadata); }, "unknown run-file key");
+    for (const auto *version : {"0", "-1", "1.5", "true", "\"7\"", "2147483648"})
+        rejects([&] {
+            load("", std::string("application=\"test\"\nschema_version=") + version);
+        }, "schema_version");
+    rejects([&] { load("", "application=\"test\""); }, "schema_version");
+    rejects([&] { load("", "schema_version=7"); }, "application");
+    rejects([&] { load("", "application=\"\"\nschema_version=7"); }, "application");
+    require(run.application == "test" && run.schema_version == 7);
+    const std::filesystem::path output = "run-config-contract.h5";
+    {
+        alps::hdf5::archive ar(output.string(), "w");
+        run.save(ar);
+    }
+    {
+        alps::hdf5::archive ar(output.string(), "r");
+        std::string application, format;
+        int version;
+        alps::params parameters;
+        ar["application"] >> application;
+        ar["schema_version"] >> version;
+        ar["format"] >> format;
+        ar["parameters"] >> parameters;
+        require(application == "test" && version == 7 && format == "alps.run_config.v1");
+        require(parameters["count"].as<std::int64_t>() == 9007199254740993LL);
+        require(parameters["rate"].as<double>() == 0.5);
+    }
+    std::filesystem::remove(output);
     alps::params supplied;
     supplied["count"] = 2;
     auto effective = alps::resolve_parameters(supplied, schema);
