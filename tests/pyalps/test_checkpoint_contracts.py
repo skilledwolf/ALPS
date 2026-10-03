@@ -21,6 +21,108 @@ def result(vector=False, offset=0):
     return ngs.observable2result(observable)
 
 
+def _measurement_samples(count, vector):
+    indices = np.arange(count)
+    scalar = (indices % 17 - 8) + 0.125 * (indices % 3)
+    return np.column_stack((scalar, 2.0 * scalar + 3.0)) if vector else scalar
+
+
+@pytest.mark.parametrize("vector", [False, True])
+def test_measurement_checkpoint_continues_partial_bins(tmp_path, vector):
+    samples = _measurement_samples(1031, vector)
+    measurements = ngs.observables()
+    create = (measurements.createRealVectorObservable if vector
+              else measurements.createRealObservable)
+    name = "energy"
+    create(name)
+    # An odd checkpoint boundary retains a partially filled bin and the
+    # logarithmic binning state needed by subsequent samples.
+    for sample in samples[:517]:
+        measurements[name] << sample
+    filename = str(tmp_path / "measurements.h5")
+    with hdf5.archive(filename, "w") as archive:
+        archive["custom/measurements"] = measurements
+    restored = ngs.observables()
+    with hdf5.archive(filename, "r") as archive:
+        archive.set_context("/custom")
+        restored.load(archive, "measurements")
+        assert archive.context == "/custom"
+    assert set(restored) == {name}
+    assert ngs.observable2result(restored[name]).count == 517
+    for sample in samples[517:]:
+        measurements[name] << sample
+        restored[name] << sample
+    uninterrupted = ngs.observable2result(measurements[name])
+    continued = ngs.observable2result(restored[name])
+    assert continued.count == uninterrupted.count == len(samples)
+    np.testing.assert_allclose(continued.mean, samples.mean(axis=0), rtol=1e-12, atol=1e-12)
+    np.testing.assert_allclose(continued.variance, samples.var(axis=0, ddof=1),
+                               rtol=1e-12, atol=1e-12)
+    for attribute in ("mean", "error", "variance", "tau"):
+        np.testing.assert_array_equal(getattr(continued, attribute),
+                                      getattr(uninterrupted, attribute))
+    # Vector result bins are available in the archive, although the Python
+    # result.bins property currently supports only scalar results.
+    with hdf5.archive(str(tmp_path / "continued-results.h5"), "w") as archive:
+        archive["continued"] = continued
+        archive["uninterrupted"] = uninterrupted
+        np.testing.assert_array_equal(archive["continued/timeseries/data"],
+                                      archive["uninterrupted/timeseries/data"])
+
+
+@pytest.mark.parametrize("vector", [False, True])
+def test_aligned_measurement_merge_error_and_result_checkpoint(tmp_path, vector):
+    samples = _measurement_samples(256, vector)
+    create = ngs.createRealVectorObservable if vector else ngs.createRealObservable
+    left, right = create("energy"), create("energy")
+    for sample in samples[:128]:
+        left << sample
+    for sample in samples[128:]:
+        right << sample
+    right_before = ngs.observable2result(right)
+    left.merge(right)
+    merged = ngs.observable2result(left)
+    assert merged.count == len(samples)
+    np.testing.assert_allclose(merged.mean, samples.mean(axis=0), rtol=1e-12, atol=1e-12)
+    np.testing.assert_allclose(merged.variance, samples.var(axis=0, ddof=1),
+                               rtol=1e-12, atol=1e-12)
+    # Both runs end on complete bins. The merged result retains 128 bins,
+    # each averaging two raw samples. Calculate its standard error directly
+    # from the raw bin values, rather than another ALPS result.
+    bins = samples.reshape((128, 2) + samples.shape[1:]).mean(axis=1)
+    np.testing.assert_allclose(merged.error,
+                               bins.std(axis=0, ddof=1) / np.sqrt(len(bins)),
+                               rtol=1e-12, atol=1e-12)
+    right_after = ngs.observable2result(right)
+    assert right_after.count == right_before.count == 128
+    for attribute in ("mean", "error", "variance", "tau"):
+        np.testing.assert_array_equal(getattr(right_after, attribute),
+                                      getattr(right_before, attribute))
+    filename = str(tmp_path / "merged-results.h5")
+    with hdf5.archive(filename, "w") as archive:
+        archive["results/energy"] = merged
+        archive["right_before"] = right_before
+        archive["right_after"] = right_after
+        np.testing.assert_array_equal(archive["right_before/timeseries/data"],
+                                      archive["right_after/timeseries/data"])
+    restored = ngs.result()
+    with hdf5.archive(filename, "r") as archive:
+        archive.set_context("/results/energy")
+        restored.load(archive)
+        assert archive.context == "/results/energy"
+        np.testing.assert_allclose(archive["timeseries/data"], bins,
+                                   rtol=1e-12, atol=1e-12)
+    assert restored.count == merged.count
+    assert np.asarray(restored.mean).shape == samples.shape[1:]
+    for attribute in ("mean", "error", "variance", "tau"):
+        np.testing.assert_array_equal(getattr(restored, attribute),
+                                      getattr(merged, attribute))
+    with hdf5.archive(filename, "a") as archive:
+        archive["restored"] = restored
+        np.testing.assert_array_equal(archive["restored/timeseries/data"],
+                                      archive["results/energy/timeseries/data"])
+
+
 def test_parameters_own_values_and_require_reassignment(tmp_path):
     array = np.array([1.0, 2.0])
     reference = weakref.ref(array)

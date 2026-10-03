@@ -6,6 +6,55 @@ The [separate-process probes](../../tests/reconciliation/README.md) record the p
 
 Before replacing HDF5, agree on the generic serialization contract with the new ALEA maintainer: buffer ownership and lifetime, shapes/types, error behavior and the owner of the HDF5 implementation. Start one measurement-application pilot in parallel with params reconciliation, and explicitly list the legacy result and checkpoint formats it must preserve. MaxEnt remains an acceptance test for the foundations; it does not exercise ALEA migration. `src/alps/alea/` still contains the legacy `Observable`/`ObservableSet` implementation; this pass imports neither new ALEA nor a compatibility shim. The pinned ALPSCore probes disable ALEA, so they do not validate ALEA compatibility.
 
+## Consolidation acceptance contracts
+
+The current params layer adopts Core's owning dictionary/value model with deliberate
+ALPS value semantics. Signed and unsigned integers use 64-bit storage; real and
+complex values use double precision, alongside Boolean, string and homogeneous
+vector alternatives. Conversions check range and precision. Boolean-to-integer,
+string-to-number, real-to-integer and scalar-to-vector access are rejected;
+exact integer-to-real and elementwise vector conversions are supported. Copies
+own their values. Nonconst missing lookup inserts an unset entry, while const
+lookup throws; `exists()` excludes unset entries. Iteration is sorted and erasing
+an absent name is harmless. The [native contracts](params/tests/contract.cpp)
+and [Python conversion contracts](../../tests/pyalps/test_conversion_contracts.py)
+are acceptance tests for these choices.
+
+Schemas, defaults and provenance belong to `run_config`, rather than the
+dictionary. `alps.params.v1` is the canonical parameter checkpoint for this
+branch; it deliberately rejects older ALPS/Core parameter encodings. Generic
+archive payload interchange is a separate contract. The reconciliation runner
+checks both providers' own extended checkpoints when both are supplied, and can
+check the installed ALPS SDK alone. A same-provider report does not demonstrate
+Core interoperability, and the historical comparison is not the current baseline.
+
+Archive reads copy values into caller-owned storage and must release HDF5-allocated
+variable-length buffers on success and conversion failure. Partial selections
+must use the matching memory extent for cleanup. Cleanup must preserve the
+original conversion exception. The existing `hdf5_valgrind` regression exercises
+scalar/vector datasets and attributes, including partial selections.
+
+The measurement pilot in [checkpoint contracts](../../tests/pyalps/test_checkpoint_contracts.py)
+uses deterministic scalar/vector sample streams. A checkpoint must preserve an
+accumulator's unfinished bin so resumed statistics agree with an uninterrupted
+stream. Aligned independent runs must preserve sample counts and means; their
+merged errors are checked against an independent bin-level calculation. Results
+must retain count, mean, error, variance, autocorrelation and bin data through
+HDF5 reload, including scalar/vector shape and escaped observable names. These
+tests constrain a future implementation without choosing between Core's
+`accumulators` and separate newer `alea` APIs.
+
+Uneven or incomplete legacy bin merging is an unresolved scientific gate. Direct
+`MCScalarData` merging of samples 0–999 and 1000–2999 changes count from 3000 to
+2976 on reanalysis and gives mean 1492.8333 instead of 1499.5. `mcobservable.merge`
+of samples 0–516 and 517–1030 keeps count 1031 but gives mean 514 instead of 515.
+These paths are unchanged from upstream master at `c22bfd701`; their outcomes
+are not acceptance oracles for a replacement.
+Require exact retained sample counts and means before admitting those merges;
+errors for independent runs need not equal errors for a concatenated correlated
+stream. Measurement collection loading also needs an explicit replacement-versus-
+overlay contract. Existing result-format coverage does not settle these questions.
+
 ## Source ownership
 
 Each module uses `include/`, `src/` and `tests/` where applicable. Public include spellings describe the API, independently of the physical owner: for example, NGS measurement headers live in `alea/include/alps/ngs/`, while typed parameters live in `params/include/alps/`.
