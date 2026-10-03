@@ -24,6 +24,7 @@ add_subdirectory(lattice)
 add_subdirectory(scheduler)
 add_subdirectory(parapack)
 add_subdirectory(diagnostics)
+add_subdirectory(hdf5)
 add_subdirectory(xml)
 
 # Ownership inventory only: these historical programs remain unbuilt.

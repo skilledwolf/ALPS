@@ -4,7 +4,22 @@ ALPS sources are grouped by responsibility to prepare MaxEnt, HDF5 and typed par
 
 The [separate-process probes](../../tests/reconciliation/README.md) record the pinned ALPSCore reference and reproduce measured archive/params compatibility checks.
 
-Before replacing HDF5, agree on the generic serialization contract with the new ALEA maintainer: buffer ownership and lifetime, shapes/types, error behavior and the owner of the HDF5 implementation. Start one measurement-application pilot in parallel with params reconciliation, and explicitly list the legacy result and checkpoint formats it must preserve. MaxEnt remains an acceptance test for the foundations; it does not exercise ALEA migration. `src/alps/alea/` still contains the legacy `Observable`/`ObservableSet` implementation; this pass imports neither new ALEA nor a compatibility shim. The pinned ALPSCore probes disable ALEA, so they do not validate ALEA compatibility.
+The HDF5 migration targets the ordinary HighFive datatype mappings, with legacy
+conversion isolated in the [standalone converter](../tools/hdf5/README.md).
+Preserving old physical encodings is not a requirement for the replacement
+runtime. Validate HDF5 2.x and the HighFive replacement separately, then delete
+the superseded archive machinery. The converter currently handles identifiable
+leaf encodings; scientific checkpoint schema migration and lost empty-array
+shapes require application-specific decisions. Establish the new schema and
+version for each checkpoint before claiming that conversion permits resuming it.
+
+Before replacing HDF5, agree on buffer ownership and lifetime, shapes/types, error
+behavior and implementation ownership with the new ALEA maintainer. Start one
+measurement-application pilot alongside params reconciliation. MaxEnt remains an
+acceptance test for the foundations; it does not exercise ALEA migration.
+`src/alps/alea/` still contains the legacy `Observable`/`ObservableSet`
+implementation; this pass imports neither new ALEA nor a compatibility shim.
+The pinned ALPSCore probes disable ALEA, so they do not validate ALEA compatibility.
 
 ## Consolidation acceptance contracts
 
@@ -148,7 +163,7 @@ Update the owning module's CMake declarations when adding files or dependencies;
 
 ### Recorded architectural debt
 
-With application builds enabled, `alps-module-architecture.json` inventories 36 source owners, 509 public include spellings and 639 production files. The owners include `numeric_io`, `cli`, `plotting`, separate MaxEnt solver/executable owners, and eight [tool groups](../tools/README.md). Tool ownership includes historical inactive C++ sources without adding executable targets. These are ownership counts, not counts of independent libraries or passing tests. The earlier code checkpoint `f6f4501c0` had 24 owners, before the CLI and plotting modules were separated.
+With application builds enabled, `alps-module-architecture.json` inventories 37 source owners, 509 public include spellings and 640 production files. The owners include `numeric_io`, `cli`, `plotting`, separate MaxEnt solver/executable owners, and nine [tool groups](../tools/README.md). Tool ownership includes historical inactive C++ sources without adding executable targets. These are ownership counts, not counts of independent libraries or passing tests. The earlier code checkpoint `f6f4501c0` had 24 owners, before the CLI and plotting modules were separated.
 
 The foundation include cycle involving containers, HDF5, numerics, utilities and XML is removed. The current observed include graph retains the separate two-module cycle between `expression` and `legacy_parameters`; it still needs deliberate reconciliation. Dependency declarations constrain new include edges. Regenerate the report after changing module ownership or dependencies.
 
