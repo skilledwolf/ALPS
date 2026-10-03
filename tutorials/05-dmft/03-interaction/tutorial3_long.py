@@ -15,43 +15,35 @@ import pyalps
 import numpy as np
 import matplotlib.pyplot as plt
 import pyalps.plot
+from pyalps.run_io import execute, write_run_file
 
 
-#prepare the input parameters
-parms=[]
-for b in [6., 8., 10., 12., 14., 16.]: 
-    parms.append(
-            {                         
-              'ANTIFERROMAGNET'         : 1,
-              'CONVERGED'               : 0.003,
-              'FLAVORS'                 : 2,
-              'H'                       : 0,
-              'H_INIT'                  : 0.05,
-              'MAX_IT'                  : 18,
-              'MAX_TIME'                : 10,
-              'MU'                      : 0,
-              'N'                       : 500,
-              'NMATSUBARA'              : 500, 
-              'OMEGA_LOOP'              : 1,
-              'SEED'                    : 0, 
-              'SITES'                   : 1,
-              'SOLVER'                  : 'Interaction Expansion',
-              'SYMMETRIZATION'          : 0,
-              'U'                       : 3,
-              't'                       : 0.707106781186547,
-              'SWEEPS'                  : 100000000,
-              'THERMALIZATION'          : 1000,
-              'ALPHA'                   : -0.01,
-              'HISTOGRAM_MEASUREMENT'   : 1,
-              'BETA'                    : b
-            }
-        )
-
-
-#write the input file and run the simulation
-for p in parms:
-    input_file = pyalps.writeParameterFile('parm_beta_'+str(p['BETA']),p)
-    res = pyalps.runDMFT(input_file)
+#prepare the input parameters and run the simulation
+for b in [6., 8., 10., 12., 14., 16.]:
+    run = write_run_file('parm_beta_'+str(b)+'.toml', overwrite=True,
+        parameters={
+            'ANTIFERROMAGNET'         : True,
+            'CONVERGED'               : 0.003,
+            'FLAVORS'                 : 2,
+            'H'                       : 0.,
+            'H_INIT'                  : 0.05,
+            'MU'                      : 0.,
+            'N'                       : 500,
+            'NMATSUBARA'              : 500,
+            'SITES'                   : 1,
+            'SYMMETRIZATION'          : False,
+            'U'                       : 3.,
+            't'                       : 0.707106781186547,
+            'SWEEPS'                  : 100000000,
+            'THERMALIZATION'          : 1000,
+            'ALPHA'                   : -0.01,
+            'HISTOGRAM_MEASUREMENT'   : True,
+            'BETA'                    : b
+        },
+        output={'results': 'parm_beta_'+str(b)+'.h5'},
+        execution={'solver': 'Interaction Expansion', 'max_iterations': 18,
+                   'time_limit': 10, 'seed': 0})
+    execute('dmft', run)
 
 listobs=['0', '1']
     

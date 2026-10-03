@@ -4,22 +4,22 @@ The CT-HYB solver computes quantum impurity models using continuous-time hybridi
 
 ## Build and run
 
-Follow the [ALPS build instructions](../../CONTRIBUTING.md#getting-started-with-the-code) with `ALPS_BUILD_APPLICATIONS=ON`. The native executable is named `hybridization`; `p2h5` converts its text parameters to HDF5. The [pyalps build instructions](../../python/pyalps/README.md) explain how to build the Python interface against an installed SDK.
+Follow the [ALPS build instructions](../../CONTRIBUTING.md#getting-started-with-the-code) with `ALPS_BUILD_APPLICATIONS=ON`. The native executable is named `hybridization` and reads a TOML run file. The [pyalps build instructions](../../python/pyalps/README.md) explain how to build the Python interface against an installed SDK.
 
 For a plain build directory:
 
 ```sh
-cmake --build build --target hybridization p2h5
+cmake --build build --target hybridization
 ```
 
-After installation, with the SDK's `bin` directory on `PATH`, run a prepared input as follows:
+After installation, with the SDK's `bin` directory on `PATH`, check and run a run file as follows; `hybridization --schema` lists every supported key:
 
 ```sh
-p2h5 hyb1.h5 < hyb1.param
-hybridization hyb1.h5
+hybridization --validate hyb1.toml
+hybridization hyb1.toml
 ```
 
-Run Python examples from their tutorial directory using an environment containing pyalps. Serial calls to `pyalps.cthyb.solve(parameters)` require no MPI import. MPI support for native runs is enabled explicitly when building ALPS.
+Run Python examples from their tutorial directory using an environment containing pyalps. Serial calls to `pyalps.cthyb.solve(pyalps.cthyb.prepare(...))` require no MPI import. MPI support for native runs is enabled explicitly when building ALPS.
 
 ## Detailed manual
 

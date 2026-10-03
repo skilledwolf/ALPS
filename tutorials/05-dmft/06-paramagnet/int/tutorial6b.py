@@ -12,46 +12,37 @@
 # ****************************************************************************
 
 import pyalps
+from pyalps.run_io import execute, write_run_file
 
 #prepare the input parameters
-parms=[]
-parms.append(
-        { 
-          'ANTIFERROMAGNET'         : 0,
-          'CHECKPOINT'              : 'dump_int',
-          'CONVERGED'               : 0.0025,
-          'CONVERGENCE_CHECK_PERIOD': 500,
-          'FLAVORS'                 : 2,
-          'H'                       : 0,
-          'H_INIT'                  : 0.,
-          'MAX_IT'                  : 12,
-          'MAX_TIME'                : 120,
-          'MU'                      : 0,
-          'N'                       : 500,
-          'NMATSUBARA'              : 500,
-          'NMATSUBARA_MEASUREMENTS' : 18, 
-          'NSELF'                   : 5000,
-          'MEASUREMENT_PERIOD'      : 10,
-          'MU'                      : 0,
-          'OMEGA_LOOP'              : 1,
-          'SEED'                    : 0, 
-          'SITES'                   : 1,
-          'SOLVER'                  : 'Interaction Expansion',
-          'SYMMETRIZATION'          : 1,
-          'U'                       : 3,
-          't'                       : 0.707106781186547,
-          'RECALC_PERIOD'           : 3000,
-          'SWEEPS'                  : 100000000,
-          'THERMALIZATION'          : 1000,
-          'ALPHA'                   : -0.01,
-          'HISTOGRAM_MEASUREMENT'   : 1,
-          'BETA'                    : 32
-        }
-    )
-    
 # For more precise calculations we propose to you to:
-#   enhance the MAX_TIME, MAX_IT and lower CONVERGED
+#   enhance the time_limit and max_iterations, and lower CONVERGED
+run = write_run_file('parm_int.toml', overwrite=True,
+    parameters={
+        'ANTIFERROMAGNET'         : False,
+        'CONVERGED'               : 0.0025,
+        'FLAVORS'                 : 2,
+        'H'                       : 0.,
+        'H_INIT'                  : 0.,
+        'MU'                      : 0.,
+        'N'                       : 500,
+        'NMATSUBARA'              : 500,
+        'NMATSUBARA_MEASUREMENTS' : 18,
+        'NSELF'                   : 5000,
+        'MEASUREMENT_PERIOD'      : 10,
+        'SITES'                   : 1,
+        'SYMMETRIZATION'          : True,
+        'U'                       : 3.,
+        't'                       : 0.707106781186547,
+        'RECALC_PERIOD'           : 3000,
+        'SWEEPS'                  : 100000000,
+        'THERMALIZATION'          : 1000,
+        'ALPHA'                   : -0.01,
+        'HISTOGRAM_MEASUREMENT'   : True,
+        'BETA'                    : 32.
+    },
+    output={'results': 'parm_int.h5'},
+    execution={'solver': 'Interaction Expansion', 'max_iterations': 12, 'time_limit': 120, 'seed': 0})
 
-#write the input file and run the simulation
-input_file = pyalps.writeParameterFile('parm_int',parms[0])
-res = pyalps.runDMFT(input_file)
+#run the simulation
+execute('dmft', run)

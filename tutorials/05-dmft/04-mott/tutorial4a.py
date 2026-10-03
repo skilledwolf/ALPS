@@ -15,48 +15,38 @@ import pyalps
 import numpy as np
 import matplotlib.pyplot as plt
 import pyalps.plot
+from pyalps.run_io import execute, write_run_file
 
 
-#prepare the input parameters
-parms=[]
-for u in [4.,5.,6.,8.]: 
-    parms.append(
-            { 
-              'ANTIFERROMAGNET'         : 0,
-              'CONVERGED'               : 0.001,
-              'FLAVORS'                 : 2,
-              'H'                       : 0,
-              'H_INIT'                  : 0.,
-              'MAX_IT'                  : 20,
-              'MAX_TIME'                : 600,
-              'MU'                      : 0,
-              'N'                       : 500,
-              'NMATSUBARA'              : 500, 
-              'N_MEAS'                  : 1000,
-              'N_HISTOGRAM_ORDERS'                 : 50,
-              'OMEGA_LOOP'              : 1,
-              'SEED'                    : 0, 
-              'SITES'                   : 1,              
-              'SOLVER'                  : 'hybridization',
-              'SC_WRITE_DELTA'          : 1,
-              'SYMMETRIZATION'          : 1,
-              't'                       : 1,
-              'SWEEPS'                  : 1500*u,
-              'BETA'                    : 20.0,
-              'THERMALIZATION'          : 500,
-              'U'                       : u
-            }
-        )
-     
+#prepare the input parameters and run the simulation
 # For more precise calculations change the parameters
 #   enlarge SWEEPS,
 #   CONVERGED (to 0.0002-0.001),
 #   raise N and NMATSUBARA (to 1000)
-
-#write the input file and run the simulation
-for p in parms:
-    input_file = pyalps.writeParameterFile('parm_u_'+str(p['U']),p)
-    res = pyalps.runDMFT(input_file)
+for u in [4.,5.,6.,8.]:
+    run = write_run_file('parm_u_'+str(u)+'.toml', overwrite=True,
+        parameters={
+            'ANTIFERROMAGNET'         : False,
+            'CONVERGED'               : 0.001,
+            'FLAVORS'                 : 2,
+            'H'                       : 0.,
+            'H_INIT'                  : 0.,
+            'MU'                      : 0.,
+            'N'                       : 500,
+            'NMATSUBARA'              : 500,
+            'N_MEAS'                  : 1000,
+            'N_HISTOGRAM_ORDERS'      : 50,
+            'SITES'                   : 1,
+            'SYMMETRIZATION'          : True,
+            't'                       : 1.,
+            'SWEEPS'                  : int(1500*u),
+            'BETA'                    : 20.0,
+            'THERMALIZATION'          : 500,
+            'U'                       : u
+        },
+        output={'results': 'parm_u_'+str(u)+'.h5'},
+        execution={'solver': 'hybridization', 'max_iterations': 20, 'time_limit': 600, 'seed': 0})
+    execute('dmft', run)
 
 listobs=['0']   # we look at only one flavor, as they are SYMMETRIZED
     

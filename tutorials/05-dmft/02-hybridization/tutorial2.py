@@ -15,43 +15,34 @@ import pyalps
 import numpy as np
 import matplotlib.pyplot as plt
 import pyalps.plot
+from pyalps.run_io import execute, write_run_file
 
 
-#prepare the input parameters
-parms=[]
+#prepare the input parameters and run the simulation
 for b in [6., 12.]:
-    parms.append(
-            {
-              'ANTIFERROMAGNET'     : 1,
-              'CONVERGED'           : 0.003,
-              'FLAVORS'             : 2,
-              'H'                   : 0,
-              'H_INIT'              : 0.03*b/8.,
-              'MAX_IT'              : 6,
-              'MAX_TIME'            : 300,
-              'MU'                  : 0,
-              'N'                   : 250,
-              'NMATSUBARA'          : 250,
-              'N_MEAS'              : 10000,
-              'OMEGA_LOOP'          : 1,
-              'SEED'                : 0,
-              'SITES'               : 1,
-              'SOLVER'              : 'hybridization',
-              'SC_WRITE_DELTA'      : 1,
-              'SYMMETRIZATION'      : 0,
-              'U'                   : 3,
-              't'                   : 0.707106781186547,
-              'SWEEPS'              : int(10000*b/16.),
-              'THERMALIZATION'      : 1000,
-              'BETA'                : b
-            }
-        )
-
-
-#write the input file and run the simulation
-for p in parms:
-    input_file = pyalps.writeParameterFile('parm_beta_'+str(p['BETA']),p)
-    res = pyalps.runDMFT(input_file)
+    run = write_run_file('parm_beta_'+str(b)+'.toml', overwrite=True,
+        parameters={
+            'ANTIFERROMAGNET'     : True,
+            'CONVERGED'           : 0.003,
+            'FLAVORS'             : 2,
+            'H'                   : 0.,
+            'H_INIT'              : 0.03*b/8.,
+            'MU'                  : 0.,
+            'N'                   : 250,
+            'NMATSUBARA'          : 250,
+            'N_MEAS'              : 10000,
+            'SITES'               : 1,
+            'SYMMETRIZATION'      : False,
+            'U'                   : 3.,
+            't'                   : 0.707106781186547,
+            'SWEEPS'              : int(10000*b/16.),
+            'THERMALIZATION'      : 1000,
+            'BETA'                : b
+        },
+        output={'results': 'parm_beta_'+str(b)+'.h5'},
+        execution={'solver': 'hybridization', 'max_iterations': 6,
+                   'time_limit': 300, 'seed': 0})
+    execute('dmft', run)
 
 listobs=['0', '1']
     

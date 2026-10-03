@@ -70,16 +70,9 @@ parms = {
 # solver parameters
 'SWEEPS'                     : 1000000000,                         #sweeps to be done
 'THERMALIZATION'             : 1000,                               #thermalization sweeps to be done
-'SEED'                       : 42,                                 #random number seed
 'N_MEAS'                     : 1,                                  #number of sweeps after which a measurement is done
 'N_ORBITALS'                 : 4,                                  #number of 'orbitals', i.e. number of spin-orbital degrees of freedom or timelines of segments
-'BASENAME'                   : "hyb.param",                        #base name of the h5 output file
-'MAX_TIME'                   : runtime_dmft,                       #runtime of the solver per iteration
-'VERBOSE'                    : 1,                                  #whether to output extra information
-'TEXT_OUTPUT'                : 0,                                  #whether to write results in human readable (text) format
-# file names
-'DELTA'                      : "Delta.h5",                         #file name of the hybridization function
-'DELTA_IN_HDF5'              : 1,                                  #whether to read the hybridization from an h5 archive
+'VERBOSE'                    : True,                               #whether to output extra information
 # physics parameters
 'U'                          : U,                                  #Hubbard repulsion
 "U'"                         : Up,                                 #U' parameter of the U-3J Hamiltonian
@@ -93,10 +86,16 @@ parms = {
 'N_MATSUBARA'                : 512,                                #number of Matsubara frequencies
 'N_nn'                       : 200,                                #number of imaginary time points for the density-density correlation function
 'N_LEGENDRE'                 : 80,                                 #number of Legendre coefficients
-# additional parameters (used in self-consistency only)
-'t'                          : 1,                                  #hopping
-'mix'                        : 0.5                                 #mixing parameter for hybridization update
 }# parms
+
+delta_file  = "Delta.h5"         # file name of the hybridization function (solver input)
+results     = "hyb.param.out.h5" # name of the h5 output file
+runtime     = runtime_dmft       # runtime of the solver per iteration
+text_output = False              # whether to write results in human readable (text) format
+
+# additional parameters (used in self-consistency only)
+hopping = 1.   # hopping
+mix     = 0.5  # mixing parameter for hybridization update
 
 if mpi.rank==0:
   print("generating initial hybridization...")
@@ -105,7 +104,7 @@ if mpi.rank==0:
   mu=0.0
   for n in range(parms['N_MATSUBARA']):
     w=(2*n+1)*pi/parms['BETA']
-    g.append(2.0/(I*w+mu+I*sqrt(4*parms['t']**2-(I*w+mu)**2))) # noninteracting Green's function on Bethe lattice
+    g.append(2.0/(I*w+mu+I*sqrt(4*hopping**2-(I*w+mu)**2))) # noninteracting Green's function on Bethe lattice
   delta=[]
   for i in range(parms['N_TAU']+1):
     tau=i*parms['BETA']/parms['N_TAU']
@@ -115,10 +114,10 @@ if mpi.rank==0:
       g0tau+=((g[n]-1.0/iw)*exp(-iw*tau)).real # Fourier transform with tail subtracted
     g0tau *= 2.0/parms['BETA']
     g0tau += -1.0/2.0 # add back contribution of the tail
-    delta.append(parms['t']**2*g0tau) # delta=t**2 g
+    delta.append(hopping**2*g0tau) # delta=t**2 g
 
   # write hybridization function to hdf5 archive (solver input)
-  ar=archive(parms['DELTA'],'w')
+  ar=archive(delta_file,'w')
   for m in range(parms['N_ORBITALS']):
     ar['/Delta_%i'%m]=delta
   del ar
@@ -140,22 +139,24 @@ for it in range(dmft_iterations):
   # !always make sure that parameters are changed on all threads equally!
   # (i.e. don't wrap this into an 'if mpi.rank==0' statement)
   if it==dmft_iterations-1:
-    parms['MAX_TIME'] = runtime_dmft_final
+    runtime = runtime_dmft_final
     # turn on further measurements for final dmft interation
-    parms['MEASURE_freq']=1               # Matsubara measurement (G and Sigma)
-    parms['MEASURE_legendre']=1           # Legendre measurement (G and Sigma)
-    parms['MEASURE_nn']=1                 # equal-time density-density correlator
-    parms['MEASURE_nnt']=1                # density-density correlation function
-    parms['MEASURE_sector_statistics']=1  # sector statistics
-    parms['TEXT_OUTPUT']=1
+    parms['MEASURE_freq']=True               # Matsubara measurement (G and Sigma)
+    parms['MEASURE_legendre']=True           # Legendre measurement (G and Sigma)
+    parms['MEASURE_nn']=True                 # equal-time density-density correlator
+    parms['MEASURE_nnt']=True                # density-density correlation function
+    parms['MEASURE_sector_statistics']=True  # sector statistics
+    text_output=True
 
   # solve the impurity model
-  cthyb.solve(parms)
+  cthyb.solve(cthyb.prepare(parms, input={'delta': delta_file, 'delta_format': "hdf5"},
+                            output={'results': results, 'text': text_output},
+                            execution={'time_limit': runtime, 'seed': 42}))
 
   # self-consistency on the master
   if mpi.rank==0:
     # read Green's function from file
-    ar=archive(parms['BASENAME']+'.out.h5','r')
+    ar=archive(results,'r')
     # symmetrize G(tau)
     # here all orbitals and spins are degenerate
     gt=array(zeros(parms['N_TAU']+1))
@@ -166,11 +167,11 @@ for it in range(dmft_iterations):
 
     # Bethe lattice self-consistency: delta(tau)=t**2 g(tau)
     # read delta_old
-    ar=archive(parms['DELTA'],'rw')
+    ar=archive(delta_file,'rw')
     for m in range(parms['N_ORBITALS']):
       delta_old=ar['/Delta_%i'%m]
       delta_new=array(zeros(parms['N_TAU']+1))
-      delta_new=(1.-parms['mix'])*(parms['t']**2 * gt) + parms['mix']*delta_old # mix old and new delta
+      delta_new=(1.-mix)*(hopping**2 * gt) + mix*delta_old # mix old and new delta
 
       # write hybridization to the h5 archive (this is solver input)
       ar['/Delta_%i'%m]=delta_new

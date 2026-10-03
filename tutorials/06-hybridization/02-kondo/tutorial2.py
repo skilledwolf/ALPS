@@ -57,6 +57,7 @@ for i in range(N_T+1):
 Uvalues=[0.,2.] # the values of the on-site interaction
 N_TAU = 1000    # number of tau-points; must be large enough for the lowest temperature (set to at least 5*BETA*U)
 runtime = 1     # solver runtime (in seconds)
+hopping = 1.    # hopping of the bath (used outside the solver only)
 
 values=[[] for u in Uvalues]
 errors=[[] for u in Uvalues]
@@ -69,46 +70,35 @@ for un,u in enumerate(Uvalues):
                # solver parameters
                'SWEEPS'                     : 1000000000,                         # sweeps to be done
                'THERMALIZATION'             : 1000,                               # thermalization sweeps to be done
-               'SEED'                       : 42,                                 # random number seed
                'N_MEAS'                     : 10,                                 # number of sweeps after which a measurement is done
                'N_ORBITALS'                 : 2,                                  # number of 'orbitals', i.e. number of spin-orbital degrees of freedom or segments
-               'BASENAME'                   : "hyb.param_U%.1f_BETA%.3f"%(u,1/t), # base name of the h5 output file
-               'MAX_TIME'                   : runtime,                            # runtime of the solver per iteration
-               'VERBOSE'                    : 1,                                  # whether to output extra information
-               'TEXT_OUTPUT'                : 0,                                  # whether to write results in human readable (text) format
-               # file names
-               'DELTA'                      : "Delta.h5",                         # file name of the hybridization function
-               'DELTA_IN_HDF5'              : 1,                                  # whether to read the hybridization from an h5 archive
+               'VERBOSE'                    : True,                               # whether to output extra information
                # physical parameters
                'U'                          : u,                                  # Hubbard repulsion
                'MU'                         : u/2.,                               # chemical potential
                'BETA'                       : 1/t,                                # inverse temperature
                # measurements
-               'MEASURE_nnw'                : 1,                                  # measure the density-density correlation function (local susceptibility) on Matsubara frequencies
-               'MEASURE_time'               : 0,                                  # turn of imaginary-time measurement
+               'MEASURE_nnw'                : True,                               # measure the density-density correlation function (local susceptibility) on Matsubara frequencies
+               'MEASURE_time'               : False,                              # turn of imaginary-time measurement
                # measurement parameters
                'N_HISTOGRAM_ORDERS'         : 50,                                 # maximum order for the perturbation order histogram
                'N_TAU'                      : N_TAU,                              # number of imaginary time points (tau_0=0, tau_N_TAU=BETA)
                'N_MATSUBARA'                : int(N_TAU/(2*pi)),                  # number of Matsubara frequencies
                'N_W'                        : 1,                                  # number of bosonic Matsubara frequencies for the local susceptibility
-               # additional parameters (used outside the solver only)
-               't'                          : 1,                                  # hopping
              }
           )
 
   for parms in parameters:
+    results="hyb.param_U%.1f_BETA%.3f.out.h5"%(u,parms['BETA']) # name of the h5 output file
 
     if mpi.rank==0:
-      ar=archive(parms['BASENAME']+'.out.h5','a')
-      ar['/parameters']=parms
-      del ar
       print("creating initial hybridization...") 
       g=[]
       I=complex(0.,1.)
       mu=0.0
       for n in range(parms['N_MATSUBARA']):
         w=(2*n+1)*pi/parms['BETA']
-        g.append(2.0/(I*w+mu+I*sqrt(4*parms['t']**2-(I*w+mu)**2))) # use GF with semielliptical DOS
+        g.append(2.0/(I*w+mu+I*sqrt(4*hopping**2-(I*w+mu)**2))) # use GF with semielliptical DOS
       delta=[]
       for i in range(parms['N_TAU']+1):
         tau=i*parms['BETA']/parms['N_TAU']
@@ -118,10 +108,10 @@ for un,u in enumerate(Uvalues):
           g0tau+=((g[n]-1.0/iw)*exp(-iw*tau)).real # Fourier transform with tail subtracted
         g0tau *= 2.0/parms['BETA']
         g0tau += -1.0/2.0 # add back contribution of the tail
-        delta.append(parms['t']**2*g0tau) # delta=t**2 g
+        delta.append(hopping**2*g0tau) # delta=t**2 g
 
       # write hybridization function to hdf5 archive (solver input)
-      ar=archive(parms['DELTA'],'w')
+      ar=archive("Delta.h5",'w')
       for m in range(parms['N_ORBITALS']):
         ar['/Delta_%i'%m]=delta
       del ar
@@ -129,11 +119,13 @@ for un,u in enumerate(Uvalues):
     mpi.world.barrier() # wait until hybridization is written to file
 
     # solve the impurity model in parallel
-    cthyb.solve(parms)
+    cthyb.solve(cthyb.prepare(parms, input={'delta': "Delta.h5", 'delta_format': "hdf5"},
+                              output={'results': results},
+                              execution={'time_limit': runtime, 'seed': 42}))
 
     if mpi.rank==0:
       # extract the local spin susceptiblity
-      ar=archive(parms['BASENAME']+'.out.h5','w')
+      ar=archive(results,'w')
       nn_0_0=ar['simulation/results/nnw_re_0_0/mean/value']
       nn_1_1=ar['simulation/results/nnw_re_1_1/mean/value']
       nn_1_0=ar['simulation/results/nnw_re_1_0/mean/value']
