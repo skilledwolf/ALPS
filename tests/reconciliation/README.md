@@ -8,9 +8,10 @@ drop-in compatibility.
 
 The runner covers 20 archive payload cases, params access/conversion behavior,
 full params versus dictionary checkpoint loading, and wider scalar checkpoints.
-Every typed archive read checks the value. Common params self-checks verify exact
-values; cross-provider differences are recorded even when loading throws or
-silently changes a value. `--expect` additionally rejects any measurement change
+Every typed archive read checks the value. Common and extended params self-checks
+verify exact values for every supplied provider; cross-provider differences are
+recorded even when loading throws or silently changes a value. `--expect`
+additionally rejects any measurement change
 from an earlier report. A known defect recorded in a baseline is not a desired
 contract: review and update that expectation when fixing it.
 
@@ -20,9 +21,30 @@ this branch must produce a new report, not match the old `--expect` file. The
 archive payload checks still apply; ALPSCore's INI/argv/default bookkeeping is
 not part of the new params layer.
 
+The conversion observations include Boolean-to-integer access, integer-to-float
+precision loss at 2^24 + 1, and integer-vector-to-real-vector access. These are
+intentional differences: current ALPS rejects the first two conversions and
+converts homogeneous vectors element by element; the pinned Core permits the
+first two conversions and requires matching vector storage types. Observations
+characterize each provider and are not assertions that their policies must match.
+
 ## Build and run
 
-Use the already installed ALPS SDK and its compiler/dependencies. Install only
+Use the already installed ALPS SDK and its compiler/dependencies. When the Core
+reference is unavailable, use only the ALPS probe build commands in the example
+below and omit `--alpscore`:
+
+```sh
+python tests/reconciliation/compare.py \
+  --alps /absolute/path/to/alps-probe/reconciliation_probe \
+  --output /absolute/path/to/alps-self-check.json
+```
+
+This checks ALPS archive values and common/extended params self-reads. The report
+explicitly records `same-provider` scope and does not establish ALPSCore
+interchange. Native params tests cover the broader canonical storage families.
+
+For an actual cross-provider run, install only
 ALPSCore utilities/HDF5/params into a separate prefix. For the recorded comparison,
 the reference was an unmodified checkout at
 `7146b9e1f017938a94e5dae35d88467cc5ba7969`:
@@ -64,6 +86,7 @@ cmake --build "$scratch/core-probe" --parallel 2
 python "$alps_repo/tests/reconciliation/compare.py" \
   --alps "$scratch/alps-probe/reconciliation_probe" \
   --alpscore "$scratch/core-probe/reconciliation_probe" \
+  --alpscore-revision 7146b9e1f017938a94e5dae35d88467cc5ba7969 \
   --output "$scratch/results.json"
 ```
 
@@ -81,7 +104,10 @@ uses 42 instead of 2^40. Integer overflow results also depend on the implementat
 Run without `--expect` to characterize another platform/revision, then review the
 report. The JSON records measurements, platform and executable hashes; its sibling
 `.log` retains exception diagnostics, including why checkpoint loads failed.
-Record source revisions and dependency versions alongside any new baseline.
+Use `--alps-revision` and `--alpscore-revision` to supply known SDK source revision
+labels. Omitted labels are recorded as `unknown`; the runner does not infer a
+library's revision from the current source checkout or the probe executable hash.
+Record dependency versions alongside any new baseline.
 
 For the recorded run both SDKs used Pixi Clang 21.1.8, Boost 1.91 and HDF5 1.14.6;
 Core additionally used installed Eigen 5.0.1 headers. CMake was 4.4.3, C++17,
@@ -93,6 +119,12 @@ mixing Homebrew include roots with Pixi Boost libraries can invalidate results.
 The runner removes its generated archive fixtures automatically. Preserve useful
 incremental SDKs; remove only the dedicated scratch builds when finished. The
 foreign SDK is optional and is not downloaded or built by the main ALPS test suite.
+
+The runner's failure-detection tests require no SDK build:
+
+```sh
+python -m pytest tests/reconciliation/test_compare.py -q
+```
 
 ## Gaps
 

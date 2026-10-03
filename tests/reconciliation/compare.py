@@ -10,14 +10,20 @@ import subprocess
 import tempfile
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--alps", required=True, type=Path)
-    parser.add_argument("--alpscore", required=True, type=Path)
+    parser.add_argument("--alpscore", type=Path, help="Optional independently linked ALPSCore probe")
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--expect", type=Path, help="Compare measurements with an earlier JSON report")
-    args = parser.parse_args()
-    programs = {"ALPS": args.alps.resolve(), "ALPSCore": args.alpscore.resolve()}
+    parser.add_argument("--alps-revision", default="unknown", help="Source revision label for the ALPS SDK")
+    parser.add_argument("--alpscore-revision", default="unknown", help="Source revision label for the ALPSCore SDK")
+    args = parser.parse_args(argv)
+    programs = {"ALPS": args.alps.resolve()}
+    revisions = {"ALPS": args.alps_revision}
+    if args.alpscore:
+        programs["ALPSCore"] = args.alpscore.resolve()
+        revisions["ALPSCore"] = args.alpscore_revision
     measurements = {}
     diagnostics = []
 
@@ -51,11 +57,13 @@ def main():
                 measurements[f"{provider}/write-{kind}"] = run(provider, f"write-{kind}", path)
                 for reader in programs:
                     measurements[f"{provider}->{reader}/{kind}"] = run(reader, f"read-{kind}", path)
-                if kind == "params":
+                if kind == "params" and "ALPSCore" in programs:
                     measurements[f"{provider}->ALPSCore/dictionary"] = run("ALPSCore", "read-dictionary", path)
 
     report = {
         "environment": {"system": platform.system(), "machine": platform.machine()},
+        "scope": "same-provider-and-cross-provider" if args.alpscore else "same-provider",
+        "source_revision_labels": revisions,
         "probe_sha256": {key: hashlib.sha256(path.read_bytes()).hexdigest() for key, path in programs.items()},
         "measurements": measurements,
     }
@@ -63,21 +71,21 @@ def main():
     args.output.with_suffix(".log").write_text("\n".join(diagnostics))
     failures = []
     common_params = {"load": "ok", "integer": "42", "real": "1.25", "text": "example", "boolean": "1", "vector": "ok"}
-    core_extended = dict(common_params, unsigned="42", float="1.25", wide=(
-        "1099511627776" if int(measurements["ALPSCore/params-semantics"]["native_long_bits"]) >= 64 else "42"
-    ))
     for provider in programs:
         if measurements[f"{provider}->{provider}/params"] != common_params:
             failures.append(f"Params self-check failed: {provider}")
-    if measurements["ALPSCore->ALPSCore/extended-params"] != core_extended:
-        failures.append("Extended params self-check failed: ALPSCore")
+        extended = dict(common_params, unsigned="42", float="1.25", wide=(
+            "1099511627776" if int(measurements[f"{provider}/params-semantics"]["native_long_bits"]) >= 64 else "42"
+        ))
+        if measurements[f"{provider}->{provider}/extended-params"] != extended:
+            failures.append(f"Extended params self-check failed: {provider}")
     for key, values in measurements.items():
         if "/write-" in key:
             if any(value != "ok" for value in values.values()):
                 failures.append(f"Provider self-check failed: {key}")
         if key.endswith("/archive"):
             if any(value != "ok" for name, value in values.items() if not name.endswith("_type_marker")):
-                failures.append(f"Typed archive interchange failed: {key}")
+                failures.append(f"Typed archive value check failed: {key}")
     if args.expect:
         expected = json.loads(args.expect.read_text())["measurements"]
         for key in sorted(expected.keys() | measurements.keys()):
@@ -85,7 +93,7 @@ def main():
                 failures.append(f"Changed characterization: {key}")
     if failures:
         raise SystemExit("\n".join(failures) + f"\nFull report: {args.output}")
-    print(f"Recorded {len(measurements)} probe groups in {args.output}")
+    print(f"Recorded {len(measurements)} {report['scope']} probe groups in {args.output}")
 
 
 if __name__ == "__main__":

@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: MIT
 // The same characterization probe is compiled against one provider at a time.
-#ifdef PROBE_ALPSCORE
 #include <alps/params.hpp>
-#else
-#include <alps/params.hpp>
-#endif
 #include <alps/hdf5/archive.hpp>
 #include <alps/hdf5/complex.hpp>
 #include <alps/hdf5/map.hpp>
@@ -55,6 +51,16 @@ void semantics() {
     report("string_to_int", [] { alps::params p; p["x"] = "4.5"; return get<int>(p, "x"); });
     report("double_to_int", [] { alps::params p; p["x"] = 4.5; return get<int>(p, "x"); });
     report("int_to_double", [] { alps::params p; p["x"] = 4; return get<double>(p, "x"); });
+    report("bool_to_int", [] { alps::params p; p["x"] = true; return get<int>(p, "x"); });
+    report("integer_to_float_precision_loss", [] {
+        // This boundary uses a 32-bit integer on both LP64 and LLP64 systems.
+        alps::params p; p["x"] = 16777217;
+        return get<float>(p, "x") == 16777216.0F ? "rounded" : "unexpected";
+    });
+    report("integer_vector_to_real_vector", [] {
+        alps::params p; p["x"] = std::vector<int>{1, 2};
+        return get<std::vector<double>>(p, "x") == std::vector<double>{1, 2} ? "ok" : "mismatch";
+    });
     report("scalar_to_vector", [] {
         alps::params p; p["x"] = 3;
         return get<std::vector<double>>(p, "x") == std::vector<double>{3} ? "ok" : "mismatch";
