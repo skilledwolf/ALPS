@@ -131,7 +131,7 @@ void MaxEntSimulation::dostep()
   const double factor = chi_scale_factor(spectra[max_a], chi_sq[max_a], alpha[max_a]);
   if (verbose) std::cerr << "chi scale factor: " << factor << std::endl;
   
-  alps::hdf5::archive ar(output_file_, alps::hdf5::archive::WRITE);
+  alps::hdf5::archive ar(output_file_, "a");
   std::vector<double> widths(nfreq());
   for(int i=0;i<nfreq();++i) widths[i]=bin_width(i);
   ar["/spectrum/widths"] << widths;

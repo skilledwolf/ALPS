@@ -99,20 +99,7 @@ namespace alps {
 
             public:
 
-                // TODO: make this private
-                typedef enum {
-                    READ = 0x00, 
-                    WRITE = 0x01, 
-                    REPLACE = 0x02, 
-                    COMPRESS = 0x04, 
-                    LARGE = 0x08, 
-                    MEMORY = 0x10 
-                } properties;
-
                 archive(boost::filesystem::path const & filename, std::string mode = "r");
-                explicit archive(std::string const & filename, int props); // TODO: remove that!
-                explicit archive(std::string const & filename, char prop); // TODO: remove that!
-                explicit archive(std::string const & filename, char signed prop); // TODO: remove that!
                 archive(archive const & arg);
                 archive & operator=(archive const &) = delete;
 
@@ -207,6 +194,15 @@ namespace alps {
                 #undef ALPS_NGS_HDF5_IS_DATATYPE_IMPL_DECL
 
             private:
+
+                typedef enum {
+                    READ = 0x00,
+                    WRITE = 0x01,
+                    REPLACE = 0x02,
+                    COMPRESS = 0x04,
+                    LARGE = 0x08,
+                    MEMORY = 0x10
+                } properties;
 
 
                 friend class detail::scoped_context;

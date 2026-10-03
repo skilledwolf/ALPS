@@ -39,6 +39,19 @@ conversion; the public overloads only enter the locked implementation. The
 strings, selections and rejected reads. This consolidation preserves the existing
 conversion rules and archive representations.
 
+Writes share object creation/replacement, layout selection and transfer code.
+Rank, bounds, extent products and nonempty buffer pointers are checked before
+replacing stored data. Attribute replacement respects datatype and shape, including
+scalar-to-array changes; partial attribute transfers are rejected. Internal HDF5
+handles have unique ownership. Object serializers restore their previous context
+on both return and exception; archive copies share file ownership, while copy
+assignment is disabled because overwriting the context pointer bypasses that ownership.
+
+Opening an archive leaves process signal handlers alone. Termination polling
+belongs to utilities and solver execution. The shared archive registry remains
+necessary for simultaneous handles to see replacement-file writes and for
+read-only handles to share a later writer's context.
+
 The measurement pilot in [checkpoint contracts](../../tests/pyalps/test_checkpoint_contracts.py)
 uses deterministic scalar/vector sample streams. A checkpoint must preserve an
 accumulator's unfinished bin so resumed statistics agree with an uninterrupted
@@ -66,12 +79,12 @@ Each module uses `include/`, `src/` and `tests/` where applicable. Public includ
 
 | Source module under `src/alps/` | Responsibility | Binary or compile owner |
 | --- | --- | --- |
-| `utilities/` | Utility functions, general helpers, type traits and NGS configuration helpers | `ALPS::utilities` |
+| `utilities/` | Utility functions, general helpers, type traits, termination polling and NGS configuration helpers | `ALPS::utilities` |
 | `containers/` | Fixed-capacity containers, ALPS multi-array storage and Boost serialization | `ALPS::containers` |
 | `numerics/` | Numerical helpers, array mathematics and matrix/vector interfaces | `ALPS::numerics` |
 | `numeric_io/` | HDF5 adapters for numerical matrices and vectors | `ALPS::numeric_io` |
 | `ietl/` | Iterative eigensolver headers under `include/ietl/` | `ALPS::headers` |
-| `hdf5/` | Archive API, container adapters, shared context registry and signal cleanup | `ALPS::hdf5` |
+| `hdf5/` | Archive API, container adapters and shared context registry | `ALPS::hdf5` |
 | `params/` | ALPSCore-derived owning values, checked lookup/conversion and versioned HDF5 checkpoints | `ALPS::params`; `adapters/` contributes to `ALPS::alps` |
 | `run_config/` | TOML run files, application schemas, defaults, validation and provenance | `ALPS::run_config` |
 | `osiris/` | Dump serialization, process/communication state and XDR implementation | `ALPS::osiris` |
@@ -99,9 +112,9 @@ All first-party public headers have explicit CMake `HEADERS` file sets. These de
 
 `ALPS::numeric_io` combines numerics and HDF5. Include `<alps/hdf5/matrix.hpp>` or `<alps/hdf5/numeric_vector.hpp>` explicitly and link `ALPS::numeric_io` when using these archive adapters; `<alps/numeric/matrix.hpp>` no longer includes the matrix archive adapter. Diagonal/deprecated matrix/vector HDF5 `save`/`load` members and matrix `write_xml`/XML insertion overloads, unused in this repository, are removed without replacement adapters. This pass therefore includes API removals as well as ownership moves; it changes no numerical algorithms and imports no ALPSCore implementation.
 
-`ALPS::utilities` owns utility symbols and links Boost.Filesystem and platform threads without the simulation runtime, HDF5 or BLAS/LAPACK.
+`ALPS::utilities` owns utility symbols and the NGS termination-signal queue. It links Boost.Filesystem and platform threads without the simulation runtime, HDF5 or BLAS/LAPACK.
 
-`ALPS::hdf5` owns archive symbols, exception exports, shared archive state and the NGS signal handler that closes archives. It links utilities, HDF5, Boost.Filesystem, Boost.Thread and platform threads. Archive and signal code remain together to preserve cleanup behavior. A parallel HDF5 provider can bring its own MPI dependency.
+`ALPS::hdf5` owns archive symbols, exception exports and shared archive state. It links utilities, HDF5, Boost.Filesystem, Boost.Thread and platform threads. It installs no process signal handlers and performs no cleanup from fatal-signal handlers. A parallel HDF5 provider can bring its own MPI dependency.
 
 `ALPS::params` owns ALPSCore-derived dictionary/value storage and explicit `alps.params.v1` checkpoints. It links HDF5 and Boost.Serialization; MPI builds also use MPI and Boost.MPI. Python values are eagerly copied into native storage. The file constructor, XML reader, proxies and Python `paramvalue_source` interface are removed. The remaining `params/adapters/` function converts typed scalars to the older model/lattice `Parameters` API for live internal callers; it is compiled into `ALPS::alps`.
 
@@ -135,7 +148,7 @@ Update the owning module's CMake declarations when adding files or dependencies;
 
 ### Recorded architectural debt
 
-With application builds enabled, `alps-module-architecture.json` inventories 36 source owners, 507 public include spellings and 637 production files. The owners include `numeric_io`, `cli`, `plotting`, separate MaxEnt solver/executable owners, and eight [tool groups](../tools/README.md). Tool ownership includes historical inactive C++ sources without adding executable targets. These are ownership counts, not counts of independent libraries or passing tests. The earlier code checkpoint `f6f4501c0` had 24 owners, before the CLI and plotting modules were separated.
+With application builds enabled, `alps-module-architecture.json` inventories 36 source owners, 509 public include spellings and 639 production files. The owners include `numeric_io`, `cli`, `plotting`, separate MaxEnt solver/executable owners, and eight [tool groups](../tools/README.md). Tool ownership includes historical inactive C++ sources without adding executable targets. These are ownership counts, not counts of independent libraries or passing tests. The earlier code checkpoint `f6f4501c0` had 24 owners, before the CLI and plotting modules were separated.
 
 The foundation include cycle involving containers, HDF5, numerics, utilities and XML is removed. The current observed include graph retains the separate two-module cycle between `expression` and `legacy_parameters`; it still needs deliberate reconciliation. Dependency declarations constrain new include edges. Regenerate the report after changing module ownership or dependencies.
 

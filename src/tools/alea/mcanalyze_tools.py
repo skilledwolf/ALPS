@@ -39,7 +39,7 @@ def impl_calculation(name, save_path, calculate):
   variables = options.variables
 
   for filestring in args:
-    ar = h5.archive(filestring, 1)
+    ar = h5.archive(filestring, "a")
     if len(options.variables) == 0:
       variables = ar.list_children(options.path)
       if options.verbose:

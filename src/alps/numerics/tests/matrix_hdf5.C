@@ -35,7 +35,7 @@ BOOST_AUTO_TEST_CASE_TEMPLATE( hdf5, T, test_types )
         BOOST_CHECK_EQUAL(a.capacity() > b.capacity(), true); // maybe this should be an assert instead
 
         {
-            alps::hdf5::archive ar(filename, alps::hdf5::archive::WRITE | alps::hdf5::archive::REPLACE);
+            alps::hdf5::archive ar(filename, "w");
             ar["/matrix"] << a;
         }
 
@@ -81,7 +81,7 @@ BOOST_AUTO_TEST_CASE_TEMPLATE( hdf5_matrix_matrix, T, test_types )
         BOOST_CHECK_EQUAL(a.capacity() > b.capacity(), true); // maybe this should be an assert instead
 
         {
-            alps::hdf5::archive ar(filename, alps::hdf5::archive::WRITE | alps::hdf5::archive::REPLACE);
+            alps::hdf5::archive ar(filename, "w");
             ar["/matrix"] << a;
         }
 

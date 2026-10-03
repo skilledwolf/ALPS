@@ -17,7 +17,7 @@ User-facing changes and migration notes are recorded here, starting with the bui
 - Export `ALPS::xml` for XML parsing/output and `ALPS::cli` for the existing `mcoptions` and `parseargs` command-line grammars. MaxEnt's executable now links `ALPS::cli` instead of `ALPS::alps`; its HDF5 input, command-line behavior and scientific calculations are unchanged. Move `<alps/plot.h>` to the `plotting` header module because it also uses older parameters. Public include names remain stable, and `ALPS::headers` remains the aggregate compile interface. Python runtime packaging includes both libraries; rebuild downstream binaries after the split.
 - Export `ALPS::osiris` for dump/XDR serialization and process/communication state. MaxEnt's solver links the foundations, Osiris and numerical providers without the simulation runtime, preserving its numerical calculations and stop-callback behavior. Python runtime packaging includes Osiris. Rebuild downstream binaries after the library split.
 - Export `ALPS::params` as a separate typed parameter library with component-owned exports. Isolate the existing parameter-file constructor, XML input and older `Parameters` conversion in adapters owned by `ALPS::alps`; their source APIs and parsing behavior are preserved. Python packages carry the shared runtime components. Rebuild downstream binaries after the split.
-- Export `ALPS::hdf5` as a separate archive library with its own symbol exports and NGS signal cleanup. It links utilities and HDF5/Boost dependencies without the simulation runtime; `ALPS::alps` links it transitively. Python packages include one copy of this runtime component. Rebuild downstream binaries after the split; archive formats and public include paths are unchanged.
+- Export `ALPS::hdf5` as a separate archive library with its own symbol exports. It links utilities and HDF5/Boost dependencies without the simulation runtime; `ALPS::alps` links it transitively. Python packages include one copy of this runtime component. NGS termination polling belongs to utilities; opening an archive no longer installs fatal-signal handlers. Rebuild downstream binaries after these ownership changes; archive formats and public include paths are unchanged.
 - Export `ALPS::utilities` as a separate library with its own symbol exports. `ALPS::alps` links it transitively, and Python packages carry this runtime component. Rebuild downstream binaries after this library split; source include paths and utility APIs are unchanged.
 - Group utilities, HDF5 and NGS parameter headers, implementations and tests by module under `src/alps/`; separate MaxEnt's implementation, CLI and tests under `src/apps/maxent/`. Public include paths and exported library targets are unchanged. See the [module layout](src/alps/README.md) for the ALPSCore reconciliation boundaries.
 
@@ -29,6 +29,8 @@ User-facing changes and migration notes are recorded here, starting with the bui
 - Organize tutorials into numbered topic directories, with introductory scripts directly in `tutorials/01-intro/`. `tutorials/00-examples/` is an independent API reference collection. Tutorial sources are installed only when the `tutorials` component is requested. See the [tutorial index](tutorials/README.md).
 
 ### Removed and migration
+
+HDF5 archive construction uses string modes: replace integer `0`/`READ` with `"r"`, `1`/`WRITE` with `"a"`, and `WRITE | REPLACE` with `"w"`. Character and integer constructors and public property flags are removed. Copy construction still shares an archive context; unsafe implicit copy assignment is deleted. The fatal-signal APIs `archive::abort()` and `signal::listen()`/`segfault()` are removed; the library leaves the application's crash handlers in place.
 
 Typed params no longer accept legacy text/XML files or old parameter checkpoints. Include `<alps/params.hpp>`, use `.exists()` / `.as<T>()` / `.value_or(key, fallback)`, and supply Boolean flags as actual Booleans. Native non-const `[]` inserts an unset entry; const lookup throws, and iteration is lexicographic. A standalone legacy-file/checkpoint converter is deferred rather than included in the runtime.
 
@@ -69,6 +71,7 @@ Numerical persistence now requires an explicit adapter: include `<alps/hdf5/matr
 ### Fixed
 
 - Reclaim HDF5 variable-length string buffers and vector-attribute parent handles on conversion failure, preserving the conversion exception and partial-selection memory extents.
+- Consolidate HDF5 writes with validation before replacement: reject malformed ranks, out-of-bounds or overflowing extents, and null buffers for nonempty transfers. Correct scalar/array attribute replacement and root attributes; restore serializer contexts when user hooks throw.
 - Reject programmatic MaxEnt and CT-QMC input/output aliases after resolving paths against the preparation directory.
 - Check all schema-declared input/output paths across TOML jobs before execution, including DMFT's final Green-function files and active text-output directories.
 - Preserve empty run provenance in checkpoints, and reject NUL-containing parameter names and string values before overwriting stored parameters.
