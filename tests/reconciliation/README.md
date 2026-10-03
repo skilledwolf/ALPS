@@ -28,6 +28,27 @@ converts homogeneous vectors element by element; the pinned Core permits the
 first two conversions and requires matching vector storage types. Observations
 characterize each provider and are not assertions that their policies must match.
 
+## Current typed-params baseline
+
+The [typed-params v1 baseline](baseline-darwin-arm64-typed-params-v1.json) records
+the 3 October 2026 comparison of ALPS SDK `fc02e70f0`, probe source `f05b07f4a`
+and unpatched Core `7146b9e1`. It contains source revisions, archive and loaded
+provider-library hashes, dependency versions and the reference build settings.
+All 752 Core source files were checked against the pinned archive. Tracing each
+probe's `semantics` process found only its own provider's three runtime libraries.
+
+All 20 generic archive payloads preserve exact values in all four writer/reader
+combinations: 80 value checks. Both providers' common and extended parameter
+self-checks preserve their values, including native long 2^40. Parameter
+checkpoints reject cross-provider loading because `alps.params.v1` and Core's
+legacy format differ; this is intentional. The conversion observations confirm
+the policies above. Core's context-complex and overflowing-string defects remain
+characterizations, not desired behavior. ALEA and MPI are outside this comparison.
+
+Use this baseline only for the corresponding platform and measured contracts.
+Keep the earlier historical baseline intact. A future contract correction must
+update the relevant expectation rather than preserve a known defect.
+
 ## Build and run
 
 Use the already installed ALPS SDK and its compiler/dependencies. When the Core

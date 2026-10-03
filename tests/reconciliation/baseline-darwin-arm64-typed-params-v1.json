@@ -1,0 +1,344 @@
+{
+  "environment": {
+    "Boost": "1.91.0",
+    "Eigen": "5.0.1",
+    "HDF5": "1.14.6",
+    "cmake": "4.4.3",
+    "compiler": "Clang 21.1.8",
+    "machine": "arm64",
+    "system": "Darwin"
+  },
+  "measurements": {
+    "ALPS->ALPS/archive": {
+      "/bool": "ok",
+      "/bools": "ok",
+      "/complex": "ok",
+      "/complex_vector": "ok",
+      "/double": "ok",
+      "/empty_string": "ok",
+      "/empty_vector": "ok",
+      "/int": "ok",
+      "/int/@bool": "ok",
+      "/int/@number": "ok",
+      "/int/@string": "ok",
+      "/int/@strings": "ok",
+      "/int/@vector": "ok",
+      "/int8": "ok",
+      "/int8s": "ok",
+      "/map": "ok",
+      "/ragged": "ok",
+      "/string": "ok",
+      "/strings": "ok",
+      "/vector": "ok",
+      "bool_type_marker": "1",
+      "int8_type_marker": "1"
+    },
+    "ALPS->ALPS/extended-params": {
+      "boolean": "1",
+      "float": "1.25",
+      "integer": "42",
+      "load": "ok",
+      "real": "1.25",
+      "text": "example",
+      "unsigned": "42",
+      "vector": "ok",
+      "wide": "1099511627776"
+    },
+    "ALPS->ALPS/params": {
+      "boolean": "1",
+      "integer": "42",
+      "load": "ok",
+      "real": "1.25",
+      "text": "example",
+      "vector": "ok"
+    },
+    "ALPS->ALPSCore/archive": {
+      "/bool": "ok",
+      "/bools": "ok",
+      "/complex": "ok",
+      "/complex_vector": "ok",
+      "/double": "ok",
+      "/empty_string": "ok",
+      "/empty_vector": "ok",
+      "/int": "ok",
+      "/int/@bool": "ok",
+      "/int/@number": "ok",
+      "/int/@string": "ok",
+      "/int/@strings": "ok",
+      "/int/@vector": "ok",
+      "/int8": "ok",
+      "/int8s": "ok",
+      "/map": "ok",
+      "/ragged": "ok",
+      "/string": "ok",
+      "/strings": "ok",
+      "/vector": "ok",
+      "bool_type_marker": "1",
+      "int8_type_marker": "1"
+    },
+    "ALPS->ALPSCore/dictionary": {
+      "boolean": "throws",
+      "integer": "throws",
+      "load": "throws",
+      "real": "throws",
+      "text": "throws",
+      "vector": "throws"
+    },
+    "ALPS->ALPSCore/extended-params": {
+      "boolean": "throws",
+      "float": "throws",
+      "integer": "throws",
+      "load": "throws",
+      "real": "throws",
+      "text": "throws",
+      "unsigned": "throws",
+      "vector": "throws",
+      "wide": "throws"
+    },
+    "ALPS->ALPSCore/params": {
+      "boolean": "throws",
+      "integer": "throws",
+      "load": "throws",
+      "real": "throws",
+      "text": "throws",
+      "vector": "throws"
+    },
+    "ALPS/archive-semantics": {
+      "context_complex": "ok",
+      "empty_map_exists": "0",
+      "initial_context": "root",
+      "overflow_string_to_int": "throws"
+    },
+    "ALPS/params-semantics": {
+      "bool_to_int": "throws",
+      "double_to_int": "throws",
+      "erase_missing": "ok",
+      "int_to_double": "4",
+      "integer_to_float_precision_loss": "throws",
+      "integer_vector_to_real_vector": "ok",
+      "iteration": "a,z",
+      "missing_lookup_size": "1",
+      "native_long_bits": "64",
+      "scalar_to_vector": "throws",
+      "string_to_int": "throws",
+      "wide_integer": "1099511627776"
+    },
+    "ALPS/write-archive": {
+      "/bool": "ok",
+      "/bools": "ok",
+      "/complex": "ok",
+      "/complex_vector": "ok",
+      "/double": "ok",
+      "/empty_string": "ok",
+      "/empty_vector": "ok",
+      "/int": "ok",
+      "/int/@bool": "ok",
+      "/int/@number": "ok",
+      "/int/@string": "ok",
+      "/int/@strings": "ok",
+      "/int/@vector": "ok",
+      "/int8": "ok",
+      "/int8s": "ok",
+      "/map": "ok",
+      "/ragged": "ok",
+      "/string": "ok",
+      "/strings": "ok",
+      "/vector": "ok"
+    },
+    "ALPS/write-extended-params": {
+      "save": "ok"
+    },
+    "ALPS/write-params": {
+      "save": "ok"
+    },
+    "ALPSCore->ALPS/archive": {
+      "/bool": "ok",
+      "/bools": "ok",
+      "/complex": "ok",
+      "/complex_vector": "ok",
+      "/double": "ok",
+      "/empty_string": "ok",
+      "/empty_vector": "ok",
+      "/int": "ok",
+      "/int/@bool": "ok",
+      "/int/@number": "ok",
+      "/int/@string": "ok",
+      "/int/@strings": "ok",
+      "/int/@vector": "ok",
+      "/int8": "ok",
+      "/int8s": "ok",
+      "/map": "ok",
+      "/ragged": "ok",
+      "/string": "ok",
+      "/strings": "ok",
+      "/vector": "ok",
+      "bool_type_marker": "0",
+      "int8_type_marker": "0"
+    },
+    "ALPSCore->ALPS/extended-params": {
+      "boolean": "throws",
+      "float": "throws",
+      "integer": "throws",
+      "load": "throws",
+      "real": "throws",
+      "text": "throws",
+      "unsigned": "throws",
+      "vector": "throws",
+      "wide": "throws"
+    },
+    "ALPSCore->ALPS/params": {
+      "boolean": "throws",
+      "integer": "throws",
+      "load": "throws",
+      "real": "throws",
+      "text": "throws",
+      "vector": "throws"
+    },
+    "ALPSCore->ALPSCore/archive": {
+      "/bool": "ok",
+      "/bools": "ok",
+      "/complex": "ok",
+      "/complex_vector": "ok",
+      "/double": "ok",
+      "/empty_string": "ok",
+      "/empty_vector": "ok",
+      "/int": "ok",
+      "/int/@bool": "ok",
+      "/int/@number": "ok",
+      "/int/@string": "ok",
+      "/int/@strings": "ok",
+      "/int/@vector": "ok",
+      "/int8": "ok",
+      "/int8s": "ok",
+      "/map": "ok",
+      "/ragged": "ok",
+      "/string": "ok",
+      "/strings": "ok",
+      "/vector": "ok",
+      "bool_type_marker": "0",
+      "int8_type_marker": "0"
+    },
+    "ALPSCore->ALPSCore/dictionary": {
+      "boolean": "1",
+      "integer": "42",
+      "load": "ok",
+      "real": "1.25",
+      "text": "example",
+      "vector": "ok"
+    },
+    "ALPSCore->ALPSCore/extended-params": {
+      "boolean": "1",
+      "float": "1.25",
+      "integer": "42",
+      "load": "ok",
+      "real": "1.25",
+      "text": "example",
+      "unsigned": "42",
+      "vector": "ok",
+      "wide": "1099511627776"
+    },
+    "ALPSCore->ALPSCore/params": {
+      "boolean": "1",
+      "integer": "42",
+      "load": "ok",
+      "real": "1.25",
+      "text": "example",
+      "vector": "ok"
+    },
+    "ALPSCore/archive-semantics": {
+      "context_complex": "throws",
+      "empty_map_exists": "1",
+      "initial_context": "empty",
+      "overflow_string_to_int": "-1"
+    },
+    "ALPSCore/params-semantics": {
+      "bool_to_int": "1",
+      "double_to_int": "throws",
+      "erase_missing": "ok",
+      "int_to_double": "4",
+      "integer_to_float_precision_loss": "rounded",
+      "integer_vector_to_real_vector": "throws",
+      "iteration": "a,z",
+      "missing_lookup_size": "1",
+      "native_long_bits": "64",
+      "scalar_to_vector": "throws",
+      "string_to_int": "throws",
+      "wide_integer": "1099511627776"
+    },
+    "ALPSCore/write-archive": {
+      "/bool": "ok",
+      "/bools": "ok",
+      "/complex": "ok",
+      "/complex_vector": "ok",
+      "/double": "ok",
+      "/empty_string": "ok",
+      "/empty_vector": "ok",
+      "/int": "ok",
+      "/int/@bool": "ok",
+      "/int/@number": "ok",
+      "/int/@string": "ok",
+      "/int/@strings": "ok",
+      "/int/@vector": "ok",
+      "/int8": "ok",
+      "/int8s": "ok",
+      "/map": "ok",
+      "/ragged": "ok",
+      "/string": "ok",
+      "/strings": "ok",
+      "/vector": "ok"
+    },
+    "ALPSCore/write-extended-params": {
+      "save": "ok"
+    },
+    "ALPSCore/write-params": {
+      "save": "ok"
+    }
+  },
+  "probe_sha256": {
+    "ALPS": "00771e3eb5066a17a7d37ec6c496670b1fd604f2843ba7435c4089f174f6d2aa",
+    "ALPSCore": "4a8fba8048cd1e098a2aac0b83f413fa2aeaaaa5750da114c2b221d9cd4db6bb"
+  },
+  "provenance": {
+    "core_configuration": {
+      "build_type": "Release",
+      "cxx_standard": "c++17",
+      "disabled_modules": [
+        "accumulators",
+        "mc",
+        "gf",
+        "alea"
+      ],
+      "mpi": false,
+      "shared": true,
+      "tests": false
+    },
+    "core_dependency_downloads": false,
+    "core_reference_archive": {
+      "sha256": "a9a87f6671cdf6a81d785df56d3e45c5feb5c08841cab7096d75a43e619184cd",
+      "source_patches": [],
+      "unchanged_source_files_checked": 752,
+      "url": "https://github.com/ALPSCore/ALPSCore/archive/7146b9e1f017938a94e5dae35d88467cc5ba7969.tar.gz"
+    },
+    "date": "2026-10-03",
+    "loaded_provider_runtime_sha256": {
+      "ALPS": {
+        "libalps_hdf5.3.0.0.dylib": "f6626f3de081dae96749c49561897be536f6ad4de50acc5a3c9783be5819f76a",
+        "libalps_params.3.0.0.dylib": "5ac0c2533f82d551984638273c6e6b19bd462b48c8d14c1fd85ec675596410b4",
+        "libalps_utilities.3.0.0.dylib": "a3218096acc1d8c2deec45ca6011fad2bd72124c6bc2541cf772191ba38a7d5f"
+      },
+      "ALPSCore": {
+        "libalps-hdf5.dylib": "8df45870b4d16f3e20938c86029c147bc1c206916883a8f4888ec52fedaf8022",
+        "libalps-params.dylib": "e3cefffb628381930e36449b531c1812246c115bb7f42d08ec65a736d2f8e435",
+        "libalps-utilities.dylib": "8739d1b521d45c97a951f56e2f775feec58e4533be402dd3d2643f50ed6cf18c"
+      }
+    },
+    "one_provider_per_traced_process": true,
+    "probe_source_revision": "f05b07f4abdc9636ea27e7a29f46e760af8a3e15",
+    "runtime_trace_command": "semantics"
+  },
+  "scope": "same-provider-and-cross-provider",
+  "source_revision_labels": {
+    "ALPS": "fc02e70f030f6d5aa74fe0311c44a3a5cdd1cfd8",
+    "ALPSCore": "7146b9e1f017938a94e5dae35d88467cc5ba7969"
+  }
+}
