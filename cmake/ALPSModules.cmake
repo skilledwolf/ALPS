@@ -111,7 +111,7 @@ function(alps_write_module_manifest)
   set(manifest "${PROJECT_BINARY_DIR}/alps-module-manifest.json")
   file(WRITE "${manifest}" "{\"schema_version\":1,\"source_root\":\"${root_json}\",\"modules\":[\n${entries}\n]}\n")
   if(ALPS_BUILD_TESTING)
-    find_package(Python 3.10 REQUIRED COMPONENTS Interpreter)
+    find_package(Python 3.11 REQUIRED COMPONENTS Interpreter)
     add_test(NAME module_architecture
       COMMAND "${Python_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/.github/scripts/check_module_architecture.py"
         --manifest "${manifest}" --write-report "${PROJECT_BINARY_DIR}/alps-module-architecture.json")

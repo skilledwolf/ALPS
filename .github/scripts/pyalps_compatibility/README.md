@@ -20,8 +20,8 @@ hashes, executed commands, timings, and pass/fail status. A failing check exits
 nonzero and retains its evidence. Each subprocess has a five-minute timeout.
 Outputs belong in an ignored build directory or outside the checkout.
 
-Use `--packaging` to include release/packaging tests (requires Python 3.11 or
-newer, packaging, and scikit-build-core). Use `--downstream` to enable the two compiled consumers;
+Use `--packaging` to include release/packaging tests (requires packaging and
+scikit-build-core). Use `--downstream` to enable the two compiled consumers;
 this requires the matching SDK installed at `_build/distribution/install`, a
 C++ compiler, CMake, and nanobind. Check the reported skips: a standard wheel
 smoke run does not exercise these opt-in consumers or MPI without mpi4py.
@@ -37,7 +37,7 @@ Each run writes its own inputs and outputs under the evidence directory.
 
 The reference is master at `f28d428017773f5794dc9896a544f95e8ef40443`.
 Build its Boost.Python modules in a separate checkout with the **same Python
-and NumPy versions** as the new-wheel environment. NumPy 1.26 and Python 3.10
+and NumPy versions** as the new-wheel environment. NumPy 1.26 and Python 3.11
 are a useful common baseline. Keep old and new modules in separate processes.
 
 `legacy-build.patch` records the build-only adaptations used in the original

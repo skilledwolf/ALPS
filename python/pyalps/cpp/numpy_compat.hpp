@@ -24,7 +24,7 @@
 namespace alps {
     namespace python {
         namespace nb_ = nanobind;
-        // Type attributes are available on every supported Python (3.10+).
+        // Type attributes are available on every supported Python (3.11+).
         // Builtins keep their short names; NumPy types retain their module prefix.
         inline std::string type_name(nb_::handle value) {
             nb_::handle type = value.type();

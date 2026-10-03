@@ -10,7 +10,7 @@ option(PYALPS_BUILD_SOLVERS "Build the MaxEnt, CT-HYB, and CT-INT bindings" ON)
 option(PYALPS_BUNDLE_APPLICATIONS "Include the ALPS command-line programs" ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-find_package(Python 3.10 REQUIRED COMPONENTS Interpreter Development.Module)
+find_package(Python 3.11 REQUIRED COMPONENTS Interpreter Development.Module)
 execute_process(
   COMMAND "${Python_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/_build_support/alps_version.py" --core
   OUTPUT_VARIABLE PYALPS_VERSION_CORE

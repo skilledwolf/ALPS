@@ -13,7 +13,7 @@ if(ALPS_BUILD_TESTING)
   target_link_libraries(cthyb_run_config PRIVATE ALPS::cthyb)
   alps_add_test(cthyb_run_config)
   set_property(TEST cthyb_run_config PROPERTY LABELS dmft)
-  find_package(Python 3.10 REQUIRED COMPONENTS Interpreter)
+  find_package(Python 3.11 REQUIRED COMPONENTS Interpreter)
   add_test(NAME cthyb_cli_contract
     COMMAND "${Python_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/cli_contract.py"
             "$<TARGET_FILE:hybridization>")

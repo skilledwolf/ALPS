@@ -87,7 +87,7 @@ The foundation include cycle involving containers, HDF5, numerics, utilities and
 
 The report inventories 82 exact unresolved file/include pairs already present at baseline `0f7b995d5`: 80 in dormant accumulator code and two in the optional `USE_LATTICE_CONSTANT_2D` graph backend. Each exemption names its file, include and reason; they do not establish support for those inactive paths. Resolve or remove these dependencies deliberately rather than adding broad exclusions.
 
-With `ALPS_BUILD_TESTING=ON`, CTest runs `module_architecture` and writes `<build-dir>/alps-module-architecture.json`; this requires a Python interpreter ≥ 3.10. Builds with testing disabled do not need Python for module configuration or manifest generation.
+With `ALPS_BUILD_TESTING=ON`, CTest runs `module_architecture` and writes `<build-dir>/alps-module-architecture.json`; this requires a Python interpreter ≥ 3.11. Builds with testing disabled do not need Python for module configuration or manifest generation.
 
 ## Validation
 

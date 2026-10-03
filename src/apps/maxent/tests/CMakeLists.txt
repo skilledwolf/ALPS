@@ -20,7 +20,7 @@ add_test(NAME maxent_reference
   COMMAND maxent_reference "${CMAKE_CURRENT_SOURCE_DIR}/reference_cases.json")
 set_tests_properties(maxent_reference PROPERTIES TIMEOUT 120 LABELS maxent)
 
-find_package(Python 3.10 REQUIRED COMPONENTS Interpreter)
+find_package(Python 3.11 REQUIRED COMPONENTS Interpreter)
 add_test(NAME maxent_cli_contract
   COMMAND "${Python_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/cli_contract.py"
     "$<TARGET_FILE:maxent>")

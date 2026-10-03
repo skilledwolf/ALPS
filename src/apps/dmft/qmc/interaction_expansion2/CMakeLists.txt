@@ -13,7 +13,7 @@ if(ALPS_BUILD_TESTING)
   target_include_directories(ctint_run_config_contract PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/..")
   alps_add_test(ctint_run_config_contract)
   set_tests_properties(ctint_run_config_contract PROPERTIES LABELS "dmft;ctint;run_config" TIMEOUT 30)
-  find_package(Python 3.10 REQUIRED COMPONENTS Interpreter)
+  find_package(Python 3.11 REQUIRED COMPONENTS Interpreter)
   add_test(NAME ctint_cli_contract
     COMMAND "${Python_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/cli_contract.py" "$<TARGET_FILE:interaction>")
   set_tests_properties(ctint_cli_contract PROPERTIES LABELS "dmft;ctint;cli" TIMEOUT 60)

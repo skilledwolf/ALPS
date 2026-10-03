@@ -92,7 +92,7 @@ def packaging_matrices(tier):
         "wheel_matrix": {"plat": platforms if tier == "full" else platforms[:1]},
         "smoke_matrix": {
             "plat": smoke_platforms if tier == "full" else smoke_platforms[:1],
-            "python": ["3.10", "3.11", "3.12", "3.13", "3.14"] if tier == "full" else ["3.10", "3.14"],
+            "python": ["3.11", "3.12", "3.13", "3.14"] if tier == "full" else ["3.11", "3.14"],
         },
     }
 
