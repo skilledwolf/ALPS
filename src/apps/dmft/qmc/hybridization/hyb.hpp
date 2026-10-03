@@ -48,7 +48,6 @@ public:
   friend std::ostream &operator<<(std::ostream &os, const hybridization &hyb);
 
 private:
-  bool VERBOSE;
   int crank;
   int csize;
   int output_period;

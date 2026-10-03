@@ -39,6 +39,17 @@ results = "result.h5"
     assert (root / "result.h5").stat().st_size > 0
     assert (root / "delta.dat").exists(), "Input file disappeared"
     assert not list(work.iterdir()), "Text output must be opt-in"
+    for verbose in (False, True):
+        run.write_text(document.replace("SWEEPS = 16", "SWEEPS = 3")
+                       .replace("MEASURE_time = false",
+                                f"MEASURE_time = false\nVERBOSE = {str(verbose).lower()}")
+                       + "\n[execution]\nprogress_period = 1\n")
+        result = invoke(run)
+        assert result.returncode == 0, result.stderr
+        reports = result.stdout.count("Simulation details (master only)")
+        assert reports == (3 if verbose else 0), (
+            f"VERBOSE={verbose} produced {reports} progress reports: {result.stdout}"
+        )
     run.write_text(document.replace("SWEEPS = 16", "SWEEPS = 0"))
     result = invoke("--validate", run)
     assert result.returncode != 0 and "SWEEPS" in result.stderr
