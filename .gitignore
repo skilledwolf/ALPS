@@ -66,6 +66,7 @@ __pycache__/
 # Python distribution artifacts
 /wheelhouse/
 /python/pyalps/dist/
+*.egg-info/
 
 # Generated tutorial manual intermediates
 /tutorials/06-hybridization/hybdoc.aux
