@@ -62,6 +62,7 @@ namespace alps {
 
         namespace detail {
             struct archivecontext;
+            class scoped_context;
 
             template<typename A, typename T> struct is_datatype_caller {
                 static bool apply(A const & ar, std::string path) {
@@ -113,6 +114,7 @@ namespace alps {
                 explicit archive(std::string const & filename, char prop); // TODO: remove that!
                 explicit archive(std::string const & filename, char signed prop); // TODO: remove that!
                 archive(archive const & arg);
+                archive & operator=(archive const &) = delete;
 
                 virtual ~archive();
                 static void abort();
@@ -207,6 +209,9 @@ namespace alps {
 
             private:
 
+
+                friend class detail::scoped_context;
+
                 void construct(std::string const & filename, std::size_t props = READ);
                 std::string file_key(std::string filename, bool large, bool memory) const;
 
@@ -237,6 +242,27 @@ namespace alps {
         };
 
         namespace detail {
+
+            class scoped_context {
+                public:
+                    scoped_context(archive & ar, std::string const & path)
+                        : ar_(ar), previous_(ar.get_context()) {
+                        ar_.set_context(path);
+                    }
+
+                    ~scoped_context() noexcept {
+                        // Restore without allocating while another exception
+                        // may be unwinding from a user-defined save/load hook.
+                        ar_.current_.swap(previous_);
+                    }
+
+                    scoped_context(scoped_context const &) = delete;
+                    scoped_context & operator=(scoped_context const &) = delete;
+
+                private:
+                    archive & ar_;
+                    std::string previous_;
+            };
 
              template<typename T> struct get_extent {
                 static std::vector<std::size_t> apply(T const & value) {
@@ -308,10 +334,8 @@ namespace alps {
         ) {
             if (chunk.size())
                 throw std::logic_error("user defined objects needs to be written continously" + ALPS_STACKTRACE);
-            std::string context = ar.get_context();
-            ar.set_context(ar.complete_path(path));
+            detail::scoped_context context(ar, path);
             value.save(ar);
-            ar.set_context(context);
         }
 
         template<typename T> void load(
@@ -323,10 +347,8 @@ namespace alps {
         ) {
             if (chunk.size())
                 throw std::logic_error("user defined objects needs to be written continously" + ALPS_STACKTRACE);
-            std::string context = ar.get_context();
-            ar.set_context(ar.complete_path(path));
+            detail::scoped_context context(ar, path);
             value.load(ar);
-            ar.set_context(context);
         }
 
         #define ALPS_NGS_HDF5_DEFINE_FREE_FUNCTIONS(T)                                                                                                                 \
