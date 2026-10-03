@@ -150,8 +150,13 @@ jobs:
           fi
           sudo apt-get update
           read -r -a compiler_packages <<< "$COMPILER_PACKAGES"
-          sudo apt-get install -y ccache liblapack-dev libblas-dev libopenmpi-dev libhdf5-dev libtomlplusplus-dev \
+          sudo apt-get install -y ccache liblapack-dev libblas-dev libopenmpi-dev libhdf5-dev \
             libbz2-dev zlib1g-dev liblzma-dev libzstd-dev "${compiler_packages[@]}"
+          # Jammy has no toml++ package; the pinned header-only provider below
+          # retains coverage of its older toolchain and system libraries.
+          if [[ "${{ matrix.os }}" != ubuntu-22.04 ]]; then
+            sudo apt-get install -y libtomlplusplus-dev
+          fi
           if [[ "$EXTRAS" == true ]]; then sudo apt-get install -y gfortran xsltproc; fi
       - name: Install macOS dependencies
         if: runner.os == 'macOS'
@@ -174,6 +179,9 @@ jobs:
       - name: Prepare pinned Boost
         timeout-minutes: 30
         run: python .github/scripts/build_metrics.py run 'Dependency preparation' python .github/scripts/prepare_dependencies.py "$DEPENDENCY" _build/boost-install
+      - name: Prepare pinned toml++ on Ubuntu 22.04
+        if: matrix.os == 'ubuntu-22.04'
+        run: python .github/scripts/prepare_dependencies.py tomlplusplus _build/tomlplusplus-install
       - name: Configure SDK
         run: |
           extra_args=()
@@ -191,7 +199,7 @@ jobs:
           python .github/scripts/build_metrics.py run 'SDK configure' cmake -S . -B _build/ci -G Ninja \
             -DCMAKE_BUILD_TYPE=Release -DALPS_BUILD_TESTING=ON \
             "-DALPS_ENABLE_MPI=$ALPS_BOOST_MPI" \
-            "-DCMAKE_PREFIX_PATH=$PWD/_build/boost-install" \
+            "-DCMAKE_PREFIX_PATH=$PWD/_build/boost-install;$PWD/_build/tomlplusplus-install" \
             "-DCMAKE_INSTALL_PREFIX=$PWD/_build/ci/install" \
             "-DCMAKE_CXX_STANDARD=$CXX_STANDARD" "${extra_args[@]}"
       - name: Build SDK

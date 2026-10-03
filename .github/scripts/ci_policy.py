@@ -79,9 +79,9 @@ def emit(values):
 
 def packaging_matrices(tier):
     platforms = [
-        {"os": "ubuntu-24.04", "target": "", "arch": "x86_64", "family": "manylinux", "build": "cp3{10,11,12,13,14}-manylinux*"},
-        {"os": "ubuntu-24.04", "target": "", "arch": "x86_64", "family": "musllinux", "build": "cp3{10,11,12,13,14}-musllinux*"},
-        {"os": "macos-15", "target": "15.0", "arch": "arm64", "family": "macos", "build": "cp3{10,11,12,13,14}-macosx*"},
+        {"os": "ubuntu-24.04", "target": "", "arch": "x86_64", "family": "manylinux", "build": "cp3{11,12,13,14}-manylinux*"},
+        {"os": "ubuntu-24.04", "target": "", "arch": "x86_64", "family": "musllinux", "build": "cp3{11,12,13,14}-musllinux*"},
+        {"os": "macos-15", "target": "15.0", "arch": "arm64", "family": "macos", "build": "cp3{11,12,13,14}-macosx*"},
     ]
     smoke_platforms = [
         {"os": "ubuntu-24.04", "architecture": "x64", "artifact": "cibw-wheels-manylinux"},

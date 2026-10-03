@@ -72,6 +72,7 @@ Numerical persistence now requires an explicit adapter: include `<alps/hdf5/matr
 - Check all schema-declared input/output paths across TOML jobs before execution, including DMFT's final Green-function files and active text-output directories.
 - Preserve empty run provenance in checkpoints, and reject NUL-containing parameter names and string values before overwriting stored parameters.
 - Honor CT-HYB's resolved `VERBOSE` setting during progress reporting instead of reading an uninitialized flag.
+- Prepare pinned toml++ headers for Ubuntu 22.04 CI, whose package archive does not supply the required parser.
 - Report MaxEnt CLI help and input errors with normal exit codes instead of continuing into an empty input or aborting on an exception. Valid scientific runs are unchanged.
 - Reject unsupported native C++ parameter checkpoint datatypes with the dataset path in the diagnostic, instead of silently substituting zero. Existing supported types and custom readers retain their decoding behavior; a failed parameter reload preserves the previous values.
 - Generate XML plotting scripts compatible with Python 3 through the `alps-xml` CLI.
