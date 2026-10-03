@@ -6,6 +6,7 @@
 #include <array>
 #include <cstdio>
 #include <iostream>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -130,6 +131,10 @@ int main() {
             rejects<alps::hdf5::archive_error>([&] { ar.read("/group/@scalar", values.data(), {}); });
             rejects<alps::hdf5::archive_error>([&] { ar.read("/array", values.data(), {6}); });
             rejects<alps::hdf5::archive_error>([&] { ar.read("/array", values.data(), {2, 3}, {1, 0}); });
+            auto const maximum = std::numeric_limits<std::size_t>::max();
+            rejects<alps::hdf5::archive_error>([&] { ar.read("/array", values.data(), {1, 1}, {maximum, 0}); });
+            rejects<alps::hdf5::archive_error>([&] { ar.read("/array", values.data(), {maximum, 1}, {1, 0}); });
+            require(values == std::array<int, 6>{});
             rejects<alps::hdf5::archive_error>([&] { ar.read("/array", values.data(), {0, 3}); });
             rejects<std::logic_error>([&] { ar.read("/group/@array", values.data(), {1, 3}); });
             ar.write("/empty", static_cast<int const *>(nullptr), {});
