@@ -134,7 +134,8 @@ loss of precision. Boolean flags must use `True`/`False`.
 Params checkpoints are explicitly versioned as `alps.params.v1`; old checkpoints
 are not accepted by `ngs.params.load`. A standalone converter is deferred. The
 analysis loaders still handle result groups from the unmigrated `Parameters`
-applications as well as the new typed checkpoints.
+applications as well as the new typed checkpoints. Checkpoints reject names and
+string values containing NUL before overwriting stored parameters.
 
 Installed C++ SDK consumers require the Boost version used to build that SDK.
 The SDK exports the matching runtime search path on macOS, where Boost library

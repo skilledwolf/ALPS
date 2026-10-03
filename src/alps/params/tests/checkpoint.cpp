@@ -9,10 +9,11 @@ void require(bool ok) {
     if (!ok)
         throw std::runtime_error("params checkpoint contract failed");
 }
-template <class F> void rejects(F f) {
+template <class F> void rejects(F f, const std::string &message = {}) {
     try {
         f();
-    } catch (const std::exception &) {
+    } catch (const std::exception &error) {
+        require(std::string(error.what()).find(message) != std::string::npos);
         return;
     }
     throw std::runtime_error("invalid checkpoint unexpectedly accepted");
@@ -42,6 +43,29 @@ int main() {
         ar["/parameters"] << p;
         ar["/parameters"] >> actual;
         require(actual == p);
+        // Unsupported strings must fail before removing an existing checkpoint
+        // or writing the earlier entries of a new checkpoint.
+        const std::string nul_text("a\0b", 3), nul_key("z\0name", 6);
+        auto invalid_text = p, invalid_strings = p, invalid_key = p;
+        invalid_text["z"] = nul_text;
+        invalid_strings["z"] = std::vector<std::string>{"valid", nul_text};
+        invalid_key[nul_key] = "valid";
+        for (const auto &invalid : {invalid_text, invalid_strings, invalid_key}) {
+            rejects([&] { ar["/parameters"] << invalid; }, "NUL");
+            ar["/parameters"] >> actual;
+            require(actual == p);
+            rejects([&] { ar["/rejected"] << invalid; }, "NUL");
+            require(!ar.is_group("/rejected/entries") && !ar.is_data("/rejected/format"));
+        }
+        alps::params::value_type value("value"), restored_value("value");
+        value = "kept";
+        ar["/value"] << value;
+        value = nul_text;
+        rejects([&] { ar["/value"] << value; }, "NUL");
+        ar["/value"] >> restored_value;
+        require(restored_value.as<std::string>() == "kept");
+        rejects([&] { ar["/rejected_value"] << value; }, "NUL");
+        require(!ar.is_data("/rejected_value/type") && !ar.is_data("/rejected_value/value"));
         alps::params empty;
         ar["/empty"] << empty;
         ar["/empty"] >> actual;

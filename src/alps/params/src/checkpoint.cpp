@@ -21,10 +21,29 @@ template <class T> std::string logical_type() {
     else
         return type_name<T>();
 }
+void validate_checkpoint(const dict_value &value, const std::string &key) {
+    // The archive stores C strings. Reject unrepresentable names and values
+    // before overwriting a checkpoint rather than silently truncating them.
+    if (key.find('\0') != std::string::npos)
+        throw std::invalid_argument("Cannot checkpoint a parameter name containing NUL");
+    if (value.empty())
+        throw exception::uninitialized_value(key, "cannot checkpoint an unset value");
+    auto validate_string = [&](const std::string &text) {
+        if (text.find('\0') != std::string::npos)
+            throw exception::value_mismatch(key, "cannot checkpoint a string containing NUL");
+    };
+    value.apply_visitor([&](const auto &text) {
+        using T = std::decay_t<decltype(text)>;
+        if constexpr (std::is_same_v<T, std::string>)
+            validate_string(text);
+        else if constexpr (std::is_same_v<T, std::vector<std::string>>)
+            for (const auto &element : text)
+                validate_string(element);
+    });
+}
 } // namespace
 void dict_value::save(hdf5::archive &ar) const {
-    if (empty())
-        throw exception::uninitialized_value(name_, "cannot checkpoint an unset value");
+    validate_checkpoint(*this, name_);
     apply_visitor([&](const auto &value) {
         using T = std::decay_t<decltype(value)>;
         if constexpr (!std::is_same_v<T, None>) {
@@ -87,8 +106,7 @@ void dict_value::load(hdf5::archive &ar) {
 }
 void dictionary::save(hdf5::archive &ar) const {
     for (const auto &entry : *this)
-        if (entry.second.empty())
-            throw exception::uninitialized_value(entry.first, "cannot checkpoint an unset value");
+        validate_checkpoint(entry.second, entry.first);
     // Index entries so parameter names containing '/' or TOML punctuation do
     // not become archive paths. Overwriting also removes stale prior entries.
     if (ar.is_group("entries"))

@@ -387,6 +387,10 @@ void run_configuration::save(hdf5::archive &ar) const {
     ar["output"] << output;
     ar["execution"] << execution;
     ar["origins"] << origins;
+    // Empty maps do not create an archive group; retain an explicit empty
+    // origins group so every saved run can be loaded by the same format.
+    if (origins.empty())
+        ar.create_group("origins");
 }
 void run_configuration::load(hdf5::archive &ar) {
     run_configuration restored;

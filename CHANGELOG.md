@@ -68,6 +68,7 @@ Numerical persistence now requires an explicit adapter: include `<alps/hdf5/matr
 
 ### Fixed
 
+- Preserve empty run provenance in checkpoints, and reject NUL-containing parameter names and string values before overwriting stored parameters.
 - Report MaxEnt CLI help and input errors with normal exit codes instead of continuing into an empty input or aborting on an exception. Valid scientific runs are unchanged.
 - Reject unsupported native C++ parameter checkpoint datatypes with the dataset path in the diagnostic, instead of silently substituting zero. Existing supported types and custom readers retain their decoding behavior; a failed parameter reload preserves the previous values.
 - Generate XML plotting scripts compatible with Python 3 through the `alps-xml` CLI.

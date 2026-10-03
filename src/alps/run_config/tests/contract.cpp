@@ -137,6 +137,32 @@ int main() {
         rejects([&] { restored.load(ar); }, "format");
         require(restored.parameters == run.parameters && restored.origins == run.origins);
     }
+    const auto empty_run = alps::resolve_run_configuration({}, R"(
+application="empty-contract"
+schema_version=1
+[parameters]
+[input]
+[output]
+[execution]
+)");
+    require(empty_run.origins.empty());
+    {
+        alps::hdf5::archive ar(output.string(), "a");
+        // A fresh empty run and an overwrite must both retain an empty origins
+        // group; the overwrite must remove the earlier run's provenance.
+        ar["fresh"] << empty_run;
+        ar["overwritten"] << run;
+        ar["overwritten"] << empty_run;
+        for (const auto *path : {"fresh", "overwritten"}) {
+            require(ar.is_group(std::string(path) + "/origins"));
+            require(ar.list_children(std::string(path) + "/origins").empty());
+            auto restored = run;
+            ar[path] >> restored;
+            require(restored.application == empty_run.application && restored.schema_version == 1);
+            require(restored.parameters.empty() && restored.input.empty() && restored.output.empty());
+            require(restored.execution.empty() && restored.origins.empty());
+        }
+    }
     std::filesystem::remove(output);
     alps::params supplied;
     supplied["count"] = 2;
