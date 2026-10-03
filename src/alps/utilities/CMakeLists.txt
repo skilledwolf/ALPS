@@ -4,6 +4,7 @@ add_library(alps_utilities
   src/encode.cpp
   src/os.cpp
   src/short_print.cpp
+  src/signal.cpp
   src/sleep.cpp
   src/stacktrace.cpp
   src/temporary_filename.cpp
@@ -47,6 +48,7 @@ target_sources(alps_utilities PUBLIC
     include/alps/ngs/hash.hpp
     include/alps/ngs/mutex.hpp
     include/alps/ngs/short_print.hpp
+    include/alps/ngs/signal.hpp
     include/alps/ngs/sleep.hpp
     include/alps/ngs/stacktrace.hpp
     include/alps/ngs/stringify.hpp

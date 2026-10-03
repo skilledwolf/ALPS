@@ -117,7 +117,6 @@ namespace alps {
                 archive & operator=(archive const &) = delete;
 
                 virtual ~archive();
-                static void abort();
 
                 std::string const & get_filename() const;
 

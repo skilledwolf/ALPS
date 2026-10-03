@@ -12,6 +12,7 @@
 
 #include <alps/solvers.hpp>
 #include <alps/ctint.hpp>
+#include <alps/ngs/signal.hpp>
 #include "interaction_expansion.hpp"
 #include <alps/utility/copyright.hpp>
 #include <chrono>

@@ -15,27 +15,20 @@
 #define ALPS_NGS_SIGNAL_HPP
 
 #include <alps/ngs/config.hpp>
-#include <alps/hdf5_export.h>
+#include <alps/utilities_export.h>
 
 #include <boost/array.hpp>
-
-#include <vector>
 
 namespace alps {
   namespace ngs {
 
-    class ALPS_HDF5_DECL signal{
+    class ALPS_UTILITIES_DECL signal{
 
     public:
 
       /*!
-Listen to the following posix signals SIGINT, SIGTERM, SIGXCPU, SIGQUIT, SIGUSR1, SIGUSR2, SIGSTOP SIGKILL. Those signals can be check by empty, top, pop
-
-\verbatim embed:rst
-.. note::
-   If a SIGSEGV (segfault) or SIGBUS (bus error) occures, a stacktrace
-   is printed an all open hdf5 archives are closed before it exits.
-\endverbatim
+Listen to the following posix signals SIGINT, SIGTERM, SIGXCPU, SIGQUIT,
+SIGUSR1 and SIGUSR2. These signals can be checked by empty, top and pop.
       */
       signal();
 
@@ -55,16 +48,7 @@ Pops a signal form the stack.
        */
       void pop();
 
-      /*!
-Listen to the signals SIGSEGV (segfault) and SIGBUS (bus error). If one
-of these signals are captured, a stacktrace is printed an all open hdf5
-archives are closed before it exits. 
-      */
-      static void listen();
-
       static void slot(int signal);
-
-      static void segfault(int signal);
 
     private:
 

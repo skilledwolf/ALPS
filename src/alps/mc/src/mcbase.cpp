@@ -11,7 +11,6 @@
  *                                                                                 *
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
-#include <alps/ngs/signal.hpp>
 #include <alps/mcbase.hpp>
 
 namespace alps {
@@ -21,7 +20,6 @@ namespace alps {
         , params(parameters) // TODO: remove, deprecated!
         , random((parameters.value_or("SEED", 42)) + seed_offset)
     {
-        alps::ngs::signal::listen();
     }
 
     mcbase::~mcbase() = default;

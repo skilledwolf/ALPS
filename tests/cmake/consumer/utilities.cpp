@@ -7,8 +7,10 @@
 #include <alps/utility/vmusage.hpp>
 #include <alps/ngs/cast.hpp>
 #include <alps/ngs/short_print.hpp>
+#include <alps/ngs/signal.hpp>
 #include <alps/ngs/sleep.hpp>
 #include <boost/filesystem/operations.hpp>
+#include <csignal>
 #include <sstream>
 #include <stdexcept>
 #include <vector>
@@ -41,4 +43,20 @@ int main() {
            << alps::detail::short_print_proxy<long double>(l, 3);
     if (output.str() != "1.23 1.23 1.23")
         throw std::runtime_error("Utility formatting exports failed");
+
+    // Termination polling has one state owner and needs no archive runtime.
+    alps::ngs::signal signals;
+#if !defined(BOOST_MSVC) && !defined(ALPS_NGS_NO_SIGNALS)
+    const int termination = SIGUSR1;
+    if (std::raise(termination) != 0)
+        throw std::runtime_error("Could not deliver termination signal");
+#else
+    const int termination = 17;
+    alps::ngs::signal::slot(termination);
+#endif
+    if (signals.empty() || signals.top() != termination)
+        throw std::runtime_error("Utility signal state is not shared");
+    signals.pop();
+    if (!signals.empty())
+        throw std::runtime_error("Utility signal queue was not cleared");
 }

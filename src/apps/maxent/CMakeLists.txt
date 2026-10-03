@@ -21,7 +21,7 @@ target_link_libraries(maxent PRIVATE ALPS::maxent)
 alps_register_module(NAME maxent ROOT "${CMAKE_CURRENT_SOURCE_DIR}/src"
   TARGETS alps_maxent
   PRIVATE_FILES src/default_model.hpp src/maxent.hpp src/maxent_parms.hpp
-  DEPENDS configuration hdf5 osiris params run_config solvers)
+  DEPENDS configuration hdf5 osiris params run_config solvers utilities)
 alps_register_module(NAME maxent_cli ROOT "${CMAKE_CURRENT_SOURCE_DIR}/cli"
   TARGETS maxent DEPENDS hdf5 params run_config solvers)
 install(TARGETS maxent RUNTIME_DEPENDENCY_SET alps_runtime

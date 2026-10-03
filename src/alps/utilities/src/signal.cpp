@@ -12,14 +12,8 @@
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
 #include <alps/ngs/signal.hpp>
-#include <alps/ngs/stacktrace.hpp>
-#include <alps/hdf5/archive.hpp>
 
 #include <cstring>
-#include <sstream>
-#include <cstdlib>
-#include <iostream>
-#include <stdexcept>
 #include <cstdio>
 
 #include <signal.h>
@@ -42,11 +36,8 @@ namespace alps {
                     sigaction(SIGQUIT, &action, NULL);
                     sigaction(SIGUSR1, &action, NULL);
                     sigaction(SIGUSR2, &action, NULL);
-                    sigaction(SIGSTOP, &action, NULL);
-                    sigaction(SIGKILL, &action, NULL);
                 }
             #endif
-            listen();
         }
 
         bool signal::empty() {
@@ -61,34 +52,12 @@ namespace alps {
             --end_ &= 0x1F;
         }
 
-        void signal::listen() {
-            #if not ( defined BOOST_MSVC || defined ALPS_NGS_NO_SIGNALS )
-                static bool initialized;
-                if (!initialized) {
-                    initialized = true;
-
-                    static struct sigaction action;
-                    memset(&action, 0, sizeof(action));
-                    action.sa_handler = &signal::segfault;
-                    sigaction(SIGSEGV, &action, NULL);
-                    sigaction(SIGBUS, &action, NULL);
-                }
-            #endif
-        }
-
         void signal::slot(int signal) {
             fprintf(stderr, "Received signal %i\n", signal);
             signals_[end_] = signal;
             ++end_ &= 0x1F;
             if (begin_ == end_)
                 ++begin_ &= 0x1F;
-        }
-
-        void signal::segfault(int signal) {
-            hdf5::archive::abort();
-            fprintf(stderr, "Abort by signal %i\n", signal);
-            std::cerr << ALPS_STACKTRACE;
-            std::abort();
         }
 
         std::size_t signal::begin_ = 0;

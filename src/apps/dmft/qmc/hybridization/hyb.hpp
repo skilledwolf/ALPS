@@ -17,7 +17,6 @@
 #include <alps/ngs.hpp>
 #include <alps/mcbase.hpp>
 #include <alps/run_config.hpp>
-#include <alps/ngs/signal.hpp>
 #include "green_function.h"
 #include "hybsegment.hpp"
 #include "hyblocal.hpp"

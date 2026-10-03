@@ -15,6 +15,7 @@
 
 #include <alps/solvers.hpp>
 #include <alps/cthyb.hpp>
+#include <alps/ngs/signal.hpp>
 #include "hyb.hpp"
 #include "hybevaluate.hpp"
 #include <alps/utility/copyright.hpp>

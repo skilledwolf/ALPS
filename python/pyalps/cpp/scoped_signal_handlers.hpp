@@ -28,11 +28,7 @@ public:
         struct sigaction action;
         std::memset(&action, 0, sizeof(action));
         action.sa_handler = &alps::ngs::signal::slot;
-        for (std::size_t i = 0; i < termination_signal_count_; ++i)
-            sigaction(signal_numbers_[i], &action, NULL);
-
-        action.sa_handler = &alps::ngs::signal::segfault;
-        for (std::size_t i = termination_signal_count_; i < signal_numbers_.size(); ++i)
+        for (std::size_t i = 0; i < signal_numbers_.size(); ++i)
             sigaction(signal_numbers_[i], &action, NULL);
 #endif
     }
@@ -55,17 +51,15 @@ private:
         bool valid = false;
     };
 
-    static constexpr std::array<int, 8> signal_numbers_ = {{
-        SIGINT, SIGTERM, SIGXCPU, SIGQUIT, SIGUSR1, SIGUSR2, SIGSEGV, SIGBUS
+    static constexpr std::array<int, 6> signal_numbers_ = {{
+        SIGINT, SIGTERM, SIGXCPU, SIGQUIT, SIGUSR1, SIGUSR2
     }};
-    static constexpr std::size_t termination_signal_count_ = 6;
     std::array<saved_action, signal_numbers_.size()> saved_;
 #endif
 };
 
 #if !defined(BOOST_MSVC) && !defined(ALPS_NGS_NO_SIGNALS)
-constexpr std::array<int, 8> scoped_signal_handlers::signal_numbers_;
-constexpr std::size_t scoped_signal_handlers::termination_signal_count_;
+constexpr std::array<int, 6> scoped_signal_handlers::signal_numbers_;
 #endif
 
 } // namespace pyalps

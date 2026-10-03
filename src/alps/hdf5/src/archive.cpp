@@ -14,7 +14,6 @@
 #include <alps/hdf5/archive.hpp>
 #include <alps/ngs/cast.hpp>
 #include <alps/ngs/config.hpp>
-#include <alps/ngs/signal.hpp>
 #include <alps/ngs/stacktrace.hpp>
 
 #include <boost/scoped_array.hpp>
@@ -277,7 +276,6 @@ namespace alps {
                 private:
 
                     void construct() {
-                        alps::ngs::signal::listen();
                         if (memory_ && large_)
                             throw archive_error("either memory or large file system can be used!" + ALPS_STACKTRACE);
                         else if (memory_) {
@@ -450,19 +448,6 @@ namespace alps {
                     std::cerr << "Error destructing archive of file '" << ex.what() << std::endl;
                     std::abort();
                 }
-        }
-
-        void archive::abort() {
-            // Do not use a lock here, else deadlocking is really likly
-            for (std::map<std::string, std::pair<detail::archivecontext *, std::size_t> >::iterator it = ref_cnt_.begin(); it != ref_cnt_.end(); ++it) {
-                bool replace = it->second.first->replace_;
-                std::string filename = it->second.first->filename_;
-                it->second.first->replace_ = false;
-                delete it->second.first;
-                if (replace && boost::filesystem::exists(filename))
-                    boost::filesystem::remove(filename);
-            }
-            ref_cnt_.clear();
         }
 
         void archive::close() {

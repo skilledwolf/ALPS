@@ -1,7 +1,6 @@
-# Archive state and its signal cleanup handler share one runtime owner.
+# Archive state has one runtime owner.
 add_library(alps_hdf5
-  src/archive.cpp
-  src/signal.cpp)
+  src/archive.cpp)
 add_library(ALPS::hdf5 ALIAS alps_hdf5)
 set_target_properties(alps_hdf5 PROPERTIES
   EXPORT_NAME hdf5
@@ -42,8 +41,7 @@ target_sources(alps_hdf5 PUBLIC
     include/alps/hdf5/ublas/matrix.hpp
     include/alps/hdf5/ublas/vector.hpp
     include/alps/hdf5/valarray.hpp
-    include/alps/hdf5/vector.hpp
-    include/alps/ngs/signal.hpp)
+    include/alps/hdf5/vector.hpp)
 
 if(ALPS_BUILD_TESTING)
   add_subdirectory(tests)
