@@ -28,6 +28,7 @@ foreach(
   hdf5_pair
   hdf5_family
   hdf5_valgrind
+  hdf5_read
   hdf5_multi_array
   hdf5_memory
   hdf5_misc

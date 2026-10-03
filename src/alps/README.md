@@ -33,6 +33,11 @@ variable-length buffers on success and conversion failure. Partial selections
 must use the matching memory extent for cleanup. Cleanup must preserve the
 original conversion exception. The existing `hdf5_valgrind` regression exercises
 scalar/vector datasets and attributes, including partial selections.
+These reads share internal object ownership, datatype dispatch and buffer
+conversion; the public overloads only enter the locked implementation. The
+`hdf5_read` contract also covers all native numeric source types, fixed-width
+strings, selections and rejected reads. This consolidation preserves the existing
+conversion rules and archive representations.
 
 The measurement pilot in [checkpoint contracts](../../tests/pyalps/test_checkpoint_contracts.py)
 uses deterministic scalar/vector sample streams. A checkpoint must preserve an
