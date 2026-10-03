@@ -30,8 +30,15 @@ def working_directory(directory):
 def kernel(case, beta, points, omega):
     if case["dataspace"] == "time":
         return -np.exp(-np.outer(points, omega)) / (1 + np.exp(-beta * omega))
-    frequency = (2 * points + (case["kernel"] == "fermionic")) * np.pi / beta
+    complex_input = not case.get("particle_hole_symmetry", True)
+    indices = points // 2 if complex_input else points
+    frequency = (2 * indices + (case["kernel"] == "fermionic")) * np.pi / beta
     denominator = frequency[:, None] ** 2 + omega[None, :] ** 2
+    if complex_input:
+        assert case["kernel"] == "fermionic", "complex reference formula covers fermions"
+        # G(iw) = sum_j weight_j / (iw - energy_j), flattened real, imaginary.
+        return np.where((points % 2)[:, None] == 0,
+                        -omega[None, :] / denominator, -frequency[:, None] / denominator)
     if case["kernel"] == "fermionic":
         return -frequency[:, None] / denominator
     return -omega[None, :] ** 2 / denominator
@@ -41,7 +48,7 @@ def prepare(defaults, case, directory):
     count = defaults["ndat"]
     points = np.arange(count, dtype=float)
     if case["dataspace"] == "time":
-        points *= defaults["beta"] / (count - 1)
+        points = defaults["beta"] * (points / (count - 1)) ** case.get("tau_power", 1.)
     errors = defaults["sigma"] * (1 + np.arange(count) / count)
     poles = np.asarray(case["poles"], dtype=float)
     values = kernel(case, defaults["beta"], points, poles[:, 0]) @ poles[:, 1]
@@ -55,7 +62,7 @@ def prepare(defaults, case, directory):
         "OMEGA_MIN": defaults["omega_min"], "OMEGA_MAX": defaults["omega_max"],
         "NORM": norm, "KERNEL": case["kernel"], "DATASPACE": case["dataspace"],
         "FREQUENCY_GRID": case["grid"], "DEFAULT_MODEL": "flat",
-        "PARTICLE_HOLE_SYMMETRY": case["dataspace"] == "frequency",
+        "PARTICLE_HOLE_SYMMETRY": case.get("particle_hole_symmetry", case["dataspace"] == "frequency"),
         "VERBOSE": False,
     }
     with hdf5.archive(str(directory / "input.h5"), "w") as archive:
@@ -167,6 +174,8 @@ def test_maxent_covariance_and_normalization(reference_runs):
     _, runs = reference_runs
     result = lambda name: runs[name][2]
     compare_results(result("time_covariance"), result("time_linear"))
+    compare_results(result("time_covariance_scaled"), result("time_covariance"),
+                    runs["time_covariance_scaled"][0]["norm"])
     compare_results(result("time_covariance_singular"), result("time_omitted"))
     compare_results(result("time_scaled"), result("time_linear"), runs["time_scaled"][0]["norm"])
 

@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <complex>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
@@ -32,8 +33,7 @@ void require(bool condition, std::string const& message) {
     }
 }
 
-// The solver still writes deltaOmega.dat in its working directory, even with
-// TEXT_OUTPUT disabled. Give this process an isolated, automatically removed tree.
+// Exercise relative paths in an isolated, automatically removed workspace.
 struct workspace {
     boost::filesystem::path previous = boost::filesystem::current_path();
     boost::filesystem::path path = boost::filesystem::temp_directory_path()
@@ -59,14 +59,16 @@ struct settings {
 
 struct reference_case {
     std::string name, dataspace, kernel, grid;
-    double norm;
-    bool covariance, omit_last, singular_last;
+    double norm, tau_power;
+    bool covariance, omit_last, singular_last, particle_hole_symmetry;
     std::vector<std::pair<double, double>> poles;
     explicit reference_case(ptree const& p)
         : name(p.get<std::string>("name")), dataspace(p.get<std::string>("dataspace")),
           kernel(p.get<std::string>("kernel")), grid(p.get<std::string>("grid")),
-          norm(p.get<double>("norm")), covariance(p.get<bool>("covariance")),
-          omit_last(p.get<bool>("omit_last")), singular_last(p.get<bool>("singular_last")) {
+          norm(p.get<double>("norm")), tau_power(p.get<double>("tau_power", 1.0)),
+          covariance(p.get<bool>("covariance")),
+          omit_last(p.get<bool>("omit_last")), singular_last(p.get<bool>("singular_last")),
+          particle_hole_symmetry(p.get<bool>("particle_hole_symmetry", dataspace == "frequency")) {
         for (auto const& entry : p.get_child("poles")) {
             auto item = entry.second.begin();
             if (entry.second.size() != 2) throw std::runtime_error("A pole needs energy and weight");
@@ -76,24 +78,34 @@ struct reference_case {
     }
 };
 
-// Analytic pole Green functions generate the observations independently of the
-// solver's grid and kernel. Frequency cases contain one real datum per Matsubara
-// frequency and use particle-hole symmetry, not interleaved complex input.
+// Analytic pole Green functions generate observations independently of the solver.
+// For complex frequency input, ndat counts real and imaginary components together.
+double time_point(reference_case const& c, settings const& s, int i) {
+    return s.beta * std::pow(double(i) / (s.ndat - 1), c.tau_power);
+}
+
+double reference_kernel(reference_case const& c, settings const& s, int i, double energy) {
+    if (c.dataspace == "time")
+        return -std::exp(-time_point(c, s, i) * energy) / (1 + std::exp(-s.beta * energy));
+    if (!c.particle_hole_symmetry) {
+        if (c.kernel != "fermionic")
+            throw std::runtime_error("complex reference formula covers fermions");
+        const double nu = (2 * (i / 2) + 1) * pi / s.beta;
+        const auto value = 1. / (std::complex<double>(0, nu) - energy);
+        return i % 2 ? value.imag() : value.real();
+    }
+    if (c.kernel == "fermionic") {
+        const double nu = (2 * i + 1) * pi / s.beta;
+        return -nu / (nu * nu + energy * energy);
+    }
+    const double nu = 2 * i * pi / s.beta;
+    return -energy * energy / (nu * nu + energy * energy);
+}
+
 double observation(reference_case const& c, settings const& s, int i) {
     double value = 0;
-    for (auto const& pole : c.poles) {
-        double energy = pole.first, weight = pole.second;
-        if (c.dataspace == "time") {
-            double tau = s.beta * i / (s.ndat - 1);
-            value -= weight * std::exp(-tau * energy) / (1 + std::exp(-s.beta * energy));
-        } else if (c.kernel == "fermionic") {
-            double nu = (2 * i + 1) * pi / s.beta;
-            value -= weight * nu / (nu * nu + energy * energy);
-        } else {
-            double nu = 2 * i * pi / s.beta;
-            value -= weight * energy * energy / (nu * nu + energy * energy);
-        }
-    }
+    for (auto const& pole : c.poles)
+        value += pole.second * reference_kernel(c, s, i, pole.first);
     return c.norm * value;
 }
 
@@ -126,21 +138,24 @@ output run_case(reference_case const& c, settings const& s,
     p["KERNEL"] = c.kernel;
     p["FREQUENCY_GRID"] = c.grid;
     p["CUT"] = 0.01;
-    p["PARTICLE_HOLE_SYMMETRY"] = c.dataspace == "frequency";
+    p["PARTICLE_HOLE_SYMMETRY"] = c.particle_hole_symmetry;
     p["VERBOSE"] = false;
     for (int i = 0; i < count; ++i) {
         data[i] = observation(c, s, i);
         error[i] = c.norm * s.sigma * (1.0 + double(i) / s.ndat);
         covariance[i * count + i] = (c.singular_last && i == count - 1) ? 0 : error[i] * error[i];
-        tau[i] = s.beta * i / (s.ndat - 1);
+        tau[i] = time_point(c, s, i);
     }
     {
         alps::hdf5::archive input("input.h5", "w");
         input["/Data"] << data;
         input["/Error"] << error;
+        if (c.dataspace == "time") input["/Tau"] << tau;
         if (c.covariance) input["/Covariance"] << covariance;
     }
-    alps::params source;source["data"]=std::string("input.h5");source["tau"]=tau;
+    alps::params source;
+    source["data"] = std::string("input.h5");
+    if (c.dataspace == "time") source["tau_dataset"] = std::string("/Tau");
     if(c.covariance) source["covariance_dataset"]=std::string("/Covariance");
     alps::solvers::maxent(p, alps::maxent::read_data(source), "result.out.h5", 600);
     output result;
@@ -225,18 +240,7 @@ void validate(reference_case const& c, settings const& s, output const& out) {
         for (int i = 0; i < count; ++i) {
             double prediction = 0;
             for (int j = 0; j < s.nfreq; ++j) {
-                double w = out.omega[j], kernel;
-                if (c.dataspace == "time") {
-                    double tau = s.beta * i / (s.ndat - 1);
-                    kernel = -std::exp(-tau * w) / (1 + std::exp(-s.beta * w));
-                } else if (c.kernel == "fermionic") {
-                    double nu = (2 * i + 1) * pi / s.beta;
-                    kernel = -nu / (nu * nu + w * w);
-                } else {
-                    double nu = 2 * i * pi / s.beta;
-                    kernel = -w * w / (nu * nu + w * w);
-                }
-                prediction += kernel * spectrum[j] * widths[j];
+                prediction += reference_kernel(c, s, i, out.omega[j]) * spectrum[j] * widths[j];
             }
             double residual = (prediction - observation(c, s, i))
                 / (c.norm * s.sigma * (1.0 + double(i) / s.ndat));
@@ -309,7 +313,8 @@ int main(int argc, char** argv) {
         }
         for (auto const& pair : std::vector<std::pair<std::string, std::string>>{
                  {"time_linear", "time_scaled"}, {"time_linear", "time_covariance"},
-                 {"time_covariance_singular", "time_omitted"}}) {
+                 {"time_covariance_singular", "time_omitted"},
+                 {"time_covariance", "time_covariance_scaled"}}) {
             if (results.count(pair.first) && results.count(pair.second))
                 compare_outputs(results.at(pair.first), results.at(pair.second), pair.first + "=" + pair.second);
             else
