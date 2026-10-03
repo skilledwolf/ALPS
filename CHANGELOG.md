@@ -68,6 +68,7 @@ Numerical persistence now requires an explicit adapter: include `<alps/hdf5/matr
 
 ### Fixed
 
+- Reclaim HDF5 variable-length string buffers and vector-attribute parent handles on conversion failure, preserving the conversion exception and partial-selection memory extents.
 - Reject programmatic MaxEnt and CT-QMC input/output aliases after resolving paths against the preparation directory.
 - Check all schema-declared input/output paths across TOML jobs before execution, including DMFT's final Green-function files and active text-output directories.
 - Preserve empty run provenance in checkpoints, and reject NUL-containing parameter names and string values before overwriting stored parameters.
