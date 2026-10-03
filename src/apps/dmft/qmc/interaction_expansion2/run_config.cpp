@@ -53,7 +53,7 @@ void read_ctint_bare_green(const alps::params &parameters, const alps::params &i
 }
 
 void alps::ctint::prepare_run(run_configuration &run) {
-    run = resolve_run_configuration(run, schema());
+    run = resolve_run_configuration(run, schema(), std::filesystem::current_path());
     run.parameters = prepare_parameters(run.parameters);
     for (const auto *key : {"NMATSUBARA_MEASUREMENTS", "NSELF"})
         if (!run.origins.count(std::string("parameters.") + key))

@@ -79,6 +79,79 @@ def test_programmatic_sections_are_validated(sections, message):
         run_config.resolve(SCHEMA, **sections)
 
 
+@pytest.mark.parametrize("name", ["cthyb", "ctint", "maxent_c"])
+def test_programmatic_solvers_reject_relative_input_output_aliases(tmp_path, monkeypatch, name):
+    solver = pytest.importorskip("pyalps." + name)
+    monkeypatch.chdir(tmp_path)
+    if name == "cthyb":
+        parameters = {"BETA": 2., "U": 1., "N_ORBITALS": 2, "N_TAU": 2,
+                      "N_MEAS": 1, "THERMALIZATION": 0, "SWEEPS": 10}
+        scientific = tmp_path / "delta.dat"
+        scientific.write_text("0 -0.5 -0.5\n1 -0.5 -0.5\n2 -0.5 -0.5\n")
+        inputs = {"delta": scientific.name}
+    elif name == "ctint":
+        parameters = {"BETA": 2., "U": 1., "MU": 0., "ALPHA": -0.01,
+                      "N": 4, "NMATSUBARA": 4, "THERMALIZATION": 0, "SWEEPS": 10}
+        scientific = tmp_path / "g0.h5"
+        with hdf5.archive(str(scientific), "w") as ar:
+            for flavor in (0, 1):
+                ar[f"/G0_{flavor}"] = -2j / ((2 * np.arange(4) + 1) * np.pi)
+        inputs = {"g0": scientific.name}
+    else:
+        parameters = {"BETA": 2., "NFREQ": 20, "OMEGA_MAX": 4.}
+        scientific = tmp_path / "data.h5"
+        with hdf5.archive(str(scientific), "w") as ar:
+            ar["/Data"] = [-0.5, -0.3, -0.3, -0.5]
+            ar["/Error"] = [0.01] * 4
+        inputs = {"data": scientific.name}
+    original = scientific.read_bytes()
+    output = {"results": "./" + scientific.name}
+    with pytest.raises((ValueError, RuntimeError), match="replace input"):
+        solver.prepare(parameters, input=inputs, output=output)
+    # A caller can construct or reload a deferred run without prepare(); solve
+    # must enforce the same collision protection before any output is opened.
+    deferred = run_config.resolve(solver.schema(), parameters=parameters, input=inputs, output=output)
+    with pytest.raises((ValueError, RuntimeError), match="replace input"):
+        solver.solve(deferred)
+    assert scientific.read_bytes() == original
+
+
+def test_prepared_run_keeps_paths_after_archive_reload_and_cwd_change(tmp_path, monkeypatch):
+    solver = pytest.importorskip("pyalps.cthyb")
+    directory = tmp_path.resolve() / "preparation"
+    directory.mkdir()
+    monkeypatch.chdir(directory)
+    scientific = directory / "delta.dat"
+    scientific.write_text("0 -0.5 -0.5\n1 -0.5 -0.5\n2 -0.5 -0.5\n")
+    original = scientific.read_bytes()
+    parameters = {"BETA": 2., "U": 1., "N_ORBITALS": 2, "N_TAU": 2,
+                  "N_MEAS": 1, "THERMALIZATION": 0, "SWEEPS": 10}
+    run = solver.prepare(parameters, input={"delta": "delta.dat"},
+                         output={"results": "result.h5"})
+    checkpoint = directory / "run.h5"
+    with hdf5.archive(str(checkpoint), "w") as ar:
+        ar["/run_config"] = run
+    restored = run_config.RunConfiguration()
+    with hdf5.archive(str(checkpoint), "r") as ar:
+        ar.set_context("/run_config")
+        restored.load(ar)
+    elsewhere = tmp_path.resolve() / "execution"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    solver.solve(restored)
+    assert restored.input["delta"] == str(scientific)
+    assert restored.output["results"] == str(directory / "result.h5")
+    assert scientific.read_bytes() == original
+    assert list(elsewhere.iterdir()) == []
+    with hdf5.archive(str(directory / "result.h5"), "r") as ar:
+        assert ar.is_group("/simulation/results/Sign")
+        ar.set_context("/run_config")
+        recorded = run_config.RunConfiguration()
+        recorded.load(ar)
+        assert recorded.input["delta"] == str(scientific)
+        assert recorded.output["results"] == str(directory / "result.h5")
+
+
 def test_archived_run_roundtrip_and_transactional_failure(tmp_path):
     run = run_config.resolve(SCHEMA, parameters={"count": 2}, execution={"seed": 91})
     archive_file = str(tmp_path / "run.h5")

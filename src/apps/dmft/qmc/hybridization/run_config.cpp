@@ -43,7 +43,7 @@ params prepare_parameters(const params& supplied) {
   return p;
 }
 void prepare_run(run_configuration& run) {
-  run=resolve_run_configuration(run,schema());
+  run=resolve_run_configuration(run,schema(),std::filesystem::current_path());
   run.parameters=prepare_parameters(run.parameters);
   const auto orbitals=run.parameters["N_ORBITALS"].as<std::size_t>();
   if(!run.input.exists("interaction_matrix")) {

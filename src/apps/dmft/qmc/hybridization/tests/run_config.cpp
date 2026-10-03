@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <iterator>
 #include <limits>
 #ifdef ALPS_HAVE_MPI
 #include <boost/mpi/environment.hpp>
@@ -57,7 +58,52 @@ int main(int argc,char** argv) {
     rejects([&]{alps::cthyb::prepare_parameters(bad);},"unknown key");
     bad=minimal(); bad["N_ORBITALS"]=50000;
     rejects([&]{alps::cthyb::prepare_parameters(bad);},"index range");
-    std::ofstream(directory/"delta.dat")<<"0 -0.5 -0.5\n1 -0.5 -0.5\n2 -0.5 -0.5\n";
+    const std::string delta_text="0 -0.5 -0.5\n1 -0.5 -0.5\n2 -0.5 -0.5\n";
+    std::ofstream(directory/"delta.dat")<<delta_text;
+    {
+      struct restore_directory {
+        std::filesystem::path previous=std::filesystem::current_path();
+        ~restore_directory(){std::error_code error;std::filesystem::current_path(previous,error);}
+      } restore;
+      std::filesystem::current_path(directory);
+      const auto base=std::filesystem::current_path();
+      const auto input_unchanged=[&]{
+        std::ifstream input(base/"delta.dat");
+        check(std::string(std::istreambuf_iterator<char>(input),{})==delta_text,
+              "Rejected path collision changed the scientific input");
+      };
+      alps::run_configuration relative;
+      relative.parameters=minimal(); relative.input["delta"]="delta.dat";
+      relative.output["results"]="delta.dat";
+      rejects([&]{alps::cthyb::prepare_run(relative);},"must not replace input.delta");
+      input_unchanged();
+      std::error_code symlink_error;
+      std::filesystem::create_symlink("delta.dat","delta-alias.dat",symlink_error);
+      if(!symlink_error){
+        relative.output["results"]="delta-alias.dat";
+        rejects([&]{alps::cthyb::prepare_run(relative);},"must not replace input.delta");
+        input_unchanged();
+      } else {
+#ifdef _WIN32
+        std::cout<<"Symlink collision check unavailable: "<<symlink_error.message()<<'\n';
+#else
+        throw std::filesystem::filesystem_error("Create input alias",base/"delta-alias.dat",symlink_error);
+#endif
+      }
+      relative.output["results"]="relative-result.h5";
+      alps::cthyb::prepare_run(relative);
+      check(relative.input["delta"].as<std::string>()==(base/"delta.dat").string(),
+            "Prepared scientific input must be anchored to the working directory");
+      check(relative.output["results"].as<std::string>()==(base/"relative-result.h5").string(),
+            "Prepared results must be anchored to the working directory");
+      std::filesystem::create_directory(base/"other");
+      std::filesystem::current_path(base/"other");
+      alps::cthyb::prepare_run(relative);
+      check(relative.input["delta"].as<std::string>()==(base/"delta.dat").string() &&
+            relative.output["results"].as<std::string>()==(base/"relative-result.h5").string(),
+            "A working-directory change reinterpreted prepared paths");
+      input_unchanged();
+    }
     alps::run_configuration run;
     run.parameters=minimal(); run.input["delta"]=(directory/"delta.dat").string();
     run.output["results"]=(directory/"result.h5").string();

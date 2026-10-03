@@ -159,7 +159,9 @@ write_run_file("copy.toml", cthyb.schema(), parameters=dict(run.parameters),
 For programmatic runs, `solver.prepare(parameters, input={}, output={},
 execution={})` returns a validated `RunConfiguration` for `solver.solve(run)`. Native schema rules, defaults and application
 checks apply to both file and programmatic runs. `output.results` is explicit.
-Input and output paths in files resolve relative to the run file. Scientific
+Programmatic solver preparation anchors paths to the current working directory;
+prepared paths remain stable if that directory changes. Input and output paths
+in files resolve relative to the run file. Scientific
 HDF5 datasets remain usable as input; their containers do not become run files.
 
 `write_run_files(prefix, runs, schema=None, baseseed=None)` writes one TOML file

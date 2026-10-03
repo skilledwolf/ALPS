@@ -68,6 +68,7 @@ Numerical persistence now requires an explicit adapter: include `<alps/hdf5/matr
 
 ### Fixed
 
+- Reject programmatic MaxEnt and CT-QMC input/output aliases after resolving paths against the preparation directory.
 - Preserve empty run provenance in checkpoints, and reject NUL-containing parameter names and string values before overwriting stored parameters.
 - Report MaxEnt CLI help and input errors with normal exit codes instead of continuing into an empty input or aborting on an exception. Valid scientific runs are unchanged.
 - Reject unsupported native C++ parameter checkpoint datatypes with the dataset path in the diagnostic, instead of silently substituting zero. Existing supported types and custom readers retain their decoding behavior; a failed parameter reload preserves the previous values.

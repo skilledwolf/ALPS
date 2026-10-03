@@ -222,7 +222,7 @@ params prepare(const params &supplied, const data &input) {
     return p;
 }
 data prepare_run(run_configuration &run) {
-    run = resolve_run_configuration(run, schema());
+    run = resolve_run_configuration(run, schema(), std::filesystem::current_path());
     auto input = read_data(run.input);
     run.parameters = prepare(run.parameters, input);
     for (const auto *key : {"T", "BETA", "OMEGA_MIN"})
