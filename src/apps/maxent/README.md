@@ -49,7 +49,7 @@ C++ callers include `<alps/maxent.hpp>` and call
 the return value indicates whether a result was produced. Python callers use
 `pyalps.cxx.maxent_c.AnalyticContinuation(parameters, input, output_file,
 time_limit=60, text_output=False)`. Both paths copy and validate input before
-constructing the numerical solver. Numerical algorithms are unchanged.
+constructing the numerical solver.
 
 Results retain their spectrum datasets and add `/spectrum/widths`. Resolved
 parameters use the `alps.params.v1` checkpoint format at `/parameters`; the CLI

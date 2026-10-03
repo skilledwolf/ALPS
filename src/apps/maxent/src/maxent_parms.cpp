@@ -237,7 +237,7 @@ void ContiParameters::setup_kernel(const alps::params& p, const int ntab, const 
         std::cerr << "Using bosonic kernel" << std::endl;
       for (int i=0; i<ndat()/2; ++i) {
         std::complex<double> iomegan(0, 2*i*boost::math::constants::pi<double>()*T_);
-        for (int j=1; j<ntab; ++j) {
+        for (int j=0; j<ntab; ++j) {
           double omega = freq[j]; 
           //Kc(i,j) =  -1. / (iomegan - omega);
           Kc(i,j) =  omega / (iomegan - omega);
@@ -248,7 +248,7 @@ void ContiParameters::setup_kernel(const alps::params& p, const int ntab, const 
       std::cerr<<"Using general anomalous kernel omega / (iomega_n - omega) for, e.g., omega*Delta"<<std::endl;
       for (int i=0; i<ndat()/2; ++i) {
         std::complex<double> iomegan(0, (2*i+1)*boost::math::constants::pi<double>()*T_);
-        for (int j=1; j<ntab; ++j) {
+        for (int j=0; j<ntab; ++j) {
           double omega = freq[j];
           Kc(i,j) =  -omega / (iomegan - omega);
         }
@@ -257,7 +257,7 @@ void ContiParameters::setup_kernel(const alps::params& p, const int ntab, const 
     else 
       boost::throw_exception(std::invalid_argument("unknown integration kernel"));    
     for (int i=0; i<ndat(); i+=2) {
-      for (int j=1; j<ntab; ++j) {
+      for (int j=0; j<ntab; ++j) {
         K_(i,j) = Kc(i/2,j).real();
         K_(i+1,j) = Kc(i/2,j).imag();
       }

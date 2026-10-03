@@ -8,6 +8,12 @@ target_link_libraries(maxent_linear_grid_numeric PRIVATE ALPS::maxent)
 alps_add_test(maxent_linear_grid_numeric)
 set_property(TEST maxent_linear_grid_numeric PROPERTY LABELS maxent)
 
+add_executable(maxent_complex_kernel complex_kernel.cpp)
+target_include_directories(maxent_complex_kernel PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../src")
+target_link_libraries(maxent_complex_kernel PRIVATE ALPS::maxent)
+alps_add_test(maxent_complex_kernel)
+set_property(TEST maxent_complex_kernel PROPERTY LABELS maxent)
+
 add_executable(maxent_reference reference.cpp)
 target_link_libraries(maxent_reference PRIVATE ALPS::maxent)
 add_test(NAME maxent_reference
