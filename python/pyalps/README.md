@@ -169,8 +169,12 @@ per explicit run plus a job manifest listing them; with a schema, the runs are
 validated and the manifest names the application. Arrays remain values within a
 run. The writer keeps supplied dictionaries unchanged, inserts generated seeds
 in `execution.seed`, and refuses overwrites and colliding result/checkpoint
-paths. `pyalps.run_io.execute(application, runs, mpi=None)` validates every run
-file or manifest with the application executable, then runs them in order and
+paths. When a schema is supplied, it also checks all declared input/output paths
+across the job. Each active text-output directory is reserved for its run; other
+runs' input and output paths must stay outside it.
+`pyalps.run_io.execute(application, runs, mpi=None)` obtains each run's schema,
+rejects outputs that replace any run's inputs or other outputs, and validates every
+run file or manifest with the application executable, then runs them in order and
 returns their absolute result paths. Job execution through the legacy
 scheduler/parapack fronts remains pending migration. See the [CT-HYB guide](../../src/apps/dmft/qmc/hybridization/README.md)
 for numerical formats and supported measurements.

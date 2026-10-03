@@ -181,6 +181,74 @@ def test_result_collisions_are_checked_for_existing_run_files(tmp_path, commands
     assert not any("--validate" in command for command in commands)
 
 
+def test_existing_jobs_protect_inputs_of_every_run(tmp_path, commands):
+    scientific = tmp_path / "data.h5"
+    scientific.write_bytes(b"original measurements")
+    first = write_run_file(tmp_path / "one.toml", SCHEMA,
+                           parameters={"count": 1}, output={"results": "data.h5"})
+    second = write_run_file(tmp_path / "two.toml", SCHEMA,
+                            parameters={"count": 2}, input={"data": "data.h5"},
+                            output={"results": "other.h5"})
+    with pytest.raises(ValueError, match="overwrite input.data"):
+        execute("hybridization", [first, second])
+    assert executed(commands) == []
+    assert not any("--validate" in command for command in commands)
+    assert scientific.read_bytes() == b"original measurements"
+
+
+def test_existing_jobs_check_additional_output_paths(tmp_path, commands, monkeypatch):
+    schema = SCHEMA + '\n[output.final_omega]\ntype="path"\n'
+    original = subprocess.run
+
+    def invoke(arguments, **kwargs):
+        result = original(arguments, **kwargs)
+        if "--schema" in arguments:
+            result.stdout = schema
+        return result
+
+    monkeypatch.setattr(subprocess, "run", invoke)
+    paths = [write_run_file(tmp_path / f"run{n}.toml", schema,
+                            parameters={"count": n},
+                            output={"results": f"result{n}.h5", "final_omega": "shared.dat"})
+             for n in (1, 2)]
+    with pytest.raises(ValueError, match="multiple runs"):
+        execute("dmft", paths)
+    assert executed(commands) == []
+    assert not any("--validate" in command for command in commands)
+
+
+def test_each_runs_schema_protects_cross_run_sidecar_inputs(tmp_path, commands, monkeypatch):
+    producer_schema = (SCHEMA + '\n[output.text]\ntype="bool"\ndefault=false\n'
+                       '[output.text_directory]\ntype="path"\ndefault="."\n')
+    consumer_schema = SCHEMA + '\n[input.initial_tau]\ntype="path"\n'
+    sidecars = tmp_path / "sidecars"
+    sidecars.mkdir()
+    scientific = sidecars / "G_tau"
+    scientific.write_bytes(b"original measurements")
+    first = write_run_file(tmp_path / "producer.toml", producer_schema,
+                           parameters={"count": 1},
+                           output={"results": "first.h5", "text": True,
+                                   "text_directory": "sidecars"})
+    second = write_run_file(tmp_path / "consumer.toml", consumer_schema,
+                            parameters={"count": 2}, input={"initial_tau": "sidecars/G_tau"},
+                            output={"results": "second.h5"})
+    original = subprocess.run
+
+    def invoke(arguments, **kwargs):
+        result = original(arguments, **kwargs)
+        if "--schema" in arguments:
+            result.stdout = producer_schema if arguments[-1] == str(first) else consumer_schema
+        return result
+
+    monkeypatch.setattr(subprocess, "run", invoke)
+    with pytest.raises(ValueError, match="inside another run's output.text_directory"):
+        execute("dmft", [first, second])
+    assert [command[-1] for command in commands if "--schema" in command] == [str(first), str(second)]
+    assert executed(commands) == []
+    assert not any("--validate" in command for command in commands)
+    assert scientific.read_bytes() == b"original measurements"
+
+
 def test_existing_scheduler_xml_path_is_preserved(monkeypatch):
     recorded = []
     monkeypatch.setattr(tools, "check_existence", lambda _: None)

@@ -57,21 +57,44 @@ def _document(schema, sections):
 
 
 def _check_output_paths(runs, targets):
-    configurations = {path.resolve() for path in targets}
-    owners = {}
-    for index, (path, resolved) in enumerate(runs):
-        for key in ("results", "checkpoint"):
-            if key not in resolved.output:
-                continue
-            output = Path(resolved.output[key])
-            if not output.is_absolute():
-                output = path.parent / output
-            output = output.resolve()
-            if output in configurations:
-                raise ValueError(f"output.{key} would overwrite a run or job file: {output}")
-            if output in owners and owners[output] != index:
-                raise ValueError(f"multiple runs would write output file: {output}")
-            owners[output] = index
+    protected = {path.resolve(): "a run or job file" for path in targets}
+    paths = []
+    for index, (path, resolved, schema) in enumerate(runs):
+        # Without a schema, only the conventional result/checkpoint fields
+        # are known paths. execute() obtains every run's native schema.
+        rules = (tomllib.loads(schema) if schema is not None else
+                 {"output": {key: {"type": "path"} for key in ("results", "checkpoint")}})
+        for section in ("input", "output"):
+            values = getattr(resolved, section)
+            for key, rule in rules.get(section, {}).items():
+                if rule.get("type") != "path" or key not in values:
+                    continue
+                # Sidecar directories are used only when text output is enabled.
+                if section == "output" and key == "text_directory" and (
+                        "text" not in values or not values["text"]):
+                    continue
+                destination = (path.parent / values[key]).resolve()
+                paths.append((destination, f"{section}.{key}", index))
+                if section == "input":
+                    protected.setdefault(destination, f"input.{key} of {path.name}")
+    owners = set()
+    for destination, key, _ in paths:
+        if not key.startswith("output."):
+            continue
+        if destination in protected:
+            raise ValueError(f"{key} would overwrite {protected[destination]}: {destination}")
+        if destination in owners:
+            raise ValueError(f"multiple runs would write output file: {destination}")
+        owners.add(destination)
+    # Native validation checks each run's own sidecar names. Reserve active
+    # text directories across runs without duplicating those application rules.
+    for directory, key, owner in paths:
+        if key != "output.text_directory":
+            continue
+        for destination, other_key, other_owner in paths:
+            if other_owner != owner and destination.is_relative_to(directory):
+                raise ValueError(f"{other_key} lies inside another run's "
+                                 f"output.text_directory: {destination}")
 
 
 def _publish(documents, overwrite):
@@ -116,7 +139,7 @@ def write_run_file(filename, schema=None, *, parameters=None, input=None, output
     path = Path(filename)
     document, resolved = _document(schema, dict(parameters=parameters, input=input,
                                                 output=output, execution=execution))
-    _check_output_paths([(path, resolved)], [path])
+    _check_output_paths([(path, resolved, schema)], [path])
     _publish([(path, document)], overwrite)
     return path
 
@@ -129,7 +152,9 @@ def write_run_files(prefix, runs, schema=None, *, baseseed=None, overwrite=False
     explicit seeds and the caller's dictionaries remain untouched. A supplied
     schema validates every run before any file is written and names the
     manifest's application. The manifest is written last; an explicit
-    overwrite replaces each file atomically.
+    overwrite replaces each file atomically. Active text-output directories
+    are reserved for their run; other runs' input and output paths must stay
+    outside them.
     """
     if isinstance(runs, (Mapping, str, bytes)):
         raise TypeError("runs must be an iterable of explicit run mappings")
@@ -157,7 +182,7 @@ def write_run_files(prefix, runs, schema=None, *, baseseed=None, overwrite=False
         document, resolved = _document(schema, sections)
         path = prefix.with_name(prefix.name + f".task{index + 1}.toml")
         documents.append((path, document))
-        resolved_runs.append((path, resolved))
+        resolved_runs.append((path, resolved, schema))
         entries.append("[[runs]]\nfile = " + _quoted(path.name) + "\n")
     header = "" if schema is None else "application = " + _quoted(resolved.application) + "\n\n"
     documents.append((manifest, header + "\n".join(entries)))
@@ -205,6 +230,7 @@ def execute(application, runs, *, mpi=None, mpirun="mpirun"):
     Every run is validated by the application before the first one starts,
     and the runs then execute in order. Returns the absolute output.results
     path of each run. A failing process raises subprocess.CalledProcessError.
+    Active text-output directories cannot contain another run's input or output.
     """
     from .tools import check_existence
     application = os.fspath(application)
@@ -240,11 +266,11 @@ def execute(application, runs, *, mpi=None, mpirun="mpirun"):
                                  f"executable application {run.application!r}")
             if "results" not in run.output:
                 raise ValueError("the application schema must declare output.results")
-            references.append((file, run))
+            references.append((file, run, schema))
     _check_output_paths(references, targets)
     # Scientific inputs are checked by the application before any run writes.
-    for file, _ in references:
+    for file, _, _ in references:
         _command([application, "--validate", str(file)])
-    for file, _ in references:
+    for file, _, _ in references:
         _command(launcher + [application, str(file)])
-    return [str(Path(run.output["results"]).resolve()) for _, run in references]
+    return [str(Path(run.output["results"]).resolve()) for _, run, _ in references]

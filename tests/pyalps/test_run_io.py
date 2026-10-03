@@ -175,6 +175,81 @@ def test_reject_symlink_output_aliases(tmp_path):
     assert list(tmp_path.iterdir()) == [alias]
 
 
+@pytest.mark.parametrize("producer_first", [True, False])
+def test_job_outputs_cannot_replace_another_runs_input(tmp_path, producer_first):
+    scientific = tmp_path / "data.h5"
+    scientific.write_bytes(b"original scientific data")
+    producer = {"parameters": {"SWEEPS": 2}, "output": {"results": "data.h5"}}
+    consumer = {"parameters": {"SWEEPS": 3}, "input": {"data": "./data.h5"},
+                "output": {"results": "other.h5"}}
+    runs = [producer, consumer] if producer_first else [consumer, producer]
+    with pytest.raises(ValueError, match="overwrite input.data"):
+        write_run_files(tmp_path / "batch", runs, SCHEMA)
+    assert scientific.read_bytes() == b"original scientific data"
+    assert list(tmp_path.iterdir()) == [scientific]
+
+
+def test_all_declared_output_paths_are_checked(tmp_path):
+    schema = SCHEMA + '\n[output.final_tau]\ntype="path"\n'
+    runs = [{"parameters": {"SWEEPS": 2},
+             "output": {"results": "one.h5", "final_tau": "shared.dat"}},
+            {"parameters": {"SWEEPS": 3},
+             "output": {"results": "two.h5", "final_tau": "./shared.dat"}}]
+    with pytest.raises(ValueError, match="multiple runs"):
+        write_run_files(tmp_path / "batch", runs, schema)
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_only_schema_paths_claim_files_and_inactive_sidecar_directories_are_ignored(tmp_path):
+    schema = (SCHEMA + '\n[input.label]\ntype="string"\n'
+              '[output.text]\ntype="bool"\ndefault=false\n'
+              '[output.text_directory]\ntype="path"\ndefault="."\n')
+    runs = [{"parameters": {"SWEEPS": 2}, "output": {"results": "one.h5"}},
+            {"parameters": {"SWEEPS": 3}, "input": {"label": "one.h5"},
+             "output": {"results": "two.h5"}}]
+    manifest = write_run_files(tmp_path / "batch", runs, schema)
+    assert manifest.is_file()
+
+
+@pytest.mark.parametrize("producer_first", [True, False])
+@pytest.mark.parametrize("claim", ["input", "output", "text_directory"])
+def test_active_sidecar_directories_cannot_claim_other_runs_paths(tmp_path, producer_first, claim):
+    schema = (SCHEMA + '\n[output.text]\ntype="bool"\ndefault=false\n'
+              '[output.text_directory]\ntype="path"\ndefault="."\n')
+    sidecars = tmp_path / "sidecars"
+    sidecars.mkdir()
+    scientific = sidecars / "G_tau"
+    scientific.write_bytes(b"original scientific data")
+    producer = {"parameters": {"SWEEPS": 2},
+                "output": {"results": "one.h5", "text": True, "text_directory": "sidecars"}}
+    consumer = {"parameters": {"SWEEPS": 3}, "output": {"results": "two.h5"}}
+    if claim == "input":
+        consumer["input"] = {"data": "sidecars/G_tau"}
+    elif claim == "output":
+        consumer["output"]["results"] = "sidecars/G_tau"
+    else:
+        consumer["output"].update(text=True, text_directory="sidecars/nested")
+    runs = [producer, consumer] if producer_first else [consumer, producer]
+    with pytest.raises(ValueError, match="inside another run's output.text_directory"):
+        write_run_files(tmp_path / "batch", runs, schema)
+    assert scientific.read_bytes() == b"original scientific data"
+    assert list(tmp_path.iterdir()) == [sidecars]
+    assert list(sidecars.iterdir()) == [scientific]
+
+
+def test_active_sidecar_directory_allows_its_own_paths_and_other_runs_outside(tmp_path):
+    schema = (SCHEMA + '\n[output.text]\ntype="bool"\ndefault=false\n'
+              '[output.text_directory]\ntype="path"\ndefault="."\n')
+    scientific = tmp_path / "data.h5"
+    scientific.write_bytes(b"original scientific data")
+    runs = [{"parameters": {"SWEEPS": 2}, "input": {"data": "data.h5"},
+             "output": {"results": "one.h5", "text": True}},
+            {"parameters": {"SWEEPS": 3}, "output": {"results": "../outside.h5"}}]
+    manifest = write_run_files(tmp_path / "batch", runs, schema)
+    assert manifest.is_file()
+    assert scientific.read_bytes() == b"original scientific data"
+
+
 def test_schema_is_optional_and_omits_the_manifest_application(tmp_path):
     runs = [{"parameters": {"SWEEPS": 2}, "output": {"results": "a.h5"}},
             {"parameters": {"SWEEPS": 3}, "output": {"results": "b.h5"}}]
