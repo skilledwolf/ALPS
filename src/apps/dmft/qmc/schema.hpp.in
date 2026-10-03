@@ -1,0 +1,7 @@
+// Copyright (C) 2026 ALPS Collaboration. SPDX-License-Identifier: MIT
+#pragma once
+#include <string_view>
+namespace alps::dmft {
+inline constexpr std::string_view base_schema = R"alpstoml(@ALPS_DMFT_SCHEMA@)alpstoml";
+inline constexpr std::string_view hirschfye_schema = R"alpstoml(@ALPS_HIRSCHFYE_SCHEMA@)alpstoml";
+}

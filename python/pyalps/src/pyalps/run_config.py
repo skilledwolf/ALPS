@@ -8,9 +8,22 @@ of runs are managed separately by :mod:`pyalps.run_io`.
 import os
 from .cxx.pyngsparams_c import (
     RunConfiguration,
+    format_run_configuration,
     load_run_configuration,
     resolve_run_configuration,
 )
+
+
+def format(run):
+    """Format four native sections as TOML, without application metadata.
+
+    This checks TOML representability. Use ``resolve`` for schema validation;
+    schema-supplied defaults are included when present in ``run``.
+    Finite values that the installed TOML provider cannot parse exactly are
+    rejected, including some subnormal floats or locale-dependent decimal
+    parsing. Native dictionaries and HDF5 checkpoints retain these values.
+    """
+    return format_run_configuration(run)
 
 
 def load(filename, schema):

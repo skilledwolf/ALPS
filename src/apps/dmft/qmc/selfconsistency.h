@@ -22,22 +22,20 @@
 /// @brief declares the selfconsistency loop functions
 
 #include "solver.h"
-#include "xml.h"
+#include <alps/run_config.hpp>
 #include "hilberttransformer.h"
 #include "fouriertransform.h"
 #include "green_function.h"
 
-/// performs a DMFT self-consistency loop until convergence
+/// performs a DMFT self-consistency loop in imaginary time for a solver that
+/// receives the Bethe-lattice hybridization function
 ///
-/// @param parms The input parameters for the simulation.
 /// @param solver   The impurity solver. It is left in the state after the final iteration to 
 ///                 retrieve additional information.
-/// @param hilbert  a Hilbert transformation object. It performs the Hilbert transformation
-///                 for the density of states of the given model.
-
-extern void selfconsistency_loop(alps::Parameters& parms, ImpuritySolver& solver, HilbertTransformer& hilbert);
-
-extern void F_selfconsistency_loop(alps::Parameters& parms, ImpuritySolver& solver, HilbertTransformer& hilbert);
+/// @param hilbert  symmetrizes the dressed Green function.
+/// @param initial  the initial Green function.
+extern void F_selfconsistency_loop(alps::run_configuration& run, ImpuritySolver& solver, HilbertTransformer& hilbert,
+                                  itime_green_function_t initial);
 
 
 /// performs a DMFT self-consistency loop until convergence
@@ -45,10 +43,10 @@ extern void F_selfconsistency_loop(alps::Parameters& parms, ImpuritySolver& solv
 /// @param parms The input parameters for the simulation.
 /// @param solver   An impurity solver that takes both the bare GF in imaginary time AND in Matsubara freqencies, but returns
 /// @param hilbert  a Hilbert transformation object. It performs the Hilbert transformation, taking its arguments in Frequency space.
-void selfconsistency_loop_omega(alps::Parameters& parms, MatsubaraImpuritySolver& solver,  FrequencySpaceHilbertTransformer& hilbert);
+void selfconsistency_loop_omega(alps::run_configuration& run, MatsubaraImpuritySolver& solver,
+                               FrequencySpaceHilbertTransformer& hilbert, matsubara_green_function_t initial);
 
 
-//void selfconsistency_loop_DCA(const alps::Parameters& parms, MatsubaraImpuritySolver& solver, DCATransformer& clustertrans);
+//void selfconsistency_loop_DCA(const alps::run_configuration& run, MatsubaraImpuritySolver& solver, DCATransformer& clustertrans);
 
 #endif
-

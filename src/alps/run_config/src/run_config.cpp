@@ -2,6 +2,7 @@
 #include <alps/hdf5/archive.hpp>
 #include <alps/hdf5/map.hpp>
 #include <alps/run_config.hpp>
+#include <map>
 #include <set>
 #include <sstream>
 #include <toml++/toml.hpp>
@@ -10,6 +11,41 @@ namespace {
 using value = params::value_type;
 [[noreturn]] void fail(const std::string &key, const std::string &reason) {
     throw std::invalid_argument("Configuration '" + key + "': " + reason);
+}
+template <class T> auto toml_value(const T &x, const std::string &key) {
+    if constexpr (params_ns::detail::vector_type<T>::value) {
+        toml::array out;
+        for (const auto &element : x)
+            out.push_back(toml_value(static_cast<typename T::value_type>(element), key));
+        return out;
+    } else if constexpr (std::is_same_v<T, std::uint64_t>) {
+        if (x > std::uint64_t(std::numeric_limits<std::int64_t>::max()))
+            fail(key, "integer exceeds TOML's signed 64-bit range");
+        return static_cast<std::int64_t>(x);
+    } else if constexpr (std::is_same_v<T, std::complex<double>>) {
+        if (!std::isfinite(x.real()) || !std::isfinite(x.imag()))
+            fail(key, "value must be finite");
+        toml::table out{{"real", x.real()}, {"imag", x.imag()}};
+        out.is_inline(true);
+        return out;
+    } else {
+        if constexpr (std::is_same_v<T, double>)
+            if (!std::isfinite(x))
+                fail(key, "value must be finite");
+        return x;
+    }
+}
+toml::table format_section(const params &values, const std::string &section) {
+    toml::table out;
+    for (const auto &[key, item] : values)
+        item.apply_visitor([&](const auto &x) {
+            using T = std::decay_t<decltype(x)>;
+            if constexpr (std::is_same_v<T, params_ns::detail::None>)
+                fail(section + "." + key, "cannot serialize an unset value");
+            else
+                out.insert(key, toml_value(x, section + "." + key));
+        });
+    return out;
 }
 std::string text(const toml::node_view<const toml::node> &node, const std::string &key) {
     if (auto s = node.value<std::string>())
@@ -217,12 +253,34 @@ run_configuration identity(const toml::table &schema) {
     run.schema_version = params_ns::detail::convert<int>(*version, "schema.schema_version");
     return run;
 }
+// Anchored path outputs must not replace the run file, an input or another
+// output. Relative paths have no base yet and are checked once resolved.
+void check_outputs(const run_configuration &run, const toml::table &schema) {
+    std::map<std::filesystem::path, std::string> claimed;
+    if (!run.source_file.empty())
+        claimed.emplace(run.source_file, "the TOML run file");
+    for (const auto &[section, values] :
+         {std::pair<std::string, const params *>{"input", &run.input}, {"output", &run.output}})
+        for (const auto &[name, node] : definitions(schema, section)) {
+            const std::string key(name.str()), qualified = section + "." + key;
+            const auto *rule = node.as_table();
+            if (!rule || (*rule)["type"].value_or(std::string()) != "path" || !values->exists(key))
+                continue;
+            const std::filesystem::path path((*values)[key].as<std::string>());
+            if (path.is_relative())
+                continue;
+            const auto [claim, added] = claimed.emplace(std::filesystem::weakly_canonical(path), qualified);
+            if (!added && section == "output")
+                fail(qualified, "output must not replace " + claim->second);
+        }
+}
 run_configuration resolve_run(const run_configuration &supplied, const toml::table &schema,
                               const std::filesystem::path &base) {
     auto run = identity(schema);
     if (!supplied.application.empty() &&
         (supplied.application != run.application || supplied.schema_version != run.schema_version))
         fail("application", "configuration does not match the application schema");
+    run.source_file = supplied.source_file;
     const auto directory = base.empty() ? base : std::filesystem::absolute(base);
     for (const auto &[section, member] :
          std::vector<std::pair<std::string, params run_configuration::*>>{
@@ -237,6 +295,7 @@ run_configuration resolve_run(const run_configuration &supplied, const toml::tab
         for (auto &[key, origin] : run.origins)
             if (const auto it = supplied.origins.find(key); it != supplied.origins.end())
                 origin = it->second;
+    check_outputs(run, schema);
     return run;
 }
 } // namespace
@@ -249,6 +308,38 @@ params resolve_parameters(const params &supplied, std::string_view schema_text,
                           const std::string &section) {
     const auto schema = toml::parse(schema_text);
     return resolve(supplied, definitions(schema, section), {}, section);
+}
+params select_parameters(const params &supplied, std::string_view schema_text,
+                         const std::string &section) {
+    const auto schema = toml::parse(schema_text);
+    params out;
+    for (const auto &[name, node] : definitions(schema, section)) {
+        const std::string key(name.str()), qualified = section + "." + key;
+        const auto *rule = node.as_table();
+        if (!rule)
+            fail(qualified, "schema definition must be a table");
+        validate_rule(*rule, qualified);
+        if (supplied.exists(key))
+            out[key] = supplied[key];
+    }
+    return out;
+}
+std::string format_run_configuration(const run_configuration &run) {
+    toml::table document;
+    document.insert("parameters", format_section(run.parameters, "parameters"));
+    document.insert("input", format_section(run.input, "input"));
+    document.insert("output", format_section(run.output, "output"));
+    document.insert("execution", format_section(run.execution, "execution"));
+    std::ostringstream out;
+    out << toml::toml_formatter(document) << '\n';
+    auto encoded = out.str();
+    try {
+        if (toml::parse(encoded) != document)
+            fail("run", "values do not roundtrip exactly through TOML, including UTF-8 text");
+    } catch (const toml::parse_error &error) {
+        fail("run", "TOML provider cannot read this representation: " + std::string(error.description()));
+    }
+    return encoded;
 }
 run_configuration load_run_configuration(const std::filesystem::path &filename,
                                          std::string_view schema_text) {
@@ -283,12 +374,8 @@ run_configuration load_run_configuration(const std::filesystem::path &filename,
         }
         *item.second = resolve(supplied, rules, base, section, &run.origins);
     }
-    const auto source = std::filesystem::weakly_canonical(filename);
-    for (const auto &[key, rule] : definitions(schema, "output"))
-        if (rule.as_table() && (*rule.as_table())["type"].value_or(std::string()) == "path" &&
-            run.output.exists(std::string(key.str())) &&
-            std::filesystem::weakly_canonical(run.output[std::string(key.str())].as<std::string>()) == source)
-            fail("output." + std::string(key.str()), "output must not replace the TOML run file");
+    run.source_file = std::filesystem::weakly_canonical(filename).string();
+    check_outputs(run, schema);
     return run;
 }
 void run_configuration::save(hdf5::archive &ar) const {

@@ -18,57 +18,68 @@
 #ifndef U_MATRIX_H
 #define U_MATRIX_H
 #include "types.h"
-#include "alps/parameter.h"
+#include <alps/params.hpp>
+#include <cmath>
+#include <cassert>
+#include <fstream>
+#include <vector>
 
 class U_matrix{
 public:
-  U_matrix(const alps::Parameters &parms) :
-    ns_(parms.value_or_default("SITES", 1)),
-    nf_(parms.value_or_default("FLAVORS", 2)),
+  U_matrix(const alps::params &parms, const alps::params &input = {}) :
+    ns_(parms.value_or<site_t>("SITES", 1)),
+    nf_(parms.value_or<spin_t>("FLAVORS", 2)),
       n_nonzero_(0), mu_shift_(0)
   {
-    val_ = new double[nf_*nf_];
-    for(unsigned i=0; i<nf_*nf_; ++i) 
-      val_[i]=0; //default: non-interacting.
-    if(parms.defined("U_MATRIX")){
-      std::string ufilename(parms["U_MATRIX"]);
+    if (ns_ != 1 || nf_ == 0) throw std::invalid_argument("Density interactions require SITES=1 and positive FLAVORS");
+    val_.resize(std::size_t(nf_)*nf_, 0.); //default: non-interacting.
+    if(input.exists("interaction_matrix")){
+      const auto ufilename = input["interaction_matrix"].as<std::string>();
       std::ifstream u_file(ufilename.c_str());
-      assert(u_file.is_open());
+      if (!u_file.is_open()) throw std::runtime_error("Cannot open input.interaction_matrix: " + ufilename);
       int i;
       int j;
       double U_ij;
-      while(u_file>>i>>j>>U_ij){
+      while (true) {
+        u_file >> std::ws;
+        if (u_file.eof()) break;
+        if (!(u_file >> i >> j >> U_ij)) throw std::invalid_argument("Malformed input.interaction_matrix");
+        if (i < 0 || j < 0 || static_cast<unsigned>(i) >= nf_ || static_cast<unsigned>(j) >= nf_ ||
+            !std::isfinite(U_ij))
+          throw std::invalid_argument("Invalid index or value in input.interaction_matrix");
         operator()(i,j)=U_ij;
       }
+      if (u_file.bad()) throw std::runtime_error("Cannot read input.interaction_matrix");
     } else if (nf_==1) {
       //special case: only 1 orbital
-      operator()(0,0)=(double)(parms["U"]);
+      operator()(0,0)=parms["U"].as<double>();
     }else if (nf_==2) {
       //your ordinary two site problem
-      assert(parms.defined("U"));
-      double U=(double)(parms["U"]);
+      assert(parms.exists("U"));
+      double U=parms["U"].as<double>();
       operator()(0,0)=0; operator()(1,1)=0;
       operator()(0,1)=U; operator()(1,0)=U;
     } else {
-      assert(parms.defined("U") && parms.defined("J"));     
-      double U=(double)(parms["U"]);
-      double J=(double)(parms["J"]);
-      double Uprime = parms.value_or_default("U'", U-2*J);
+      assert(parms.exists("U") && parms.exists("J"));
+      double U=parms["U"].as<double>();
+      double J=parms["J"].as<double>();
+      double Uprime = parms.value_or("U'", U-2*J);
       assemble(U, Uprime, J);
     }
-    for (unsigned i=0; i<nf_*nf_; ++i)
-      if (val_[i]!=0) 
+    for (std::size_t i=0; i<val_.size(); ++i)
+      if (!std::isfinite(val_[i])) throw std::invalid_argument("Density interaction matrix must be finite");
+      else if (val_[i]!=0)
         n_nonzero_++;
     for (unsigned i=0; i<nf_; ++i) 
       mu_shift_ += operator()(i,0);
     mu_shift_ /= 2;
+    if (!std::isfinite(mu_shift_)) throw std::invalid_argument("Density interaction chemical-potential shift must be finite");
   }
   
 
   void assemble(const double U, const double Uprime, const double J){
     //this implements the U matrix for the special case of n_flavor/2 degenerate bands
-    assert(ns_==1);
-    assert(nf_%2==0);
+    if (ns_ != 1 || nf_ % 2 != 0) throw std::invalid_argument("Hund interactions require SITES=1 and paired FLAVORS");
     for(spin_t i=0;i<nf_;i+=2){
       operator()(i  , i  ) = 0; //Pauli
       operator()(i+1, i+1) = 0; //Pauli
@@ -85,10 +96,6 @@ public:
     }
   } 
   
-  ~U_matrix(){
-    delete[] val_;
-  }
-  
   double &operator()(spin_t flavor_i, spin_t flavor_j){
     return val_[flavor_i*nf_+flavor_j];
     }
@@ -104,7 +111,7 @@ public:
   inline int n_nonzero() const{return n_nonzero_;}
 
 private:
-  double *val_;
+  std::vector<double> val_;
   site_t ns_;
   spin_t nf_;
   int n_nonzero_;

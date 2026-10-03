@@ -18,7 +18,8 @@
 #include <complex>
 #include "types.h" // for the multiple_vector_type
 #include "green_function.h" // for the multiple_vector_type
-#include <alps/parameter.h>
+#include <alps/params.hpp>
+#include <boost/shared_ptr.hpp>
 
 
 inline std::complex<double> f_omega(std::complex<double> iw, double c1, double c2, double c3) {
@@ -79,12 +80,12 @@ public:
   virtual void append_tail(matsubara_green_function_t& G_omega, const matsubara_green_function_t& G0_omega,
                            const int nfreq_measured) const;
   
-  static void generate_transformer(const alps::Parameters &parms,
+  static void generate_transformer(const alps::params &parms,
                                    boost::shared_ptr<FourierTransformer> &fourier_ptr);
-  static void generate_transformer_U(const alps::Parameters &parms,
+  static void generate_transformer_U(const alps::params &parms,
                                      boost::shared_ptr<FourierTransformer> &fourier_ptr,
                                      const std::vector<double> &densities);
-  static void generate_transformer_U(const alps::Parameters &parms,
+  static void generate_transformer_U(const alps::params &parms,
                                      boost::shared_ptr<FourierTransformer> &fourier_ptr,
                                      const std::vector<double> &densities,
                                      const std::vector<double> &magnetization);
@@ -153,22 +154,22 @@ public:
 class FFunctionFourierTransformer:public FourierTransformer
 {
 public:
-  FFunctionFourierTransformer(const alps::Parameters& parms)
-    : FourierTransformer((double)parms["BETA"], parms.value_or_default("FLAVORS", 2), 1),
-      epssq_(static_cast<unsigned>(parms.value_or_default("FLAVORS", 2))){
-    if (static_cast<int>(parms.value_or_default("SITES", 1))!=1) 
+  FFunctionFourierTransformer(const alps::params& parms)
+    : FourierTransformer(parms["BETA"].as<double>(), parms.value_or("FLAVORS", 2), 1),
+      epssq_(parms.value_or<unsigned>("FLAVORS", 2)){
+    if (parms.value_or<int>("SITES", 1)!=1)
       throw std::logic_error("ERROR: FFunctionFourierTransformer : SITES!=1, for cluster fourier transforms please use the cluster version of this framework");
     // NOTE: Delta(i omega_n)=F(-i omega_n)
     //       Delta(i omega_n)= <e> + (<e^2>-<e>^2)/(i omega_n) + ...
     // thus for <e>!=0 the Delta(tau) is divergent
     // NOTE2: although the name says FFunctionFT, it has the proper tail for Delta(i omega_n)
     for(int f=0;f<epssq_.size();++f){
-      if (std::abs(static_cast<double>(parms.value_or_default("EPS_"+boost::lexical_cast<std::string>(f),0.0)))>1e-8) {
-        std::cerr<<"FFunctionFourierTransformer : EPS_"<<f<<"="<<parms["EPS_"+boost::lexical_cast<std::string>(f)]<<"  is non-zero. This causes divergent hybridization function."<<std::endl
+      if (std::abs(parms.value_or<double>("EPS_"+std::to_string(f),0.0))>1e-8) {
+        std::cerr<<"FFunctionFourierTransformer : EPS_"<<f<<"="<<parms["EPS_"+std::to_string(f)]<<"  is non-zero. This causes divergent hybridization function."<<std::endl
                  <<"  To overcome the problem, shift the energies for density of states such that the 1st moment is zero. Shift the chemical potential accordingly."<<std::endl;
         throw std::logic_error("ERROR: FFunctionFourierTransformer : hybridization function is divergent due to non-zero EPS_i.");
       }
-      epssq_[f]=static_cast<double>(parms.value_or_default("EPSSQ_"+boost::lexical_cast<std::string>(f),1.0));
+      epssq_[f]=parms.value_or<double>("EPSSQ_"+std::to_string(f),1.0);
       c1_[f][0][0]=epssq_[f];
       c2_[f][0][0]=0;//-(2*epsilonsq_av*mu+mu*mu*mu);
       c3_[f][0][0]=0;

@@ -18,7 +18,9 @@
 #include<stdexcept>
 #include<iostream>
 
-#include <alps/parameter.h>
+#include <alps/params.hpp>
+#include <boost/shared_ptr.hpp>
+#include <sstream>
 
 class Bandstructure {
   /*
@@ -27,11 +29,11 @@ class Bandstructure {
    */
 public:
   
-  void set_parms(alps::Parameters& parms) const;
+  void set_parms(alps::params& parms) const;
   
-  Bandstructure(const alps::Parameters& parms)
-    : epssq_(static_cast<unsigned>(parms.value_or_default("FLAVORS", 2)),-1.),
-      eps_(static_cast<unsigned>(parms.value_or_default("FLAVORS", 2)),0.)
+  Bandstructure(const alps::params& parms)
+    : epssq_(parms.value_or<unsigned>("FLAVORS", 2),-1.),
+      eps_(parms.value_or<unsigned>("FLAVORS", 2),0.)
     {}
   
   virtual std::complex<double> HilbertIntegral_PM(const std::complex<double>& zeta_A, const unsigned flavor) const;
@@ -57,7 +59,7 @@ class DOSBandstructure : public Bandstructure {
    */
 public:
 
-  DOSBandstructure(const alps::Parameters& parms, bool verbose=false);
+  DOSBandstructure(const alps::params& parms, const alps::params& input = {}, bool verbose=false);
   
   std::complex<double> HilbertIntegral_PM(const std::complex<double>& zeta_A, const unsigned flavor) const;
   std::complex<double> HilbertIntegral_AFM(const std::complex<double>& zeta_A_times_zeta_B, const unsigned flavor) const;
@@ -82,15 +84,15 @@ class SemicircleBandstructure : public Bandstructure {
    */
 public:
   
-  SemicircleBandstructure(const alps::Parameters& parms, bool verbose=false)
+  SemicircleBandstructure(const alps::params& parms, bool verbose=false)
     : Bandstructure(parms)
   {
-    unsigned n_flavor=parms.value_or_default("FLAVORS",2);
+    unsigned n_flavor=parms.value_or<unsigned>("FLAVORS",2);
     if (n_flavor%2!=0)
       throw std::logic_error("SemicircleBandstructure: current implementation does not allow for odd n_flavor.");
     for(unsigned int f=0; f<n_flavor/2; ++f){
       std::stringstream t_f; t_f<<"t"<<f;  // flavors (2m) and (2m+1) assumed to have the same bandwidth
-      double t = (parms.defined(t_f.str()) ? static_cast<double>(parms[t_f.str()]) : static_cast<double>(parms["t"]));
+      double t = (parms.exists(t_f.str()) ? parms[t_f.str()].as<double>() : parms["t"].as<double>());
       epssq_[2*f]=t*t;   // second moment of the Bethe DOS is t^2 [4t=2W=D]
       epssq_[2*f+1]=t*t;
       if (verbose)
@@ -116,13 +118,13 @@ class SquareLatticeBandstructure : public Bandstructure {
 public:
   
   // constructor
-  SquareLatticeBandstructure(const alps::Parameters & parms, bool verbose=false)
+  SquareLatticeBandstructure(const alps::params & parms, bool verbose=false)
     : Bandstructure(parms),
-      t_(static_cast<double>(parms.value_or_default("t",1.))),
-      tprime_(static_cast<double>(parms.value_or_default("tprime",0.))),
-      L_(static_cast<int>(parms.value_or_default("L",128)))
+      t_(parms.value_or<double>("t",1.)),
+      tprime_(parms.value_or<double>("tprime",0.)),
+      L_(parms.value_or<int>("L",128))
   {
-    if (static_cast<int>(parms.value_or_default("FLAVORS",2))!=2)
+    if (parms.value_or<int>("FLAVORS",2)!=2)
       throw std::logic_error("TwoDBandstructure: current implementation does not allow for n_flavor!=2.");
     epssq_[0]=4.*(t_*t_ + tprime_*tprime_);
     epssq_[1]=epssq_[0];
@@ -162,14 +164,14 @@ class HexagonalLatticeBandstructure : public Bandstructure {
 public:
   
   // constructor
-  HexagonalLatticeBandstructure(const alps::Parameters & parms, bool verbose=false)
+  HexagonalLatticeBandstructure(const alps::params & parms, bool verbose=false)
     : Bandstructure(parms),
-      t_(static_cast<double>(parms.value_or_default("t",1.))),
-      L_(static_cast<int>(parms.value_or_default("L",128)))
+      t_(parms.value_or<double>("t",1.)),
+      L_(parms.value_or<int>("L",128))
   {
-    if (static_cast<double>(parms.value_or_default("tprime",0.))!=0.)
+    if (parms.value_or<double>("tprime",0.)!=0.)
       std::cout<<"WARNING: for the hexagonal lattice the parameter 'tprime' is ignored."<<std::endl;
-    if (static_cast<int>(parms.value_or_default("FLAVORS",2))!=2)
+    if (parms.value_or<int>("FLAVORS",2)!=2)
       throw std::logic_error("TwoDBandstructure: current implementation does not allow for n_flavor!=2.");
     epssq_[0]=3.*t_*t_;
     epssq_[1]=epssq_[0];
@@ -203,6 +205,6 @@ private:
 
 // ---------------------------------------------------------------------------------------------
 
-boost::shared_ptr<Bandstructure> BandstructureFactory(const alps::Parameters& parms, bool verbose=false);
+boost::shared_ptr<Bandstructure> BandstructureFactory(const alps::params& parms, const alps::params& input = {}, bool verbose=false);
 
 #endif //BANDSTRUCTUREH__

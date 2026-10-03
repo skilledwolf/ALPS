@@ -13,6 +13,10 @@
  
 #include <boost/math/constants/constants.hpp>
 #include<iostream>
+#include <fstream>
+#include <cmath>
+#include <limits>
+#include <algorithm>
 #include "bandstructure.h"
 
 
@@ -108,23 +112,23 @@ std::complex<double> Bandstructure::HilbertIntegral_AFM(const std::complex<doubl
   throw std::logic_error("This should not be executed at any time.");
 }
 
-void Bandstructure::set_parms(alps::Parameters& parms) const {
+void Bandstructure::set_parms(alps::params& parms) const {
   for (unsigned int f=0; f<epssq_.size(); ++f) {
-    if (parms.defined("EPS_"+boost::lexical_cast<std::string>(f))) {
-      double value_by_user=static_cast<double>(parms["EPS_"+boost::lexical_cast<std::string>(f)]);
+    if (parms.exists("EPS_"+std::to_string(f))) {
+      double value_by_user=parms["EPS_"+std::to_string(f)].as<double>();
       if (std::abs(value_by_user-eps_[f])/(std::abs(value_by_user)+std::abs(eps_[f]))>1e-3 && std::abs(value_by_user-eps_[f])>1e-10) {
         std::cout<<"WARNING: Bandstructure: inconsistency in parameter 'EPS_"<<f<<"': value set by user = "<<value_by_user<<"; value expected/computed by program = "<<eps_[f]<<std::endl;
       }
     } else {
-      parms["EPS_"+boost::lexical_cast<std::string>(f)] = eps_[f];
+      parms["EPS_"+std::to_string(f)] = eps_[f];
     }
-    if (parms.defined("EPSSQ_"+boost::lexical_cast<std::string>(f))) {
-      double value_by_user=static_cast<double>(parms["EPSSQ_"+boost::lexical_cast<std::string>(f)]);
+    if (parms.exists("EPSSQ_"+std::to_string(f))) {
+      double value_by_user=parms["EPSSQ_"+std::to_string(f)].as<double>();
       if (std::abs(value_by_user-epssq_[f])/(std::abs(value_by_user)+std::abs(epssq_[f]))>1e-3 && std::abs(value_by_user-epssq_[f])>1e-10) {
         std::cout<<"WARNING: Bandstructure: inconsistency in parameter 'EPSSQ_"<<f<<"': value set by user = "<<value_by_user<<"; value expected/computed by program = "<<epssq_[f]<<std::endl;
       }
     } else {
-      parms["EPSSQ_"+boost::lexical_cast<std::string>(f)] = epssq_[f];
+      parms["EPSSQ_"+std::to_string(f)] = epssq_[f];
     }
   }
 }
@@ -191,41 +195,62 @@ private:
 };
 
 
-DOSBandstructure::DOSBandstructure(const alps::Parameters& parms, bool verbose)
+DOSBandstructure::DOSBandstructure(const alps::params& parms, const alps::params& input, bool verbose)
   : Bandstructure(parms),
-    dos_(static_cast<unsigned>(parms.value_or_default("FLAVORS", 2))/2),
-    dos_min_(static_cast<unsigned>(parms.value_or_default("FLAVORS", 2))/2),
-    dos_step_(static_cast<unsigned>(parms.value_or_default("FLAVORS", 2))/2)
+    dos_(parms.value_or<unsigned>("FLAVORS", 2)/2),
+    dos_min_(parms.value_or<unsigned>("FLAVORS", 2)/2),
+    dos_step_(parms.value_or<unsigned>("FLAVORS", 2)/2)
 {
-  std::ifstream dos_file(parms["DOSFILE"].c_str());
+  std::ifstream dos_file(input["dos"].as<std::string>().c_str());
   if(!dos_file.good()) {
-    std::cerr<<"ERROR: DOSBandstructure: problem to read DOSFILE = " << parms["DOSFILE"] << std::endl;
-    throw std::runtime_error("DOSFILE is not good!");
+    std::cerr<<"ERROR: DOSBandstructure: problem to read input.dos = " << input["dos"] << std::endl;
+    throw std::runtime_error("Cannot read input.dos");
   }
-  unsigned n_bands = static_cast<unsigned>(parms.value_or_default("FLAVORS", 2))/2;
-  double eps, d;
-  if (verbose) std::cout<<"BANDSTRUCTURE:"<<std::endl<<"Using density of states loaded from: "<<parms["DOSFILE"]<<std::endl;
+  const auto flavors = parms.value_or<unsigned>("FLAVORS", 2);
+  if (flavors == 0 || flavors % 2 != 0)
+    throw std::invalid_argument("input.dos requires a positive, even FLAVORS count");
+  unsigned n_bands = flavors/2;
+  if (verbose) std::cout<<"BANDSTRUCTURE:"<<std::endl<<"Using density of states loaded from: "<<input["dos"]<<std::endl;
   std::vector<std::vector<double> > e_(n_bands);
   if (verbose) std::cout<<"(Note: Assuming equidistant energy intervals.)"<<std::endl;
   if (verbose && n_bands>1) std::cout<<"(Note: Assuming the same number of bins for all bands.)"<<std::endl;
-  while(dos_file>>eps>>d){   
-    e_[0].push_back(eps);
-    dos_[0].push_back(d);
-    for(unsigned band=1; band<n_bands; ++band){
-      if(!(dos_file>>eps>>d))throw std::runtime_error("DOSFILE is not corrupt!");
+  while (true) {
+    dos_file >> std::ws;
+    if (dos_file.eof()) break;
+    for (unsigned band=0; band<n_bands; ++band) {
+      double eps = 0., density = 0.;
+      if (!(dos_file >> eps >> density) || !std::isfinite(eps) ||
+          !std::isfinite(density) || density < 0.)
+        throw std::invalid_argument("Malformed or nonfinite/negative input.dos value");
       e_[band].push_back(eps);
-      dos_[band].push_back(d);
+      dos_[band].push_back(density);
     }
   }
+  if (dos_file.bad()) throw std::runtime_error("Cannot read input.dos");
   
   for(unsigned band=0; band<n_bands; ++band){
-    dos_min_[band]=e_[band][0];
-    dos_step_[band]=(e_[band][e_[band].size()-1]-dos_min_[band])/static_cast<double>(dos_[band].size()-1);
+    const auto count = e_[band].size();
+    if (count < 3 || count % 2 != 1)
+      throw std::invalid_argument("input.dos requires an odd number of at least three points per band");
+    dos_min_[band]=e_[band].front();
+    dos_step_[band]=(e_[band].back()-dos_min_[band])/static_cast<double>(count-1);
+    if (!std::isfinite(dos_step_[band]) || dos_step_[band] <= 0.)
+      throw std::invalid_argument("input.dos energies must increase with a finite positive spacing");
+    const auto scale = std::max(std::abs(e_[band].front()), std::abs(e_[band].back()));
+    const auto tolerance = 1.e-8*dos_step_[band] + 32*std::numeric_limits<double>::epsilon()*scale;
+    for (std::size_t i=1; i<count; ++i)
+      if (e_[band][i] <= e_[band][i-1] ||
+          std::abs(e_[band][i]-(dos_min_[band]+i*dos_step_[band])) > tolerance)
+        throw std::invalid_argument("input.dos energies must be strictly increasing and equidistant");
     double s, S;
     s=simpson_integrate(DOS_integrand_0th_moment(dos_[band], dos_min_[band], dos_step_[band]));
+    if (!std::isfinite(s) || s <= 0.)
+      throw std::invalid_argument("input.dos must have finite positive integrated weight");
     S=0;
     for(unsigned i=0; i<dos_[band].size(); ++i){
       dos_[band][i]/=s;
+      if (!std::isfinite(dos_[band][i]))
+        throw std::invalid_argument("input.dos normalization produced a nonfinite value");
       S+=dos_[band][i];
     }
     if (verbose) std::cout<<"check: total sum after normalization is: "<<S<<" (should be close to 1)"<<std::endl;
@@ -235,6 +260,8 @@ DOSBandstructure::DOSBandstructure(const alps::Parameters& parms, bool verbose)
     eps_[2*band+1]=eps_[2*band];
     epssq_[2*band]=simpson_integrate(DOS_integrand_2nd_moment(dos_[band], dos_min_[band], dos_step_[band]));
     epssq_[2*band+1]=epssq_[2*band];
+    if (!std::isfinite(eps_[2*band]) || !std::isfinite(epssq_[2*band]))
+      throw std::invalid_argument("input.dos produced nonfinite band moments");
     if (verbose) {
       std::cout<<"Flavors "<<2*band<<" and "<<2*band+1<<": first moment of bandstructure: "<<eps_[band]<<std::endl;
       std::cout<<"Flavors "<<2*band<<" and "<<2*band+1<<": second moment of bandstructure: "<<epssq_[band]<<std::endl;
@@ -306,14 +333,14 @@ std::complex<double> HexagonalLatticeBandstructure::HilbertIntegral_AFM(const st
 // ---------------------------------------------------------------------------------------------
 
 
-boost::shared_ptr<Bandstructure> BandstructureFactory(const alps::Parameters& parms, bool verbose) {
-  if (parms.defined("DOSFILE")) {
-    boost::shared_ptr<Bandstructure> bandstruct(new DOSBandstructure(parms,verbose));
+boost::shared_ptr<Bandstructure> BandstructureFactory(const alps::params& parms, const alps::params& input, bool verbose) {
+  if (input.exists("dos")) {
+    boost::shared_ptr<Bandstructure> bandstruct(new DOSBandstructure(parms,input,verbose));
     return bandstruct;
-  } else if (parms.defined("TWODBS") && parms["TWODBS"]=="hexagonal") {
+  } else if (parms.exists("TWODBS") && parms["TWODBS"].as<std::string>()=="hexagonal") {
     boost::shared_ptr<Bandstructure> bandstruct(new HexagonalLatticeBandstructure(parms,verbose));
     return bandstruct;
-  } else if (parms.defined("TWODBS")) {
+  } else if (parms.exists("TWODBS")) {
     boost::shared_ptr<Bandstructure> bandstruct(new SquareLatticeBandstructure(parms,verbose));
     return bandstruct;
   } else {

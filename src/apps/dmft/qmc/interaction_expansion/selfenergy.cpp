@@ -388,8 +388,7 @@ void InteractionExpansionSim::evaluate_selfenergy_measurement_itime_rs(const alp
       Sz_obs += Sz_i_obs;
     }
     Sz_obs /= n_site;
-    std::ofstream szstream("staggered_sz", std::ios::app);
-    szstream << Sz_obs.mean() << "\t" << Sz_obs.error() << std::endl;
+    std::cout << "staggered Sz: " << Sz_obs.mean() << " +- " << Sz_obs.error() << std::endl;
   }
   clock_t time1=clock();
   std::cout<<"evaluate of SE measurement took: "<<(time1-time0)/(double)CLOCKS_PER_SEC<<std::endl;

@@ -14,6 +14,7 @@ inline alps::run_configuration resolve_run(
     supplied.execution = params_from_dict(execution);
     return alps::resolve_run_configuration(supplied, schema, base);
 }
+// prepare() validates programmatic sections; solve() runs a prepared or loaded run.
 template<class Prepare, class Solve>
 void bind_configured_solver(nb::module_ &module, std::string_view schema,
                             Prepare prepare, Solve solve) {
@@ -29,15 +30,5 @@ void bind_configured_solver(nb::module_ &module, std::string_view schema,
         scoped_signal_handlers signal_handlers;
         return solve(run);
     }, nb::arg("run"));
-    module.def("solve", [schema, solve](const std::string &filename) {
-        scoped_signal_handlers signal_handlers;
-        return solve(alps::load_run_configuration(filename, schema));
-    }, nb::arg("filename"));
-    module.def("solve", [schema, solve](const nb::dict &parameters, const nb::dict &input,
-               const nb::dict &output, const nb::dict &execution) {
-        scoped_signal_handlers signal_handlers;
-        return solve(resolve_run(schema, parameters, input, output, execution));
-    }, nb::arg("parameters"), nb::arg("input") = nb::dict(),
-       nb::arg("output") = nb::dict(), nb::arg("execution") = nb::dict());
 }
 }

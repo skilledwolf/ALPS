@@ -17,7 +17,6 @@
 #include "interaction_expansion.hpp"
 #include <ctime>
 #include "run_config.hpp"
-#include "alps/ngs/make_deprecated_parameters.hpp"
 
 //global variables
 
@@ -45,7 +44,7 @@ beta((double)run.parameters["BETA"]),
 temperature(1./beta),
 onsite_U((double)run.parameters["U"]),
 alpha((double)run.parameters["ALPHA"]),
-U(alps::make_deprecated_parameters(run.parameters)),
+U(run.parameters),
 recalc_period(run.parameters["RECALC_PERIOD"].as<unsigned int>()),
 measurement_period(run.parameters["MEASUREMENT_PERIOD"].as<unsigned int>()),
 almost_zero(run.parameters["ALMOSTZERO"].as<double>()),
@@ -76,7 +75,7 @@ pert_hist(max_order)
       for (itime_index_t t = 0; t <= n_tau; ++t)
         bare_green_itime(t, 0, 0, flavor) = -0.5;
   } else {
-    FourierTransformer::generate_transformer(alps::make_deprecated_parameters(parms), fourier_ptr);
+    FourierTransformer::generate_transformer(parms, fourier_ptr);
     fourier_ptr->backward_ft(bare_green_itime, bare_green_matsubara);
   }
   //initialize the simulation variables

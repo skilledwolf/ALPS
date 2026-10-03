@@ -22,6 +22,7 @@
 /// @brief defines the ALPS solvers
 
 #include <alps/scheduler.h>
+#include <alps/run_config.hpp>
 #include <vector>
 #include <utility>
 #include "types.h"
@@ -37,10 +38,10 @@ namespace alps {
 /// Please note that only one such solver may exist. If you have more solvers, 
 /// please use a combined factory.
 
-class ImpuritySolver : public ::ImpuritySolver, public ::MatsubaraImpuritySolver
+class ImpuritySolver : public ::MatsubaraImpuritySolver
 {
 public:
-  ImpuritySolver(const scheduler::Factory& f, int argc=0, char** argv=0, bool h5input=false);
+  ImpuritySolver(const scheduler::Factory& f, const run_configuration& run, int argc=0, char** argv=0);
   ~ImpuritySolver();
     
   scheduler::AbstractTask* get_task() const 
@@ -56,30 +57,17 @@ public:
       master_scheduler->destroy_task();
   }
   
-  itime_green_function_t solve(
-    const itime_green_function_t& G0, 
-    const Parameters& parms =Parameters());
-    
   std::pair<matsubara_green_function_t, itime_green_function_t> solve_omega(
       const matsubara_green_function_t& G0_omega
-    , const Parameters& parms=Parameters());
+    , const params& parms=params());
 
 protected:
   int solve_it(Parameters const& p);
   scheduler::SingleScheduler* master_scheduler;
   //scheduler::SingleScheduler* master_scheduler;
-  int argc_;
-  char **argv_;
+  run_configuration configuration_;
 };
 
-
-class ImpurityTask
-{
-public:
-  ImpurityTask() {}
-  virtual ~ImpurityTask() {}
-  virtual itime_green_function_t get_result() const=0;
-};
 
 class MatsubaraImpurityTask
 {

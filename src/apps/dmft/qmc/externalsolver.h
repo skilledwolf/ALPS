@@ -23,40 +23,38 @@
 /// @sa ExternalSolver
 
 #include "solver.h"
-#include <boost/filesystem/path.hpp>
-#include <boost/filesystem/operations.hpp>
+#include "run_config.h"
+#include <filesystem>
 
-/// @brief An impurity solver calling an external executable to solve the 
-///        impurity problem
-/// 
-/// The ExternalSolver receives the path to an executable in the constructor. 
-/// This executable will be called to solve the impurity problem. The executable
-/// should take two arguments: the name of an input file and the name of an 
-/// output file. Both files have to conform to the XML schema for impurity 
-/// solvers that is currently being developed
-///
-
+/// Calls an impurity solver with one TOML run file. Scientific arrays travel
+/// separately in HDF5 as /Delta_<flavor> or /G0_<flavor> vectors; the solver
+/// writes /G_tau and optionally /G_omega in the DMFT Green-function layout.
 class ExternalSolver 
  : public ImpuritySolver
  , public MatsubaraImpuritySolver 
 {
 public:
-    /// @param executable the path to the executable
-    ExternalSolver(const boost::filesystem::path& executable) ;
+    explicit ExternalSolver(const alps::run_configuration& configuration);
   
     ImpuritySolver::result_type solve(
               const itime_green_function_t& G0
-            , const alps::Parameters& parms);
+            , const alps::params& parms);
     
     MatsubaraImpuritySolver::result_type solve_omega(
               const matsubara_green_function_t& G0_omega
-            , const alps::Parameters& parms );
-    private:
-    /// call the executable
-    void call(std::string const& infile, std::string const& outfile);
-      
-    ///path to the solver executable
-    boost::filesystem::path exe_;
+            , const alps::params& parms);
+private:
+    struct invocation_files;
+    alps::run_configuration solver_run(const alps::params& parameters, const invocation_files& files) const;
+    void write_hybridization(alps::run_configuration& run, const alps::params& parameters,
+                             const itime_green_function_t& delta, alps::hdf5::archive& input) const;
+    void call(alps::run_configuration run, const invocation_files& files) const;
+
+    alps::run_configuration configuration_;
+    alps::dmft::solver_kind kind_;
+    std::string schema_;
+    bool delta_;
+    std::filesystem::path executable_;
 };
 
 

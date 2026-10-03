@@ -23,13 +23,49 @@
 
 #include <boost/math/constants/constants.hpp>
 #include "fouriertransform.h"
+#include "U_matrix.h"
 
 #include <algorithm>
 #include <cmath>
 #include <complex>
 #include <cstdio>
 
+namespace {
+bool typed_input_contract() {
+  alps::params parameters;
+  parameters["BETA"] = 10.;
+  parameters["MU"] = 0.;
+  parameters["FLAVORS"] = 2;
+  boost::shared_ptr<FourierTransformer> transformer;
+  auto invalid = parameters;
+  invalid["FLAVORS"] = 2.5;
+  try {
+    FourierTransformer::generate_transformer(invalid, transformer);
+    std::puts("FAIL: fractional flavor count was truncated");
+    return false;
+  } catch (const alps::params_ns::exception::type_mismatch&) {}
+  invalid = parameters;
+  invalid["EPS_0"] = "0.25";
+  try {
+    FourierTransformer::generate_transformer(invalid, transformer);
+    std::puts("FAIL: string band moment was coerced to a scientific number");
+    return false;
+  } catch (const alps::params_ns::exception::type_mismatch&) {}
+  parameters["FLAVORS"] = 4;
+  parameters["U"] = 4.;
+  parameters["J"] = 1.;
+  U_matrix interaction(parameters);
+  if (interaction(0, 1) != 4. || interaction(0, 2) != 1. || interaction(0, 3) != 2. ||
+      interaction(1, 3) != 1. || interaction.mu_shift() != 3.5) {
+    std::puts("FAIL: native Hubbard/Hund interaction convention changed");
+    return false;
+  }
+  return true;
+}
+}
+
 int main() {
+  if (!typed_input_contract()) return 1;
   const double   beta     = 10.0;
   const unsigned N_omega  = 200;   // Matsubara frequencies
   const unsigned N_tau    = 400;   // imaginary-time slices

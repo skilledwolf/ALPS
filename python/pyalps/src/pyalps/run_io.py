@@ -1,17 +1,18 @@
 # Copyright (C) 2026 ALPS Collaboration. SPDX-License-Identifier: MIT
-"""Write schema-validated TOML runs and explicit multi-run job manifests.
+"""Write and execute TOML runs and explicit multi-run job manifests.
 
 The application supplies its schema separately. Arrays are parameter values;
 each entry passed to ``write_run_files`` is one run, never an inferred sweep.
 """
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 import json
-import math
 import operator
 import os
 from pathlib import Path
+import subprocess
 import tempfile
+import tomllib
 
 from . import run_config
 
@@ -22,27 +23,6 @@ def _quoted(value):
     # TOML shares JSON's basic-string escapes but forbids surrogate escapes
     # and unescaped DEL. Keep complete Unicode characters in the UTF-8 file.
     return json.dumps(value, ensure_ascii=False).replace("\x7f", "\\u007f")
-
-
-def _value(value):
-    if isinstance(value, str):
-        return _quoted(value)
-    if isinstance(value, bool):
-        return "true" if value else "false"
-    if isinstance(value, int):
-        return str(value)
-    if isinstance(value, float):
-        if not math.isfinite(value):
-            raise ValueError("run values must be finite")
-        return repr(value)
-    if isinstance(value, complex):
-        return "{ real = " + _value(value.real) + ", imag = " + _value(value.imag) + " }"
-    # Native dictionary vectors return owning NumPy arrays or Python lists.
-    if hasattr(value, "tolist"):
-        value = value.tolist()
-    if isinstance(value, Sequence):
-        return "[" + ", ".join(_value(item) for item in value) + "]"
-    raise TypeError(f"cannot serialize run value of type {type(value).__name__}")
 
 
 def _section(values):
@@ -58,18 +38,22 @@ def _section(values):
 
 def _document(schema, sections):
     supplied = {name: _section(sections.get(name)) for name in _SECTIONS}
+    explicit = run_config.RunConfiguration()
+    if schema is None:
+        # The application validates the run before execution.
+        for name in _SECTIONS:
+            target = getattr(explicit, name)
+            for key, value in supplied[name].items():
+                target[key] = value
+        return run_config.format(explicit), explicit
     # Preserve relative paths in the document. The application's native loader
     # resolves them against this file, rather than the writer's working directory.
     resolved = run_config.resolve(schema, **supplied, base_directory="")
-    lines = []
     for name in _SECTIONS:
-        if supplied[name]:
-            lines.append(f"[{name}]")
-            values = getattr(resolved, name)
-            for key in sorted(supplied[name]):
-                lines.append(f"{_quoted(key)} = {_value(values[key])}")
-            lines.append("")
-    return "\n".join(lines), resolved
+        source, target = getattr(resolved, name), getattr(explicit, name)
+        for key in supplied[name]:
+            target[key] = source[key]
+    return run_config.format(explicit), resolved
 
 
 def _check_output_paths(runs, targets):
@@ -91,7 +75,7 @@ def _check_output_paths(runs, targets):
 
 
 def _publish(documents, overwrite):
-    """Publish complete files, refusing existing destinations by default."""
+    """Write complete files, refusing existing destinations unless overwriting."""
     targets = [path for path, _ in documents]
     if len(set(targets)) != len(targets):
         raise ValueError("run and manifest filenames must be distinct")
@@ -103,37 +87,31 @@ def _publish(documents, overwrite):
     try:
         for path, document in documents:
             path.parent.mkdir(parents=True, exist_ok=True)
-            descriptor, temporary = tempfile.mkstemp(dir=path.parent, prefix=".alps-run-")
-            try:
-                with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as stream:
-                    stream.write(document)
-                if overwrite:
+            if overwrite:
+                descriptor, temporary = tempfile.mkstemp(dir=path.parent, prefix=".alps-run-")
+                try:
+                    with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as stream:
+                        stream.write(document)
                     os.replace(temporary, path)
-                else:
-                    # Hard-link publication is atomic and cannot replace a file
-                    # created by another writer since the initial existence check.
-                    identity = Path(temporary).stat()
-                    os.link(temporary, path)
-                    created.append((path, identity))
-            finally:
-                Path(temporary).unlink(missing_ok=True)
+                finally:
+                    Path(temporary).unlink(missing_ok=True)
+            else:
+                with open(path, "x", encoding="utf-8", newline="\n") as stream:
+                    created.append(path)
+                    stream.write(document)
     except BaseException:
-        for path, identity in created:
-            try:
-                current = path.lstat()
-                if (current.st_dev, current.st_ino) == (identity.st_dev, identity.st_ino):
-                    path.unlink()
-            except FileNotFoundError:
-                pass
+        for path in created:
+            path.unlink(missing_ok=True)
         raise
 
 
-def write_run_file(filename, schema, *, parameters=None, input=None, output=None,
+def write_run_file(filename, schema=None, *, parameters=None, input=None, output=None,
                    execution=None, overwrite=False):
     """Write one run and return its path, omitting schema-supplied defaults.
 
-    ``schema`` is the application-owned TOML schema text. The same native
-    validator used by C++ applications validates all four run sections.
+    ``schema`` is the application-owned TOML schema text. When supplied, the
+    native validator used by C++ applications validates all four run sections;
+    otherwise the application validates the run when it is executed.
     """
     path = Path(filename)
     document, resolved = _document(schema, dict(parameters=parameters, input=input,
@@ -143,15 +121,15 @@ def write_run_file(filename, schema, *, parameters=None, input=None, output=None
     return path
 
 
-def write_run_files(prefix, runs, schema, *, baseseed=None, overwrite=False):
+def write_run_files(prefix, runs, schema=None, *, baseseed=None, overwrite=False):
     """Write explicit runs and return their ``<prefix>.job.toml`` manifest.
 
     Each run maps section names to mappings. If ``baseseed`` is supplied,
     missing ``execution.seed`` values receive ``baseseed + run_index``;
-    explicit seeds and the caller's dictionaries remain untouched. The schema
-    decides whether seeds are supported and which values are valid. All runs
-    are validated before any file is written. Each file is published atomically;
-    the manifest is published last. Explicit overwrite is atomic per file.
+    explicit seeds and the caller's dictionaries remain untouched. A supplied
+    schema validates every run before any file is written and names the
+    manifest's application. The manifest is written last; an explicit
+    overwrite replaces each file atomically.
     """
     if isinstance(runs, (Mapping, str, bytes)):
         raise TypeError("runs must be an iterable of explicit run mappings")
@@ -181,8 +159,92 @@ def write_run_files(prefix, runs, schema, *, baseseed=None, overwrite=False):
         documents.append((path, document))
         resolved_runs.append((path, resolved))
         entries.append("[[runs]]\nfile = " + _quoted(path.name) + "\n")
-    documents.append((manifest, "application = " + _quoted(resolved.application) + "\n\n"
-                      + "\n".join(entries)))
+    header = "" if schema is None else "application = " + _quoted(resolved.application) + "\n\n"
+    documents.append((manifest, header + "\n".join(entries)))
     _check_output_paths(resolved_runs, [path for path, _ in documents])
     _publish(documents, overwrite)
     return manifest
+
+
+def read_job_manifest(filename):
+    """Return the manifest's application (or None) and its absolute run files."""
+    path = Path(filename)
+    with open(path, "rb") as stream:
+        document = tomllib.load(stream)
+    unknown = set(document) - {"application", "runs"}
+    if unknown:
+        raise ValueError(f"unknown job-manifest keys: {sorted(unknown)}")
+    application = document.get("application")
+    if application is not None and (not isinstance(application, str) or not application):
+        raise ValueError("job-manifest application must be a nonempty string")
+    runs = document.get("runs")
+    if not isinstance(runs, list) or not runs:
+        raise ValueError("job manifest requires a nonempty [[runs]] array of run files")
+    files = []
+    for entry in runs:
+        if not isinstance(entry, dict) or set(entry) != {"file"}:
+            raise ValueError("each [[runs]] entry must contain only file")
+        if not isinstance(entry["file"], str) or not entry["file"]:
+            raise ValueError("[[runs]] file must be a nonempty filename")
+        run = (path.parent / entry["file"]).resolve()
+        if run in files:
+            raise ValueError(f"duplicate TOML run file: {run}")
+        files.append(run)
+    return application, files
+
+
+def _command(arguments, *, capture=False):
+    from .tools import list2cmdline, log
+    log(list2cmdline(arguments))
+    return subprocess.run(arguments, check=True, text=True, capture_output=capture)
+
+
+def execute(application, runs, *, mpi=None, mpirun="mpirun"):
+    """Run TOML run files or job manifests with an application executable.
+
+    Every run is validated by the application before the first one starts,
+    and the runs then execute in order. Returns the absolute output.results
+    path of each run. A failing process raises subprocess.CalledProcessError.
+    """
+    from .tools import check_existence
+    application = os.fspath(application)
+    runs = [Path(run).resolve() for run in ([runs] if isinstance(runs, (str, os.PathLike)) else runs)]
+    if not runs:
+        raise ValueError("at least one TOML run file is required")
+    for path in runs:
+        if path.suffix.lower() != ".toml":
+            raise ValueError(f"expected a TOML run file or job manifest: {path}")
+    check_existence(application)
+    launcher = []
+    if mpi is not None:
+        if isinstance(mpi, bool) or operator.index(mpi) < 1:
+            raise ValueError("mpi must be a positive process count")
+        check_existence(mpirun)
+        launcher = [os.fspath(mpirun), "-np", str(operator.index(mpi))]
+    references, targets, seen = [], [], set()
+    for path in runs:
+        targets.append(path)
+        expected, files = (read_job_manifest(path) if path.name.lower().endswith(".job.toml")
+                           else (None, [path]))
+        for file in files:
+            if file.suffix.lower() != ".toml" or file.name.lower().endswith(".job.toml"):
+                raise ValueError("job entries must name TOML run files")
+            if file in seen:
+                raise ValueError(f"duplicate TOML run file: {file}")
+            seen.add(file)
+            targets.append(file)
+            schema = _command([application, "--schema", str(file)], capture=True).stdout
+            run = run_config.load(file, schema)
+            if expected is not None and expected != run.application:
+                raise ValueError(f"job application {expected!r} does not match "
+                                 f"executable application {run.application!r}")
+            if "results" not in run.output:
+                raise ValueError("the application schema must declare output.results")
+            references.append((file, run))
+    _check_output_paths(references, targets)
+    # Scientific inputs are checked by the application before any run writes.
+    for file, _ in references:
+        _command([application, "--validate", str(file)])
+    for file, _ in references:
+        _command(launcher + [application, str(file)])
+    return [str(Path(run.output["results"]).resolve()) for _, run in references]

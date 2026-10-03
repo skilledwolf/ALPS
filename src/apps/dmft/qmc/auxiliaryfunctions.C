@@ -17,11 +17,23 @@
 #include "types.h"
 #include "green_function.h"
 #include "U_matrix.h"
+#include <alps/run_config.hpp>
+#include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <math.h>
 
 
+
+namespace {
+// The DMFT loader has checked every text name against the run, input and output files.
+std::ofstream text_output(const alps::run_configuration& run, const std::string& name) {
+  const auto path = std::filesystem::path(run.output["text_directory"].as<std::string>()) / name;
+  std::ofstream out;
+  out.exceptions(std::ios::failbit | std::ios::badbit);
+  out.open(path); return out;
+}
+}
 
 std::ostream &operator<<(std::ostream &os, const multiple_vector_type &v){
   os<<std::setprecision(20);
@@ -226,11 +238,13 @@ void print_green_itime(std::ostream &os, const itime_green_function_t &v, const 
   }
 }
 
-void print_all_green_functions(std::string const &basename, const int iteration_ctr, const matsubara_green_function_t &G0_omega, 
+void print_all_green_functions(alps::run_configuration const &run, const int iteration_ctr, const matsubara_green_function_t &G0_omega,
                                const matsubara_green_function_t &G_omega, const itime_green_function_t &G0_tau, 
                                const itime_green_function_t &G_tau, const double beta, const shape_t shape, 
                                const std::string suffix)
 {
+  if (run.output["text"].as<bool>()) {
+
   std::ostringstream G0omega_name, G0omegareal_name, G0tau_name, Gomega_name, 
   Gomegareal_name, Gtau_name, Gtau_name_2, Gomega_name_2, selfenergy_name;
   G0omega_name<<"G0_omega"<<suffix<<"_"<<iteration_ctr;//<<"_"<<process_id;
@@ -242,16 +256,16 @@ void print_all_green_functions(std::string const &basename, const int iteration_
   Gomega_name_2<<"G_omega"<<suffix;//<<"_"<<process_id;
   Gtau_name_2<<"G_tau"<<suffix;//<<"_"<<process_id;
   selfenergy_name<<"selfenergy"<<suffix<<"_"<<iteration_ctr;//<<"_"<<process_id;
-  std::ofstream G0_omega_file(G0omega_name.str().c_str());
-  std::ofstream G0_omegareal_file(G0omegareal_name.str().c_str());
-  std::ofstream G0_tau_file(G0tau_name.str().c_str());
-  std::ofstream G_omega_file(Gomega_name.str().c_str());
-  std::ofstream G_omegareal_file(Gomegareal_name.str().c_str());
-  std::ofstream G_tau_file(Gtau_name.str().c_str());
-  std::ofstream G_omega_file_2(Gomega_name_2.str().c_str());
-  std::ofstream G_tau_file_2(Gtau_name_2.str().c_str());
-  std::ofstream selfenergy_file(selfenergy_name.str().c_str());
-  assert(G0_omega_file.is_open() && G0_tau_file.is_open() && G_omega_file.is_open() && G_tau_file.is_open());
+  auto G0_omega_file = text_output(run, G0omega_name.str());
+  auto G0_omegareal_file = text_output(run, G0omegareal_name.str());
+  auto G0_tau_file = text_output(run, G0tau_name.str());
+  auto G_omega_file = text_output(run, Gomega_name.str());
+  auto G_omegareal_file = text_output(run, Gomegareal_name.str());
+  auto G_tau_file = text_output(run, Gtau_name.str());
+  auto G_omega_file_2 = text_output(run, Gomega_name_2.str());
+  auto G_tau_file_2 = text_output(run, Gtau_name_2.str());
+  auto selfenergy_file = text_output(run, selfenergy_name.str());
+  if (!G0_omega_file || !G0_tau_file || !G_omega_file || !G_tau_file) throw std::runtime_error("DMFT text output failed");
   print_imag_green_matsubara(G0_omega_file, G0_omega, beta, shape);
   print_real_green_matsubara(G0_omegareal_file,G0_omega,beta, shape);
   print_green_itime(G0_tau_file,G0_tau, beta, shape);
@@ -264,7 +278,10 @@ void print_all_green_functions(std::string const &basename, const int iteration_
   if (shape==diagonal)
     print_quasiparticle_estimate(std::cout, G_omega, G0_omega, beta);
   
-  alps::hdf5::archive ar(basename+".h5", "a");
+  }
+  alps::hdf5::archive ar(run.output["results"].as<std::string>(), "a");
+  ar["/run_config"] << run;
+  ar["/parameters"] << run.parameters;
   //writeout into hf5 file, using /simulation/iteration/ path
   std::stringstream basepath; basepath<<"/simulation/iteration/"<<iteration_ctr<<"/results/";
   G_tau.write_hdf5(ar,basepath.str()+"G_tau");
@@ -281,20 +298,25 @@ void print_all_green_functions(std::string const &basename, const int iteration_
 }
 
 
-void print_tau_green_functions(std::string const &basename, const int iteration_ctr, const itime_green_function_t &G0_tau, const itime_green_function_t &G_tau, const double beta,
+void print_tau_green_functions(alps::run_configuration const &run, const int iteration_ctr, const itime_green_function_t &G0_tau, const itime_green_function_t &G_tau, const double beta,
                                const shape_t shape, const std::string suffix){
+  if (run.output["text"].as<bool>()) {
+
   std::ostringstream G0tau_name, Gtau_name, Gtau_name_2;
   G0tau_name<<"G0_tau_"<<iteration_ctr;//<<"_"<<process_id;
   Gtau_name<<"G_tau_"<<iteration_ctr;//<<"_"<<process_id;
   Gtau_name_2<<"G_tau";//<<"_"<<process_id;
-  std::ofstream G0_tau_file(G0tau_name.str().c_str());
-  std::ofstream G_tau_file(Gtau_name.str().c_str());
-  std::ofstream G_tau_file_2(Gtau_name_2.str().c_str());
+  auto G0_tau_file = text_output(run, G0tau_name.str());
+  auto G_tau_file = text_output(run, Gtau_name.str());
+  auto G_tau_file_2 = text_output(run, Gtau_name_2.str());
   print_green_itime(G0_tau_file,G0_tau,beta,shape);
   print_green_itime(G_tau_file,G_tau,beta,shape);
   print_green_itime(G_tau_file_2,G_tau,beta,shape);
   
-  alps::hdf5::archive ar(basename+".h5", "a");
+  }
+  alps::hdf5::archive ar(run.output["results"].as<std::string>(), "a");
+  ar["/run_config"] << run;
+  ar["/parameters"] << run.parameters;
   //writeout into hf5 file, using /simulation/iteration/ path
   std::stringstream basepath; basepath<<"/simulation/iteration/"<<iteration_ctr<<"/results/";
   G_tau.write_hdf5(ar,basepath.str()+"G_tau");
@@ -306,17 +328,22 @@ void print_tau_green_functions(std::string const &basename, const int iteration_
   G0_tau.write_hdf5(ar,basepath2.str()+"G0_tau");
 }
 
-void print_dressed_tau_green_functions(std::string const &basename, const int iteration_ctr, const itime_green_function_t &G_tau, const double beta, 
+void print_dressed_tau_green_functions(alps::run_configuration const &run, const int iteration_ctr, const itime_green_function_t &G_tau, const double beta,
                                        const shape_t shape, const std::string suffix){
+  if (run.output["text"].as<bool>()) {
+
   std::ostringstream Gtau_name, Gtau_name_2;
   Gtau_name<<"G_tau"<<suffix<<"_"<<iteration_ctr;//<<"_"<<process_id;
   Gtau_name_2<<"G_tau"<<suffix;//<<"_"<<process_id;
-  std::ofstream G_tau_file(Gtau_name.str().c_str());
-  std::ofstream G_tau_file_2(Gtau_name_2.str().c_str());
+  auto G_tau_file = text_output(run, Gtau_name.str());
+  auto G_tau_file_2 = text_output(run, Gtau_name_2.str());
   print_green_itime(G_tau_file,G_tau,beta,shape);
   print_green_itime(G_tau_file_2,G_tau,beta,shape);
   
-  alps::hdf5::archive ar(basename+".h5", "a");
+  }
+  alps::hdf5::archive ar(run.output["results"].as<std::string>(), "a");
+  ar["/run_config"] << run;
+  ar["/parameters"] << run.parameters;
   //writeout into hf5 file, using /simulation/iteration/ path
   std::stringstream basepath; basepath<<"/simulation/iteration/"<<iteration_ctr<<"/results/";
   G_tau.write_hdf5(ar,basepath.str()+"G_tau");

@@ -62,8 +62,6 @@ void prepare_run(run_configuration& run) {
   if(base=="/") base.clear();
   if(!base.empty() && base.back()=='/') base.pop_back();
   run.output["base_path"]=base;
-  if(run.input["delta_layout"].as<std::string>()=="dmft" && run.input["delta_format"].as<std::string>()!="hdf5")
-    throw std::invalid_argument("input.delta_layout='dmft' requires input.delta_format='hdf5'");
   const auto output=std::filesystem::weakly_canonical(out["results"].as<std::string>());
   if(std::filesystem::is_directory(output) || !std::filesystem::is_directory(output.parent_path()))
     throw std::invalid_argument("output.results must name a file in an existing directory");
@@ -71,7 +69,6 @@ void prepare_run(run_configuration& run) {
     if(run.input.exists(key)) {
       const auto filename=run.input[key].as<std::string>();
       if(!std::filesystem::is_regular_file(filename)) throw std::invalid_argument(std::string("Missing input.")+key+" file: "+filename);
-      if(std::filesystem::weakly_canonical(filename)==output) throw std::invalid_argument("Output must not replace an input file");
     }
   const auto delta=cthyb_input::series(run.parameters,run.input);
   if(std::any_of(delta.begin(),delta.end(),[](double x){return x>0.;}))
@@ -80,12 +77,7 @@ void prepare_run(run_configuration& run) {
     cthyb_input::static_values(run.input,"interaction_matrix","interaction_format","/Umatrix",orbitals*orbitals);
   if(run.input.exists("chemical_potential"))
     cthyb_input::static_values(run.input,"chemical_potential","chemical_potential_format","/MUvector",orbitals);
-  if(run.input.exists("retarded_interaction")) {
-    const auto k=cthyb_input::series(run.parameters,run.input,true);
-    if(k[0]!=0.) throw std::invalid_argument("Retarded interaction K(tau=0) must be zero");
-    for(std::size_t i=0;i<k.size();i+=2)
-      if(k[i]<0.) throw std::invalid_argument("Retarded interaction K(tau) must be nonnegative");
-  }
+  if(run.input.exists("retarded_interaction")) cthyb_input::retarded_kernel(run.parameters,run.input);
   if(out["text"].as<bool>()) {
     const auto directory=std::filesystem::path(out["text_directory"].as<std::string>());
     if(!std::filesystem::is_directory(directory))

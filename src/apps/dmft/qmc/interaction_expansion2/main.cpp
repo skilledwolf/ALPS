@@ -24,8 +24,9 @@ int main(int argc, char** argv) {
     std::string file;
     for (int i = 1; i < argc; ++i) {
       const std::string argument = argv[i];
+      if (argument == "--schema") { std::cout << alps::ctint::schema(); return 0; }
       if (argument == "--help" || argument == "-h") {
-        std::cout << "Usage: interaction [--validate] run.toml\n"
+        std::cout << "Usage: interaction [--validate] run.toml | interaction --schema\n"
                   << "Use [parameters], [input], [output], and [execution] TOML sections.\n";
         return 0;
       }

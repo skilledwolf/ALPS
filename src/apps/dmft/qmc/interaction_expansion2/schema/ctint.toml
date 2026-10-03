@@ -66,7 +66,6 @@ min = 1
 type = "int64"
 required = true
 min = 0
-max = 4294967295
 
 [parameters.RECALC_PERIOD]
 type = "int64"
@@ -116,13 +115,7 @@ default = 1.0
 
 [input.g0]
 type = "path"
-description = "HDF5 bare Green function, separate from the TOML run file."
-
-[input.layout]
-type = "string"
-default = "flavor-vectors"
-choices = ["flavor-vectors", "dmft"]
-description = "flavor-vectors reads /G0_0 and /G0_1; dmft reads /G0/{nt,ns,nf} and /G0/<flavor>/mean/value."
+description = "HDF5 file with complex /G0_0 and /G0_1 vectors of NMATSUBARA values."
 
 [input.atomic]
 type = "bool"

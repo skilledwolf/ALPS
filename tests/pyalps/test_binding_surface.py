@@ -230,9 +230,8 @@ def test_optional_application_extension_surface():
         assert importlib.import_module("pyalps." + name) is module
 
     from pyalps import cthyb, ctint, maxent_c
-    assert callable(maxent_c.AnalyticContinuation)
-    assert callable(cthyb.solve)
-    assert callable(ctint.solve)
+    for module in (cthyb, ctint, maxent_c):
+        assert callable(module.schema) and callable(module.prepare) and callable(module.solve)
 
 def test_ctqmc_solvers_restore_python_signal_handlers(tmp_path, monkeypatch):
     from pyalps import cthyb, ctint
@@ -284,9 +283,10 @@ def test_ctqmc_solvers_restore_python_signal_handlers(tmp_path, monkeypatch):
             (cthyb, cthyb_params, {"delta": str(delta_path)}, tmp_path / "cthyb-signal.h5"),
             (ctint, ctint_params, {"g0": str(ctint_input)}, tmp_path / "ctint-signal.h5"),
         ):
+            run = solver.prepare(params, input=inputs, output={"results": str(output)},
+                                 execution={"time_limit": 1, "seed": 0})
             for _ in range(2):
-                solver.solve(params, input=inputs, output={"results": str(output)},
-                             execution={"time_limit": 1, "seed": 0})
+                solver.solve(run)
                 assert signal.getsignal(signal.SIGINT) is python_sigint_handler
                 signal.raise_signal(signal.SIGINT)
                 assert calls[-1][0] == signal.SIGINT
@@ -330,14 +330,16 @@ def test_maxent_restores_python_signal_handlers(tmp_path, monkeypatch):
     try:
         # Twice: restoring once is not enough if ALPS' own handlers are not
         # reinstalled for the next embedded call.
+        run = maxent.prepare(parms, input=data, output={"results": str(tmp_path / "maxent-signal.out.h5")},
+                             execution={"time_limit": 1})
         for _ in range(2):
-            maxent.AnalyticContinuation(parms, data, str(tmp_path / "maxent-signal.out.h5"), time_limit=1)
+            maxent.solve(run)
             signal.raise_signal(signal.SIGINT)
     finally:
         signal.signal(signal.SIGINT, previous_handler)
 
     assert calls == [signal.SIGINT, signal.SIGINT], (
-        "SIGINT was not handed back to Python after AnalyticContinuation; "
+        "SIGINT was not handed back to Python after MaxEnt; "
         "ALPS still owns the OS-level handler"
     )
 

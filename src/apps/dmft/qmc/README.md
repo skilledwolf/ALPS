@@ -1,0 +1,84 @@
+# DMFT run configuration
+
+`dmft --validate run.toml` prepares the numerical input and checks the selected
+solver's settings without launching it or writing results. `dmft run.toml` runs
+the self-consistency loop. Run files contain values; the application supplies
+its schema, identity and version. Legacy parameter files and parameter archives
+are no longer accepted as run configurations.
+
+```toml
+[parameters]
+BETA = 2.0
+U = 0.0
+MU = 0.0
+t = 1.0
+N = 16
+NMATSUBARA = 8
+SWEEPS = 3000
+THERMALIZATION = 100
+N_MEAS = 4
+
+[output]
+results = "results.h5"
+
+[execution]
+solver = "hybridization"
+loop = "omega"
+max_iterations = 2
+seed = 42
+```
+
+`execution.solver` selects the `hybridization` (CT-HYB) or `interaction` (CT-INT)
+executable in the ALPS `bin` directory (`ALPS_BIN_PATH`), or the in-process
+`Hirsch-Fye` and `Interaction Expansion` solvers. Any other value names a custom
+executable, resolved against that directory unless it is absolute. The driver
+maps its time/frequency grids and flavors to the child application's parameters.
+It passes one TOML file and a separate temporary HDF5 archive holding one vector
+per flavor, `/Delta_<f>` for hybridization solvers and `/G0_<f>` otherwise;
+temporary files are removed after success or failure. Each child process uses
+the requested seed. `execution.time_limit = 0` disables the child time limit;
+finite `SWEEPS` still terminate sampling.
+
+`dmft --schema run.toml` prints the composed application schema, including the
+selected solver's scientific settings. The embedded DMFT base schema is extended
+by the CT-HYB, CT-INT or Hirsch-Fye schema and the selected flavor count. A
+custom solver requires `input.solver_schema` and `execution.solver_input`, either
+`"delta"` for a hybridization solver or `"g0"`, and the same one-file protocol.
+The tau loop requires a hybridization solver; the others use the omega loop.
+
+Paths resolve relative to the run file. Optional `input.initial_omega` and
+`input.initial_tau` supply the existing numerical Green-function text layouts:
+a coordinate followed by each flavor's value, with complex values written as
+`(real,imag)`. Dimensions and finite values are checked. `input.dos` supplies
+energy/density pairs for each band on an increasing, uniform, odd grid of at
+least three points. It selects the general omega Hilbert transform; the previous
+`SEMICIRCLE_HILBERT = false` default is preserved. `TWODBS`, `tprime` and `L`
+retain the existing two-dimensional bandstructure settings.
+
+`input.interaction_matrix` retains the sparse DMFT text convention `i j U_ij`.
+For segment CT-HYB, optional `input.retarded_interaction` and its format/coordinate
+settings follow the [CT-HYB scientific-input contract](hybridization/README.md).
+These files contain scientific data, not run settings.
+
+Results retain `/simulation/iteration/<n>/results` and `/simulation/results`.
+Typed scientific parameters are stored at `/parameters`; `/run_config` records
+resolved input/output/execution settings and input/default/derived provenance.
+`pyalps.loadDMFTIterations` can analyse these results. A saved configuration is
+not a complete solver restart checkpoint.
+
+Text sidecars require `output.text = true` and an existing
+`output.text_directory`; final numerical Green files require explicit
+`output.final_tau` or `output.final_omega` paths. Outputs cannot replace run or
+scientific input files. The driver neither changes the working directory nor
+rewrites the user's run file.
+
+Python callers write run files with `pyalps.run_io.write_run_file` and run them
+with `pyalps.run_io.execute("dmft", run_files)`, which also accepts job manifests.
+All runs are validated before execution. A successful call returns the absolute
+`output.results` path of each run; process failures raise an exception.
+
+The in-process `Hirsch-Fye` and `Interaction Expansion` solvers run on the older
+scheduler, whose `MCRun` consumers still use the older parameter representation;
+a private adapter serves them until the scheduler migration removes it.
+Standalone `hirschfye` has its own schema (`hirschfye --schema`, installed under
+`share/alps/schemas`) and reads `/G0_<f>` vectors from the HDF5 file `input.g0`.

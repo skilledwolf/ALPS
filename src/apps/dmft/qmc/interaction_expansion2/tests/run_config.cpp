@@ -75,7 +75,7 @@ int main(int argc, char **argv) {
     rejects([&] { alps::ctint::prepare_run(invalid); }, "check_interval");
 
     // The frequency measurement limit is distinct from the input extent.
-    const std::string input_file = "ctint-contract-g0.h5";
+    const auto input_file = std::filesystem::absolute("ctint-contract-g0.h5").string();
     const auto write_input = [&](std::size_t count, bool nonfinite = false) {
         alps::hdf5::archive archive(input_file, "w");
         std::vector<std::complex<double>> values(count, {0.0, -0.5});
@@ -90,7 +90,7 @@ int main(int argc, char **argv) {
     write_input(4);
     alps::ctint::prepare_run(file_run);
     write_input(3);
-    rejects([&] { alps::ctint::prepare_run(file_run); }, "NMATSUBARA values");
+    rejects([&] { alps::ctint::prepare_run(file_run); }, "vector of length 4");
     {
         alps::hdf5::archive archive(input_file, "w");
         const std::vector<double> malformed(12, 0.0);
@@ -99,22 +99,10 @@ int main(int argc, char **argv) {
     }
     rejects([&] { alps::ctint::prepare_run(file_run); }, "complex vector");
     write_input(4, true);
-    rejects([&] { alps::ctint::prepare_run(file_run); }, "finite values");
+    rejects([&] { alps::ctint::prepare_run(file_run); }, "must be finite");
     write_input(4);
     file_run.output["results"] = input_file;
     rejects([&] { alps::ctint::prepare_run(file_run); }, "replace input.g0");
-    {
-        alps::hdf5::archive archive(input_file, "w");
-        archive["/G0/nt"] << 4;
-        archive["/G0/ns"] << 1;
-        archive["/G0/nf"] << 2;
-        const std::vector<std::complex<double>> values(4, {0.0, -0.5});
-        archive["/G0/0/mean/value"] << values;
-        archive["/G0/1/mean/value"] << values;
-    }
-    file_run.output["results"] = "ctint-contract-results.h5";
-    file_run.input["layout"] = "dmft";
-    alps::ctint::prepare_run(file_run);
     std::filesystem::remove(input_file);
 
     // Explicit thermalization must finish; prethermalization observations are excluded.

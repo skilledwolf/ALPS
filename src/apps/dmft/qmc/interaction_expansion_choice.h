@@ -7,7 +7,7 @@
 
 /// @file interaction_expansion_choice.h
 /// @brief CT-INT (Interaction Expansion) run-type selection for the dmft
-///        driver's Matsubara (OMEGA_LOOP) path.
+///        driver's Matsubara (execution.loop = "omega") path.
 ///
 /// Factored out of main.C so the (FLAVORS, SITES) -> run-type mapping is a
 /// single mutually-exclusive decision that can be unit-tested. It reproduces

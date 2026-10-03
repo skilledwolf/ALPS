@@ -143,7 +143,8 @@ def reference_runs(tmp_path_factory):
         directory.mkdir()
         parameters, points, values, errors = prepare(definitions["defaults"], case, directory)
         with working_directory(directory):
-            maxent.AnalyticContinuation(parameters, source_config(case, directory, points), str(directory / "python.out.h5"))
+            maxent.solve(maxent.prepare(parameters, input=source_config(case, directory, points),
+                                        output={"results": str(directory / "python.out.h5")}))
         result = read_result(directory / "python.out.h5", case)
         runs[case["name"]] = (case, directory, result, points, values, errors)
     return definitions["defaults"], runs

@@ -65,7 +65,7 @@ int main(int argc,char** argv) {
     check(run.application=="cthyb" && run.schema_version==1,"Application identity must come from schema");
     check(run.execution["time_limit"].as<int>()==0,"Finite-sweep run must not require a time limit");
     auto invalid=run; invalid.output["results"]=invalid.input["delta"];
-    rejects([&]{alps::cthyb::prepare_run(invalid);},"replace an input");
+    rejects([&]{alps::cthyb::prepare_run(invalid);},"must not replace input.");
     invalid=run; invalid.output["text"]=true;
     invalid.output["text_directory"]=directory.string();
     invalid.output["results"]=(directory/"simulation.dat").string();

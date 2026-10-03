@@ -19,6 +19,12 @@
 #include <fstream>
 #include <iostream>
 #include <cstring>
+#include <cmath>
+#include <complex>
+#include <stdexcept>
+#include <string>
+#include <type_traits>
+#include <vector>
 
 
 #ifdef USE_MPI
@@ -28,6 +34,9 @@
 #include <alps/hdf5/archive.hpp>
 #include <alps/hdf5/pointer.hpp>
 #include <alps/hdf5/complex.hpp>
+#include <alps/hdf5/vector.hpp>
+
+namespace alps { struct run_configuration; }
 
 //Matsubara GF: use T=std::complex<double>
 //Imaginary time: use T=double
@@ -199,36 +208,92 @@ double kinetic_energy(const multiple_vector_type &G_tau, const double &beta, con
 
 template<typename T> void green_function<T>::read(const char *filename){
   std::ifstream in_file(filename);
-  assert(in_file.is_open()); //this is not good enough when people use -DNDEBUG.
-  if(!in_file.is_open()){ throw(std::invalid_argument("input file could not be opened!")); }
-  double ignored=0;
-  for(unsigned int i=0;i<nt_;++i){
-    in_file>>ignored; //read first entry, which could be # matsubara frequencies, or tau-point, or N/beta*tau, or...
-    for(unsigned int s0=0; s0<ns_; ++s0) {
-      for(unsigned int s1=0; s1<ns_; ++s1){
-        for(unsigned int f=0; f<nf_; ++f) {
-          in_file>>operator()(i, s0, s1, f)>>std::ws; //read the actual value
+  if (!in_file) throw std::runtime_error(std::string("Cannot open Green-function input: ") + filename);
+  std::vector<T> values;
+  values.reserve(std::size_t(nt_)*ns_*ns_*nf_);
+  for (unsigned int i=0; i<nt_; ++i) {
+    double ignored = 0.; // The first column may be an index, frequency or time.
+    if (!(in_file >> ignored) || !std::isfinite(ignored))
+      throw std::invalid_argument(std::string("Malformed Green-function coordinate in: ") + filename);
+    for (unsigned int s0=0; s0<ns_; ++s0)
+      for (unsigned int s1=0; s1<ns_; ++s1)
+        for (unsigned int f=0; f<nf_; ++f) {
+          T value{};
+          if (!(in_file >> value) || !std::isfinite(std::real(value)) || !std::isfinite(std::imag(value)))
+            throw std::invalid_argument(std::string("Malformed or nonfinite Green-function value in: ") + filename);
+          values.push_back(value);
         }
-      }
-    }
+  }
+  in_file >> std::ws;
+  if (in_file.bad()) throw std::runtime_error(std::string("Cannot read Green-function input: ") + filename);
+  if (!in_file.eof()) throw std::invalid_argument(std::string("Extra Green-function data in: ") + filename);
+  // Commit only after the complete file is valid; a failed read leaves this object unchanged.
+  auto value = values.begin();
+  for (unsigned int i=0; i<nt_; ++i)
+    for (unsigned int s0=0; s0<ns_; ++s0)
+      for (unsigned int s1=0; s1<ns_; ++s1)
+        for (unsigned int f=0; f<nf_; ++f)
+          operator()(i,s0,s1,f) = *value++;
+}
+
+/// Throw unless every value is finite; `what` names the function in the message.
+template<typename T> void require_finite(const green_function<T>& g, const std::string& what) {
+  for (unsigned int i=0; i<g.ntime(); ++i)
+    for (unsigned int s0=0; s0<g.nsite(); ++s0)
+      for (unsigned int s1=0; s1<g.nsite(); ++s1)
+        for (unsigned int f=0; f<g.nflavor(); ++f) {
+          const auto& value = g(i,s0,s1,f);
+          if (!std::isfinite(std::real(value)) || !std::isfinite(std::imag(value)))
+            throw std::invalid_argument(what + " must be finite");
+        }
+}
+
+/// Single-site solver data exchange: one vector per flavor at <prefix>_<flavor>.
+template<typename T> void write_flavor_vectors(alps::hdf5::archive& ar, const std::string& prefix,
+                                               const green_function<T>& g) {
+  if (g.nsite() != 1) throw std::invalid_argument(prefix + ": flavor vectors require one site");
+  for (unsigned int f=0; f<g.nflavor(); ++f) {
+    std::vector<T> values(g.ntime());
+    for (unsigned int i=0; i<g.ntime(); ++i) values[i] = g(i,f);
+    ar[prefix + "_" + std::to_string(f)] << values;
   }
 }
 
+/// Read and validate <prefix>_<flavor> vectors; `g` is unchanged unless all are valid.
+template<typename T> void read_flavor_vectors(alps::hdf5::archive& ar, const std::string& prefix,
+                                              green_function<T>& g) {
+  if (g.nsite() != 1) throw std::invalid_argument(prefix + ": flavor vectors require one site");
+  constexpr bool complex = !std::is_same<T, double>::value;
+  std::vector<std::size_t> shape{g.ntime()};
+  if (complex) shape.push_back(2);
+  green_function<T> result(g.ntime(), 1, g.nflavor());
+  for (unsigned int f=0; f<g.nflavor(); ++f) {
+    const auto path = prefix + "_" + std::to_string(f);
+    if (!ar.is_data(path) || ar.is_complex(path) != complex || ar.extent(path) != shape)
+      throw std::invalid_argument(path + ": expected a " + (complex ? "complex" : "real") +
+                                  " vector of length " + std::to_string(g.ntime()));
+    std::vector<T> values;
+    ar[path] >> values;
+    for (unsigned int i=0; i<g.ntime(); ++i) result(i,f) = values[i];
+  }
+  require_finite(result, prefix);
+  g = result;
+}
+
 template<typename T> void green_function<T>::write(const char *filename) const{
-  std::ofstream out_file(filename);
-  assert(out_file.is_open()); //this is not good enough when people use -DNDEBUG.
-  if(!out_file.is_open()){ std::cerr<<"output file "<<filename<<" could not be opened!"<<std::endl; exit(1);}
+  require_finite(*this, "Green function written to text");
+  std::ofstream out_file;
+  out_file.exceptions(std::ios::failbit | std::ios::badbit);
+  out_file.open(filename);
   for(unsigned int i=0;i<nt_;++i){
     out_file << i << " ";
-    for(unsigned int s0=0; s0<ns_; ++s0) {
-      for(unsigned int s1=0; s1<ns_; ++s1){
-        for(unsigned int f=0; f<nf_; ++f) {
-          out_file<<operator()(i, s0, s1, f) << " "; 
-        }
-      }
-    }
-    out_file << std::endl;
+    for(unsigned int s0=0; s0<ns_; ++s0)
+      for(unsigned int s1=0; s1<ns_; ++s1)
+        for(unsigned int f=0; f<nf_; ++f)
+          out_file << operator()(i,s0,s1,f) << " ";
+    out_file << '\n';
   }
+  out_file.close();
 }
 
 ///for the transition period from multiple vectors to this data structure only.
@@ -256,14 +321,14 @@ template<typename T> void green_function<T>::from_multiple_vector(const std::pai
 enum shape_t {diagonal, blockdiagonal, nondiagonal};
 
 
-void print_all_green_functions(std::string const &basename, const int iteration_ctr, const matsubara_green_function_t &G0_omega,
+void print_all_green_functions(alps::run_configuration const &run, const int iteration_ctr, const matsubara_green_function_t &G0_omega,
                                const matsubara_green_function_t &G_omega, const itime_green_function_t &G0_tau, 
                                const itime_green_function_t &G_tau, const double beta, const shape_t shape=diagonal,
                                const std::string suffix="");
 void print_real_green_matsubara(std::ostream &os, const matsubara_green_function_t &v, const double beta, const shape_t shape=diagonal);
 void print_imag_green_matsubara(std::ostream &os, const matsubara_green_function_t &v, const double beta, const shape_t shape=diagonal);
-void print_tau_green_functions(std::string const &basename, const int iteration_ctr, const itime_green_function_t &G0_tau, const itime_green_function_t &G_tau, const double beta,
+void print_tau_green_functions(alps::run_configuration const &run, const int iteration_ctr, const itime_green_function_t &G0_tau, const itime_green_function_t &G_tau, const double beta,
                                const shape_t shape=nondiagonal, const std::string suffix="");
-void print_dressed_tau_green_functions(std::string const &basename, const int iteration_ctr, const itime_green_function_t &G_tau, const double beta, 
+void print_dressed_tau_green_functions(alps::run_configuration const &run, const int iteration_ctr, const itime_green_function_t &G_tau, const double beta,
                                        const shape_t shape=nondiagonal, const std::string suffix="");
 #endif

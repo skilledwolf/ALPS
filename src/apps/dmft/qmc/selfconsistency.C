@@ -25,75 +25,23 @@
 #include "types.h"
 #include <sys/types.h> 
 #include <boost/tuple/tuple.hpp>
-                                 /// @brief Run the self consistency loop for G and G0 mainly in imaginary time. Perform Fourier transformations if needed.
-                                 ///
-                                 /// @param parms contains the ALPS parameters needed for the simulation.
-                                 /// @param solver is the impurity solver (e.g. Hirsch Fye) that creates G out of G0.
-                                 /// @param hilbert is the HilbertTransformer that solves the Dyson equation, i.e. generates G0 out of G
-                                 /// @param G0 is the bare Green's function in imaginary time. It has to be provided as an initial guess
-                                 /// @param G is the Green's function, it does not have to be initialized but reasonable values will be returned upon completion of the loop
 
 
-void selfconsistency_loop(alps::Parameters& parms, ImpuritySolver& solver, HilbertTransformer& hilbert)
+void F_selfconsistency_loop(alps::run_configuration& run, ImpuritySolver& solver, HilbertTransformer& hilbert,
+                           itime_green_function_t initial)
 {
+  auto& parms = run.parameters;
   int N = static_cast<int>(parms["N"]);
-  int flavors = parms.value_or_default("FLAVORS", 2);
+  int flavors = parms["FLAVORS"].as<int>();
   double beta = static_cast<double>(parms["BETA"]);
-  double h = parms.value_or_default("H", 0.);
+  double h = parms["H"].as<double>();
   double converged = static_cast<double>(parms["CONVERGED"]);
   bool symmetrization = (bool)(parms["SYMMETRIZATION"]);
-  //bool degenerate = parms.value_or_default("DEGENERATE", false);
-  int max_it=static_cast<int>(parms.value_or_default("MAX_IT", 1000));
-  std::string basename=parms["BASENAME"];
-  if (parms.defined("H_INIT")) parms["H"]=parms["H_INIT"];
-  itime_green_function_t G0_tau = hilbert.initial_G0(parms);
-  itime_green_function_t G_tau = G0_tau;
-  itime_green_function_t G0_tau_old(G0_tau);
-  int iteration_ctr=0;
-  double max_diff;	
-  do {
-    ++iteration_ctr;
-    std::cout<<"starting iteration nr. "<<iteration_ctr<<std::endl;
-    double mu = static_cast<double>(parms["MU"]);
-    G0_tau_old = G0_tau;
-    std::cout<<"running solver"<<std::endl;
-    G_tau = solver.solve(G0_tau, parms);
-    //std::cout<<"G after solver: "<<G_tau.to_multiple_vector()<<std::endl;
-    std::cout<<"running Hilbert transform"<<std::endl;
-    G_tau = hilbert.symmetrize(G_tau, symmetrization);
-    G0_tau= hilbert(G_tau, mu, h, beta);
-    parms["H"]=h;
-    std::cout<<"comparing old and new results"<<std::endl;
-    max_diff=0;
-    for(int f=0; f<flavors;++f){
-      for(int i=0; i<N; i++) {
-        if (fabs(G0_tau(i,f)-G0_tau_old(i,f)) > max_diff)
-          max_diff = std::abs(G0_tau(i,f)-G0_tau_old(i,f));
-      }
-    }	
-    std::cout<<"maximum difference in G0_tau is: "<<max_diff<<std::endl;
-    print_tau_green_functions(basename, iteration_ctr, G0_tau_old, G_tau, beta);
-  } while (max_diff > converged  && iteration_ctr < max_it);
-  std::cout<<(max_diff > converged ? "NOT " : "")<<"converged!"<<std::endl;
-  // write G0 (to be read in as an input for a new simulation)
-  G0_tau.write(parms.value_or_default("G0TAU_output", "G0tau_output").c_str());
-}
+  //bool degenerate = parms.value_or("DEGENERATE", false);
+  int max_it=static_cast<int>(run.execution["max_iterations"].as<int>());
 
-
-
-void F_selfconsistency_loop(alps::Parameters& parms, ImpuritySolver& solver, HilbertTransformer& hilbert)
-{
-  int N = static_cast<int>(parms["N"]);
-  int flavors = parms.value_or_default("FLAVORS", 2);;
-  double beta = static_cast<double>(parms["BETA"]);
-  double h = parms.value_or_default("H", 0.0);
-  double converged = static_cast<double>(parms["CONVERGED"]);
-  bool symmetrization = (bool)(parms["SYMMETRIZATION"]);
-  //bool degenerate = parms.value_or_default("DEGENERATE", false);
-  int max_it=static_cast<int>(parms.value_or_default("MAX_IT", 1000));
-  std::string basename=parms["BASENAME"];
-  if (parms.defined("H_INIT")) parms["H"]=parms["H_INIT"];
-  itime_green_function_t G_tau = hilbert.initial_G0(parms);
+  if (parms.exists("H_INIT")) parms["H"]=parms["H_INIT"];
+  itime_green_function_t G_tau = std::move(initial);
   itime_green_function_t G_tau_old(G_tau.ntime(), G_tau.nsite(), G_tau.nflavor());
   int iteration_ctr=0;
   double max_diff;
@@ -115,12 +63,12 @@ void F_selfconsistency_loop(alps::Parameters& parms, ImpuritySolver& solver, Hil
       }
     }
     std::cout<<"maximum difference in G_tau is: "<<max_diff<<std::endl;
-    print_dressed_tau_green_functions(basename, iteration_ctr, G_tau, beta);
+    print_dressed_tau_green_functions(run, iteration_ctr, G_tau, beta);
     parms["H"]=h;
   } while (max_diff > converged && iteration_ctr < max_it);
   std::cout<<(max_diff > converged ? "NOT " : "")<<"converged!"<<std::endl;
   // write G (to be read in as an input for a new simulation)
-  G_tau.write(parms.value_or_default("G0TAU_output", "G0tau_output").c_str());
+  if (run.output.exists("final_tau")) G_tau.write(run.output["final_tau"].as<std::string>().c_str());
 
 }
 
@@ -133,26 +81,27 @@ void F_selfconsistency_loop(alps::Parameters& parms, ImpuritySolver& solver, Hil
 /// @param G0_omega is the bare Green's function in Matsubara frequency. It has to be provided as an initial guess
 /// @param G_omega is the dressed Green's function, it does not have to be initialized but reasonable values will be returned upon completion of the loop
 
-void selfconsistency_loop_omega(alps::Parameters& parms, MatsubaraImpuritySolver& solver, 
-                                FrequencySpaceHilbertTransformer& hilbert) 
+void selfconsistency_loop_omega(alps::run_configuration& run, MatsubaraImpuritySolver& solver,
+                                FrequencySpaceHilbertTransformer& hilbert, matsubara_green_function_t initial)
 {
-  unsigned int n_tau=boost::lexical_cast<unsigned int>(parms["N"]);
-  unsigned int n_matsubara=boost::lexical_cast<unsigned int>(parms["NMATSUBARA"]);
-  unsigned int n_orbital=parms.value_or_default("FLAVORS", 2);
-  unsigned int n_site=parms.value_or_default("SITES", 1);
+  auto& parms = run.parameters;
+  unsigned int n_tau=parms["N"].as<unsigned int>();
+  unsigned int n_matsubara=parms["NMATSUBARA"].as<unsigned int>();
+  unsigned int n_orbital=parms["FLAVORS"].as<unsigned int>();
+  unsigned int n_site=parms["SITES"].as<unsigned int>();
   
   double beta = static_cast<double>(parms["BETA"]);
-  double h = parms.value_or_default("H", 0.);
+  double h = parms["H"].as<double>();
   double mu = static_cast<double>(parms["MU"]);
   double converged = static_cast<double>(parms["CONVERGED"]);
   bool symmetrization = (bool)(parms["SYMMETRIZATION"]);
-  //bool degenerate = parms.value_or_default("DEGENERATE", false);
-  double relax_rate=static_cast<double>(parms.value_or_default("RELAX_RATE", 1.));
-  int max_it=static_cast<int>(parms.value_or_default("MAX_IT", 1000));
-  std::string basename=parms["BASENAME"];
+  //bool degenerate = parms.value_or("DEGENERATE", false);
+  double relax_rate=parms["RELAX_RATE"].as<double>();
+  int max_it=static_cast<int>(run.execution["max_iterations"].as<int>());
+
   
-  if (parms.defined("H_INIT")) parms["H"]=parms["H_INIT"];
-  matsubara_green_function_t G0_omega = hilbert.initial_G0(parms);
+  if (parms.exists("H_INIT")) parms["H"]=parms["H_INIT"];
+  matsubara_green_function_t G0_omega = std::move(initial);
   G0_omega = hilbert.symmetrize(G0_omega, symmetrization);
   
   //define multiple vectors
@@ -167,8 +116,6 @@ void selfconsistency_loop_omega(alps::Parameters& parms, MatsubaraImpuritySolver
   FourierTransformer::generate_transformer(parms, fourier_ptr);
   fourier_ptr->backward_ft(G0_tau, G0_omega);
   
-  if (parms.defined("G0TAU_input"))           // it is not needed to store it by default, as it will be stored in the 1st iteration as G0_tau_1
-    G0_tau.write((parms["G0TAU_input"]).c_str());
   
   double max_diff=0.;	
   int iteration_ctr = 0;
@@ -219,10 +166,9 @@ void selfconsistency_loop_omega(alps::Parameters& parms, MatsubaraImpuritySolver
       std::cout<<"convergence loop: max diff in dressed Green (Matsubara freq): "
       <<max_diff<<"\t(convergency criterion: "<<converged<<")"<<std::endl<<std::flush;
     }
-    print_all_green_functions(basename, iteration_ctr, G0_omega_old, G_omega, G0_tau_old, G_tau, beta);
+    print_all_green_functions(run, iteration_ctr, G0_omega_old, G_omega, G0_tau_old, G_tau, beta);
   }while ((max_diff > converged || iteration_ctr <= 1) && iteration_ctr < max_it);           
   // write G0 (to be read as an input Green function)
-  G0_omega.write(parms.value_or_default("G0OMEGA_output", "G0omega_output").c_str());
+  if (run.output.exists("final_omega")) G0_omega.write(run.output["final_omega"].as<std::string>().c_str());
 }
-
 

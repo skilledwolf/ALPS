@@ -15,6 +15,7 @@
 
 #include <boost/math/constants/constants.hpp>
 #include "interaction_expansion.hpp"
+#include "scheduler_scientific.h"
 #include <ctime>
 #include "xml.h"
 
@@ -46,7 +47,7 @@ InteractionExpansionRun::InteractionExpansionRun(const alps::ProcessList &where,
     temperature(1./beta),
     onsite_U((double)parms["U"]),                        
     alpha((double)parms["ALPHA"]),
-    U(parms),                         
+    U(scheduler_scientific(parms), scheduler_input(parms)),
     recalc_period(parms.value_or_default("RECALC_PERIOD",5000)),
     measurement_period(parms.value_or_default("MEASUREMENT_PERIOD",200)),        
     convergence_check_period(parms.value_or_default("CONVERGENCE_CHECK_PERIOD",recalc_period)),        
@@ -76,7 +77,7 @@ InteractionExpansionRun::InteractionExpansionRun(const alps::ProcessList &where,
   if(!parms.defined("ATOMIC")) {
     std::istringstream in_omega(parms["G0(omega)"]);
     read_freq(in_omega, bare_green_matsubara);
-    FourierTransformer::generate_transformer(parms, fourier_ptr);
+    FourierTransformer::generate_transformer(scheduler_scientific(parms), fourier_ptr);
     fourier_ptr->backward_ft(bare_green_itime, bare_green_matsubara);
   }
   else {

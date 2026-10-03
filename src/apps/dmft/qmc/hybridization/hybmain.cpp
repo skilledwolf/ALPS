@@ -13,8 +13,9 @@ int main(int argc, char** argv) {
     std::string filename;
     for(int i=1;i<argc;++i){
       const std::string arg=argv[i];
+      if(arg=="--schema") { std::cout << alps::cthyb::schema(); return 0; }
       if(arg=="--help" || arg=="-h"){
-        std::cout<<"Usage: hybridization [--validate] run.toml\n"
+        std::cout<<"Usage: hybridization [--validate] run.toml | hybridization --schema\n"
                  <<"Input, output, and execution settings belong in the TOML run file.\n";
         return 0;
       }
@@ -26,8 +27,6 @@ int main(int argc, char** argv) {
     if(filename.empty()) throw std::invalid_argument("No TOML run file specified");
     auto run=alps::load_run_configuration(filename,alps::cthyb::schema());
     alps::cthyb::prepare_run(run);
-    if(std::filesystem::weakly_canonical(filename)==std::filesystem::weakly_canonical(run.output["results"].as<std::string>()))
-      throw std::invalid_argument("Output must not replace the TOML run file");
     if(validate){std::cout<<"Valid CT-HYB configuration: "<<filename<<'\n'; return 0;}
 #ifdef ALPS_HAVE_MPI
     boost::mpi::environment env(argc, argv);

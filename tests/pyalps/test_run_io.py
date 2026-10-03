@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 
 from pyalps import run_config
-from pyalps.run_io import write_run_file, write_run_files
+from pyalps.run_io import read_job_manifest, write_run_file, write_run_files
 
 
 SCHEMA = '''
@@ -58,12 +58,12 @@ def test_round_trip_types_quoted_keys_paths_and_defaults(tmp_path):
     text = file.read_text(encoding="utf-8")
     assert "schema_version" not in text
     assert "application" not in text
-    assert '"J"' not in text
-    assert '"data" = "data.h5"' in text
+    assert str(file.parent) not in text
     loaded = run_config.load(str(file), SCHEMA)
     assert loaded.parameters["SWEEPS"] == 12
     assert type(loaded.parameters["SWEEPS"]) is int
     assert loaded.parameters["J"] == 1.0
+    assert loaded.origins["parameters.J"] == "default"
     assert loaded.parameters[key] == "Sz"
     assert loaded.parameters["label"] == values["label"]
     assert loaded.parameters["offset"] == 4 + 0j
@@ -175,45 +175,43 @@ def test_reject_symlink_output_aliases(tmp_path):
     assert list(tmp_path.iterdir()) == [alias]
 
 
-def test_publish_race_preserves_other_writer_and_cleans_new_files(tmp_path, monkeypatch):
-    from pyalps import run_io
-
-    original_link = run_io.os.link
-    destination = tmp_path / "batch.task2.toml"
-
-    def link(source, target):
-        if target == destination:
-            destination.write_text("other writer", encoding="utf-8")
-        original_link(source, target)
-
-    monkeypatch.setattr(run_io.os, "link", link)
+def test_schema_is_optional_and_omits_the_manifest_application(tmp_path):
     runs = [{"parameters": {"SWEEPS": 2}, "output": {"results": "a.h5"}},
             {"parameters": {"SWEEPS": 3}, "output": {"results": "b.h5"}}]
-    with pytest.raises(FileExistsError):
-        write_run_files(tmp_path / "batch", runs, SCHEMA)
-    assert destination.read_text(encoding="utf-8") == "other writer"
-    assert list(tmp_path.iterdir()) == [destination]
+    manifest = write_run_files(tmp_path / "batch", runs)
+    assert "application" not in manifest.read_text(encoding="utf-8")
+    application, files = read_job_manifest(manifest)
+    assert application is None
+    assert [run_config.load(file, SCHEMA).parameters["SWEEPS"] for file in files] == [2, 3]
+    with pytest.raises(ValueError, match="multiple runs"):
+        write_run_files(tmp_path / "other", [runs[0], runs[0]])
 
 
-def test_cleanup_does_not_delete_a_replaced_file(tmp_path, monkeypatch):
-    from pyalps import run_io
+def test_relative_outputs_are_anchored_at_the_run_file(tmp_path, monkeypatch):
+    # data.h5 in the writer's directory is a different file from the run's data.h5.
+    monkeypatch.chdir(tmp_path)
+    path = write_run_file(tmp_path / "runs" / "run.toml", SCHEMA, parameters={"SWEEPS": 2},
+                          input={"data": str(tmp_path / "data.h5")}, output={"results": "data.h5"})
+    assert Path(run_config.load(path, SCHEMA).output["results"]) == path.parent / "data.h5"
 
-    original_link = run_io.os.link
-    first = tmp_path / "batch.task1.toml"
-    second = tmp_path / "batch.task2.toml"
 
-    def link(source, target):
-        if target == second:
-            replacement = tmp_path / "replacement"
-            replacement.write_text("replacement owner's data", encoding="utf-8")
-            replacement.replace(first)
-            raise OSError("publication interrupted")
-        original_link(source, target)
+def test_job_manifest_lists_runs_relative_to_the_manifest(tmp_path):
+    manifest = tmp_path / "job.job.toml"
+    manifest.write_text('application = "writer-test"\n[[runs]]\nfile = "run with spaces.toml"\n'
+                        '[[runs]]\nfile = "second.toml"\n', encoding="utf-8")
+    assert read_job_manifest(manifest) == (
+        "writer-test", [(tmp_path / "run with spaces.toml").resolve(), (tmp_path / "second.toml").resolve()])
 
-    monkeypatch.setattr(run_io.os, "link", link)
-    runs = [{"parameters": {"SWEEPS": 2}, "output": {"results": "a.h5"}},
-            {"parameters": {"SWEEPS": 3}, "output": {"results": "b.h5"}}]
-    with pytest.raises(OSError, match="publication interrupted"):
-        write_run_files(tmp_path / "batch", runs, SCHEMA)
-    assert first.read_text(encoding="utf-8") == "replacement owner's data"
-    assert list(tmp_path.iterdir()) == [first]
+
+@pytest.mark.parametrize("contents, message", [
+    ('application="a"\nruns=[]\n', "nonempty"),
+    ('application=""\n[[runs]]\nfile="run.toml"\n', "application"),
+    ('unknown=true\n[[runs]]\nfile="run.toml"\n', "unknown job-manifest"),
+    ('[[runs]]\nfile="run.toml"\nextra=true\n', "only file"),
+    ('[[runs]]\nfile="run.toml"\n[[runs]]\nfile="./run.toml"\n', "duplicate"),
+])
+def test_invalid_job_manifests_are_rejected(tmp_path, contents, message):
+    manifest = tmp_path / "bad.job.toml"
+    manifest.write_text(contents, encoding="utf-8")
+    with pytest.raises(ValueError, match=message):
+        read_job_manifest(manifest)

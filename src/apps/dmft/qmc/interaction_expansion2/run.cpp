@@ -60,15 +60,19 @@ void alps::solvers::ctint(const run_configuration &supplied) {
 
   // All MPI ranks participate in collection; only root writes results.
   auto results = collect_results(s);
+  std::string output_error;
   if (rank==0) {
-    const auto output_file = run.output["results"].as<std::string>();
-    save_results(results, run.parameters, output_file, "/simulation/results");
-    if (results["Sign"].count() != 0)
-      compute_greens_functions(results, run.parameters, run.input, run.output);
-    alps::hdf5::archive archive(output_file, "a");
-    archive["/run_config"] << run;
+    try {
+      const auto output_file = run.output["results"].as<std::string>();
+      save_results(results, run.parameters, output_file, "/simulation/results");
+      if (results["Sign"].count() != 0)
+        compute_greens_functions(results, run.parameters, run.input, run.output);
+      alps::hdf5::archive archive(output_file, "a");
+      archive["/run_config"] << run;
+    } catch (const std::exception& error) { output_error = error.what(); }
   }
 #ifdef ALPS_HAVE_MPI
-  c.barrier();
+  boost::mpi::broadcast(c, output_error, 0);
 #endif
+  if (!output_error.empty()) throw std::runtime_error(output_error);
 }

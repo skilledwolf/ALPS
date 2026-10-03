@@ -180,11 +180,6 @@ type = "string"
 default = "text"
 choices = ["text", "hdf5"]
 
-[input.delta_layout]
-type = "string"
-default = "vectors"
-choices = ["vectors", "dmft"]
-
 [input.delta_coordinate]
 type = "string"
 default = "index"

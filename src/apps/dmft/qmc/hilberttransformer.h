@@ -34,43 +34,30 @@
 
 /// @brief performs a Hilbert transformation
 ///
-/// The HilbertTransformer performs a Hilbert transformation for the self energy and density of states
+/// The imaginary-time loop solves with a hybridization solver, which applies the
+/// self-consistency itself; the transformer supplies the initial G0 and symmetrizes.
 class HilbertTransformer
 {
 public:
-  /// the function call operator performs a Hilbert transformation of the self energy 
-  /// and chemical potential given as parameters. The density of states is constant for
-  /// each object and usually specified in the constructor of a derived class
-  ///
-  /// @param G_tau the Greens function as a function of imaginary time tau 
-  /// @param mu the chemical potential, h the magnetic field, beta the inverse temperature
-  /// @return the result of the Hilbert transform (G0_tau)
-  virtual itime_green_function_t operator()(const itime_green_function_t& G_tau, 
-                                            double mu, double h, double beta) const=0;
   itime_green_function_t symmetrize(const itime_green_function_t& G_tau, const bool symmetrization) const;
-  virtual itime_green_function_t initial_G0(const alps::Parameters& parms) const;
+  virtual itime_green_function_t initial_G0(const alps::params& parms, const alps::params& input) const=0;
   virtual ~HilbertTransformer() {}
 };
 
 
 
-/// A Hilbert transformation for a semicircle density of states
-/// It receives G(\tau) as input and returns G0(\tau)
+/// The imaginary-time transformer for a semicircle density of states
 class SemicircleHilbertTransformer : public HilbertTransformer 
 {
 public:
   /// the constructor accepts the bandwidth
-  SemicircleHilbertTransformer(alps::Parameters& parms) 
+  explicit SemicircleHilbertTransformer(alps::params& parms)
     : bethe_parms(parms,true)
   {
     bethe_parms.set_parms(parms);
   }
   
-  ///operator() implements abstract virtual operator() of base class HilbertTransformer 
-  ///and performs the actual Hilbert transformation.
-  itime_green_function_t operator()(const itime_green_function_t& G_tau, 
-                                    double mu, double h, double beta) const;
-  itime_green_function_t initial_G0(const alps::Parameters& parms) const;
+  itime_green_function_t initial_G0(const alps::params& parms, const alps::params& input) const;
   
 private:
   SemicircleBandstructure bethe_parms;
@@ -100,7 +87,7 @@ public:
   virtual matsubara_green_function_t operator()(const matsubara_green_function_t & G_omega, 
                                                 matsubara_green_function_t &G0_omega, 
                                                 const double mu, const double h, const double beta) const=0;
-  virtual matsubara_green_function_t initial_G0(const alps::Parameters& parms) const=0;
+  virtual matsubara_green_function_t initial_G0(const alps::params& parms, const alps::params& input) const=0;
   
   template <class T>
   green_function<T> symmetrize(const green_function<T>& G, const bool symmetrization) const
@@ -131,14 +118,14 @@ public:
 class GeneralFSHilbertTransformer : public FrequencySpaceHilbertTransformer {
 public:
   
-  GeneralFSHilbertTransformer(const alps::Parameters& parms, bool /*ignored*/);
-  GeneralFSHilbertTransformer(alps::Parameters& parms);
+  GeneralFSHilbertTransformer(const alps::params& parms, const alps::params& input, bool /*ignored*/);
+  GeneralFSHilbertTransformer(alps::params& parms, const alps::params& input);
   virtual ~GeneralFSHilbertTransformer() {}
   
   virtual matsubara_green_function_t operator()(const matsubara_green_function_t & G_omega, 
                                                 matsubara_green_function_t &G0_omega, 
                                                 const double mu, const double h, const double beta) const;
-  virtual matsubara_green_function_t initial_G0(const alps::Parameters& parms) const;
+  virtual matsubara_green_function_t initial_G0(const alps::params& parms, const alps::params& input) const;
 
 private:
   bool AFM;
@@ -154,7 +141,7 @@ private:
 ///       The effect on the convergency rate not fully explored.
 class SemicircleFSHilbertTransformer : public FrequencySpaceHilbertTransformer {
 public:
-  SemicircleFSHilbertTransformer(alps::Parameters& parms)
+  explicit SemicircleFSHilbertTransformer(alps::params& parms)
     : bandstruct(parms) 
   {
     bandstruct.set_parms(parms);
@@ -165,7 +152,7 @@ public:
                                                 matsubara_green_function_t &G0_omega_ignored, 
                                                 const double mu, const double h, const double beta) const;
   
-  virtual matsubara_green_function_t initial_G0(const alps::Parameters& parms) const;
+  virtual matsubara_green_function_t initial_G0(const alps::params& parms, const alps::params& input) const;
   
 private:
   SemicircleBandstructure bandstruct;

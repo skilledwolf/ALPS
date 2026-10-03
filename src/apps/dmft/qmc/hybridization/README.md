@@ -38,9 +38,8 @@ resolved four-section configuration, including provenance.
 Text Delta input has `N_TAU + 1` rows, with a coordinate and one nonpositive value
 per orbital. Coordinates are consecutive indices starting at zero by default.
 Set `input.delta_coordinate = "tau"` for a uniform grid from zero to `BETA`.
-For HDF5, set `input.delta_format = "hdf5"`; the default layout uses vectors
-`/Delta_0`, `/Delta_1`, etc. `input.delta_layout = "dmft"` selects the existing
-`/Delta` Green-function layout. Both layouts are dimension checked.
+For HDF5, set `input.delta_format = "hdf5"` and supply dimension-checked vectors
+`/Delta_0`, `/Delta_1`, etc.
 
 Optional `input.interaction_matrix`, `input.chemical_potential`, and
 `input.retarded_interaction` replace the corresponding scalar model input or add
@@ -55,6 +54,7 @@ HDF5 archives of legacy run parameters are no longer accepted as run input.
 Native callers use `alps::cthyb::prepare_run(run)` and
 `alps::solvers::cthyb(run)`. Python callers use `pyalps.cthyb.prepare` with
 separate `parameters`, `input`, `output`, and `execution` dictionaries, then
-`pyalps.cthyb.solve(run)`, or pass a TOML filename directly to `solve`.
+`pyalps.cthyb.solve(run)`; `pyalps.run_config.load(file, pyalps.cthyb.schema())`
+loads a TOML run file for `solve`.
 The current solver does not serialize its segment configuration for restart;
 result files do not provide a restart checkpoint.

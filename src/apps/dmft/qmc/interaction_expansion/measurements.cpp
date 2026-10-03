@@ -14,6 +14,7 @@
 *****************************************************************************/
 
 #include "interaction_expansion.hpp"
+#include "scheduler_scientific.h"
 #include <complex>
 #include <alps/alea.h>
 #include <alps/alea/simpleobseval.h>
@@ -69,7 +70,7 @@ std::pair<matsubara_green_function_t,itime_green_function_t> InteractionExpansio
   matsubara_green_function_t green_matsubara_measured(n_matsubara, n_site, n_flavors);
   boost::shared_ptr<FourierTransformer> fourier_ptr;
   boost::shared_ptr<FourierTransformer> fourier_ptr_g0;
-  FourierTransformer::generate_transformer(p_, fourier_ptr_g0);
+  FourierTransformer::generate_transformer(scheduler_scientific(p_), fourier_ptr_g0);
   //find whether our data is in imaginary time or frequency:
   bool measure_in_matsubara=true;
   if(p_.value_or_default("HISTOGRAM_MEASUREMENT", false)) 
@@ -89,13 +90,9 @@ std::pair<matsubara_green_function_t,itime_green_function_t> InteractionExpansio
   alps::RealObsevaluator sign_obseval=gathered_measurements["Sign"];
   std::valarray<double> mean_order(pert_obseval.mean());
   std::cout<<"average matrix size was: "<<std::endl;
-  std::ofstream matrix_size("matrix_size", std::ios::app);
-  for(unsigned int i=0;i<n_flavors;++i){
+  for(unsigned int i=0;i<n_flavors;++i)
     std::cout<<mean_order[i]<<"\t";
-    matrix_size<<mean_order[i]<<"\t";
-  }
   std::cout<<std::endl;
-  matrix_size<<std::endl;
   std::cout<<"average sign was: "<<sign_obseval.mean()<<"+-"<<sign_obseval.error()<<std::endl;
   //single particle Green function measurements
   matsubara_green_function_t bare_green_matsubara(n_matsubara, n_site, n_flavors);
@@ -123,7 +120,7 @@ std::pair<matsubara_green_function_t,itime_green_function_t> InteractionExpansio
       densities[z] /= n_site;
     }
   }
-  FourierTransformer::generate_transformer_U(p_, fourier_ptr, densities);
+  FourierTransformer::generate_transformer_U(scheduler_scientific(p_), fourier_ptr, densities);
   if (measure_in_matsubara) {
     fourier_ptr->append_tail(green_matsubara_measured, bare_green_matsubara, n_matsubara_measurements);
     fourier_ptr->backward_ft(green_itime_measured, green_matsubara_measured);

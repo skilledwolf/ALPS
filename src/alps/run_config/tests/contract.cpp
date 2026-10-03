@@ -3,6 +3,7 @@
 #include <alps/run_config.hpp>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <stdexcept>
 const char *schema = R"(
 application="test"
@@ -25,6 +26,8 @@ type="path"
 [output.results]
 type="path"
 default="results.h5"
+[output.log]
+type="path"
 [execution]
 )";
 void require(bool ok) {
@@ -68,6 +71,10 @@ int main() {
     rejects([&] { load("[parameters]\ncount=1\ntypo=2"); }, "unknown key");
     rejects([&] { load("[parameters]\ncount=1\n[output]\nresults=\"run-config-contract.toml\""); },
             "replace the TOML run file");
+    rejects([&] { load("[parameters]\ncount=1\n[input]\ndata=\"x.h5\"\n[output]\nresults=\"./x.h5\""); },
+            "replace input.data");
+    rejects([&] { load("[parameters]\ncount=1\n[output]\nlog=\"results.h5\""); },
+            "must not replace output.");
     rejects([&] { load("[parameters]\n"); }, "required");
     // Run files cannot override the executable's schema identity or version.
     for (const auto *metadata : {"format_version=1", "schema_version=7", "application=\"test\""})
@@ -135,7 +142,16 @@ int main() {
     supplied["count"] = 2;
     auto effective = alps::resolve_parameters(supplied, schema);
     require(effective["rate"].as<double>() == 0.5 && !supplied.exists("rate"));
+    supplied["parent_only"] = "ignored";
+    const auto selected = alps::select_parameters(supplied, schema);
+    require(selected.size() == 1 && selected["count"].as<std::int64_t>() == 2);
+    require(!selected.exists("rate") && !selected.exists("parent_only"));
+    require(alps::select_parameters({}, schema).empty()); // no required checks or defaults
+    require(alps::select_parameters(supplied, schema, "execution").empty());
+    rejects([&] { alps::resolve_parameters(supplied, schema); }, "unknown key");
+    supplied.erase("parent_only");
     supplied["count"] = "2";
+    require(alps::select_parameters(supplied, schema)["count"].as<std::string>() == "2");
     rejects([&] { alps::resolve_parameters(supplied, schema); }, "count");
     rejects(
         [&] {
@@ -163,5 +179,106 @@ min=9007199254740993
 )");
         },
         "minimum");
+    const char *serialization_schema = R"(
+application="serialization-contract"
+schema_version=1
+[parameters]
+"MEASURE[spin \"α\"]\u0001"={type="string"}
+message={type="string"}
+minimum={type="int64"}
+maximum={type="int64"}
+exact={type="int64"}
+unsigned={type="int64"}
+unsigneds={type="int64[]"}
+ints={type="int64[]"}
+reals={type="float64[]"}
+booleans={type="bool[]"}
+z={type="complex128"}
+zs={type="complex128[]"}
+names={type="string[]"}
+empty={type="string[]"}
+[input]
+data={type="string"}
+[output]
+results={type="string"}
+[execution]
+seed={type="int64"}
+)";
+    alps::run_configuration raw;
+    const std::string measurement = "MEASURE[spin \"α\"]\x01";
+    raw.parameters[measurement] = "Sz";
+    raw.parameters["message"] = std::string("Unicode 🎲; \\\n\t\r\"'''\x01\x7f") + '\0';
+    raw.parameters["minimum"] = std::numeric_limits<std::int64_t>::min();
+    raw.parameters["maximum"] = std::numeric_limits<std::int64_t>::max();
+    raw.parameters["exact"] = std::int64_t(9007199254740993LL);
+    raw.parameters["unsigned"] = std::uint64_t(9007199254740993ULL);
+    raw.parameters["unsigneds"] = std::vector<std::uint64_t>{0, 9007199254740993ULL};
+    raw.parameters["ints"] = std::vector<std::int64_t>{-1, 0, 9007199254740993LL};
+    raw.parameters["reals"] = std::vector<double>{-0.0, std::nextafter(1., 2.),
+        std::numeric_limits<double>::min(), std::numeric_limits<double>::max()};
+    raw.parameters["booleans"] = std::vector<bool>{true, false};
+    raw.parameters["z"] = std::complex<double>(1., -2.);
+    raw.parameters["zs"] = std::vector<std::complex<double>>{{-0.0, 2.}, {3., -4.}};
+    raw.parameters["names"] = std::vector<std::string>{"a,b", "c\n\"d"};
+    raw.parameters["empty"] = std::vector<std::string>{};
+    raw.input["data"] = "data.h5";
+    raw.output["results"] = "results.h5";
+    raw.execution["seed"] = std::int64_t(17);
+    const auto formatted = alps::format_run_configuration(raw);
+    const auto roundtrip = load(formatted, serialization_schema);
+    raw.parameters["unsigned"] = raw.parameters["unsigned"].as<std::int64_t>();
+    raw.parameters["unsigneds"] = raw.parameters["unsigneds"].as<std::vector<std::int64_t>>();
+    require(roundtrip.parameters == raw.parameters && roundtrip.input == raw.input);
+    require(roundtrip.output == raw.output && roundtrip.execution == raw.execution);
+    require(std::signbit(roundtrip.parameters["reals"].as<std::vector<double>>().front()));
+    require(std::signbit(roundtrip.parameters["zs"].as<std::vector<std::complex<double>>>().front().real()));
+    for (const auto *section : {"parameters", "input", "output", "execution"})
+        require(alps::format_run_configuration({}).find(std::string("[") + section + "]") != std::string::npos);
+    alps::run_configuration bad;
+    bad.parameters["unset"];
+    rejects([&] { alps::format_run_configuration(bad); }, "parameters.unset");
+    bad.parameters.erase("unset");
+    bad.parameters["unsigned"] = std::numeric_limits<std::uint64_t>::max();
+    rejects([&] { alps::format_run_configuration(bad); }, "signed 64-bit");
+    bad.parameters["unsigned"] = std::vector<std::uint64_t>{0, std::uint64_t(1) << 63};
+    rejects([&] { alps::format_run_configuration(bad); }, "signed 64-bit");
+    bad.parameters.erase("unsigned");
+    bad.parameters["invalid_utf8"] = std::string("\xff");
+    rejects([&] { alps::format_run_configuration(bad); }, "roundtrip exactly");
+    bad.parameters.erase("invalid_utf8");
+    bad.parameters[std::string("\xff")] = "bad key";
+    rejects([&] { alps::format_run_configuration(bad); }, "roundtrip exactly");
+    bad.parameters.erase(std::string("\xff"));
+    bad.parameters["invalid_utf8"] = std::vector<std::string>{"valid", std::string("\xff")};
+    rejects([&] { alps::format_run_configuration(bad); }, "roundtrip exactly");
+    bad.parameters.erase("invalid_utf8");
+    // Some TOML providers use a strtod fallback that rejects subnormal values.
+    // Such providers must reject formatting too, rather than emit unreadable runs.
+    bool parses_subnormal = true;
+    try {
+        load("[parameters]\ncount=1\nrate=4.9406564584124654e-324\n");
+    } catch (const std::exception &) {
+        parses_subnormal = false;
+    }
+    alps::run_configuration subnormal;
+    subnormal.parameters["count"] = 1;
+    subnormal = alps::resolve_run_configuration(subnormal, schema);
+    subnormal.parameters["rate"] = std::numeric_limits<double>::denorm_min();
+    if (parses_subnormal)
+        require(load(alps::format_run_configuration(subnormal)).parameters["rate"].as<double>() ==
+                std::numeric_limits<double>::denorm_min());
+    else
+        rejects([&] { alps::format_run_configuration(subnormal); }, "TOML provider");
+    for (const auto nonfinite : {std::numeric_limits<double>::infinity(),
+                                 std::numeric_limits<double>::quiet_NaN()}) {
+        bad.input["bad"] = nonfinite;
+        rejects([&] { alps::format_run_configuration(bad); }, "finite");
+        bad.input["bad"] = std::vector<double>{1., nonfinite};
+        rejects([&] { alps::format_run_configuration(bad); }, "finite");
+        bad.input["bad"] = std::complex<double>(1., nonfinite);
+        rejects([&] { alps::format_run_configuration(bad); }, "finite");
+        bad.input["bad"] = std::vector<std::complex<double>>{{nonfinite, 0.}};
+        rejects([&] { alps::format_run_configuration(bad); }, "finite");
+    }
     std::filesystem::remove(file);
 }

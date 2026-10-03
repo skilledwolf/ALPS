@@ -11,8 +11,9 @@ int main(int argc, char **argv) {
         std::string file;
         for (int i = 1; i < argc; ++i) {
             const std::string arg = argv[i];
+            if (arg == "--schema") { std::cout << alps::maxent::schema(); return 0; }
             if (arg == "--help" || arg == "-h") {
-                std::cout << "Usage: maxent [--validate] run.toml\n"
+                std::cout << "Usage: maxent [--validate] run.toml | maxent --schema\n"
                           << "Input, output and execution settings belong in the TOML run file.\n";
                 return 0;
             }
@@ -31,9 +32,6 @@ int main(int argc, char **argv) {
         if (file.empty())
             throw std::invalid_argument("No TOML run file specified");
         auto run = alps::load_run_configuration(file, alps::maxent::schema());
-        const auto output = run.output["results"].as<std::string>();
-        if (std::filesystem::weakly_canonical(file) == std::filesystem::weakly_canonical(output))
-            throw std::invalid_argument("output must not replace the TOML run file");
         if (validate) {
             alps::maxent::prepare_run(run);
             std::cout << "Valid MaxEnt configuration: " << file << '\n';

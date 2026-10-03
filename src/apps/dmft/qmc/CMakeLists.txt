@@ -18,6 +18,7 @@
 #   DEALINGS IN THE SOFTWARE.
 
 set(DMFT_QMC_SOURCE
+    run_config.C
     externalsolver.C
     fouriertransform.C
     hilberttransformer.C
@@ -79,11 +80,21 @@ install(TARGETS alps_cthyb alps_ctint EXPORT ALPSTargets
 
 #Interaction Expansion
 add_library(interaction_expansion_impl STATIC ${DMFT_QMC_INTERACTION_EXPANSION_SOURCE})
-target_link_libraries(interaction_expansion_impl PUBLIC ALPS::alps)
+target_link_libraries(interaction_expansion_impl PUBLIC ALPS::alps ALPS::run_config)
 
-target_link_libraries(dmft_qmc_impl PUBLIC ALPS::alps)
+find_package(tomlplusplus 3.4 CONFIG REQUIRED)
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/schema/dmft.toml" ALPS_DMFT_SCHEMA)
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/schema/hirschfye.toml" ALPS_HIRSCHFYE_SCHEMA)
+configure_file(schema.hpp.in "${CMAKE_CURRENT_BINARY_DIR}/dmft_schema.hpp" @ONLY)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+  "${CMAKE_CURRENT_SOURCE_DIR}/schema/dmft.toml" "${CMAKE_CURRENT_SOURCE_DIR}/schema/hirschfye.toml")
+target_include_directories(dmft_qmc_impl
+  PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_CURRENT_BINARY_DIR}"
+  PRIVATE "$<TARGET_PROPERTY:tomlplusplus::tomlplusplus,INTERFACE_INCLUDE_DIRECTORIES>")
+target_link_libraries(dmft_qmc_impl PUBLIC ALPS::alps ALPS::cthyb ALPS::ctint ALPS::run_config)
+install(FILES schema/dmft.toml schema/hirschfye.toml
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/alps/schemas COMPONENT applications)
 
-target_include_directories(dmft_qmc_impl PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 target_include_directories(interaction_expansion_impl PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 
 add_executable(dmft main.C selfconsistency.C)
@@ -99,21 +110,27 @@ target_link_libraries(hybridization PRIVATE ALPS::cthyb)
 target_link_libraries(interaction PRIVATE ALPS::ctint)
 
 if(ALPS_BUILD_TESTING)
+  find_package(Python3 COMPONENTS Interpreter REQUIRED)
+  add_test(NAME dmft_cli_contract COMMAND ${Python3_EXECUTABLE}
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/dmft_cli_contract.py"
+    $<TARGET_FILE:dmft> $<TARGET_FILE:hybridization> $<TARGET_FILE:dmft_externalsolver_protocol>)
+  set_tests_properties(dmft_cli_contract PROPERTIES TIMEOUT 180 LABELS "dmft;run_config")
+  add_executable(dmft_hirschfye_fixture tests/hirschfye_fixture.cpp)
+  target_link_libraries(dmft_hirschfye_fixture PRIVATE dmft_qmc_impl)
+  add_test(NAME hirschfye_cli_contract COMMAND ${Python3_EXECUTABLE}
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/hirschfye_cli_contract.py"
+    $<TARGET_FILE:hirschfye> $<TARGET_FILE:dmft_hirschfye_fixture>)
+  set_tests_properties(hirschfye_cli_contract PROPERTIES TIMEOUT 60 LABELS "dmft;run_config")
   # Regression tests for the shared DMFT QMC infrastructure.
   add_executable(dmft_fouriertransform_offdiag_numeric dmft_fouriertransform_offdiag_numeric.C)
   target_link_libraries(dmft_fouriertransform_offdiag_numeric PRIVATE dmft_qmc_impl)
   alps_add_test(dmft_fouriertransform_offdiag_numeric)
   set_property(TEST dmft_fouriertransform_offdiag_numeric PROPERTY LABELS dmft)
 
-  add_executable(dmft_hilberttransformer_itime_throw dmft_hilberttransformer_itime_throw.C)
-  target_link_libraries(dmft_hilberttransformer_itime_throw PRIVATE dmft_qmc_impl)
-  alps_add_test(dmft_hilberttransformer_itime_throw)
-  set_property(TEST dmft_hilberttransformer_itime_throw PROPERTY LABELS dmft)
-
-  add_executable(dmft_externalsolver_outfile_param dmft_externalsolver_outfile_param.C)
-  target_link_libraries(dmft_externalsolver_outfile_param PRIVATE dmft_qmc_impl)
-  alps_add_test(dmft_externalsolver_outfile_param)
-  set_property(TEST dmft_externalsolver_outfile_param PROPERTY LABELS dmft)
+  add_executable(dmft_externalsolver_protocol dmft_externalsolver_protocol.C)
+  target_link_libraries(dmft_externalsolver_protocol PRIVATE dmft_qmc_impl)
+  alps_add_test(dmft_externalsolver_protocol)
+  set_property(TEST dmft_externalsolver_protocol PROPERTY LABELS dmft)
 
   add_executable(dmft_hilberttransformer_afm_multiband_numeric
                  dmft_hilberttransformer_afm_multiband_numeric.C)

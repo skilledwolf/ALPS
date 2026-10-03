@@ -1,0 +1,109 @@
+# Copyright (C) 2026 ALPS Collaboration. SPDX-License-Identifier: MIT
+# Hirsch-Fye impurity solver. The standalone executable reads exactly these
+# settings; the DMFT driver composes the parameters for its in-process solver.
+application = "hirschfye"
+schema_version = 1
+
+[parameters.BETA]
+type = "float64"
+required = true
+min = 0.0
+
+[parameters.U]
+type = "float64"
+required = true
+min = 0.0
+
+[parameters.MU]
+type = "float64"
+default = 0.0
+
+[parameters.H]
+type = "float64"
+default = 0.0
+
+[parameters.N]
+type = "int64"
+required = true
+min = 1
+max = 2147483646
+description = "Imaginary-time slices."
+
+[parameters.NMATSUBARA]
+type = "int64"
+required = true
+min = 1
+max = 2147483647
+
+[parameters.FLAVORS]
+type = "int64"
+default = 2
+choices = [2]
+
+[parameters.SITES]
+type = "int64"
+default = 1
+choices = [1]
+
+# The scheduler counts sweeps in int.
+[parameters.SWEEPS]
+type = "int64"
+required = true
+min = 1
+max = 2147483647
+
+[parameters.THERMALIZATION]
+type = "int64"
+default = 0
+min = 0
+max = 2147483647
+
+[parameters.TOLERANCE]
+type = "float64"
+default = 1e-06
+min = 0.0
+
+[parameters.MEASURE_FOURPOINT_FUNCTION]
+type = "bool"
+default = false
+
+[parameters.FOURPOINT_INTERVAL]
+type = "int64"
+default = 1000
+min = 1
+max = 2147483647
+
+# First and second band moments for the high-frequency tails.
+[parameters.EPS_0]
+type = "float64"
+
+[parameters.EPS_1]
+type = "float64"
+
+[parameters.EPSSQ_0]
+type = "float64"
+
+[parameters.EPSSQ_1]
+type = "float64"
+
+[input.g0]
+type = "path"
+required = true
+description = "HDF5 file with complex /G0_0 and /G0_1 vectors of NMATSUBARA values."
+
+[output.results]
+type = "path"
+required = true
+
+[execution.seed]
+type = "int64"
+default = 42
+min = 0
+max = 4294967295
+
+[execution.time_limit]
+type = "int64"
+default = 0
+min = 0
+max = 2147483647
+description = "Seconds; 0 disables the limit."

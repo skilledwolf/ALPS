@@ -19,6 +19,7 @@
 /// @brief the actual Hirsch-Fye simulation
 
 #include "hirschfyesim.h"
+#include "scheduler_scientific.h"
 #include "xml.h"
 #include "fouriertransform.h"
 #include <alps/alea.h>
@@ -111,7 +112,7 @@ green_tau(N+1, n_site, 2)
   matsubara_green_function_t bare_green_matsubara(n_matsubara, n_site, 2);
   itime_green_function_t bgf_sc_convention_k(N+1,n_site, 2); //bare green function in k_space
   boost::shared_ptr<FourierTransformer> fourier_ptr;
-  FourierTransformer::generate_transformer(parms, fourier_ptr);
+  FourierTransformer::generate_transformer(scheduler_scientific(parms), fourier_ptr);
   
   std::istringstream in_omega(parms["G0(omega)"]);
   read_freq(in_omega, bare_green_matsubara);
@@ -358,7 +359,7 @@ std::pair<matsubara_green_function_t, itime_green_function_t>HirschFyeSim::get_r
   densities[1] /= n_site;
 
   boost::shared_ptr<FourierTransformer> fourier_ptr;
-  FourierTransformer::generate_transformer_U(parms, fourier_ptr, densities);
+  FourierTransformer::generate_transformer_U(scheduler_scientific(parms), fourier_ptr, densities);
   fourier_ptr->forward_ft(green_result, green_result_matsubara);
   alps::hdf5::archive ar(static_cast<std::string>(parms["OUTFILE"]), "a");
   green_result.write_hdf5(ar, "/G_tau");

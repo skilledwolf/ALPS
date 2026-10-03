@@ -49,29 +49,7 @@ void read_ctint_bare_green(const alps::params &parameters, const alps::params &i
         return;
     }
     alps::hdf5::archive archive(input["g0"].as<std::string>(), "r");
-    const bool dmft = input["layout"].as<std::string>() == "dmft";
-    if (dmft) {
-        unsigned int nt, ns, nf;
-        archive["/G0/nt"] >> nt;
-        archive["/G0/ns"] >> ns;
-        archive["/G0/nf"] >> nf;
-        if (nt != green.nfreq() || ns != green.nsite() || nf != green.nflavor())
-            throw std::invalid_argument("CT-INT input Green-function dimensions do not match parameters");
-    }
-    for (unsigned int flavor = 0; flavor < green.nflavor(); ++flavor) {
-        const auto path = dmft ? "/G0/" + std::to_string(flavor) + "/mean/value" :
-                                 "/G0_" + std::to_string(flavor);
-        if (!archive.is_data(path) || !archive.is_complex(path) ||
-            archive.extent(path) != std::vector<std::size_t>{n, 2})
-            throw std::invalid_argument("CT-INT input " + path + " must be a complex vector of NMATSUBARA values");
-        std::vector<std::complex<double>> values;
-        archive[path] >> values;
-        for (std::size_t frequency = 0; frequency < n; ++frequency) {
-            if (!std::isfinite(values[frequency].real()) || !std::isfinite(values[frequency].imag()))
-                throw std::invalid_argument("CT-INT input " + path + " must contain finite values");
-            green(frequency, 0, 0, flavor) = values[frequency];
-        }
-    }
+    read_flavor_vectors(archive, "/G0", green);
 }
 
 void alps::ctint::prepare_run(run_configuration &run) {
@@ -88,15 +66,6 @@ void alps::ctint::prepare_run(run_configuration &run) {
     if (atomic && (run.parameters["MU"].as<double>() != 0.0 ||
                    run.parameters["H"].as<double>() != 0.0))
         throw std::invalid_argument("CT-INT atomic input requires MU=0 and H=0");
-    const auto results = std::filesystem::weakly_canonical(run.output["results"].as<std::string>());
-    if (!atomic && results == std::filesystem::weakly_canonical(run.input["g0"].as<std::string>()))
-        throw std::invalid_argument("CT-INT output must not replace input.g0");
-    if (run.output.exists("matrix_size")) {
-        const auto text = std::filesystem::weakly_canonical(run.output["matrix_size"].as<std::string>());
-        if (text == results || (!atomic && text ==
-            std::filesystem::weakly_canonical(run.input["g0"].as<std::string>())))
-            throw std::invalid_argument("CT-INT matrix_size output must differ from input and results");
-    }
     matsubara_green_function_t green(run.parameters["NMATSUBARA"].as<unsigned int>(), 1, 2);
     read_ctint_bare_green(run.parameters, run.input, green);
 }

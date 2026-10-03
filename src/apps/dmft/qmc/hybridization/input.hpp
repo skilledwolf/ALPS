@@ -62,19 +62,20 @@ inline std::vector<double> series(const alps::params& parameters, const alps::pa
     return text(filename,rows,columns,true,parameters["BETA"].as<double>(),
                 input[retarded?"retarded_interaction_coordinate":"delta_coordinate"].as<std::string>()=="tau");
   alps::hdf5::archive ar(filename,"r");
-  const bool dmft=!retarded && input["delta_layout"].as<std::string>()=="dmft";
-  if(dmft){
-    unsigned nt,ns,nf;
-    ar["/Delta/nt"]>>nt; ar["/Delta/ns"]>>ns; ar["/Delta/nf"]>>nf;
-    if(nt!=rows || ns!=1 || nf!=columns) throw std::invalid_argument(filename+": incompatible DMFT Delta dimensions");
-  }
   std::vector<double> values(rows*columns);
   for(std::size_t j=0;j<columns;++j){
-    const std::string dataset=retarded?(j==0?"/Ret_int_K":"/Ret_int_Kp"):
-      (dmft?"/Delta/"+std::to_string(j)+"/mean/value":"/Delta_"+std::to_string(j));
+    const std::string dataset=retarded?(j==0?"/Ret_int_K":"/Ret_int_Kp"):"/Delta_"+std::to_string(j);
     const auto column=hdf5_vector(ar,dataset,rows);
     for(std::size_t i=0;i<rows;++i) values[i*columns+j]=column[i];
   }
   return values;
+}
+// Columns K(tau) and K'(tau); the kernel vanishes at tau=0 and is nonnegative.
+inline std::vector<double> retarded_kernel(const alps::params& parameters, const alps::params& input) {
+  const auto k=series(parameters,input,true);
+  if(k[0]!=0.) throw std::invalid_argument("Retarded interaction K(tau=0) must be zero");
+  for(std::size_t i=0;i<k.size();i+=2)
+    if(k[i]<0.) throw std::invalid_argument("Retarded interaction K(tau) must be nonnegative");
+  return k;
 }
 } // namespace cthyb_input

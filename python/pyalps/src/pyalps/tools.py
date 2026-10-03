@@ -145,17 +145,6 @@ def runApplication(appname, parmfiles, T=None, Tmin=None, Tmax=None, writexml=Fa
         executeCommand(cmdline);
    
 
-def runDMFT(infiles,apppath=''):
-    """ run the ALPS DMFT application 
-    
-        The ALPS DMFT application does not (yet) use the standard ALPS input files and scheduler. Thus there is a separate function to call it. 
-        This function takes one mandatory parameter: a single input file or a list of input files.
-        Optional parameter apppath allows setting the path to the binary.
-    """
-    appname='dmft'
-    check_existence(apppath+appname)
-    return (executeCommand([apppath+appname] + make_list(infiles)))
-    
 def evaluateLoop(infiles, appname='loop', write_xml=False):
     """ evaluate results of the looper QMC application 
     

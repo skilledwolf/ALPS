@@ -107,6 +107,9 @@ NB_MODULE(pyngsparams_c, m) {
         .def("__setitem__",  &params_setitem, nb::arg("key"), nb::arg("value").none())
         .def("__delitem__",  &params_delitem)
         .def("__contains__", &params_contains)
+        .def("keys", [](nb::object self) {
+            return nb::module_::import_("collections.abc").attr("KeysView")(self);
+        })
         .def("__iter__",     [](alps::params & self) {
                                  // Snapshot keys: params' native iterator
                                  // can be invalidated by deletion even while the
@@ -124,6 +127,7 @@ NB_MODULE(pyngsparams_c, m) {
              nb::arg("path") = std::string("/parameters"));
     pyalps::mark_archive_savable(m.attr("params"));
     nb::class_<alps::run_configuration>(m, "RunConfiguration")
+        .def(nb::init<>())
         .def_ro("application", &alps::run_configuration::application)
         .def_ro("schema_version", &alps::run_configuration::schema_version)
         .def_ro("parameters", &alps::run_configuration::parameters)
@@ -131,9 +135,11 @@ NB_MODULE(pyngsparams_c, m) {
         .def_ro("output", &alps::run_configuration::output)
         .def_ro("execution", &alps::run_configuration::execution)
         .def_ro("origins", &alps::run_configuration::origins)
+        .def_ro("source_file", &alps::run_configuration::source_file)
         .def("save", &alps::run_configuration::save)
         .def("load", &alps::run_configuration::load);
     pyalps::mark_archive_savable(m.attr("RunConfiguration"));
+    m.def("format_run_configuration", &alps::format_run_configuration, nb::arg("run"));
     m.def("load_run_configuration", [](const std::string &filename, const std::string &schema) {
         return alps::load_run_configuration(filename, schema);
     });

@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: MIT
 //
 // Lock for the dmft driver's CT-INT (Interaction Expansion) run-type
-// selection on the Matsubara (OMEGA_LOOP) path.
+// selection on the Matsubara (execution.loop = "omega") path.
 //
 // main.C used to select the factory with a tangled if / standalone-if /
 // else-if chain that (a) built the single-site half-filling solver for

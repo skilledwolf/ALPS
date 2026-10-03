@@ -24,7 +24,7 @@
 #include "types.h"
 #include "green_function.h"
 
-#include <alps/parameter.h>
+#include <alps/params.hpp>
 #include <vector>
 #include <utility>
 
@@ -49,7 +49,7 @@ public:
     
   virtual result_type solve(
               const itime_green_function_t& G0
-            , const alps::Parameters& parms)=0;
+            , const alps::params& parms)=0;
             
   virtual ~ImpuritySolver() {}
 };
@@ -74,7 +74,7 @@ public:
     ///          Matsubara frequency
     
   virtual result_type solve_omega(const matsubara_green_function_t& G0_omega,
-                  const alps::Parameters& parms =alps::Parameters())=0;
+                  const alps::params& parms =alps::params())=0;
             
   virtual ~MatsubaraImpuritySolver() {}
 };

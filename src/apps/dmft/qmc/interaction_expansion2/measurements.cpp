@@ -17,7 +17,6 @@
 #include "run_config.hpp"
 #include <complex>
 #include <alps/alea.h>
-#include "alps/ngs/make_deprecated_parameters.hpp"
 
 void evaluate_selfenergy_measurement_matsubara(const alps::results_type<HubbardInteractionExpansion>::type &results, 
                                                                         matsubara_green_function_t &green_matsubara_measured,
@@ -47,7 +46,7 @@ void compute_greens_functions(const alps::results_type<HubbardInteractionExpansi
   matsubara_green_function_t green_matsubara_measured(n_matsubara, n_site, n_flavors);
   boost::shared_ptr<FourierTransformer> fourier_ptr;
   boost::shared_ptr<FourierTransformer> fourier_ptr_g0;
-  FourierTransformer::generate_transformer(alps::make_deprecated_parameters(parms), fourier_ptr_g0);
+  FourierTransformer::generate_transformer(parms, fourier_ptr_g0);
   //find whether our data is in imaginary time or frequency:
   bool measure_in_matsubara=true;
   if(parms.value_or("HISTOGRAM_MEASUREMENT", false))
@@ -92,7 +91,7 @@ void compute_greens_functions(const alps::results_type<HubbardInteractionExpansi
       densities[z] /= n_site;
     }
   }
-  FourierTransformer::generate_transformer_U(alps::make_deprecated_parameters(parms), fourier_ptr, densities);
+  FourierTransformer::generate_transformer_U(parms, fourier_ptr, densities);
   if (measure_in_matsubara) {
     fourier_ptr->append_tail(green_matsubara_measured, bare_green_matsubara, n_matsubara_measurements);
     fourier_ptr->backward_ft(green_itime_measured, green_matsubara_measured);

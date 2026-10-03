@@ -16,95 +16,63 @@
 /* $Id: solver_main.C 285 2008-01-03 15:34:39Z gullc $ */
 
 #include "hirschfyesim.h"
-#include <alps/parameter.h>
+#include "dmft_schema.hpp"
+#include <alps/hdf5/complex.hpp>
+#include <alps/run_config.hpp>
 #include <alps/utility/copyright.hpp>
-#include <alps/utility/vectorio.hpp>
-#include <boost/throw_exception.hpp>
-#include <boost/program_options.hpp>
+#include <iostream>
+#include <string>
 
-bool parse_options(int argc, char** argv, std::string& infile, std::string& outfile)
-{
-	std::cout << "ALPS Hirsch-Fye solver for the single site impurity problem.\n\n";
-	alps::print_copyright(std::cout);
-
-	std::cout << "****************************************************************"<<std::endl;
-	std::cout << "* Recommended citation in scientific publications:             *"<<std::endl;
-	std::cout << "* We used the ALPS [1] implementation [2] of the Hirsch-Fye    *"<<std::endl;
-	std::cout << "* [3] impurity solver.                                         *"<<std::endl;
-	std::cout << "* [1] JSTAT (2011) P05001; [2] CPC 182, 1078 (2011); [3] PRL   *"<<std::endl;
-	std::cout << "* 56, 2521 (1986).                                             *"<<std::endl;
-	std::cout << "****************************************************************"<<std::endl;
-
-	namespace po = boost::program_options;
-	
-	po::options_description desc("Allowed options");
-	desc.add_options()
-  ("help", "produce help message")
-  ("license,l", "print license conditions") 
-  ("input-file", po::value<std::string>(&infile), "input file")
-  ("output-file", po::value<std::string>(&outfile), "output file");
-	po::positional_options_description p;
-	p.add("input-file", 1);
-	p.add("output-file", 1);
-	
-	po::variables_map vm;
-	po::store(po::command_line_parser(argc, argv).options(desc).positional(p).run(), vm);
-	po::notify(vm);    
-	
-	bool valid=true;
-	
-	if (vm.count("help")) {
-		std::cout << desc << "\n";
-		valid=false;
-	}
-	if (vm.count("license")) {
-		alps::print_license(std::cout);
-		valid=false;
-	}
-	return valid;
-}
-
-/// @brief The main program of the impurity solver
-///
-/// The program must be called with at least two command line parameters: the name of the input and output files.
-/// Additional command line options are --help to print the usage information and --license to print license information
-
-int main(int argc, char** argv)
-{
-#ifndef BOOST_NO_EXCEPTIONS
-	try {
-#endif
-		std::string infile;
-		std::string outfile;
-		if (!parse_options(argc,argv,infile,outfile))
-			return 0;
-		// read parameters and G0
-		
-    alps::hdf5::archive ar(infile, "r");
-		alps::Parameters parms;
-    ar["/parameters"] >> parms;
-    parms["INFILE"]=infile;
-    parms["OUTFILE"]=outfile;
-    int N=(int)parms["NMATSUBARA"];
-    int sites=parms.value_or_default("SITES", 1);
-    int flavors=parms.value_or_default("FLAVORS", 2);
-    
-    matsubara_green_function_t g0(N, sites, flavors); g0.read_hdf5(ar, "/G0");
+int main(int argc, char** argv) {
+  try {
+    bool validate = false, show_schema = false;
+    std::string filename;
+    for (int i = 1; i < argc; ++i) {
+      const std::string argument(argv[i]);
+      if (argument == "--help" || argument == "-h") {
+        std::cout << "Usage: hirschfye [--validate] run.toml | hirschfye --schema\n";
+        return 0;
+      }
+      if (argument == "--schema") show_schema = true;
+      else if (argument == "--validate") validate = true;
+      else if (argument.empty() || argument.front() == '-')
+        throw std::invalid_argument("Unknown option: " + argument);
+      else if (filename.empty()) filename = argument;
+      else throw std::invalid_argument("Expected one TOML run file");
+    }
+    if (show_schema) { std::cout << alps::dmft::hirschfye_schema; return 0; }
+    if (filename.empty()) throw std::invalid_argument("No TOML run file specified");
+    auto run = alps::load_run_configuration(filename, alps::dmft::hirschfye_schema);
+    if (run.parameters["BETA"].as<double>() <= 0.)
+      throw std::invalid_argument("Hirsch-Fye BETA must be positive");
+    matsubara_green_function_t g0(run.parameters["NMATSUBARA"].as<unsigned int>(),
+                                  run.parameters["SITES"].as<unsigned int>(),
+                                  run.parameters["FLAVORS"].as<unsigned int>());
+    {
+      alps::hdf5::archive input(run.input["g0"].as<std::string>(), "r");
+      read_flavor_vectors(input, "/G0", g0);
+    }
+    if (validate) {
+      std::cout << "Valid Hirsch-Fye configuration: " << filename << '\n';
+      return 0;
+    }
+    std::cout << "ALPS Hirsch-Fye solver for the single site impurity problem.\n\n";
+    alps::print_copyright(std::cout);
+    std::cout << "****************************************************************\n"
+                 "* Recommended citation in scientific publications:             *\n"
+                 "* We used the ALPS [1] implementation [2] of the Hirsch-Fye    *\n"
+                 "* [3] impurity solver.                                         *\n"
+                 "* [1] JSTAT (2011) P05001; [2] CPC 182, 1078 (2011); [3] PRL   *\n"
+                 "* 56, 2521 (1986).                                             *\n"
+                 "****************************************************************\n";
     alps::scheduler::BasicFactory<HirschFyeSim,HirschFyeRun> factory;
-    alps::ImpuritySolver solver(factory,argc,argv,true);
-		
-		// write g into output file
-    solver.solve_omega(g0,parms);
-#ifndef BOOST_NO_EXCEPTIONS
-	}
-	catch (std::exception& exc) {
-		std::cerr << exc.what() << "\n";
-		return -1;
+    alps::ImpuritySolver solver(factory, run, argc, argv);
+    solver.solve_omega(g0, run.parameters);
+    alps::hdf5::archive output(run.output["results"].as<std::string>(), "a");
+    output["/run_config"] << run;
+    return 0;
+  } catch (const std::exception& error) {
+    std::cerr << "hirschfye: " << error.what() << '\n';
+    return 1;
   }
-	catch (...) {
-		std::cerr << "Fatal Error: Unknown Exception!\n";
-		return -2;
-	}
-#endif  
-	return 0;
 }

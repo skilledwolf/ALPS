@@ -13,7 +13,7 @@
 // f+=2)` with f / f+1 indexing (the SemicircleFS idiom) and is identical
 // at nflavor==2.
 //
-// Multiband AFM is reachable via a DOSFILE (DOSBandstructure) — the
+// Multiband AFM is reachable via input.dos (DOSBandstructure) — the
 // lattice bandstructures throw on nflavor!=2, but DOSBandstructure allows
 // FLAVORS/2 bands. This test builds two identical bands and feeds an input
 // that is identical across the two flavour pairs; the transform must then
@@ -24,7 +24,7 @@
 #include <boost/math/constants/constants.hpp>
 #include "hilberttransformer.h"
 
-#include <alps/parameter.h>
+#include <alps/params.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -48,12 +48,19 @@ int main() {
       f << es[i] << " " << dos[i] << " " << es[i] << " " << dos[i] << "\n";
   }
 
-  alps::Parameters parms;
-  parms["ANTIFERROMAGNET"] = 1;
+  alps::params parms;
+  parms["ANTIFERROMAGNET"] = true;
   parms["FLAVORS"]         = 4;   // two bands
-  parms["DOSFILE"]         = dosfile;
+  alps::params input;
+  input["dos"] = dosfile;
 
-  GeneralFSHilbertTransformer transform(parms);
+  GeneralFSHilbertTransformer transform(parms, input);
+  if (!parms.exists<double>("EPS_3") || !parms.exists<double>("EPSSQ_3") ||
+      parms["EPSSQ_3"].as<double>() != parms["EPSSQ_0"].as<double>()) {
+    std::puts("FAIL: identical bands did not retain native indexed moments");
+    boost::filesystem::remove(dosfile);
+    return 1;
+  }
 
   const unsigned nfreq = 60;
   const double   mu = 0.5, h = 0.1, beta = 10.0;

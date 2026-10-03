@@ -21,48 +21,31 @@
 #include <boost/assert.hpp>
 #include <alps/osiris/comm.h>
 #include <alps/scheduler/options.h>
+#include <alps/ngs/make_deprecated_parameters.hpp>
+#include <limits>
 #include <vector>
 #include <utility>
 #include <sstream>
 
 #define DEFAULT_CHECK_TIME 300
 
-alps::ImpuritySolver::ImpuritySolver(const scheduler::Factory& factory, int argc, char** argv, bool h5input)
+alps::ImpuritySolver::ImpuritySolver(const scheduler::Factory& factory, const run_configuration& run, int argc, char** argv)
+  : master_scheduler(nullptr), configuration_(run)
 {
 #ifdef ALPS_HAVE_MPI
-	comm_init(argc,argv, true);
+  comm_init(argc,argv, true);
 #else
-	comm_init(argc,argv, false);
+  comm_init(argc,argv, false);
 #endif
-	if(is_master()){
-    alps::scheduler::NoJobfileOptions opt(1,argv);
-    unsigned int max_time;
-    if (!h5input){
-      alps::Parameters parms;
-      std::ifstream is(argv[1]);
-      is>>parms;
-      max_time = (unsigned int)(parms.value_or_default("MAX_TIME",DEFAULT_CHECK_TIME));
-    } else {
-      alps::Parameters parms;
-      alps::hdf5::archive ar(argv[1], "r");
-      ar["/parameters"] >> parms;
-      max_time = (unsigned int)(parms.value_or_default("MAX_TIME",DEFAULT_CHECK_TIME));
-    }
-    if (max_time < DEFAULT_CHECK_TIME) { opt.checkpoint_time=max_time; opt.max_check_time=max_time; opt.min_check_time=max_time; }
-    else {
-      unsigned int checks = (max_time + DEFAULT_CHECK_TIME - 1) / DEFAULT_CHECK_TIME;
-      opt.checkpoint_time=(max_time+checks-1)/checks;
-      opt.max_check_time=opt.checkpoint_time; opt.min_check_time=opt.checkpoint_time; 
-    }
-    master_scheduler = new alps::scheduler::SingleScheduler(opt,factory);
-	} else{ //a slave lives for many iterations...
-    alps::scheduler::NoJobfileOptions opt(1,argv);
-    alps::scheduler::Scheduler *slave_scheduler = new alps::scheduler::Scheduler(opt,factory);
-    slave_scheduler->run();
-    delete slave_scheduler;
-    comm_exit();
-    exit(0);
-	}
+  alps::scheduler::NoJobfileOptions opt(1,argv);
+  const auto seconds = run.execution["time_limit"].as<unsigned int>();
+  const auto interval = seconds ? std::min(seconds, unsigned(DEFAULT_CHECK_TIME)) : unsigned(DEFAULT_CHECK_TIME);
+  opt.checkpoint_time = opt.max_check_time = opt.min_check_time = interval;
+  if (is_master()) master_scheduler = new alps::scheduler::SingleScheduler(opt,factory);
+  else {
+    alps::scheduler::Scheduler slave(opt,factory);
+    slave.run(); comm_exit(); exit(0);
+  }
 }
 
 
@@ -86,64 +69,29 @@ int alps::ImpuritySolver::solve_it(Parameters const& p)
 }
 
 
-itime_green_function_t  alps::ImpuritySolver::solve(const itime_green_function_t & G0, const alps::Parameters& p)
-{
-  BOOST_ASSERT(is_master());
-  
-  alps::Parameters parms(p);
-  std::string basename=parms["BASENAME"];
-  //boost::filesystem::remove(basename+".h5");
-  alps::hdf5::archive dumpfile(basename+".h5", "a");
-  dumpfile["/parameters"]<<parms;
-  
-  std::ostringstream G0_text;
-  alps::oxstream G0_xml(G0_text);
-  write_itime(G0_xml,G0);
-  parms["G0"] = G0_text.str();
-  
-  int res=solve_it(parms);
-  //boost::filesystem::remove(basename+".h5");
-  if (res)
-    boost::throw_exception(
-                           std::runtime_error(" solver finished with nonzero exit code"));
-  
-  // now extract the resuls
-  itime_green_function_t G = 
-  dynamic_cast<ImpurityTask*>(get_task())->get_result();
-  
-  clear(); // destroy the simulation
-  return G;
-}
-
 std::pair<matsubara_green_function_t, itime_green_function_t>
-alps::ImpuritySolver::solve_omega(const matsubara_green_function_t& G0_omega, const Parameters& p)
+alps::ImpuritySolver::solve_omega(const matsubara_green_function_t& G0_omega, const params& p)
 {
   BOOST_ASSERT(is_master());
-  alps::Parameters parms(p);
-  
-  std::string basename=parms["BASENAME"];
-  //boost::filesystem::remove(basename+".h5");
-  alps::hdf5::archive dumpfile(basename+".h5", "a");
-  dumpfile["/parameters"]<<parms;
+  // The scheduler tasks still read untyped Parameters; U_MATRIX names the
+  // interaction file again because MCRun cannot receive the typed input section.
+  alps::Parameters parms = make_deprecated_parameters(p);
+  parms["SEED"] = configuration_.execution["seed"].as<std::uint64_t>();
+  const auto seconds = configuration_.execution["time_limit"].as<int>();
+  parms["MAX_TIME"] = seconds ? seconds : std::numeric_limits<int>::max();
+  parms["OUTFILE"] = configuration_.output["results"].as<std::string>();
+  if (configuration_.input.exists("interaction_matrix"))
+    parms["U_MATRIX"] = configuration_.input["interaction_matrix"].as<std::string>();
   
   std::ostringstream G0_omega_text;
   alps::oxstream G0_omega_xml(G0_omega_text);
-  
   write_freq(G0_omega_xml,G0_omega);
   parms["G0(omega)"] = G0_omega_text.str();
-  int res=solve_it(parms);
-  //boost::filesystem::remove(basename+".h5");
-  if (res)
-    boost::throw_exception(
-                           std::runtime_error(" solver finished with nonzero exit code"));
+  if (solve_it(parms))
+    boost::throw_exception(std::runtime_error(" solver finished with nonzero exit code"));
   
   std::pair<matsubara_green_function_t, itime_green_function_t> G = 
-  dynamic_cast<MatsubaraImpurityTask*>(get_task())
-  ->get_result();
+    dynamic_cast<MatsubaraImpurityTask*>(get_task())->get_result();
   clear(); // destroy the simulation
   return G;
-  
 }
-
-
-

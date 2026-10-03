@@ -1,0 +1,154 @@
+# Copyright (C) 2026 ALPS Collaboration. SPDX-License-Identifier: MIT
+# DMFT driver settings. `dmft --schema run.toml` adds the selected solver's
+# parameters (and an external solver's execution settings) and one
+# EPS_<flavor>, EPSSQ_<flavor> and t<band> entry per flavor or band.
+application = "dmft"
+schema_version = 1
+
+[parameters."BETA"]
+type = "float64"
+required = true
+min = 0
+
+[parameters.t]
+type = "float64"
+default = 1.0
+
+[parameters.tprime]
+type = "float64"
+default = 0.0
+
+[parameters.L]
+type = "int64"
+default = 128
+min = 1
+max = 1073741823
+
+[parameters."U"]
+type = "float64"
+required = true
+
+[parameters."MU"]
+type = "float64"
+default = 0.0
+
+[parameters."H"]
+type = "float64"
+default = 0.0
+
+[parameters."J"]
+type = "float64"
+default = 0.0
+
+[parameters."U'"]
+type = "float64"
+
+[parameters."N"]
+type = "int64"
+required = true
+min = 1
+max = 2147483647
+
+[parameters."NMATSUBARA"]
+type = "int64"
+required = true
+min = 1
+max = 2147483647
+
+[parameters."FLAVORS"]
+type = "int64"
+default = 2
+min = 1
+max = 2147483647
+
+[parameters."SITES"]
+type = "int64"
+default = 1
+min = 1
+max = 2147483647
+
+[parameters."CONVERGED"]
+type = "float64"
+default = 0.001
+min = 0.0
+
+[parameters."SYMMETRIZATION"]
+type = "bool"
+default = true
+
+[parameters."ANTIFERROMAGNET"]
+type = "bool"
+default = false
+
+[parameters."H_INIT"]
+type = "float64"
+
+[parameters."RELAX_RATE"]
+type = "float64"
+default = 1.0
+min = 0.0
+
+[parameters."INSULATING"]
+type = "bool"
+default = false
+
+[parameters."SEMICIRCLE_HILBERT"]
+type = "bool"
+default = false
+
+[parameters."TWODBS"]
+type = "string"
+
+[input.dos]
+type = "path"
+[input.initial_tau]
+type = "path"
+[input.initial_omega]
+type = "path"
+[input.interaction_matrix]
+type = "path"
+[input.solver_schema]
+type = "path"
+description = "Schema of a custom solver executable; built-in solvers supply their own."
+
+[output.results]
+type = "path"
+required = true
+[output.text]
+type = "bool"
+default = false
+[output.text_directory]
+type = "path"
+default = "."
+[output.final_tau]
+type = "path"
+[output.final_omega]
+type = "path"
+
+[execution.solver]
+type = "string"
+default = "hybridization"
+description = "hybridization, interaction, Hirsch-Fye, Interaction Expansion, or a custom executable."
+[execution.loop]
+type = "string"
+default = "omega"
+choices = ["tau", "omega"]
+[execution.solver_input]
+type = "string"
+choices = ["g0", "delta"]
+description = "Scientific input of a custom solver: bare Green function or hybridization function."
+[execution.max_iterations]
+type = "int64"
+default = 1000
+min = 1
+max = 2147483647
+[execution.seed]
+type = "int64"
+default = 42
+min = 0
+max = 4294967295
+[execution.time_limit]
+type = "int64"
+default = 0
+min = 0
+max = 2147483647

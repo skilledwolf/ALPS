@@ -38,90 +38,61 @@ itime_green_function_t HilbertTransformer::symmetrize(const itime_green_function
 }
 
 
-itime_green_function_t HilbertTransformer::initial_G0(const alps::Parameters& parms) const
-{
-  throw std::logic_error("not implemented - specify your Hilbert transformer");
-}
-
-
-
-
-itime_green_function_t SemicircleHilbertTransformer::operator()(const itime_green_function_t& /*G_tau*/,
-                                                                double /*mu*/, double /*h*/, double /*beta*/) const
-{
-  // The imaginary-time Hilbert transform for the semicircle DOS was never
-  // implemented (it needs the densities; the generate_transformer call was
-  // left commented out, followed by a dereference of a default-constructed
-  // null FourierTransformer pointer). Report cleanly so the driver's
-  // exception handler can surface it, rather than hard-aborting via exit(1).
-  // Use the Matsubara (OMEGA_LOOP) self-consistency path, which has a
-  // working Hilbert transform.
-  throw std::logic_error(
-      "SemicircleHilbertTransformer::operator(): the imaginary-time Hilbert "
-      "transform is not implemented (densities needed); use the Matsubara "
-      "(OMEGA_LOOP) self-consistency path.");
-}
-
-
-
-
-itime_green_function_t SemicircleHilbertTransformer::initial_G0(const alps::Parameters& parms) const
+itime_green_function_t SemicircleHilbertTransformer::initial_G0(const alps::params& parms, const alps::params& input) const
 {
   std::cout<<"SemicircleHilbertTransformer::initial_G0: ";
-  int n_time=boost::lexical_cast<int>(parms["N"]);
-  int n_flavor=parms.value_or_default("FLAVORS", 2);
+  int n_time=parms["N"].as<int>();
+  int n_flavor=parms["FLAVORS"].as<int>();
   itime_green_function_t G0_tau(n_time+1, n_flavor);
   
-  if (parms.defined("G0TAU_INPUT") && parms["G0TAU_INPUT"].length()>0) {
+  if (input.exists("initial_tau") && input["initial_tau"].as<std::string>().length()>0) {
     std::cout<<"reading initial G0_tau"<<std::endl;
-    std::ifstream check(parms["G0TAU_INPUT"].c_str());
+    std::ifstream check(input["initial_tau"].as<std::string>().c_str());
     if(!check.is_open()) {
-      std::cerr << "ERROR: could not open inital G0 file "<<parms["G0TAU_INPUT"]<<std::endl;
+      std::cerr << "ERROR: could not open inital G0 file "<<input["initial_tau"]<<std::endl;
       throw std::runtime_error("SemicircleHilbertTransformer::initial_G0: could not open inital G0 file");
     }
     else
-      G0_tau.read(parms["G0TAU_INPUT"].c_str());
+      G0_tau.read(input["initial_tau"].as<std::string>().c_str());
   }
   else {
-    GeneralFSHilbertTransformer hilbert(parms,false/*ignored*/);
+    GeneralFSHilbertTransformer hilbert(parms,input,false/*ignored*/);
     boost::shared_ptr<FourierTransformer> fourier_ptr;
     FourierTransformer::generate_transformer(parms, fourier_ptr);
-    fourier_ptr->backward_ft(G0_tau, hilbert.initial_G0(parms));
+    fourier_ptr->backward_ft(G0_tau, hilbert.initial_G0(parms,input));
   }
   
-  if (parms.defined("G0TAU_input"))
-    G0_tau.write((parms["G0TAU_input"]).c_str());
   
   return G0_tau;
 }
 
 
 
-GeneralFSHilbertTransformer::GeneralFSHilbertTransformer(const alps::Parameters& parms, bool ignored)
- : AFM(parms.value_or_default("ANTIFERROMAGNET",false)),
-   bandstruct(BandstructureFactory(parms))
+GeneralFSHilbertTransformer::GeneralFSHilbertTransformer(const alps::params& parms, const alps::params& input, bool ignored)
+ : AFM(parms["ANTIFERROMAGNET"].as<bool>()),
+   bandstruct(BandstructureFactory(parms,input))
   {}
 
-GeneralFSHilbertTransformer::GeneralFSHilbertTransformer(alps::Parameters& parms)
- : AFM(parms.value_or_default("ANTIFERROMAGNET",false)),
-   bandstruct(BandstructureFactory(parms,true))
+GeneralFSHilbertTransformer::GeneralFSHilbertTransformer(alps::params& parms, const alps::params& input)
+ : AFM(parms["ANTIFERROMAGNET"].as<bool>()),
+   bandstruct(BandstructureFactory(parms,input,true))
 {
   bandstruct->set_parms(parms);
 }
 
 
-matsubara_green_function_t GeneralFSHilbertTransformer::initial_G0(const alps::Parameters& parms) const
+matsubara_green_function_t GeneralFSHilbertTransformer::initial_G0(const alps::params& parms, const alps::params& input) const
 {
   std::cout<<"GeneralFSHilbertTransformer::initial_G0: ";
-  unsigned int n_matsubara=boost::lexical_cast<unsigned int>(parms["NMATSUBARA"]);
-  unsigned int n_time=boost::lexical_cast<unsigned int>(parms["N"]);
-  unsigned int n_orbital=parms.value_or_default("FLAVORS", 2);
-  double beta = static_cast<double>(parms["BETA"]);
-  double mu = static_cast<double>(parms["MU"]);
-  double h = static_cast<double>(parms.value_or_default("H",0.));
+  unsigned int n_matsubara=parms["NMATSUBARA"].as<unsigned int>();
+  unsigned int n_time=parms["N"].as<unsigned int>();
+  unsigned int n_orbital=parms["FLAVORS"].as<unsigned int>();
+  double beta = parms["BETA"].as<double>();
+  double mu = parms["MU"].as<double>();
+  double h = parms["H"].as<double>();
   matsubara_green_function_t G0_omega(n_matsubara, n_orbital);
 
-  if (parms.defined("INSULATING")) {
+  if (parms["INSULATING"].as<bool>()) {
     std::cout<<"calculating insulating initial G0_omega"<<std::endl;
     for(unsigned int i=0; i<G0_omega.nfreq(); i++) {
       std::complex<double> iw(0.,(2*i+1)*boost::math::constants::pi<double>()/beta);
@@ -131,15 +102,15 @@ matsubara_green_function_t GeneralFSHilbertTransformer::initial_G0(const alps::P
       }
     }
   }
-  else if (parms.defined("G0OMEGA_INPUT") && parms["G0OMEGA_INPUT"].length()>0) {
+  else if (input.exists("initial_omega") && input["initial_omega"].as<std::string>().length()>0) {
     std::cout<<"reading initial G0_omega"<<std::endl;
-    std::ifstream check(parms["G0OMEGA_INPUT"].c_str());
+    std::ifstream check(input["initial_omega"].as<std::string>().c_str());
     if(!check.is_open()) {
-      std::cerr << "ERROR: could not open inital G0 file "<<parms["G0OMEGA_INPUT"]<<std::endl;
+      std::cerr << "ERROR: could not open inital G0 file "<<input["initial_omega"]<<std::endl;
       throw std::runtime_error("GeneralFSHilbertTransformer::initial_G0: could not open inital G0 file");
     }
     else
-      G0_omega.read(parms["G0OMEGA_INPUT"].c_str());
+      G0_omega.read(input["initial_omega"].as<std::string>().c_str());
   }
   else {
     std::cout<<"calculating non-interacting initial G0_omega"<<std::endl;
@@ -153,8 +124,6 @@ matsubara_green_function_t GeneralFSHilbertTransformer::initial_G0(const alps::P
     G0_omega=this->operator()(G_omega, G0_omega, mu, h, beta);
   }
   
-  if (parms.defined("G0OMEGA_input"))   // it is not needed to store it by default, as it will be stored in the 1st iteration as G0_omega_1, G0_omegareal_1
-    G0_omega.write((parms["G0OMEGA_input"]).c_str());
 
   return G0_omega;
 }
@@ -211,11 +180,11 @@ matsubara_green_function_t GeneralFSHilbertTransformer::operator()(const matsuba
 
 
 
-matsubara_green_function_t SemicircleFSHilbertTransformer::initial_G0(const alps::Parameters& parms) const {
-  GeneralFSHilbertTransformer hilbert(parms,false/*ignored*/);
+matsubara_green_function_t SemicircleFSHilbertTransformer::initial_G0(const alps::params& parms, const alps::params& input) const {
+  GeneralFSHilbertTransformer hilbert(parms,input,false/*ignored*/);
   /// NOTE: the initial_G0 calls the GeneralFSHilbertTransformer::operator(), which for Sigma=0 gives the G0
   /// NOTE: it WOULD NOT work with SemicircleFSHilbertTransformer::operator()
-  return hilbert.initial_G0(parms);
+  return hilbert.initial_G0(parms,input);
 }
 
 
