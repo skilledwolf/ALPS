@@ -1,45 +1,41 @@
-/****************************************************************************
- *
- * ALPS DMFT Project
- *
- * Copyright (C) 2012 by Emanuel Gull <gull@pks.mpg.de>,
- *                       Hartmut Hafermann <hafermann@cpht.polytechnique.fr>
- *
- *  based on an earlier version by Philipp Werner and Emanuel Gull
- *
- *
-* ALPS Project: https://alps.comp-phys.org/
-* SPDX-License-Identifier: MIT
- *
- *****************************************************************************/
-
+// Copyright (C) 2012 Emanuel Gull, Hartmut Hafermann.
+// Modifications (C) 2026 ALPS Collaboration. SPDX-License-Identifier: MIT
+#include <alps/cthyb.hpp>
 #include <alps/solvers.hpp>
-#include <alps/ngs.hpp>
+#include <iostream>
 #ifdef ALPS_HAVE_MPI
 #include <boost/mpi/environment.hpp>
 #endif
 
 int main(int argc, char** argv) {
-  alps::mcoptions options(argc, argv);
-  if (!options.valid) return 0;
-#ifdef ALPS_HAVE_MPI
-  boost::mpi::environment env(argc, argv);
-#endif
-  alps::params parms;
-  alps::hdf5::archive input(options.input_file, alps::hdf5::archive::READ);
-  input["/parameters"] >> parms;
   try {
-    if (options.time_limit != 0)
-      throw std::invalid_argument("time limit is passed in the parameter file!");
-    if (!parms.exists("MAX_TIME"))
-      throw std::runtime_error("parameter MAX_TIME is not defined. How long do you want to run the code for? (in seconds)");
-    alps::solvers::cthyb(parms, options.output_file);
-  } catch (std::exception const& exc) {
-    std::cerr << exc.what() << '\n';
-    return -1;
-  } catch (...) {
-    std::cerr << "Fatal Error: Unknown Exception!\n";
-    return -2;
+    bool validate=false;
+    std::string filename;
+    for(int i=1;i<argc;++i){
+      const std::string arg=argv[i];
+      if(arg=="--help" || arg=="-h"){
+        std::cout<<"Usage: hybridization [--validate] run.toml\n"
+                 <<"Input, output, and execution settings belong in the TOML run file.\n";
+        return 0;
+      }
+      if(arg=="--validate") validate=true;
+      else if(arg.empty() || arg.front()=='-') throw std::invalid_argument("Unknown option: "+arg);
+      else if(filename.empty()) filename=arg;
+      else throw std::invalid_argument("Expected one TOML run file");
+    }
+    if(filename.empty()) throw std::invalid_argument("No TOML run file specified");
+    auto run=alps::load_run_configuration(filename,alps::cthyb::schema());
+    alps::cthyb::prepare_run(run);
+    if(std::filesystem::weakly_canonical(filename)==std::filesystem::weakly_canonical(run.output["results"].as<std::string>()))
+      throw std::invalid_argument("Output must not replace the TOML run file");
+    if(validate){std::cout<<"Valid CT-HYB configuration: "<<filename<<'\n'; return 0;}
+#ifdef ALPS_HAVE_MPI
+    boost::mpi::environment env(argc, argv);
+#endif
+    alps::solvers::cthyb(run);
+    return 0;
+  } catch(const std::exception& error) {
+    std::cerr<<"hybridization: "<<error.what()<<'\n';
+    return 1;
   }
-  return 0;
 }

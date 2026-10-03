@@ -14,6 +14,7 @@
  *****************************************************************************/
 
 #include "interaction_expansion.hpp"
+#include "run_config.hpp"
 #include <complex>
 #include <alps/alea.h>
 #include "alps/ngs/make_deprecated_parameters.hpp"
@@ -32,15 +33,15 @@ void evaluate_selfenergy_measurement_itime_rs(const alps::results_type<HubbardIn
 
 
 
-void compute_greens_functions(const alps::results_type<HubbardInteractionExpansion>::type &results, const alps::parameters_type<HubbardInteractionExpansion>::type& parms, const std::string &output_file)
+void compute_greens_functions(const alps::results_type<HubbardInteractionExpansion>::type &results, const alps::parameters_type<HubbardInteractionExpansion>::type& parms, const alps::params &input, const alps::params &output)
 {
   std::cout<<"getting result!"<<std::endl;
-  unsigned int n_matsubara = (parms.exists("NMATSUBARA") ? parms["NMATSUBARA"].as<int>() : parms["N_MATSUBARA"].as<int>());
-  unsigned int n_matsubara_measurements=parms.value_or("NMATSUBARA_MEASUREMENTS", (int)n_matsubara);
-  unsigned int n_tau=(parms.exists("N") ? parms["N"].as<int>() : parms["N_TAU"].as<int>());
-  unsigned int n_self=parms.value_or("NSELF", (int)(10*n_tau));
-  spin_t n_flavors(parms.value_or("FLAVORS", (parms.value_or("N_ORBITALS", 2))));
-  unsigned int n_site(parms.value_or("SITES", 1));
+  unsigned int n_matsubara = parms["NMATSUBARA"].as<unsigned int>();
+  unsigned int n_matsubara_measurements=parms["NMATSUBARA_MEASUREMENTS"].as<unsigned int>();
+  unsigned int n_tau=parms["N"].as<unsigned int>();
+  unsigned int n_self=parms["NSELF"].as<unsigned int>();
+  spin_t n_flavors(parms["FLAVORS"].as<unsigned int>());
+  unsigned int n_site(parms["SITES"].as<unsigned int>());
   double beta(parms["BETA"]);
   itime_green_function_t green_itime_measured(n_tau+1, n_site, n_flavors);
   matsubara_green_function_t green_matsubara_measured(n_matsubara, n_site, n_flavors);
@@ -54,34 +55,23 @@ void compute_greens_functions(const alps::results_type<HubbardInteractionExpansi
   std::vector<double> mean_order=results["PertOrder"].mean<std::vector<double> >();
   
   std::cout<<"average matrix size was: "<<std::endl;
-  std::ofstream matrix_size("matrix_size", std::ios::app);
+  std::ofstream matrix_size;
+  if (output.exists("matrix_size")) {
+    matrix_size.open(output["matrix_size"].as<std::string>(), std::ios::app);
+    if (!matrix_size)
+      throw std::runtime_error("cannot open CT-INT matrix_size output");
+  }
   for(unsigned int i=0;i<n_flavors;++i){
     std::cout<<mean_order[i]<<"\t";
-    matrix_size<<mean_order[i]<<"\t";
+    if (matrix_size.is_open()) matrix_size<<mean_order[i]<<"\t";
   }
   std::cout<<std::endl;
-  matrix_size<<std::endl;
+  if (matrix_size.is_open()) matrix_size<<std::endl;
   std::cout<<"average sign was: "<<results["Sign"].mean<double>()<<" error: "<<results["Sign"].error<double>()<<std::endl;
   //single particle Green function measurements
   matsubara_green_function_t bare_green_matsubara(n_matsubara, n_site, n_flavors);
   std::vector<double> densities(n_flavors);
-  {
-    alps::hdf5::archive ar(parms["INFILE"].as<std::string>(),"r");
-    if(parms.exists("DMFT_FRAMEWORK") && static_cast<bool>(parms["DMFT_FRAMEWORK"])){
-      //read in as green_function
-      bare_green_matsubara.read_hdf5(ar,"/G0");
-      
-    } else { //plain hdf5
-      std::vector<std::complex<double> > tmp(n_matsubara);
-      for(std::size_t j=0; j<n_flavors; j++){
-        std::stringstream path; path<<"/G0_"<<j;
-        ar>>alps::make_pvp(path.str(),tmp);
-        for(std::size_t i=0; i<n_matsubara; i++)
-          bare_green_matsubara(i,0,0,j)=tmp[i];
-      }
-      tmp.clear();
-    }
-  }
+  read_ctint_bare_green(parms, input, bare_green_matsubara);
   if(measure_in_matsubara) {
     evaluate_selfenergy_measurement_matsubara(results, green_matsubara_measured, 
                                               bare_green_matsubara, densities, 
@@ -110,7 +100,7 @@ void compute_greens_functions(const alps::results_type<HubbardInteractionExpansi
   else 
     fourier_ptr->forward_ft(green_itime_measured, green_matsubara_measured);
   {
-    alps::hdf5::archive ar(output_file, "a");
+    alps::hdf5::archive ar(output["results"].as<std::string>(), "a");
     green_matsubara_measured.write_hdf5(ar, "/G_omega");
     green_itime_measured.write_hdf5(ar, "/G_tau");
   }

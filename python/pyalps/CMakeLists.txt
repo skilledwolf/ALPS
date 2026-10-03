@@ -15,7 +15,7 @@ execute_process(
   COMMAND "${Python_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/_build_support/alps_version.py" --core
   OUTPUT_VARIABLE PYALPS_VERSION_CORE
   OUTPUT_STRIP_TRAILING_WHITESPACE COMMAND_ERROR_IS_FATAL ANY)
-set(_alps_components utilities hdf5 params)
+set(_alps_components utilities hdf5 params run_config)
 if(PYALPS_BUILD_SOLVERS)
   list(APPEND _alps_components solvers)
 endif()
@@ -69,7 +69,7 @@ endfunction()
 pyalps_add_module(pyalea_c cpp/pyalea.cpp)
 pyalps_add_module(pymcdata_c cpp/pymcdata.cpp)
 pyalps_add_module(pytools_c cpp/pytools.cpp)
-pyalps_add_module(pyngsparams_c cpp/params.cpp)
+pyalps_add_module(pyngsparams_c cpp/params.cpp ALPS::run_config)
 pyalps_add_module(pyngshdf5_c cpp/hdf5.cpp)
 pyalps_add_module(pyngsbase_c cpp/mcbase.cpp)
 pyalps_add_module(pyngsobservable_c cpp/observable.cpp)

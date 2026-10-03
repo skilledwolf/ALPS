@@ -18,12 +18,13 @@
 #include <fstream>
 #include <alps/ngs.hpp>
 #include "../green_function.h"
+#include "input.hpp"
 
 //the interaction matrix keeps track of the impurity density-density interactions (other interactions are not possible in this code). Two general methods: either specify U (and optionally J and U'), or define a matrix and write it into a file, from where it is read in.
 class interaction_matrix{
 public:
   //constructor
-  interaction_matrix(const alps::params &p);
+  interaction_matrix(const alps::params &p, const alps::params &input);
   //element access routines
   double &operator()(std::size_t flavor_i, std::size_t flavor_j){
     return val_[flavor_i*n_orbitals_+flavor_j];
@@ -45,28 +46,11 @@ private:
 //The values can be different through a magnetic or christal field, or due to a double counting which is orbitally dependent.
 class chemical_potential{
 public:
-  chemical_potential(const alps::params &p){
+  chemical_potential(const alps::params &p, const alps::params &input){
     extern int global_mpi_rank;
     val_.resize(p["N_ORBITALS"], p.value_or("MU", 0.));
-    if(p.exists("MU_VECTOR")){
-      if(p.exists("MU") && !global_mpi_rank){ std::cout << "Warning::parameter MU_VECTOR defined, ignoring parameter MU" << std::flush << std::endl; };
-      std::string mufilename=p["MU_VECTOR"].as<std::string>();
-      if(p.exists("MU_IN_HDF5") && p["MU_IN_HDF5"].as<bool>()){//attempt to read from h5 archive
-        alps::hdf5::archive ar(mufilename, alps::hdf5::archive::READ);
-        ar>>alps::make_pvp("/MUvector",val_);
-      }
-      else{//read from text file
-        std::ifstream mu_file(mufilename.c_str());
-        if(!mu_file.good()) throw std::runtime_error("Problem reading in MU_VECTOR.");
-        std::size_t i=0;
-        double MU_i;
-        for(i=0; i<n_orbitals(); ++i){
-          mu_file>>MU_i;
-          val_[i]=MU_i;
-          if(!mu_file.good()) throw std::runtime_error("Problem reading in MU_VECTOR.");
-        }
-      }
-    }
+    if(input.exists("chemical_potential"))
+      val_=cthyb_input::static_values(input,"chemical_potential","chemical_potential_format","/MUvector",val_.size());
   }
   std::size_t n_orbitals(void)const { return val_.size(); }
   const double &operator[] (std::size_t flavor)const {

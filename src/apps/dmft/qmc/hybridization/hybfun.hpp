@@ -22,7 +22,7 @@
 class hybfun : public green_function<double>{
   public:
     //constructor
-  hybfun(const alps::params &p);
+  hybfun(const alps::params &p, const alps::params &input);
   hybfun(const hybfun &rhs):green_function<double>(rhs),beta_(rhs.beta_) {
 //    operator=(rhs);
 //    for (int nf=0;nf<nflavor();nf++)
@@ -50,7 +50,7 @@ class hybfun : public green_function<double>{
 
   friend std::ostream &operator<<(std::ostream &os, const hybfun &hyb);
 private:
-  void read_hybridization_function(const alps::params &p);
+  void read_hybridization_function(const alps::params &p, const alps::params &input);
   void hybridization_function_sanity_check(void);
   double beta_;
 };

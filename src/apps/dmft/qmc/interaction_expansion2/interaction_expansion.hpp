@@ -18,6 +18,7 @@
 
 #include <alps/ngs.hpp>
 #include <alps/mcbase.hpp>
+#include <alps/run_config.hpp>
 
 #include <alps/alea.h>
 #include <cmath>
@@ -213,9 +214,9 @@ class InteractionExpansion: public alps::mcbase
 {
 public:
 
-  InteractionExpansion(const alps::params& p, int rank);
+  InteractionExpansion(const alps::run_configuration& run, int rank);
   ~InteractionExpansion() {}
-  bool is_thermalized() const {return true;} //thermalization is done in the constructor. It's not a big deal here.
+  bool is_thermalized() const {return step >= therm_steps;}
   void update();
   void measure();
   double fraction_completed() const;
@@ -272,8 +273,7 @@ protected:
   const itime_t n_tau_inv;                        //the inverse of n_tau
   const frequency_t n_self;                        //number of self energy (W) binning points
   const boost::uint64_t mc_steps;                        
-  const unsigned long therm_steps;                
-  const double max_time_in_seconds;
+  const std::uint64_t therm_steps;
   
   const double beta;                                
   const double temperature;                        //only for performance reasons: avoid 1/beta computations where possible        
@@ -284,12 +284,9 @@ protected:
   
   const unsigned int recalc_period;                
   const unsigned int measurement_period;        
-  const unsigned int convergence_check_period;        
   
   /*InteractionExpansion's roundoff threshold*/
   const double almost_zero;                        
-  /*PRNG seed*/
-  const int seed;                                
   
   /*private member variables*/
   matsubara_green_function_t green_matsubara;
@@ -305,15 +302,13 @@ protected:
   double weight;
   double sign;
   unsigned int measurement_method;
-  bool thermalized;
   
   simple_hist pert_hist;
   unsigned int hist_max_index;
   simple_hist **vertex_histograms;
   unsigned int vertex_histogram_size;
   
-  unsigned long step;        
-  time_t start_time;
+  std::uint64_t step;
   clock_t update_time;
   clock_t measurement_time;
 
@@ -333,8 +328,8 @@ std::ostream& operator << (std::ostream& os, const simple_hist &h);
 //Use this for the most simple single site Hubbard model.
 class HalfFillingHubbardInteractionExpansion: public InteractionExpansion{
 public:
-  HalfFillingHubbardInteractionExpansion(const alps::params& p, int rank)
-    :InteractionExpansion(p, rank)
+  HalfFillingHubbardInteractionExpansion(const alps::run_configuration& run, int rank)
+    :InteractionExpansion(run, rank)
   {
     if(n_flavors !=1){throw std::invalid_argument("you need a different model for n_flavors!=1.");}
   }
@@ -350,8 +345,8 @@ public:
 
 class HubbardInteractionExpansion: public InteractionExpansion{
 public:
-  HubbardInteractionExpansion(const alps::params& p, int rank)
-    :InteractionExpansion(p, rank)
+  HubbardInteractionExpansion(const alps::run_configuration& run, int rank)
+    :InteractionExpansion(run, rank)
   {
     if(n_flavors !=2){throw std::invalid_argument("you need a different model for n_flavors!=2.");}
   }
@@ -368,8 +363,8 @@ public:
 //Use this for multiple bands where you have terms Un_i n_j
 class MultiBandDensityHubbardInteractionExpansion: public InteractionExpansion{
 public:
-  MultiBandDensityHubbardInteractionExpansion(const alps::params& p, int rank)
-    :InteractionExpansion(p, rank)
+  MultiBandDensityHubbardInteractionExpansion(const alps::run_configuration& run, int rank)
+    :InteractionExpansion(run, rank)
   {
     if(n_site !=1){throw std::invalid_argument("you need a different model for n_site!=1.");}
   }

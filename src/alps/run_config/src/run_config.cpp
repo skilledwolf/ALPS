@@ -206,7 +206,45 @@ params resolve(const params &supplied, const toml::table &rules, const std::file
     }
     return out;
 }
+run_configuration identity(const toml::table &schema) {
+    run_configuration run;
+    run.application = text(schema["application"], "schema.application");
+    if (run.application.empty())
+        fail("schema.application", "expected a nonempty application name");
+    const auto version = schema["schema_version"].value<std::int64_t>();
+    if (!schema["schema_version"].is_integer() || !version || *version < 1)
+        fail("schema.schema_version", "expected a positive integer");
+    run.schema_version = params_ns::detail::convert<int>(*version, "schema.schema_version");
+    return run;
+}
+run_configuration resolve_run(const run_configuration &supplied, const toml::table &schema,
+                              const std::filesystem::path &base) {
+    auto run = identity(schema);
+    if (!supplied.application.empty() &&
+        (supplied.application != run.application || supplied.schema_version != run.schema_version))
+        fail("application", "configuration does not match the application schema");
+    const auto directory = base.empty() ? base : std::filesystem::absolute(base);
+    for (const auto &[section, member] :
+         std::vector<std::pair<std::string, params run_configuration::*>>{
+             {"parameters", &run_configuration::parameters}, {"input", &run_configuration::input},
+             {"output", &run_configuration::output}, {"execution", &run_configuration::execution}}) {
+        run.*member = resolve(supplied.*member, definitions(schema, section), directory, section,
+                              &run.origins);
+    }
+    // Revalidation by an application must retain the origin of defaults
+    // already inserted by the TOML loader.
+    if (!supplied.application.empty())
+        for (auto &[key, origin] : run.origins)
+            if (const auto it = supplied.origins.find(key); it != supplied.origins.end())
+                origin = it->second;
+    return run;
+}
 } // namespace
+run_configuration resolve_run_configuration(const run_configuration &supplied,
+                                           std::string_view schema_text,
+                                           const std::filesystem::path &base_directory) {
+    return resolve_run(supplied, toml::parse(schema_text), base_directory);
+}
 params resolve_parameters(const params &supplied, std::string_view schema_text,
                           const std::string &section) {
     const auto schema = toml::parse(schema_text);
@@ -220,14 +258,7 @@ run_configuration load_run_configuration(const std::filesystem::path &filename,
     for (const auto &[key, node] : document)
         if (!top.count(key.str()))
             fail(std::string(key.str()), "unknown run-file key at " + location(node));
-    run_configuration run;
-    run.application = text(schema["application"], "schema.application");
-    if (run.application.empty())
-        fail("schema.application", "expected a nonempty application name");
-    const auto version = schema["schema_version"].value<std::int64_t>();
-    if (!schema["schema_version"].is_integer() || !version || *version < 1)
-        fail("schema.schema_version", "expected a positive integer");
-    run.schema_version = params_ns::detail::convert<int>(*version, "schema.schema_version");
+    auto run = identity(schema);
     const auto base = std::filesystem::absolute(filename).parent_path();
     for (const auto &item :
          std::vector<std::pair<std::string, params *>>{{"parameters", &run.parameters},
@@ -252,6 +283,12 @@ run_configuration load_run_configuration(const std::filesystem::path &filename,
         }
         *item.second = resolve(supplied, rules, base, section, &run.origins);
     }
+    const auto source = std::filesystem::weakly_canonical(filename);
+    for (const auto &[key, rule] : definitions(schema, "output"))
+        if (rule.as_table() && (*rule.as_table())["type"].value_or(std::string()) == "path" &&
+            run.output.exists(std::string(key.str())) &&
+            std::filesystem::weakly_canonical(run.output[std::string(key.str())].as<std::string>()) == source)
+            fail("output." + std::string(key.str()), "output must not replace the TOML run file");
     return run;
 }
 void run_configuration::save(hdf5::archive &ar) const {
@@ -263,5 +300,22 @@ void run_configuration::save(hdf5::archive &ar) const {
     ar["output"] << output;
     ar["execution"] << execution;
     ar["origins"] << origins;
+}
+void run_configuration::load(hdf5::archive &ar) {
+    run_configuration restored;
+    std::string format;
+    ar["format"] >> format;
+    if (format != "alps.run_config.v1")
+        fail("format", "unsupported archived run configuration");
+    ar["application"] >> restored.application;
+    ar["schema_version"] >> restored.schema_version;
+    if (restored.application.empty() || restored.schema_version < 1)
+        fail("application", "invalid archived configuration identity");
+    ar["parameters"] >> restored.parameters;
+    ar["input"] >> restored.input;
+    ar["output"] >> restored.output;
+    ar["execution"] >> restored.execution;
+    ar["origins"] >> restored.origins;
+    *this = std::move(restored);
 }
 } // namespace alps

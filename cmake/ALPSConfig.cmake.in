@@ -9,7 +9,8 @@ endif()
 # Keep dependency preferences local; preserve find_dependency failure diagnostics.
 block(SCOPE_FOR VARIABLES PROPAGATE ALPS_FOUND ALPS_NOT_FOUND_MESSAGE)
   find_dependency(Threads)
-  find_dependency(Boost 1.76 CONFIG COMPONENTS @ALPS_BOOST_COMPONENTS@)
+  # Params serialization and public Boost types must match the SDK's ABI.
+  find_dependency(Boost @Boost_VERSION_STRING@ EXACT CONFIG GLOBAL COMPONENTS @ALPS_BOOST_COMPONENTS@)
   set(HDF5_USE_STATIC_LIBRARIES "@HDF5_USE_STATIC_LIBRARIES@")
   find_dependency(HDF5 MODULE COMPONENTS C)
   if(@ALPS_ENABLE_MPI@)

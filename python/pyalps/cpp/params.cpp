@@ -6,6 +6,7 @@
 #include <nanobind/nanobind.h>
 #include <nanobind/stl/complex.h>
 #include <nanobind/stl/string.h>
+#include <nanobind/stl/map.h>
 #include <nanobind/stl/vector.h>
 #include <alps/hdf5/archive.hpp>
 #include "archive_savable.hpp"
@@ -18,6 +19,7 @@
 #include <boost/variant/static_visitor.hpp>
 #include <vector>
 #include "dict_to_params.hpp"
+#include "run_config.hpp"
 namespace nb = nanobind;
 namespace {
 // Walk the paramvalue variant and wrap each native alternative as a
@@ -121,4 +123,23 @@ NB_MODULE(pyngsparams_c, m) {
              nb::arg("archive"),
              nb::arg("path") = std::string("/parameters"));
     pyalps::mark_archive_savable(m.attr("params"));
+    nb::class_<alps::run_configuration>(m, "RunConfiguration")
+        .def_ro("application", &alps::run_configuration::application)
+        .def_ro("schema_version", &alps::run_configuration::schema_version)
+        .def_ro("parameters", &alps::run_configuration::parameters)
+        .def_ro("input", &alps::run_configuration::input)
+        .def_ro("output", &alps::run_configuration::output)
+        .def_ro("execution", &alps::run_configuration::execution)
+        .def_ro("origins", &alps::run_configuration::origins)
+        .def("save", &alps::run_configuration::save)
+        .def("load", &alps::run_configuration::load);
+    pyalps::mark_archive_savable(m.attr("RunConfiguration"));
+    m.def("load_run_configuration", [](const std::string &filename, const std::string &schema) {
+        return alps::load_run_configuration(filename, schema);
+    });
+    m.def("resolve_run_configuration", [](const std::string &schema, const nb::dict &parameters,
+           const nb::dict &input, const nb::dict &output, const nb::dict &execution,
+           const std::string &base) {
+        return pyalps::resolve_run(schema, parameters, input, output, execution, base);
+    });
 }

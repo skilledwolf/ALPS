@@ -7,6 +7,7 @@
 namespace alps {
 namespace params_ns { class dictionary; }
 using params = params_ns::dictionary;
+struct run_configuration;
 
 // Link the corresponding ALPS::maxent, ALPS::cthyb, or ALPS::ctint target.
 // Solvers run synchronously, write to output_file, and propagate exceptions.
@@ -16,8 +17,9 @@ namespace maxent { struct data; }
 namespace solvers {
 bool maxent(params const& parameters, const alps::maxent::data& data,
             std::string const& output_file, int time_limit=60, bool text_output=false);
-void cthyb(params const& parameters, std::string const& output_file);
-void ctint(params const& parameters, std::string const& output_file);
+bool maxent(run_configuration const& run);
+void cthyb(run_configuration const& run);
+void ctint(run_configuration const& run);
 }
 }
 

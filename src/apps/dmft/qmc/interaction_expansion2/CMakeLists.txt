@@ -1,0 +1,26 @@
+# Copyright (C) 2026 ALPS Collaboration. SPDX-License-Identifier: MIT
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/schema/ctint.toml" CTINT_SCHEMA)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/schema/ctint.toml")
+configure_file(schema.hpp.in ctint_schema.hpp @ONLY)
+target_sources(alps_ctint PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/run_config.cpp")
+target_include_directories(alps_ctint PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+target_link_libraries(alps_ctint PUBLIC ALPS::run_config)
+install(FILES schema/ctint.toml DESTINATION ${CMAKE_INSTALL_DATADIR}/alps/schemas COMPONENT libraries)
+
+if(ALPS_BUILD_TESTING)
+  add_executable(ctint_run_config_contract tests/run_config.cpp)
+  target_link_libraries(ctint_run_config_contract PRIVATE ALPS::ctint)
+  target_include_directories(ctint_run_config_contract PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/..")
+  alps_add_test(ctint_run_config_contract)
+  set_tests_properties(ctint_run_config_contract PROPERTIES LABELS "dmft;ctint;run_config" TIMEOUT 30)
+  find_package(Python 3.10 REQUIRED COMPONENTS Interpreter)
+  add_test(NAME ctint_cli_contract
+    COMMAND "${Python_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/cli_contract.py" "$<TARGET_FILE:interaction>")
+  set_tests_properties(ctint_cli_contract PROPERTIES LABELS "dmft;ctint;cli" TIMEOUT 60)
+  if(WIN32)
+    foreach(directory IN LISTS ALPS_RUNTIME_LIBRARY_DIRS)
+      set_property(TEST ctint_run_config_contract ctint_cli_contract APPEND PROPERTY ENVIRONMENT_MODIFICATION
+        "PATH=path_list_prepend:${directory}")
+    endforeach()
+  endif()
+endif()

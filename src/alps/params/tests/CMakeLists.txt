@@ -25,3 +25,18 @@ foreach(name contract checkpoint)
   alps_add_test(param_${name})
   set_property(TEST param_${name} PROPERTY LABELS params)
 endforeach()
+
+if(ALPS_ENABLE_MPI)
+  add_executable(param_mpi mpi.cpp)
+  target_link_libraries(param_mpi PRIVATE ALPS::params)
+  add_test(NAME param_mpi
+    COMMAND "${MPIEXEC_EXECUTABLE}" ${MPIEXEC_NUMPROC_FLAG} 2
+      ${MPIEXEC_PREFLAGS} "$<TARGET_FILE:param_mpi>" ${MPIEXEC_POSTFLAGS})
+  set_tests_properties(param_mpi PROPERTIES LABELS "params;mpi" PROCESSORS 2 TIMEOUT 60)
+  if(WIN32)
+    foreach(directory IN LISTS ALPS_RUNTIME_LIBRARY_DIRS)
+      set_property(TEST param_mpi APPEND PROPERTY ENVIRONMENT_MODIFICATION
+        "PATH=path_list_prepend:${directory}")
+    endforeach()
+  endif()
+endif()

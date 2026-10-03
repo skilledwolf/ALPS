@@ -11,10 +11,10 @@
  *****************************************************************************/
 
 #include <alps/solvers.hpp>
+#include <alps/ctint.hpp>
 #include "interaction_expansion.hpp"
-#include "fouriertransform.h"
 #include <alps/utility/copyright.hpp>
-#include <boost/date_time/posix_time/posix_time_types.hpp>
+#include <chrono>
 #ifdef ALPS_HAVE_MPI
 #include <alps/mcmpiadapter.hpp>
 using sim_type = alps::mcmpiadapter<HubbardInteractionExpansion>;
@@ -22,28 +22,23 @@ using sim_type = alps::mcmpiadapter<HubbardInteractionExpansion>;
 using sim_type = HubbardInteractionExpansion;
 #endif
 
-
 void compute_greens_functions(const alps::results_type<HubbardInteractionExpansion>::type&,
-                             alps::params const&, std::string const&);
+                             alps::params const&, alps::params const&, alps::params const&);
 
-namespace {
-bool stop_requested(boost::posix_time::ptime const & end_time) {
-//stops the simulation if time > end_time or if signals received.
-  static alps::ngs::signal signal;
-  return !signal.empty() || boost::posix_time::second_clock::local_time() > end_time;
-}
-}
-
-void alps::solvers::ctint(alps::params const& parms, std::string const& output_file) {
+void alps::solvers::ctint(const run_configuration &supplied) {
+  auto run = supplied;
+  alps::ctint::prepare_run(run);
   int rank;
 #ifndef ALPS_HAVE_MPI
   rank=0;
-  sim_type s(parms,rank);
+  sim_type s(run,rank);
 #else
   boost::mpi::communicator c;
   c.barrier();
   rank=c.rank();
-  sim_type s(parms, c);
+  const auto interval = run.execution["check_interval"].as<double>();
+  sim_type s(run, c, alps::check_schedule(interval, interval),
+             run.execution["bins"].as<std::size_t>());
 #endif
   if (rank==0) {
     alps::print_copyright(std::cout);
@@ -55,20 +50,25 @@ void alps::solvers::ctint(alps::params const& parms, std::string const& output_f
     std::cout << "* [3] PRB 72, 035122 (2005); [4] RMP 83, 349 (2011).           *"<<std::endl;
     std::cout << "****************************************************************"<<std::endl;
   }
-  //run the simulation
-  s.run(boost::bind(&stop_requested, boost::posix_time::second_clock::local_time() + boost::posix_time::seconds((int)parms["MAX_TIME"])));
+  const auto started = std::chrono::steady_clock::now();
+  const auto seconds = run.execution["time_limit"].as<int>();
+  alps::ngs::signal signal;
+  s.run([&] {
+    return !signal.empty() || (seconds != 0 && std::chrono::steady_clock::now() - started >=
+                               std::chrono::seconds(seconds));
+  });
 
-  //on the master: collect MC results and store them in file, then postprocess
-  if (rank==0){
-    alps::results_type<HubbardInteractionExpansion>::type results = collect_results(s);
-    save_results(results, parms, output_file, "/simulation/results");
-    //compute the output Green's function and Fourier transform it, store in the right path
-    compute_greens_functions(results, parms, output_file);
+  // All MPI ranks participate in collection; only root writes results.
+  auto results = collect_results(s);
+  if (rank==0) {
+    const auto output_file = run.output["results"].as<std::string>();
+    save_results(results, run.parameters, output_file, "/simulation/results");
+    if (results["Sign"].count() != 0)
+      compute_greens_functions(results, run.parameters, run.input, run.output);
+    alps::hdf5::archive archive(output_file, "a");
+    archive["/run_config"] << run;
   }
 #ifdef ALPS_HAVE_MPI
-  else{
-  collect_results(s);
-  }
   c.barrier();
 #endif
 }

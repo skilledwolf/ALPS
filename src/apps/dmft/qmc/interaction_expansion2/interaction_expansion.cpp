@@ -16,7 +16,7 @@
 #include <boost/math/constants/constants.hpp>
 #include "interaction_expansion.hpp"
 #include <ctime>
-#include "xml.h"
+#include "run_config.hpp"
 #include "alps/ngs/make_deprecated_parameters.hpp"
 
 //global variables
@@ -29,35 +29,34 @@ double *c_or_cdagger::omegan_;
 std::complex<double> *c_or_cdagger::exp_iomegan_tau_;
 
 
-InteractionExpansion::InteractionExpansion(const alps::params &parms, int node)
-: alps::mcbase(parms,node),
-max_order(parms.value_or("MAX_ORDER", 2048)),
-n_flavors(parms.value_or("FLAVORS", (parms.value_or("N_ORBITALS", 2)))),
-n_site(parms.value_or("SITES", 1)),
-n_matsubara((int)((parms.exists("NMATSUBARA") ? parms["NMATSUBARA"].as<int>() : parms["N_MATSUBARA"].as<int>()))),
-n_matsubara_measurements(parms.value_or("NMATSUBARA_MEASUREMENTS", (int)n_matsubara)),
-n_tau((int)((parms.exists("N") ? parms["N"].as<int>() : parms["N_TAU"].as<int>()))),
+InteractionExpansion::InteractionExpansion(const alps::run_configuration &run, int node)
+: alps::mcbase(run.parameters,node),
+max_order(run.parameters["MAX_ORDER"].as<unsigned int>()),
+n_flavors(run.parameters["FLAVORS"].as<unsigned int>()),
+n_site(run.parameters["SITES"].as<unsigned int>()),
+n_matsubara(run.parameters["NMATSUBARA"].as<unsigned int>()),
+n_matsubara_measurements(run.parameters["NMATSUBARA_MEASUREMENTS"].as<unsigned int>()),
+n_tau(run.parameters["N"].as<unsigned int>()),
 n_tau_inv(1./n_tau),
-n_self(parms.value_or("NSELF", (int)(10*n_tau))),
-mc_steps((boost::uint64_t)parms["SWEEPS"]),
-therm_steps((unsigned int)parms["THERMALIZATION"]),        
-max_time_in_seconds(parms.value_or("MAX_TIME", 86400)),
-beta((double)parms["BETA"]),                        
+n_self(run.parameters["NSELF"].as<unsigned int>()),
+mc_steps((boost::uint64_t)run.parameters["SWEEPS"]),
+therm_steps(run.parameters["THERMALIZATION"].as<std::uint64_t>()),
+beta((double)run.parameters["BETA"]),
 temperature(1./beta),
-onsite_U((double)parms["U"]),                        
-alpha((double)parms["ALPHA"]),
-U(alps::make_deprecated_parameters(parms)),                         
-recalc_period(parms.value_or("RECALC_PERIOD", 5000)),
-measurement_period(parms.value_or("MEASUREMENT_PERIOD", (parms.value_or("N_MEAS", 200)))),
-convergence_check_period(parms.value_or("CONVERGENCE_CHECK_PERIOD", (int)recalc_period)),
-almost_zero(parms.value_or("ALMOSTZERO", 1.e-16)),
-seed(parms.value_or("SEED", 0)),
+onsite_U((double)run.parameters["U"]),
+alpha((double)run.parameters["ALPHA"]),
+U(alps::make_deprecated_parameters(run.parameters)),
+recalc_period(run.parameters["RECALC_PERIOD"].as<unsigned int>()),
+measurement_period(run.parameters["MEASUREMENT_PERIOD"].as<unsigned int>()),
+almost_zero(run.parameters["ALMOSTZERO"].as<double>()),
 green_matsubara(n_matsubara, n_site, n_flavors),
 bare_green_matsubara(n_matsubara,n_site, n_flavors), 
 bare_green_itime(n_tau+1, n_site, n_flavors),
 green_itime(n_tau+1, n_site, n_flavors),
 pert_hist(max_order)
 {
+  const auto &parms = run.parameters;
+  random.engine().seed(run.execution["seed"].as<std::uint64_t>() + static_cast<std::uint64_t>(node));
   //initialize measurement method
   if (parms.value_or("HISTOGRAM_MEASUREMENT", false))
     measurement_method=selfenergy_measurement_itime_rs;
@@ -69,45 +68,16 @@ pert_hist(max_order)
   weight=0;
   sign=1;
   step=0;
-  start_time=time(NULL);
   measurement_time=0;
   update_time=0;
-  thermalized=therm_steps==0?true:false;
-  if(!parms.exists("ATOMIC")) {
-    alps::hdf5::archive ar(parms["INFILE"].as<std::string>(),"r");
-    if(parms.exists("DMFT_FRAMEWORK") && parms["DMFT_FRAMEWORK"].as<bool>()){
-      //read in as green_function
-//      std::cerr << "Reading G0 ...";
-      bare_green_matsubara.read_hdf5(ar,"/G0");
-//      std::cerr << " done.\n";
-      
-    } else { //plain hdf5
-      std::vector<std::complex<double> > tmp(n_matsubara);
-//      std::cerr << "Reading G0 ...";
-      for(std::size_t j=0; j<n_flavors; j++){
-        std::stringstream path; path<<"/G0_"<<j;
-        ar>>alps::make_pvp(path.str(),tmp);
-        for(std::size_t i=0; i<n_matsubara; i++)
-          bare_green_matsubara(i,0,0,j)=tmp[i];
-      }
-//      std::cerr << " done.\n";
-      tmp.clear();
-    }
-    
+  read_ctint_bare_green(parms, run.input, bare_green_matsubara);
+  if (run.input["atomic"].as<bool>()) {
+    for (spin_t flavor = 0; flavor < n_flavors; ++flavor)
+      for (itime_index_t t = 0; t <= n_tau; ++t)
+        bare_green_itime(t, 0, 0, flavor) = -0.5;
+  } else {
     FourierTransformer::generate_transformer(alps::make_deprecated_parameters(parms), fourier_ptr);
     fourier_ptr->backward_ft(bare_green_itime, bare_green_matsubara);
-  } else {
-    for(spin_t flavor=0; flavor<n_flavors; ++flavor) 
-      for(site_t site1=0; site1<n_site; ++site1) 
-        for(site_t site2=0; site2<n_site; ++site2) 
-          for(itime_index_t t=0; t<=n_tau; ++t)
-            bare_green_itime(t, site1, site2, flavor)=-0.5;
-    for(spin_t flavor=0; flavor<n_flavors; ++flavor) 
-      for(site_t site1=0; site1<n_site; ++site1) 
-        for(site_t site2=0; site2<n_site; ++site2) 
-          for(unsigned int k=0; k<n_matsubara; ++k) 
-            bare_green_matsubara(k, site1, site2, flavor)=std::complex<double>(0, -beta/((2*k+1)*boost::math::constants::pi<double>()));
-    //fourier transform of -1/2
   }
   //initialize the simulation variables
   initialize_simulation(parms);
@@ -136,19 +106,15 @@ void InteractionExpansion::update()
   }
 }
 void InteractionExpansion::measure(){
-  measure_observables();
+  if (is_thermalized())
+    measure_observables();
 }
 
 
 
 double InteractionExpansion::fraction_completed() const{
-  //check for error convergence
-  if (!thermalized) 
+  if (!is_thermalized())
     return 0.;
-  if(time(NULL)-start_time> max_time_in_seconds){
-    std::cout<<"we ran out of time!"<<std::endl;
-    return 1;
-  }
   return ((step-therm_steps) / (double) mc_steps);
 }
 
@@ -175,7 +141,7 @@ void InteractionExpansion::initialize_simulation(const alps::params &parms)
 void c_or_cdagger::initialize_simulation(const alps::params &p)
 {
   beta_=p["BETA"];
-  nm_=p.value_or("NMATSUBARA_MEASUREMENTS", ((p.exists("NMATSUBARA") ? p["NMATSUBARA"].as<int>() : p["N_MATSUBARA"].as<int>())));
+  nm_=p["NMATSUBARA"].as<unsigned int>();
   omegan_ = new double[nm_];
   for(unsigned int i=0;i<nm_;++i) {
     omegan_[i]=(2.*i+1.)*boost::math::constants::pi<double>()/beta_;
@@ -183,15 +149,15 @@ void c_or_cdagger::initialize_simulation(const alps::params &p)
   if(p.exists("TAU_DISCRETIZATION_FOR_EXP")) {
     ntau_=p["TAU_DISCRETIZATION_FOR_EXP"];
     use_static_exp_=true;
-    exp_iomegan_tau_=new std::complex<double> [2*nm_*ntau_];
+    exp_iomegan_tau_=new std::complex<double> [std::size_t(2)*nm_*ntau_];
     if(exp_iomegan_tau_==0){throw std::runtime_error("not enough memory for computing exp!"); }
     std::cout<<"starting computation of exp values for measurement"<<std::endl;
     for(unsigned int i=0;i<ntau_;++i){
       double tau=i*beta_/(double)ntau_;
       for(unsigned int o=0;o<nm_;++o)
-        exp_iomegan_tau_[2*nm_*i + o] = std::complex<double>(cos(omegan_[o]*tau), sin(omegan_[o]*tau));
+        exp_iomegan_tau_[std::size_t(2)*nm_*i + o] = std::complex<double>(cos(omegan_[o]*tau), sin(omegan_[o]*tau));
       for(unsigned int o=0;o<nm_;++o)
-        exp_iomegan_tau_[2*nm_*i + nm_ + o] = std::complex<double>(cos(omegan_[o]*tau), -sin(omegan_[o]*tau));
+        exp_iomegan_tau_[std::size_t(2)*nm_*i + nm_ + o] = std::complex<double>(cos(omegan_[o]*tau), -sin(omegan_[o]*tau));
     }
     std::cout<<"done exp computation."<<std::endl;
   } else {

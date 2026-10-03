@@ -17,18 +17,18 @@
 #include"hyblocal.hpp"
 #include<algorithm>
 
-local_configuration::local_configuration(const alps::params &p, int crank):
+local_configuration::local_configuration(const alps::params &p, const alps::params &input, int crank):
 crank_(crank),
-U_(p),
-mu_(p),
-K_(p){
+U_(p,input),
+mu_(p,input),
+K_(p,input){
   beta_=p["BETA"];
   n_orbitals_=p["N_ORBITALS"];
 //    std::cerr << "Start ...";
   segments_.resize(n_orbitals_);
   zero_order_orbital_occupied_.resize(n_orbitals_,false);
 //    std::cerr << " done\n";
-  use_retarded_interaction_=p.exists("RET_INT_K");
+  use_retarded_interaction_=input.exists("retarded_interaction");
   if(use_retarded_interaction_){
     double Kp0=K_.interpolate_deriv(0.0);//K'(0^+)
     U_.apply_shift(-2.*Kp0); //apply static shift caused by the retarded interaction

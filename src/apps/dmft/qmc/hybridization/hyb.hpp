@@ -16,6 +16,7 @@
 
 #include <alps/ngs.hpp>
 #include <alps/mcbase.hpp>
+#include <alps/run_config.hpp>
 #include <alps/ngs/signal.hpp>
 #include "green_function.h"
 #include "hybsegment.hpp"
@@ -37,9 +38,8 @@ class hybridization:public alps::mcbase
 {
 public:
   //constructor
-  hybridization(const alps::params &parms, int crank);
-  void sanity_check(const alps::params &parms); //check whether parameters make sense
-  void show_info(const alps::params &parms, int crank);
+  hybridization(const alps::run_configuration &run, int crank);
+  void show_info(const alps::run_configuration &run, int crank);
   //Monte Carlo update and measurements functions
   void measure();
   void update();
@@ -111,7 +111,6 @@ private:
   //updates parameters
   std::size_t N_meas;
   std::size_t NUM_BINS; // Number of bins for the measurments
-  std::size_t MEASURE_timeseries; // fixed binning instead of detailed binning
   
   //measurement parameters
   std::size_t N_w;    //number of Matsubara frequency points

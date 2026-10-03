@@ -100,14 +100,14 @@ public:
   static const std::complex<double> *exp_iomegan_tau(const double &tau) 
   {
     int taun=(int)(tau*ntau_/beta_); 
-    return &(exp_iomegan_tau_[taun*2*nm_]);
+    return &(exp_iomegan_tau_[std::size_t(taun)*2*nm_]);
   }
   
 
   static const std::complex<double> *exp_min_iomegan_tau(const double &tau) 
   {
     int taun=(int)(tau*ntau_/beta_);
-    return &(exp_iomegan_tau_[taun*2*nm_ + nm_]);
+    return &(exp_iomegan_tau_[std::size_t(taun)*2*nm_ + nm_]);
   }
   
   
@@ -173,9 +173,9 @@ public:
       int taun=(int)(t_*ntau_/beta_);
       assert(taun<ntau_);
       if(sign==1) 
-        exp_iomegat_=&(exp_iomegan_tau_[taun*2*nm_]);
+        exp_iomegat_=&(exp_iomegan_tau_[std::size_t(taun)*2*nm_]);
       else
-        exp_iomegat_=&(exp_iomegan_tau_[taun*2*nm_ + nm_]);
+        exp_iomegat_=&(exp_iomegan_tau_[std::size_t(taun)*2*nm_ + nm_]);
     }
 
 

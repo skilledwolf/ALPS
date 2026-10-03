@@ -31,33 +31,15 @@ int main(int argc, char **argv) {
         if (file.empty())
             throw std::invalid_argument("No TOML run file specified");
         auto run = alps::load_run_configuration(file, alps::maxent::schema());
-        const auto data = alps::maxent::read_data(run.input);
-        run.parameters = alps::maxent::prepare(run.parameters, data);
-        for (const auto *key : {"T", "BETA", "OMEGA_MIN"})
-            if (!run.origins.count(std::string("parameters.") + key))
-                run.origins[std::string("parameters.") + key] = "derived";
         const auto output = run.output["results"].as<std::string>();
-        for (const auto *key : {"data", "covariance_file", "prior"})
-            if (run.input.exists(key)) {
-                const auto source = std::filesystem::path(run.input[key].as<std::string>());
-                if (std::filesystem::weakly_canonical(source) ==
-                    std::filesystem::weakly_canonical(output))
-                    throw std::invalid_argument("output must not replace an input file");
-            }
         if (std::filesystem::weakly_canonical(file) == std::filesystem::weakly_canonical(output))
             throw std::invalid_argument("output must not replace the TOML run file");
         if (validate) {
+            alps::maxent::prepare_run(run);
             std::cout << "Valid MaxEnt configuration: " << file << '\n';
             return 0;
         }
-        const bool completed = alps::solvers::maxent(run.parameters, data, output,
-                                                     run.execution["time_limit"].as<int>(),
-                                                     run.output["text"].as<bool>());
-        // A stopped run without a result has no configuration archive to annotate.
-        if (completed) {
-            alps::hdf5::archive ar(output, "a");
-            ar["/run_config"] << run;
-        }
+        alps::solvers::maxent(run);
         return 0;
     } catch (const std::exception &error) {
         std::cerr << "maxent: " << error.what() << '\n';

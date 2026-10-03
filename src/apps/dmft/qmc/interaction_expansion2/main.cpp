@@ -11,32 +11,45 @@
  *****************************************************************************/
 
 #include <alps/solvers.hpp>
-#include <alps/ngs.hpp>
+#include <alps/ctint.hpp>
+#include <alps/run_config.hpp>
+#include <iostream>
 #ifdef ALPS_HAVE_MPI
 #include <boost/mpi/environment.hpp>
 #endif
 
 int main(int argc, char** argv) {
-  alps::mcoptions options(argc, argv);
-  if (!options.valid) return 0;
-#ifdef ALPS_HAVE_MPI
-  boost::mpi::environment env(argc, argv);
-#endif
-  alps::params parms;
-  alps::hdf5::archive input(options.input_file, alps::hdf5::archive::READ);
-  input["/parameters"] >> parms;
   try {
-    if (options.time_limit != 0)
-      throw std::invalid_argument("time limit is passed in the parameter file!");
-    if (!parms.exists("MAX_TIME"))
-      throw std::runtime_error("parameter MAX_TIME is not defined. How long do you want to run the code for? (in seconds)");
-    alps::solvers::ctint(parms, options.output_file);
-  } catch (std::exception const& exc) {
-    std::cerr << exc.what() << '\n';
-    return -1;
-  } catch (...) {
-    std::cerr << "Fatal Error: Unknown Exception!\n";
-    return -2;
+    bool validate = false;
+    std::string file;
+    for (int i = 1; i < argc; ++i) {
+      const std::string argument = argv[i];
+      if (argument == "--help" || argument == "-h") {
+        std::cout << "Usage: interaction [--validate] run.toml\n"
+                  << "Use [parameters], [input], [output], and [execution] TOML sections.\n";
+        return 0;
+      }
+    }
+    for (int i = 1; i < argc; ++i) {
+      const std::string argument = argv[i];
+      if (argument == "--validate") validate = true;
+      else if (argument.empty() || argument[0] == '-')
+        throw std::invalid_argument("unknown option: " + argument);
+      else if (file.empty()) file = argument;
+      else throw std::invalid_argument("expected one TOML run file");
+    }
+    if (file.empty()) throw std::invalid_argument("No TOML run file specified");
+#ifdef ALPS_HAVE_MPI
+    boost::mpi::environment environment(argc, argv);
+#endif
+    auto run = alps::load_run_configuration(file, alps::ctint::schema());
+    if (validate) {
+      alps::ctint::prepare_run(run);
+      std::cout << "Valid CT-INT configuration: " << file << '\n';
+    } else alps::solvers::ctint(run);
+    return 0;
+  } catch (const std::exception &error) {
+    std::cerr << "interaction: " << error.what() << '\n';
+    return 1;
   }
-  return 0;
 }

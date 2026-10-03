@@ -1,13 +1,8 @@
 // Copyright (C) 2026 ALPS collaboration. SPDX-License-Identifier: MIT
-#include "dict_to_params.hpp"
-#include "scoped_signal_handlers.hpp"
-#include <alps/solvers.hpp>
+#include "run_config.hpp"
+#include <alps/cthyb.hpp>
 
 NB_MODULE(cthyb, module) {
-  module.def("solve", [](nanobind::dict const& values) {
-    pyalps::scoped_signal_handlers signal_handlers;
-    auto parameters = pyalps::params_from_dict(values);
-    auto output_file = static_cast<std::string>(parameters.value_or("BASENAME", "results")) + ".out.h5";
-    alps::solvers::cthyb(parameters, output_file);
-  });
+  pyalps::bind_configured_solver(module, alps::cthyb::schema(), alps::cthyb::prepare_run,
+                                 alps::solvers::cthyb);
 }

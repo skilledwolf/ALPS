@@ -13,20 +13,21 @@
  *****************************************************************************/
 
 #include"hybretintfun.hpp"
+#include "input.hpp"
 //construct a retarded interaction function. ntime: number of time slices.
 //noffidag_orbitals: number of offdiagonal orbitals. ndiag_orbitals: number
 //of diagonal orbitals. 
-ret_int_fun::ret_int_fun(const alps::params &p):
+ret_int_fun::ret_int_fun(const alps::params &p, const alps::params &input):
 green_function<double>(p["N_TAU"].as<int>()+1, 1, 2)//2 "flavors": K and K'
 {
-  bool use_retarded_interaction=p.exists("RET_INT_K");
+  bool use_retarded_interaction=input.exists("retarded_interaction");
   if(!use_retarded_interaction) return;
 
   if(!p.exists("N_TAU") || (int)(p["N_TAU"])==0) throw std::invalid_argument("define parameter N_TAU, the number of retarded interaction time slices!");
   beta_=p["BETA"];
   
   //read in Green's function from a file
-  read_interaction_K_function(p);
+  read_interaction_K_function(p,input);
   interaction_K_function_sanity_check();
 
   extern int global_mpi_rank;
@@ -45,48 +46,15 @@ if(operator()(0,0)!=0.) throw std::invalid_argument("Problem with retarded inter
 //this routine reads in the retarded interaction function, either from a text file or from an hdf5 file (for easy passing of binary data).
 //In  case of text files the file format is index - hyb_1 - hyb2 - hyb3 - ... in columns that go from time=0 to time=beta. Note that
 //the retarded interaction function is in imaginary time and always positive both for negative and positive times. It is also symmetric.
-void ret_int_fun::read_interaction_K_function(const alps::params &p){
-  if(!p.exists("RET_INT_K")) throw(std::invalid_argument(std::string("Parameter RET_INT_K missing, filename for retarded interaction function not specified.")));
-  std::string fname=p["RET_INT_K"].as<std::string>();
-  if(p.exists("K_IN_HDF5") && p["K_IN_HDF5"].as<bool>()){//attempt to read from h5 archive
-    alps::hdf5::archive ar(fname, alps::hdf5::archive::READ);
-    std::vector<double> tmp(ntime());
-    ar>>alps::make_pvp("/Ret_int_K",tmp);
-      for(std::size_t i=0; i<ntime(); i++)
-        operator()(i,0)=tmp[i];
-    tmp.clear();
-    ar>>alps::make_pvp("/Ret_int_Kp",tmp);
-      for(std::size_t i=0; i<ntime(); i++)
-        operator()(i,1)=tmp[i];
-    tmp.clear();
-  }
-  else{//read from text file
-    std::ifstream infile(fname.c_str());
-    if(!infile.good()){
-      throw(std::invalid_argument(std::string("could not open retarded interaction file (text format) ") + p["RET_INT_K"].as<std::string>()));
-    }
-    for (std::size_t i=0; i<ntime(); i++) {
-      if(!infile.good()){
-        throw(std::invalid_argument(std::string("could not read retarded interaction file (text format) ") + p["RET_INT_K"].as<std::string>() + ". probably wrong number of lines"));
-      }
-      double dummy;
-      infile >> dummy;
-      //std::cout<<i<<" "<<ntime()<<" "<<"dummy: "<<dummy<<std::endl;
-      for (std::size_t j=0; j<nflavor(); j++){
-        if(!infile.good()){
-          throw(std::invalid_argument(std::string("could not read retarded interaction file (text format) ") + p["RET_INT_K"].as<std::string>() + ". probably wrong number of columns"));
-        }
-        double delta;
-        infile >> delta;
-        operator()(i,j)=delta;
-      }
-    }
-  }
+void ret_int_fun::read_interaction_K_function(const alps::params &p, const alps::params &input){
+  const auto values=cthyb_input::series(p,input,true);
+  for(std::size_t i=0;i<ntime();++i)
+    for(std::size_t j=0;j<nflavor();++j) operator()(i,j)=values[i*nflavor()+j];
 }
 
 std::ostream &operator<<(std::ostream &os, const ret_int_fun &K){
   os<<"the retarded interaction function and derivative are: "<<std::endl;
-  for(int i=0;i<10;++i){ std::cout<<i<<" "; for(std::size_t j=0;j<K.nflavor();++j){ std::cout<<K(i,j)<<" ";} std::cout<<std::endl; }
+  for(std::size_t i=0;i<std::min<std::size_t>(10,K.ntime());++i){ std::cout<<i<<" "; for(std::size_t j=0;j<K.nflavor();++j){ std::cout<<K(i,j)<<" ";} std::cout<<std::endl; }
   os<<"... *** etc *** ...\n";
   os<<K.ntime()-1<<" "; for(std::size_t j=0;j<K.nflavor();++j){ std::cout<<K(K.ntime()-1,j)<<" ";} std::cout<<std::endl;
   return os;

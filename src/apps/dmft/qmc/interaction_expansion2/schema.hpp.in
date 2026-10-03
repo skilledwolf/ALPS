@@ -1,0 +1,3 @@
+// Generated from the application-owned schema; no duplicated defaults.
+#pragma once
+inline constexpr const char ctint_schema[] = R"ALPS_SCHEMA(@CTINT_SCHEMA@)ALPS_SCHEMA";

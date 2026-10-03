@@ -2,7 +2,10 @@
 #include "dict_to_params.hpp"
 #include "scoped_signal_handlers.hpp"
 #include <alps/maxent.hpp>
+#include "run_config.hpp"
 NB_MODULE(maxent_c,module) {
+    pyalps::bind_configured_solver(module, alps::maxent::schema(), alps::maxent::prepare_run,
+        static_cast<bool (*)(const alps::run_configuration &)>(&alps::solvers::maxent));
     module.def("AnalyticContinuation",[](const nanobind::dict& parameters,const nanobind::dict& input,
                                          const std::string& output,int time_limit,bool text_output) {
         pyalps::scoped_signal_handlers signal_handlers;

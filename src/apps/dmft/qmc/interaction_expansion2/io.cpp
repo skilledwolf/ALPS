@@ -69,7 +69,6 @@ void InteractionExpansion::print(std::ostream &os){
   
   os<<"beta: "<<beta<<"\talpha: "<<alpha<<"\tU: "<<onsite_U<<std::endl;
   
-  os<<"recalc period: "<<recalc_period<<"\tmeasurement period: "<< measurement_period
-    <<"\tconvergence period: "<< convergence_check_period<<std::endl;
+  os<<"recalc period: "<<recalc_period<<"\tmeasurement period: "<< measurement_period<<std::endl;
   os<<"almost zero: "<<almost_zero<<std::endl;
 }

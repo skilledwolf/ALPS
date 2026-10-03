@@ -244,19 +244,14 @@ def test_ctqmc_solvers_restore_python_signal_handlers(tmp_path, monkeypatch):
     delta_path.write_text("".join(f"{i} -0.5 -0.5\n" for i in range(11)))
     cthyb_params = {
         "SWEEPS": 1,
-        "MAX_TIME": 1,
         "THERMALIZATION": 0,
-        "SEED": 0,
         "N_MEAS": 1,
         "N_HISTOGRAM_ORDERS": 4,
         "N_ORBITALS": 2,
         "U": 1.0,
         "MU": 0.5,
-        "DELTA": str(delta_path),
         "N_TAU": 10,
         "BETA": 1.0,
-        "TEXT_OUTPUT": False,
-        "BASENAME": str(tmp_path / "cthyb-signal"),
     }
 
     ctint_input = tmp_path / "ctint-input.h5"
@@ -267,16 +262,13 @@ def test_ctqmc_solvers_restore_python_signal_handlers(tmp_path, monkeypatch):
     del archive
     ctint_params = {
         "SWEEPS": 1,
-        "MAX_TIME": 1,
         "THERMALIZATION": 0,
         "BETA": 1.0,
         "U": 1.0,
         "MU": 0.5,
         "ALPHA": 0.5,
-        "N_MATSUBARA": 4,
-        "N_TAU": 4,
-        "INFILE": str(ctint_input),
-        "BASENAME": str(tmp_path / "ctint-signal"),
+        "NMATSUBARA": 4,
+        "N": 4,
     }
 
     calls = []
@@ -288,9 +280,13 @@ def test_ctqmc_solvers_restore_python_signal_handlers(tmp_path, monkeypatch):
     try:
         # Run each solver twice: restoration alone is not enough if ALPS' own
         # handlers are not reinstalled for the next embedded call.
-        for solver, params in ((cthyb, cthyb_params), (ctint, ctint_params)):
+        for solver, params, inputs, output in (
+            (cthyb, cthyb_params, {"delta": str(delta_path)}, tmp_path / "cthyb-signal.h5"),
+            (ctint, ctint_params, {"g0": str(ctint_input)}, tmp_path / "ctint-signal.h5"),
+        ):
             for _ in range(2):
-                solver.solve(params)
+                solver.solve(params, input=inputs, output={"results": str(output)},
+                             execution={"time_limit": 1, "seed": 0})
                 assert signal.getsignal(signal.SIGINT) is python_sigint_handler
                 signal.raise_signal(signal.SIGINT)
                 assert calls[-1][0] == signal.SIGINT

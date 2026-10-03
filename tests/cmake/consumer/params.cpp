@@ -7,12 +7,14 @@
 #include <boost/archive/text_oarchive.hpp>
 #include <sstream>
 #include <stdexcept>
+#include <iostream>
 
 void require(bool condition) {
     if (!condition) throw std::runtime_error("Typed params SDK contract failed");
 }
 
 int main() {
+    try {
     alps::params parameters;
     parameters["count"] = 3;
     parameters["values"] = std::vector<double>{1., 2.};
@@ -48,4 +50,8 @@ int main() {
     std::ostringstream output;
     output << restored;
     require(output.str().find("label = sample") != std::string::npos);
+    } catch (const std::exception &error) {
+        std::cerr << "Typed params SDK contract: " << error.what() << '\n';
+        return 1;
+    }
 }

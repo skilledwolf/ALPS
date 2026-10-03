@@ -136,8 +136,39 @@ are not accepted by `ngs.params.load`. A standalone converter is deferred. The
 analysis loaders still handle result groups from the unmigrated `Parameters`
 applications as well as the new typed checkpoints.
 
+Installed C++ SDK consumers require the Boost version used to build that SDK.
+The SDK exports the matching runtime search path on macOS, where Boost library
+names alone may not distinguish incompatible versions from different providers.
+
 MaxEnt accepts `AnalyticContinuation(parameters, input, output_file,
 time_limit=60, text_output=False)`. Parameters and input are separate dictionaries
 validated by the native application schema. Its CLI accepts a TOML run file;
 see the [MaxEnt guide](../../src/apps/maxent/README.md). The previous combined
 parameter dictionary, file constructor and HDF5-as-run-file CLI are removed.
+
+MaxEnt, CT-HYB and CT-INT also expose a common configured interface:
+
+```python
+from pyalps import cthyb, run_config
+from pyalps.run_io import write_run_file
+
+run = run_config.load("run.toml", cthyb.schema())
+cthyb.solve(run)  # Equivalently: cthyb.solve("run.toml")
+write_run_file("copy.toml", cthyb.schema(), parameters=dict(run.parameters),
+               input=dict(run.input), output=dict(run.output), execution=dict(run.execution))
+```
+
+For programmatic runs, `solver.prepare(parameters, input={}, output={},
+execution={})` returns a validated `RunConfiguration`; `solver.solve` accepts
+those sections directly too. Native schema rules, defaults and application
+checks apply to both file and programmatic runs. `output.results` is explicit.
+Input and output paths in files resolve relative to the run file. Scientific
+HDF5 datasets remain usable as input; their containers do not become run files.
+
+`write_run_files(prefix, runs, schema, baseseed=None)` writes one TOML file per
+explicit run plus a job manifest listing them. Arrays remain values within a
+run. The writer keeps supplied dictionaries unchanged, inserts generated seeds
+in `execution.seed`, and refuses overwrites and colliding result/checkpoint
+paths. Job execution through the legacy scheduler/parapack fronts remains
+pending migration. See the [CT-HYB guide](../../src/apps/dmft/qmc/hybridization/README.md)
+for numerical formats and supported measurements.

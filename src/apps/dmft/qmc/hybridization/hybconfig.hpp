@@ -23,7 +23,7 @@
 //this is where \det \Delta is implemented.
 class hybridization_configuration{
 public:
-  hybridization_configuration(const alps::params &p);
+  hybridization_configuration(const alps::params &p, const alps::params &input);
   hybridization_configuration(const hybridization_configuration &rhs) : Delta(rhs.Delta),hybmat_(rhs.hybmat_) {
     std::cerr << hybmat_.size() << std::endl;
     for (int i=0;i<hybmat_.size();i++)

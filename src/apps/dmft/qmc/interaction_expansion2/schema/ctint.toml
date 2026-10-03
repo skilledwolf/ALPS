@@ -1,0 +1,163 @@
+# Copyright (C) 2026 ALPS Collaboration. SPDX-License-Identifier: MIT
+application = "ctint"
+schema_version = 1
+
+[parameters.BETA]
+type = "float64"
+required = true
+min = 0.0
+
+[parameters.U]
+type = "float64"
+required = true
+
+[parameters.MU]
+type = "float64"
+required = true
+
+[parameters.ALPHA]
+type = "float64"
+required = true
+
+[parameters.FLAVORS]
+type = "int64"
+default = 2
+choices = [2]
+
+[parameters.SITES]
+type = "int64"
+default = 1
+choices = [1]
+
+[parameters.N]
+type = "int64"
+required = true
+min = 2
+max = 214748363
+
+[parameters.NMATSUBARA]
+type = "int64"
+required = true
+min = 1
+max = 2147483647
+
+[parameters.NMATSUBARA_MEASUREMENTS]
+type = "int64"
+min = 1
+max = 2147483647
+
+[parameters.NSELF]
+type = "int64"
+min = 1
+max = 2147483646
+
+[parameters.MAX_ORDER]
+type = "int64"
+default = 2048
+min = 1
+max = 2147483647
+
+[parameters.SWEEPS]
+type = "int64"
+required = true
+min = 1
+
+[parameters.THERMALIZATION]
+type = "int64"
+required = true
+min = 0
+max = 4294967295
+
+[parameters.RECALC_PERIOD]
+type = "int64"
+default = 5000
+min = 1
+max = 2147483647
+
+[parameters.MEASUREMENT_PERIOD]
+type = "int64"
+default = 200
+min = 1
+max = 2147483647
+
+[parameters.ALMOSTZERO]
+type = "float64"
+default = 1.0e-16
+min = 0.0
+
+[parameters.HISTOGRAM_MEASUREMENT]
+type = "bool"
+default = false
+
+[parameters.TAU_DISCRETIZATION_FOR_EXP]
+type = "int64"
+min = 1
+max = 2147483647
+
+[parameters.H]
+type = "float64"
+default = 0.0
+
+[parameters.EPS_0]
+type = "float64"
+default = 0.0
+
+[parameters.EPS_1]
+type = "float64"
+default = 0.0
+
+[parameters.EPSSQ_0]
+type = "float64"
+default = 1.0
+
+[parameters.EPSSQ_1]
+type = "float64"
+default = 1.0
+
+[input.g0]
+type = "path"
+description = "HDF5 bare Green function, separate from the TOML run file."
+
+[input.layout]
+type = "string"
+default = "flavor-vectors"
+choices = ["flavor-vectors", "dmft"]
+description = "flavor-vectors reads /G0_0 and /G0_1; dmft reads /G0/{nt,ns,nf} and /G0/<flavor>/mean/value."
+
+[input.atomic]
+type = "bool"
+default = false
+description = "Use the analytic half-filled atomic bare Green function instead of a file."
+
+[output.results]
+type = "path"
+required = true
+
+[output.matrix_size]
+type = "path"
+description = "Optional text file to append the mean perturbation orders to."
+
+[execution.time_limit]
+type = "int64"
+default = 0
+min = 0
+max = 2147483647
+description = "Wall-clock limit in seconds; zero disables the time limit."
+
+[execution.seed]
+type = "int64"
+default = 42
+min = 0
+max = 2147483647
+
+[execution.bins]
+type = "int64"
+default = 128
+min = 1
+max = 2147483647
+
+[execution.check_interval]
+type = "float64"
+default = 1.0
+min = 0.0
+description = "Maximum MPI progress/time-limit checking interval in seconds."

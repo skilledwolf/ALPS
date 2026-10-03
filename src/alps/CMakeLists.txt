@@ -34,6 +34,14 @@ set_target_properties(alps_configuration PROPERTIES EXPORT_NAME configuration)
 target_compile_features(alps_configuration INTERFACE cxx_std_17)
 target_compile_features(alps PRIVATE c_std_11)
 target_link_libraries(alps_configuration INTERFACE Boost::headers)
+# macOS Boost install names can omit the version. An unrelated dependency's
+# explicit library directory can otherwise outrank this compiler's implicit
+# prefix and load a different Boost ABI into an installed SDK consumer.
+get_target_property(_alps_boost_serialization_type Boost::serialization TYPE)
+if(APPLE AND _alps_boost_serialization_type MATCHES "^(SHARED|UNKNOWN)_LIBRARY$")
+  target_link_options(alps_configuration INTERFACE
+    "LINKER:-rpath,$<TARGET_FILE_DIR:Boost::serialization>")
+endif()
 target_include_directories(alps_configuration INTERFACE
   $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/third_party/boost_numeric_bindings/include>)
 target_link_libraries(alps PUBLIC alps_headers HDF5::HDF5 Threads::Threads

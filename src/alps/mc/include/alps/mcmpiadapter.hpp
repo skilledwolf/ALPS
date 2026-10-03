@@ -31,12 +31,20 @@ namespace alps {
                 , boost::mpi::communicator const & comm
                 , ScheduleChecker const & check = ScheduleChecker()
             )
-                : Base(parameters, comm.rank())
+                : mcmpiadapter(parameters, comm, check, parameters.value_or("BINNUMBER", 128))
+            {}
+
+            template<class Configuration>
+            mcmpiadapter(Configuration const & configuration,
+                         boost::mpi::communicator const & comm,
+                         ScheduleChecker const & check, std::size_t bins)
+                : Base(configuration, comm.rank())
                 , communicator(comm)
                 , schedule_checker(check)
+                , fraction(0.)
                 , clone(comm.rank())
 #ifndef ALPS_NGS_USE_NEW_ALEA
-                , binnumber(parameters.value_or("BINNUMBER", 128))
+                , binnumber(bins)
 #endif
             {}
 

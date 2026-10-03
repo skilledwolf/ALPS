@@ -19,10 +19,22 @@
 #include "hybevaluate.hpp"
 #include <alps/config.h>
 #include <boost/cstdint.hpp>
+#include <filesystem>
+namespace {
+std::string text_file(const alps::params &output, const char* filename) {
+  return (std::filesystem::path(output["text_directory"].as<std::string>())/filename).string();
+}
+std::ofstream text_stream(const alps::params &output, const char* filename) {
+  std::ofstream stream;
+  stream.exceptions(std::ios::badbit|std::ios::failbit);
+  stream.open(text_file(output,filename));
+  return stream;
+}
+}
 
 void evaluate_basics(const alps::results_type<hybridization>::type &results,
                      const alps::parameters_type<hybridization>::type &parms,
-                     alps::hdf5::archive &solver_output){
+                     const alps::params &output, alps::hdf5::archive &solver_output){
 
   std::size_t n_orbitals=parms["N_ORBITALS"];
   std::size_t N_meas=parms["N_MEAS"];
@@ -30,8 +42,8 @@ void evaluate_basics(const alps::results_type<hybridization>::type &results,
 
   boost::uint64_t sweeps = results["Sign"].count()+(boost::uint64_t)parms["THERMALIZATION"];
 
-  if(parms.value_or("TEXT_OUTPUT", false)){
-    std::ofstream sim_file("simulation.dat");
+  if(output["text"].as<bool>()){
+    auto sim_file=text_stream(output,"simulation.dat");
     sim_file << "simulation details:" << std::endl;
     sim_file << "average sign: " << results["Sign"].mean<double>() << std::endl;
     sim_file << "total number of Monte Carlo updates: " << sweeps*(int)parms["N_MEAS"] << std::endl;
@@ -63,7 +75,7 @@ void evaluate_basics(const alps::results_type<hybridization>::type &results,
     }
     sim_file.close();
 
-    std::ofstream obs_file("observables.dat");//equal-time correlators
+    auto obs_file=text_stream(output,"observables.dat");//equal-time correlators
     for(std::size_t i=0;i<n_orbitals;++i){//replace Green function endpoints by corresponding densities
       std::stringstream density_name; density_name<<"density_"<<i;
       double density=results[density_name.str()].mean<double>();
@@ -78,7 +90,7 @@ void evaluate_basics(const alps::results_type<hybridization>::type &results,
     }
     obs_file.close();
 
-    std::ofstream order_file("orders.dat");
+    auto order_file=text_stream(output,"orders.dat");
     std::vector<std::vector<double> > order_histogram(n_orbitals);
     std::vector<std::vector<double> > order_histogram_err(n_orbitals);
     for(std::size_t j=0;j<n_orbitals;++j){
@@ -101,7 +113,7 @@ void evaluate_basics(const alps::results_type<hybridization>::type &results,
 
 void evaluate_time(const alps::results_type<hybridization>::type &results,
                    const alps::parameters_type<hybridization>::type &parms,
-                   alps::hdf5::archive &solver_output){
+                   const alps::params &output, alps::hdf5::archive &solver_output){
 
   if(!(parms.value_or("MEASURE_time", true))) return;
   std::size_t N_t = parms["N_TAU"];
@@ -136,8 +148,8 @@ void evaluate_time(const alps::results_type<hybridization>::type &results,
   }
 
   //store in hdf5
-  G_tau.write_hdf5(solver_output, boost::lexical_cast<std::string>(parms.value_or("BASEPATH", ""))+"/G_tau");
-  F_tau.write_hdf5(solver_output, boost::lexical_cast<std::string>(parms.value_or("BASEPATH", ""))+"/F_tau");
+  G_tau.write_hdf5(solver_output, output["base_path"].as<std::string>()+"/G_tau");
+  F_tau.write_hdf5(solver_output, output["base_path"].as<std::string>()+"/F_tau");
 
   // ERROR
   for(std::size_t i=0; i<n_orbitals; i++){
@@ -148,12 +160,12 @@ void evaluate_time(const alps::results_type<hybridization>::type &results,
      err = results[g_name.str()].error<std::vector<double> >();
      err[0] = err[N_t] = density_err;
      std::stringstream data_path;
-     data_path << boost::lexical_cast<std::string>(parms.value_or("BASEPATH", ""))+"/G_tau/"<<i<< "/mean/error";
+     data_path << output["base_path"].as<std::string>()+"/G_tau/"<<i<< "/mean/error";
      solver_output<<alps::make_pvp(data_path.str(),err);
      g_name.str(""); g_name<<"f_"<<i;
      err = results[g_name.str()].error<std::vector<double> >();
      data_path.str("");
-     data_path << boost::lexical_cast<std::string>(parms.value_or("BASEPATH", ""))+"/F_tau/"<<i<< "/mean/error";
+     data_path << output["base_path"].as<std::string>()+"/F_tau/"<<i<< "/mean/error";
      solver_output<<alps::make_pvp(data_path.str(),err);
   }
     
@@ -173,7 +185,7 @@ void evaluate_time(const alps::results_type<hybridization>::type &results,
         data[t1*(N_t+1)+t2]=cov(t1,t2);
 
     std::stringstream data_path;
-    data_path << boost::lexical_cast<std::string>(parms.value_or("BASEPATH", ""))+"/G_tau/"<<i<< "/mean/covariance";
+    data_path << output["base_path"].as<std::string>()+"/G_tau/"<<i<< "/mean/covariance";
 
     solver_output<<alps::make_pvp(data_path.str(), data);
     g_name.str(""); g_name<<"f_"<<i;
@@ -188,13 +200,13 @@ void evaluate_time(const alps::results_type<hybridization>::type &results,
          data[t1*(N_t+1)+t2]=cov(t1,t2);
       
     data_path.str("");
-    data_path << boost::lexical_cast<std::string>(parms.value_or("BASEPATH", ""))+"/F_tau/"<<i<< "/mean/covariance";
+    data_path << output["base_path"].as<std::string>()+"/F_tau/"<<i<< "/mean/covariance";
       
     solver_output<<alps::make_pvp(data_path.str(), data);
   }
 
-  if(parms.value_or("TEXT_OUTPUT", false)){
-    std::ofstream G_file("Gt.dat");
+  if(output["text"].as<bool>()){
+    auto G_file=text_stream(output,"Gt.dat");
     for(std::size_t t=0;t<=N_t;++t){
       G_file<<beta*t/N_t;
       for(std::size_t j=0;j<n_orbitals;++j){
@@ -203,7 +215,7 @@ void evaluate_time(const alps::results_type<hybridization>::type &results,
       G_file<<std::endl;
     }
     G_file.close();
-     std::ofstream F_file("Ft.dat");
+     auto F_file=text_stream(output,"Ft.dat");
     for(std::size_t t=0;t<=N_t;++t){
       F_file<<beta*t/N_t;
       for(std::size_t j=0;j<n_orbitals;++j){
@@ -218,7 +230,7 @@ void evaluate_time(const alps::results_type<hybridization>::type &results,
 
 void evaluate_freq(const alps::results_type<hybridization>::type &results,
                    const alps::parameters_type<hybridization>::type &parms,
-                   alps::hdf5::archive &solver_output){
+                   const alps::params &output, alps::hdf5::archive &solver_output){
 
   if(!(parms.value_or("MEASURE_freq", false))) return;
   //evaluate Matsubara Green's function and self-energy
@@ -249,9 +261,9 @@ void evaluate_freq(const alps::results_type<hybridization>::type &results,
   }
 
   //store in hdf5
-  G_omega.write_hdf5(solver_output, boost::lexical_cast<std::string>(parms.value_or("BASEPATH", ""))+"/G_omega");
-  F_omega.write_hdf5(solver_output, boost::lexical_cast<std::string>(parms.value_or("BASEPATH", ""))+"/F_omega");
-  S_omega.write_hdf5(solver_output, boost::lexical_cast<std::string>(parms.value_or("BASEPATH", ""))+"/S_omega");
+  G_omega.write_hdf5(solver_output, output["base_path"].as<std::string>()+"/G_omega");
+  F_omega.write_hdf5(solver_output, output["base_path"].as<std::string>()+"/F_omega");
+  S_omega.write_hdf5(solver_output, output["base_path"].as<std::string>()+"/S_omega");
 
   // ERROR
   for(std::size_t i=0; i<n_orbitals; i++){
@@ -263,7 +275,7 @@ void evaluate_freq(const alps::results_type<hybridization>::type &results,
     err_g_im = results[g_name.str()].error<std::vector<double> >();
     for (int k=0;k<err.size();k++) err[k] = std::complex<double>(err_g_re[k],err_g_im[k]);
     std::stringstream data_path;
-    data_path << boost::lexical_cast<std::string>(parms.value_or("BASEPATH", ""))+"/G_omega/"<<i<< "/mean/error";
+    data_path << output["base_path"].as<std::string>()+"/G_omega/"<<i<< "/mean/error";
     solver_output<<alps::make_pvp(data_path.str(),err);
     g_name.str(""); g_name<<"fw_re_"<<i;
     err_f_re = results[g_name.str()].error<std::vector<double> >();
@@ -271,12 +283,13 @@ void evaluate_freq(const alps::results_type<hybridization>::type &results,
     err_f_im = results[g_name.str()].error<std::vector<double> >();
     for (int k=0;k<err.size();k++) err[k] = std::complex<double>(err_f_re[k],err_f_im[k]);
     data_path.str("");
-    data_path << boost::lexical_cast<std::string>(parms.value_or("BASEPATH", ""))+"/F_omega/"<<i<< "/mean/error";
+    data_path << output["base_path"].as<std::string>()+"/F_omega/"<<i<< "/mean/error";
     solver_output<<alps::make_pvp(data_path.str(),err);
   }
 
     
-  std::ofstream Gw_file("Gw.dat");
+  if(output["text"].as<bool>()){
+  auto Gw_file=text_stream(output,"Gw.dat");
   for(std::size_t n=0;n<N_w;++n){
     Gw_file<<(2.*n+1)*boost::math::constants::pi<double>()/beta;
     for(std::size_t j=0;j<n_orbitals;++j){
@@ -286,7 +299,7 @@ void evaluate_freq(const alps::results_type<hybridization>::type &results,
   }
   Gw_file.close();
 
-  std::ofstream Fw_file("Fw.dat");
+  auto Fw_file=text_stream(output,"Fw.dat");
   for(std::size_t n=0;n<N_w;++n){
     Fw_file<<(2.*n+1)*boost::math::constants::pi<double>()/beta;
     for(std::size_t j=0;j<n_orbitals;++j){
@@ -296,7 +309,7 @@ void evaluate_freq(const alps::results_type<hybridization>::type &results,
   }
   Fw_file.close();
 
-  std::ofstream Sw_file("Sw.dat");
+  auto Sw_file=text_stream(output,"Sw.dat");
   for(std::size_t n=0;n<N_w;++n){
     Sw_file<<(2.*n+1)*boost::math::constants::pi<double>()/beta;
     for(std::size_t j=0;j<n_orbitals;++j){
@@ -305,12 +318,13 @@ void evaluate_freq(const alps::results_type<hybridization>::type &results,
     Sw_file<<std::endl;
   }
   Sw_file.close();
+  }
 }
 
 
 void evaluate_legendre(const alps::results_type<hybridization>::type &results,
                        const alps::parameters_type<hybridization>::type &parms,
-                       alps::hdf5::archive &solver_output){
+                       const alps::params &output, alps::hdf5::archive &solver_output){
 
   if(!(parms.value_or("MEASURE_legendre", false))) return;
   double beta = parms["BETA"];
@@ -373,15 +387,15 @@ void evaluate_legendre(const alps::results_type<hybridization>::type &results,
   }//i
 
   //store in hdf5
-  G_l_omega.write_hdf5(solver_output, boost::lexical_cast<std::string>(parms.value_or("BASEPATH", ""))+"/G_l_omega");
-  F_l_omega.write_hdf5(solver_output, boost::lexical_cast<std::string>(parms.value_or("BASEPATH", ""))+"/F_l_omega");
-  S_l_omega.write_hdf5(solver_output, boost::lexical_cast<std::string>(parms.value_or("BASEPATH", ""))+"/S_l_omega");
-  G_l_tau.write_hdf5(solver_output, boost::lexical_cast<std::string>(parms.value_or("BASEPATH", ""))+"/G_l_tau");
-  F_l_tau.write_hdf5(solver_output, boost::lexical_cast<std::string>(parms.value_or("BASEPATH", ""))+"/F_l_tau");
+  G_l_omega.write_hdf5(solver_output, output["base_path"].as<std::string>()+"/G_l_omega");
+  F_l_omega.write_hdf5(solver_output, output["base_path"].as<std::string>()+"/F_l_omega");
+  S_l_omega.write_hdf5(solver_output, output["base_path"].as<std::string>()+"/S_l_omega");
+  G_l_tau.write_hdf5(solver_output, output["base_path"].as<std::string>()+"/G_l_tau");
+  F_l_tau.write_hdf5(solver_output, output["base_path"].as<std::string>()+"/F_l_tau");
 
-  if(parms.value_or("TEXT_OUTPUT", false)){
-    std::ofstream gc_str("Gl_conv.dat");
-    std::ofstream fc_str("Fl_conv.dat");
+  if(output["text"].as<bool>()){
+    auto gc_str=text_stream(output,"Gl_conv.dat");
+    auto fc_str=text_stream(output,"Fl_conv.dat");
     gc_str << "#lc";
     fc_str << "#lc";
     for(std::size_t i=0;i<n_orbitals;++i){
@@ -402,7 +416,7 @@ void evaluate_legendre(const alps::results_type<hybridization>::type &results,
     }
     gc_str.close();
     fc_str.close();
-    std::ofstream Gtl_file("Gtl.dat");
+    auto Gtl_file=text_stream(output,"Gtl.dat");
     for(std::size_t t=0;t<=N_t;++t){
       Gtl_file<<beta*t/N_t;
       for(std::size_t j=0;j<n_orbitals;++j){
@@ -411,7 +425,7 @@ void evaluate_legendre(const alps::results_type<hybridization>::type &results,
       Gtl_file<<std::endl;
     }
     Gtl_file.close();
-    std::ofstream Ftl_file("Ftl.dat");
+    auto Ftl_file=text_stream(output,"Ftl.dat");
     for(std::size_t t=0;t<=N_t;++t){
       Ftl_file<<beta*t/N_t;
       for(std::size_t j=0;j<n_orbitals;++j){
@@ -420,7 +434,7 @@ void evaluate_legendre(const alps::results_type<hybridization>::type &results,
       Ftl_file<<std::endl;
     }
     Ftl_file.close();
-    std::ofstream Gw_file("Gwl.dat");
+    auto Gw_file=text_stream(output,"Gwl.dat");
     for(std::size_t t=0;t<N_w;++t){
       Gw_file<<(2.*t+1)*boost::math::constants::pi<double>()/beta;
       for(std::size_t j=0;j<n_orbitals;++j){
@@ -429,7 +443,7 @@ void evaluate_legendre(const alps::results_type<hybridization>::type &results,
       Gw_file<<std::endl;
     }
     Gw_file.close();
-    std::ofstream Fw_file("Fwl.dat");
+    auto Fw_file=text_stream(output,"Fwl.dat");
     for(std::size_t t=0;t<N_w;++t){
       Fw_file<<(2.*t+1)*boost::math::constants::pi<double>()/beta;
       for(std::size_t j=0;j<n_orbitals;++j){
@@ -438,7 +452,7 @@ void evaluate_legendre(const alps::results_type<hybridization>::type &results,
       Fw_file<<std::endl;
     }
     Fw_file.close();
-    std::ofstream Sw_file("Swl.dat");
+    auto Sw_file=text_stream(output,"Swl.dat");
     for(std::size_t t=0;t<N_w;++t){
       Sw_file<<(2.*t+1)*boost::math::constants::pi<double>()/beta;
       for(std::size_t j=0;j<n_orbitals;++j){
@@ -454,7 +468,7 @@ void evaluate_legendre(const alps::results_type<hybridization>::type &results,
 
 void evaluate_nnt(const alps::results_type<hybridization>::type &results,
                   const alps::parameters_type<hybridization>::type &parms,
-                  alps::hdf5::archive &solver_output){
+                  const alps::params &output, alps::hdf5::archive &solver_output){
 
   if(!(parms.value_or("MEASURE_nnt", false))) return;
 
@@ -468,12 +482,12 @@ void evaluate_nnt(const alps::results_type<hybridization>::type &results,
     for(std::size_t j=0;j<=i;++j){
       std::stringstream nnt_name; nnt_name<<"nnt_"<<i<<"_"<<j;
       nnt[pos]=results[nnt_name.str()].mean<std::vector<double> >();
-      solver_output<<alps::make_pvp(nnt_name.str(), nnt[pos++]);
+      solver_output<<alps::make_pvp(output["base_path"].as<std::string>()+"/"+nnt_name.str(), nnt[pos++]);
     }
   }
 
-  if(parms.value_or("TEXT_OUTPUT", false)){
-    std::ofstream nnt_file("nnt.dat");
+  if(output["text"].as<bool>()){
+    auto nnt_file=text_stream(output,"nnt.dat");
     nnt_file << "#tau";
     for(std::size_t i=0;i<n_orbitals;++i)
       for(std::size_t j=0;j<=i;++j)
@@ -495,7 +509,7 @@ void evaluate_nnt(const alps::results_type<hybridization>::type &results,
 
 void evaluate_nnw(const alps::results_type<hybridization>::type &results,
                   const alps::parameters_type<hybridization>::type &parms,
-                  alps::hdf5::archive &solver_output){
+                  const alps::params &output, alps::hdf5::archive &solver_output){
 
   if(!(parms.value_or("MEASURE_nnw", false))) return;
 
@@ -509,12 +523,12 @@ void evaluate_nnw(const alps::results_type<hybridization>::type &results,
     for(std::size_t j=0;j<=i;++j){
       std::stringstream nnw_re_name; nnw_re_name<<"nnw_re_"<<i<<"_"<<j;
       nnw_re[pos]=results[nnw_re_name.str()].mean<std::vector<double> >();
-      solver_output<<alps::make_pvp(nnw_re_name.str(), nnw_re[pos++]);
+      solver_output<<alps::make_pvp(output["base_path"].as<std::string>()+"/"+nnw_re_name.str(), nnw_re[pos++]);
     }
   }
 
-  if(parms.value_or("TEXT_OUTPUT", false)){
-    std::ofstream nnw_file("nnw.dat");
+  if(output["text"].as<bool>()){
+    auto nnw_file=text_stream(output,"nnw.dat");
     nnw_file << "#w";
     for(std::size_t i=0;i<n_orbitals;++i)
       for(std::size_t j=0;j<=i;++j)
@@ -536,12 +550,12 @@ void evaluate_nnw(const alps::results_type<hybridization>::type &results,
 
 void evaluate_sector_statistics(const alps::results_type<hybridization>::type &results,
                                 const alps::parameters_type<hybridization>::type &parms,
-                                alps::hdf5::archive &solver_output){
+                                const alps::params &output, alps::hdf5::archive &solver_output){
 
-  if(!(parms.value_or("MEASURE_sector_statistics", false))) return;
+  if(!(parms.value_or("MEASURE_sector_statistics", false)) || !output["text"].as<bool>()) return;
 
   std::size_t n_orbitals=parms["N_ORBITALS"];
-  std::ofstream stat_file("sector_statistics.dat");
+  auto stat_file=text_stream(output,"sector_statistics.dat");
   stat_file << "#state |n_1={0,1} n_2={0,1} ...> n_i={0,1}: orbital i {empty,occupied}" << std::endl;
   stat_file << "#rel weight (in %)" << std::endl;
   int n_states=1<<n_orbitals;
@@ -562,7 +576,7 @@ void evaluate_sector_statistics(const alps::results_type<hybridization>::type &r
 
 void evaluate_2p(const alps::results_type<hybridization>::type &results,
                  const alps::parameters_type<hybridization>::type &parms,
-                 alps::hdf5::archive &solver_output){
+                 const alps::params &output, alps::hdf5::archive &solver_output){
   //write two-particle functions to text file if desired
   //compute the vertex function if needed;
   bool MEASURE_g2w=parms.value_or("MEASURE_g2w", false);
@@ -574,7 +588,7 @@ void evaluate_2p(const alps::results_type<hybridization>::type &results,
   std::size_t N_W = parms.value_or("N_W", 0);
   std::size_t N_w2 = parms.value_or("N_w2", 0);
   std::size_t n_orbitals = parms["N_ORBITALS"]; //number of orbitals
-  bool text_output = parms.value_or("TEXT_OUTPUT", false);
+  bool text_output = output["text"].as<bool>();
   bool COMPUTE_VERTEX = parms.value_or("COMPUTE_VERTEX", false);
   double beta=parms["BETA"];
 
@@ -582,9 +596,9 @@ void evaluate_2p(const alps::results_type<hybridization>::type &results,
   std::ofstream h2w_str;
   std::ofstream gam_str;
   if(text_output){
-    if(MEASURE_g2w) g2w_str.open("g2w.dat");
-    if(MEASURE_h2w) h2w_str.open("h2w.dat");
-    if(COMPUTE_VERTEX) gam_str.open("gammaw.dat");
+    if(MEASURE_g2w) g2w_str=text_stream(output,"g2w.dat");
+    if(MEASURE_h2w) h2w_str=text_stream(output,"h2w.dat");
+    if(COMPUTE_VERTEX) gam_str=text_stream(output,"gammaw.dat");
   }
   std::vector<double> g2w_re;
   std::vector<double> g2w_im;
@@ -675,9 +689,8 @@ void evaluate_2p(const alps::results_type<hybridization>::type &results,
       //write to hdf5
       if(COMPUTE_VERTEX){
         std::stringstream data_path; data_path<<"vertex_"<<i<<"_"<<j;
-        solver_output<<alps::make_pvp(data_path.str(), vertex);
+        solver_output<<alps::make_pvp(output["base_path"].as<std::string>()+"/"+data_path.str(), vertex);
       }
     }//j
   }//i
 }
-

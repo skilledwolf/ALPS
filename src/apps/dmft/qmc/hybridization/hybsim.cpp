@@ -19,22 +19,21 @@
 #include <iomanip>
 #include"hyb.hpp"
 
-hybridization::hybridization(const alps::params &parms, int crank_)
-: alps::mcbase(parms, crank_),
+hybridization::hybridization(const alps::run_configuration &run, int crank_)
+: alps::mcbase(run.parameters, crank_),
 crank(crank_),
-local_config(parms,crank),
-hyb_config(parms)
+local_config(run.parameters,run.input,crank),
+hyb_config(run.parameters,run.input)
 {
-  sanity_check(parms); //before doing anything, check whether the input parameters make sense
-  show_info(parms,crank);
+  const auto &parms=run.parameters;
+  random.engine().seed(run.execution["seed"].as<std::uint32_t>()+static_cast<std::uint32_t>(crank));
+  show_info(run,crank);
   
   //initializing general simulation constants
   nacc.assign(7,0.);
   nprop.assign(7,0.);
   sweep_count=0;
-  output_period=parms.value_or("OUTPUT_PERIOD", 100000);
-  //lasttime = boost::chrono::steady_clock::now();
-  //delay = boost::chrono::seconds(parms.value_or("OUTPUT_PERIOD", 600));
+  output_period=run.execution["progress_period"].as<int>();
   
   update_type.clear();
   update_type.push_back("change zero state   ");
@@ -57,7 +56,6 @@ hyb_config(parms)
   //initializing updates parameters
   N_meas = parms["N_MEAS"];                                                        //number of updates per measurement
   N_hist_orders = parms.value_or("N_HISTOGRAM_ORDERS", 50);                                  //number of orders that are measured for the order histogram
-  MEASURE_timeseries = parms.value_or("TIMESERIES", false);
   NUM_BINS = parms.value_or("NUM_BINS", 0);
   //std::cerr << "NUM_BINS = " << NUM_BINS << std::endl;
   //initializing measurement parameters
@@ -90,7 +88,7 @@ hyb_config(parms)
   }
   
   start_time=clock();
-  end_time=start_time+ CLOCKS_PER_SEC*((long)parms["MAX_TIME"]);
+  end_time=run.execution["time_limit"].as<long>() ? start_time+ CLOCKS_PER_SEC*run.execution["time_limit"].as<long>() : 0;
 
   
   //std::cout<<"process " << crank << " starting simulation"<<std::endl;
@@ -107,43 +105,8 @@ hyb_config(parms)
   std::cout<<"process " << crank << " of total: "<<csize<<" starting simulation"<<std::endl;
 }
 
-void hybridization::sanity_check(const alps::params &parms){
-  //check whether the input parameters make sense before computing
-  //NOTE: these checks are likely not to be complete, passing all checks does not guarantee all parameters to be meaningful!
-  
-  //first check that all mandatory parameters are defined
-  if(!parms.exists("N_TAU")) throw std::invalid_argument("please specify the parameter N_TAU");
-  if(!parms.exists("BETA")) throw std::invalid_argument("please specify parameter BETA for inverse temperature");
-  if(!parms.exists("N_MEAS")) throw std::invalid_argument("please specify parameter N_MEAS for measurement interval");
-  if(!parms.exists("THERMALIZATION") ||
-     !parms.exists("SWEEPS") ||
-     !parms.exists("N_ORBITALS") ) throw std::invalid_argument("please specify parameters THERMALIZATION, SWEEPS, and N_ORBITALS");
-  
-  //check paramater that are conditionally required
-  if(parms.value_or("MEASURE_freq", false) && !parms.exists("N_MATSUBARA")) throw std::invalid_argument("please specify parameter N_MATSUBARA for # of Matsubara frequencies to be measured");
-  
-  if(parms.value_or("MEASURE_legendre", false) && !parms.exists("N_LEGENDRE")) throw std::invalid_argument("please specify parameter N_LEGENDRE for # of Legendre coefficients to be measured");
-  if(parms.value_or("MEASURE_legendre", false) && !parms.exists("N_MATSUBARA")) throw std::invalid_argument("please specify parameter N_MATSUBARA for # of Matsubara frequencies");
-  if(parms.value_or("MEASURE_nnt", false) && !parms.exists("N_nn")) throw std::invalid_argument("please specify the parameter N_nn for # of imaginary time points for the density-density correlator");
-  if(parms.value_or("MEASURE_nnw", false) && !parms.exists("N_W")) throw std::invalid_argument("please specify the parameter N_W for # of bosonic frequencies for the density-density correlator");
-  if(parms.value_or("MEASURE_g2w", false) || parms.value_or("MEASURE_h2w", false) ){
-    if(!parms.exists("N_w2") ) throw std::invalid_argument("please specify the parameter N_w2 for # of fermionic Matsubara frequencies for two-particle functions");
-    if(!parms.exists("N_W") ) throw std::invalid_argument("please specify the parameter N_W for # of bosonic Matsubara frequencies for two-particle functions");
-    if((int)parms["N_w2"]%2!=0) throw std::invalid_argument("parameter N_w2 must be even");
-  }
-  if(parms.value_or("COMPUTE_VERTEX", false)){
-    if( !(parms.value_or("MEASURE_freq", false)) ) throw std::invalid_argument("frequency measurement is required for computing the vertex, please set MEASURE_freq=1");
-    
-    if(! (parms.value_or("MEASURE_g2w", false) || parms.value_or("MEASURE_h2w", false) ) ) throw std::invalid_argument("at least one two-particle quantity is required for computing the vertex, set MEASURE_g2w=1 or MEASURE_h2w=1");
-    if((int) parms["N_MATSUBARA"] < ((int)parms["N_w2"]/2 + (int)parms["N_W"] - 1) ) throw std::invalid_argument("for computing the vertex, N_MATSUBARA must be at least N_w2/2+N_W-1");
-  }
-  VERBOSE = (parms.value_or("VERBOSE", false));
-  
-  return;
-}
-
-
-void hybridization::show_info(const alps::params &parms, int crank){
+void hybridization::show_info(const alps::run_configuration &run, int crank){
+  const auto &parms=run.parameters;
   if(!(parms.value_or("VERBOSE", false))) return;
 
   //provide info on what is measured and how long the simulation will run
@@ -158,10 +121,10 @@ void hybridization::show_info(const alps::params &parms, int crank){
     if(parms.value_or("MEASURE_nnw", false)) std::cout << "measuring nnw" << std::endl;
     if(parms.value_or("MEASURE_sector_statistics", false)) std::cout << "measuring sector statistics" << std::endl;
     if(parms.value_or("COMPUTE_VERTEX", false)) std::cout << "vertex will be computed" << std::endl;
-    if(parms.exists("RET_INT_K")) std::cout << "using retarded interaction" << std::endl;
-    if(parms.exists("U_MATRIX")) std::cout << "reading U matrix from file " << parms["U_MATRIX"] << std::endl;
-    if(parms.exists("MU_VECTOR")) std::cout << "reading MU vector from file " << parms["MU_VECTOR"] << std::endl;
-    std::cout << "Simulation scheduled to run " << parms["MAX_TIME"] << " seconds" << std::endl << std::endl;
+    if(run.input.exists("retarded_interaction")) std::cout << "using retarded interaction" << std::endl;
+    if(run.input.exists("interaction_matrix")) std::cout << "reading U matrix from file " << run.input["interaction_matrix"] << std::endl;
+    if(run.input.exists("chemical_potential")) std::cout << "reading MU vector from file " << run.input["chemical_potential"] << std::endl;
+    std::cout << "Simulation scheduled to run " << run.execution["time_limit"] << " seconds" << std::endl << std::endl;
   }
   return;
 }
@@ -185,7 +148,7 @@ std::ostream &operator<<(std::ostream &os, const segment &s){
 double hybridization::fraction_completed()const{
   if(!is_thermalized()) return 0.;
   double work_fraction= (sweeps-thermalization_sweeps)/(double)total_sweeps;
-  double time_fraction= (clock()-start_time)/(double)(end_time-start_time);
+  double time_fraction= end_time ? (clock()-start_time)/(double)(end_time-start_time) : 0.;
   //return max of sweeps done and time used. Divide time used by the number of processes in pool (all work done will be added up)
   return std::max(work_fraction, time_fraction/csize);
   //return work_fraction;

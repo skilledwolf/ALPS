@@ -72,6 +72,8 @@ foreach(solver IN ITEMS cthyb ctint)
   target_link_libraries(alps_${solver} PUBLIC ALPS::alps)
   target_include_directories(alps_${solver} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 endforeach()
+add_subdirectory(hybridization)
+add_subdirectory(interaction_expansion2)
 install(TARGETS alps_cthyb alps_ctint EXPORT ALPSTargets
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT libraries)
 

@@ -221,4 +221,32 @@ params prepare(const params &supplied, const data &input) {
     }
     return p;
 }
+data prepare_run(run_configuration &run) {
+    run = resolve_run_configuration(run, schema());
+    auto input = read_data(run.input);
+    run.parameters = prepare(run.parameters, input);
+    for (const auto *key : {"T", "BETA", "OMEGA_MIN"})
+        if (!run.origins.count(std::string("parameters.") + key))
+            run.origins[std::string("parameters.") + key] = "derived";
+    const auto output = std::filesystem::weakly_canonical(run.output["results"].as<std::string>());
+    for (const auto *key : {"data", "covariance_file", "prior"})
+        if (run.input.exists(key) &&
+            std::filesystem::weakly_canonical(run.input[key].as<std::string>()) == output)
+            throw std::invalid_argument("output must not replace an input file");
+    return input;
+}
 } // namespace alps::maxent
+
+bool alps::solvers::maxent(const alps::run_configuration &supplied) {
+    auto run = supplied;
+    auto data = alps::maxent::prepare_run(run);
+    const auto output = run.output["results"].as<std::string>();
+    const bool completed = maxent(run.parameters, data, output,
+                                 run.execution["time_limit"].as<int>(),
+                                 run.output["text"].as<bool>());
+    if (completed) {
+        alps::hdf5::archive ar(output, "a");
+        ar["/run_config"] << run;
+    }
+    return completed;
+}

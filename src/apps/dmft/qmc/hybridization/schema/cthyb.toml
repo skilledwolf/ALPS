@@ -1,0 +1,236 @@
+# Copyright (C) 2026 ALPS Collaboration. SPDX-License-Identifier: MIT
+application = "cthyb"
+schema_version = 1
+
+[parameters.N_ORBITALS]
+type = "int64"
+required = true
+min = 1
+max = 2147483647
+
+[parameters.N_TAU]
+type = "int64"
+required = true
+min = 1
+max = 2147483646
+
+[parameters.N_MEAS]
+type = "int64"
+required = true
+min = 1
+max = 2147483647
+
+[parameters.THERMALIZATION]
+type = "int64"
+required = true
+min = 0
+
+[parameters.SWEEPS]
+type = "int64"
+required = true
+min = 1
+
+[parameters.BETA]
+type = "float64"
+required = true
+min = 0.0
+
+[parameters.U]
+type = "float64"
+
+[parameters."U'"]
+type = "float64"
+
+[parameters.MU]
+type = "float64"
+default = 0.0
+
+[parameters.J]
+type = "float64"
+default = 0.0
+
+[parameters.N_HISTOGRAM_ORDERS]
+type = "int64"
+default = 50
+min = 1
+max = 2147483646
+
+[parameters.NUM_BINS]
+type = "int64"
+default = 0
+min = 0
+max = 2147483646
+
+[parameters.N_MATSUBARA]
+type = "int64"
+default = 0
+min = 0
+max = 2147483646
+
+[parameters.N_LEGENDRE]
+type = "int64"
+default = 0
+min = 0
+max = 2147483646
+
+[parameters.N_nn]
+type = "int64"
+default = 0
+min = 0
+max = 2147483646
+
+[parameters.N_w2]
+type = "int64"
+default = 0
+min = 0
+max = 2147483646
+
+[parameters.N_W]
+type = "int64"
+default = 0
+min = 0
+max = 2147483646
+
+[parameters.SPINFLIP]
+type = "bool"
+default = false
+
+[parameters.GLOBALFLIP]
+type = "bool"
+default = false
+
+[parameters.MEASURE_nnt]
+type = "bool"
+default = false
+
+[parameters.MEASURE_nnw]
+type = "bool"
+default = false
+
+[parameters.MEASURE_nn]
+type = "bool"
+default = false
+
+[parameters.MEASURE_g2w]
+type = "bool"
+default = false
+
+[parameters.MEASURE_h2w]
+type = "bool"
+default = false
+
+[parameters.MEASURE_freq]
+type = "bool"
+default = false
+
+[parameters.MEASURE_legendre]
+type = "bool"
+default = false
+
+[parameters.MEASURE_sector_statistics]
+type = "bool"
+default = false
+
+[parameters.COMPUTE_VERTEX]
+type = "bool"
+default = false
+
+[parameters.VERBOSE]
+type = "bool"
+default = false
+
+[parameters.MEASURE_time]
+type = "bool"
+default = true
+
+[parameters.ACCURATE_COVARIANCE]
+type = "bool"
+default = true
+
+[input.delta]
+type = "path"
+required = true
+
+[input.interaction_matrix]
+type = "path"
+
+[input.chemical_potential]
+type = "path"
+
+[input.retarded_interaction]
+type = "path"
+
+[input.delta_format]
+type = "string"
+default = "text"
+choices = ["text", "hdf5"]
+
+[input.interaction_format]
+type = "string"
+default = "text"
+choices = ["text", "hdf5"]
+
+[input.chemical_potential_format]
+type = "string"
+default = "text"
+choices = ["text", "hdf5"]
+
+[input.retarded_interaction_format]
+type = "string"
+default = "text"
+choices = ["text", "hdf5"]
+
+[input.delta_layout]
+type = "string"
+default = "vectors"
+choices = ["vectors", "dmft"]
+
+[input.delta_coordinate]
+type = "string"
+default = "index"
+choices = ["index", "tau"]
+
+[input.retarded_interaction_coordinate]
+type = "string"
+default = "index"
+choices = ["index", "tau"]
+
+[output.results]
+type = "path"
+required = true
+
+[output.text]
+type = "bool"
+default = false
+
+[output.text_directory]
+type = "path"
+default = "."
+
+[output.base_path]
+type = "string"
+default = ""
+
+[execution.time_limit]
+type = "int64"
+default = 0
+min = 0
+max = 2147483647
+
+[execution.seed]
+type = "int64"
+default = 42
+min = 0
+max = 4294967295
+
+[execution.progress_period]
+type = "int64"
+default = 100000
+min = 1
+max = 2147483647
+
+[execution.bins]
+type = "int64"
+default = 128
+min = 1
+max = 2147483647

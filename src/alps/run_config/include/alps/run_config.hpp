@@ -15,7 +15,13 @@ struct ALPS_RUN_CONFIG_DECL run_configuration {
     params parameters, input, output, execution;
     std::map<std::string, std::string> origins;
     void save(hdf5::archive &) const;
+    void load(hdf5::archive &);
 };
+// Programmatic callers use the same section rules and defaults as TOML files.
+// Relative paths are resolved only when a base directory is supplied.
+ALPS_RUN_CONFIG_DECL run_configuration resolve_run_configuration(
+    const run_configuration &supplied, std::string_view schema,
+    const std::filesystem::path &base_directory = {});
 ALPS_RUN_CONFIG_DECL run_configuration load_run_configuration(const std::filesystem::path &filename,
                                                               std::string_view schema);
 ALPS_RUN_CONFIG_DECL params resolve_parameters(const params &supplied, std::string_view schema,

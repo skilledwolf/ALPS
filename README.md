@@ -33,7 +33,9 @@ cmake --install _build/default
 
 Then follow the [editable Python installation](python/pyalps/README.md#editable-development), pointing `ALPS_DIR` at `_build/default/install/share/alps`.
 
-The [module layout](src/alps/README.md) prepares MaxEnt, HDF5 and typed params for ALPSCore reconciliation. Utilities, HDF5, params, Osiris, XML and command-line parsing have separate exported libraries; both the MaxEnt solver and executable link components without `ALPS::alps`. Public include names and scientific algorithms are preserved. `ALPS::headers` still provides a shared compile interface, so source ownership does not imply that every module is independent.
+The [module layout](src/alps/README.md) prepares shared libraries and applications for ALPSCore reconciliation. Utilities, HDF5, params, run configuration, Osiris, XML and command-line parsing have separate exported libraries; both the MaxEnt solver and executable link components without `ALPS::alps`. `ALPS::headers` still provides a shared compile interface, so source ownership does not imply that every module is independent.
+
+MaxEnt, segment CT-HYB and CT-INT use application-owned TOML schemas with separate scientific parameters, numerical input, output and execution settings. Their existing scientific methods remain; focused regression tests cover correctness fixes exposed by the migration. See the [Python configuration API](python/pyalps/README.md#typed-params-and-toml-migration). The remaining scheduler, parapack and DMFT workflows are still being migrated; their scientific model and lattice XML resources remain supported.
 
 ## Contributing
 
