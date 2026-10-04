@@ -6,6 +6,18 @@ User-facing changes and migration notes are recorded here, starting with the bui
 
 ### Changed
 
+- Migrate standalone CT-INT to native ALEA batches and MPI reduction. Normalize
+  sign-weighted W and density estimates using joint numerator/sign batches;
+  retain partial replica bins and unsigned diagnostics. Write versioned batch
+  results and publish them with Green functions and run provenance atomically.
+  Python measurement loading retains modern result errors. Local batch slots
+  must be even and at least two; these analysis outputs are not solver checkpoints.
+  Preserve the chain sign during inverse-matrix rebuilding and remove the
+  implicit, incorrect `staggered_sz` text output; measured spin results remain.
+  Derive zero Fourier moments for the analytic atomic input and reject
+  contradictory explicit moments, correcting the noninteracting histogram output.
+  Use fermion occupation idempotence for same-site density products and spin
+  squares instead of squaring conditional density estimates.
 - Keep empty runs neutral during modern autocorrelation reduction, preserving
   the depth and errors of contributing runs while rejecting malformed levels.
 

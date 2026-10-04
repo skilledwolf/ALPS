@@ -4,7 +4,10 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_CURRENT_
 configure_file(schema.hpp.in ctint_schema.hpp @ONLY)
 target_sources(alps_ctint PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/run_config.cpp")
 target_include_directories(alps_ctint PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
-target_link_libraries(alps_ctint PUBLIC ALPS::run_config)
+target_link_libraries(alps_ctint PUBLIC ALPS::run_config ALPS::statistics)
+if(ALPS_ENABLE_MPI)
+  target_link_libraries(alps_ctint PRIVATE MPI::MPI_CXX)
+endif()
 install(FILES schema/ctint.toml DESTINATION ${CMAKE_INSTALL_DATADIR}/alps/schemas COMPONENT libraries)
 
 if(ALPS_BUILD_TESTING)
@@ -17,9 +20,19 @@ if(ALPS_BUILD_TESTING)
   add_test(NAME ctint_cli_contract
     COMMAND "${Python_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/cli_contract.py" "$<TARGET_FILE:interaction>")
   set_tests_properties(ctint_cli_contract PROPERTIES LABELS "dmft;ctint;cli" TIMEOUT 60)
+  set(ctint_contract_tests ctint_run_config_contract ctint_cli_contract)
+  if(ALPS_ENABLE_MPI)
+    add_executable(ctint_mpi_contract tests/mpi.cpp)
+    target_include_directories(ctint_mpi_contract PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/..")
+    target_link_libraries(ctint_mpi_contract PRIVATE ALPS::ctint MPI::MPI_CXX)
+    add_test(NAME ctint_mpi_contract COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2
+      ${MPIEXEC_PREFLAGS} $<TARGET_FILE:ctint_mpi_contract> ${MPIEXEC_POSTFLAGS})
+    set_tests_properties(ctint_mpi_contract PROPERTIES LABELS "dmft;ctint;mpi" PROCESSORS 2 TIMEOUT 60)
+    list(APPEND ctint_contract_tests ctint_mpi_contract)
+  endif()
   if(WIN32)
     foreach(directory IN LISTS ALPS_RUNTIME_LIBRARY_DIRS)
-      set_property(TEST ctint_run_config_contract ctint_cli_contract APPEND PROPERTY ENVIRONMENT_MODIFICATION
+      set_property(TEST ${ctint_contract_tests} APPEND PROPERTY ENVIRONMENT_MODIFICATION
         "PATH=path_list_prepend:${directory}")
     endforeach()
   endif()

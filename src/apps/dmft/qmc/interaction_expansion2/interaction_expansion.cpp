@@ -29,7 +29,8 @@ std::complex<double> *c_or_cdagger::exp_iomegan_tau_;
 
 
 InteractionExpansion::InteractionExpansion(const alps::run_configuration &run, int node)
-: alps::mcbase(run.parameters,node),
+: parameters(run.parameters),
+num_bins(run.execution["bins"].as<std::size_t>()),
 max_order(run.parameters["MAX_ORDER"].as<unsigned int>()),
 n_flavors(run.parameters["FLAVORS"].as<unsigned int>()),
 n_site(run.parameters["SITES"].as<unsigned int>()),
@@ -48,11 +49,8 @@ U(run.parameters),
 recalc_period(run.parameters["RECALC_PERIOD"].as<unsigned int>()),
 measurement_period(run.parameters["MEASUREMENT_PERIOD"].as<unsigned int>()),
 almost_zero(run.parameters["ALMOSTZERO"].as<double>()),
-green_matsubara(n_matsubara, n_site, n_flavors),
 bare_green_matsubara(n_matsubara,n_site, n_flavors), 
-bare_green_itime(n_tau+1, n_site, n_flavors),
-green_itime(n_tau+1, n_site, n_flavors),
-pert_hist(max_order)
+bare_green_itime(n_tau+1, n_site, n_flavors)
 {
   const auto &parms = run.parameters;
   random.engine().seed(run.execution["seed"].as<std::uint64_t>() + static_cast<std::uint64_t>(node));
@@ -61,31 +59,23 @@ pert_hist(max_order)
     measurement_method=selfenergy_measurement_itime_rs;
   else
     measurement_method=selfenergy_measurement_matsubara;
-  for(unsigned int i=0;i<n_flavors;++i)
-    g0.push_back(green_matrix(n_tau, 20));
   //other parameters
-  weight=0;
   sign=1;
   step=0;
-  measurement_time=0;
-  update_time=0;
   read_ctint_bare_green(parms, run.input, bare_green_matsubara);
   if (run.input["atomic"].as<bool>()) {
     for (spin_t flavor = 0; flavor < n_flavors; ++flavor)
       for (itime_index_t t = 0; t <= n_tau; ++t)
         bare_green_itime(t, 0, 0, flavor) = -0.5;
   } else {
+    boost::shared_ptr<FourierTransformer> fourier_ptr;
     FourierTransformer::generate_transformer(parms, fourier_ptr);
     fourier_ptr->backward_ft(bare_green_itime, bare_green_matsubara);
   }
   //initialize the simulation variables
-  initialize_simulation(parms);
+  M.resize(n_flavors);
+  initialize_observables();
   if(node==0) {print(std::cout);}
-  vertex_histograms=new simple_hist *[n_flavors*n_flavors];
-  vertex_histogram_size=100;
-  for(unsigned int i=0;i<n_flavors*n_flavors;++i){
-    vertex_histograms[i]=new simple_hist(vertex_histogram_size);
-  }
   c_or_cdagger::initialize_simulation(parms);
   
   if(n_site !=1) throw std::invalid_argument("you're trying to run this code for more than one site. Do you know what you're doing?!?");
@@ -93,13 +83,21 @@ pert_hist(max_order)
 
 
 
+bool InteractionExpansion::run(std::function<bool()> const& stop_callback)
+{
+  bool stopped = false;
+  while (!(stopped = stop_callback()) && fraction_completed() < 1.) {
+    update();
+    measure();
+  }
+  return !stopped;
+}
+
 void InteractionExpansion::update()
 {
   for(std::size_t i=0;i<measurement_period;++i){
     step++;
     interaction_expansion_step();                
-    if(vertices.size()<max_order)
-      pert_hist[vertices.size()]++;
     if(step % recalc_period ==0)
       reset_perturbation_series();
   }
@@ -115,24 +113,6 @@ double InteractionExpansion::fraction_completed() const{
   if (!is_thermalized())
     return 0.;
   return ((step-therm_steps) / (double) mc_steps);
-}
-
-
-
-///do all the setup that has to be done before running the simulation.
-void InteractionExpansion::initialize_simulation(const alps::params &parms)
-{
-  weight=0;
-  sign=1;
-  //set the right dimensions:
-  for(spin_t flavor=0;flavor<n_flavors;++flavor)
-    M.push_back(inverse_m_matrix());
-  vertices.clear();
-  pert_hist.clear();
-  //initialize ALPS observables
-  initialize_observables();
-  green_matsubara=bare_green_matsubara;
-  green_itime=bare_green_itime;
 }
 
 

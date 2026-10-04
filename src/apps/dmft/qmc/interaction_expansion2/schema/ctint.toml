@@ -120,7 +120,7 @@ description = "HDF5 file with complex /G0_0 and /G0_1 vectors of NMATSUBARA valu
 [input.atomic]
 type = "bool"
 default = false
-description = "Use the analytic half-filled atomic bare Green function instead of a file."
+description = "Use G0(iw)=1/(iw) for a zero-energy half-filled atomic level; MU, H, EPS_f and EPSSQ_f must be zero."
 
 [output.results]
 type = "path"
@@ -146,8 +146,9 @@ max = 2147483647
 [execution.bins]
 type = "int64"
 default = 128
-min = 1
+min = 2
 max = 2147483647
+description = "Even number of native batch slots; at least two are required for rebinning."
 
 [execution.check_interval]
 type = "float64"

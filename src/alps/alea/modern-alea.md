@@ -61,6 +61,15 @@ needed for the error. The transformer defines its domain and should reject a
 zero denominator. Jackknife requires two occupied bins and skips empty slots.
 Its result is an analysis result, not an accumulator checkpoint.
 
+The standalone CT-INT solver stores sign-weighted physical measurements as
+joint native batches. It reduces those batches across MPI ranks before taking
+ratios, keeping independent partial bins and their counts. Unsigned diagnostics
+use ordinary batches. Its published analysis results use the same kind-5 codec;
+`pyalps.loadMeasurements` reads their means and errors through the native reader.
+The CT-INT driver publishes the result, Green functions and run configuration
+together through the existing checked HDF5 publication helper. These files are
+analysis outputs; CT-INT does not expose a solver restart interface.
+
 `pyalps.hdf5.save_checkpoint(filename, callback)` calls the existing native
 publication helper. The callback receives a `NativeArchive`; retained callback
 views close before publication, and a failed save preserves the previous file.

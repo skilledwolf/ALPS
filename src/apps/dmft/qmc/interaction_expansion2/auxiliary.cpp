@@ -40,14 +40,6 @@ ostream &operator<<(ostream &os, const creator &c)
   return os;
 }
 
-ostream& operator << (ostream& os, const simple_hist &h)
-{
-  for(unsigned long i=0;i<h.size();++i){
-    std::cout<<i<<"\t"<<h[i]<<std::endl;
-  }
-  return os;
-}
-
 std::ostream & operator<<(std::ostream &os, const inverse_m_matrix &M)
 {
   os << M.matrix() << std::endl;

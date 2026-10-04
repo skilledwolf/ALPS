@@ -60,12 +60,24 @@ void alps::ctint::prepare_run(run_configuration &run) {
             run.origins[std::string("parameters.") + key] = "derived";
     if (run.execution["check_interval"].as<double>() <= 0.0)
         throw std::invalid_argument("CT-INT execution.check_interval must be positive");
+    const auto bins = run.execution["bins"].as<std::uint64_t>();
+    if (bins < 2 || bins % 2)
+        throw std::invalid_argument("CT-INT execution.bins must be even and at least two");
     const bool atomic = run.input["atomic"].as<bool>();
     if (atomic == run.input.exists("g0"))
         throw std::invalid_argument("CT-INT requires either input.g0 or input.atomic=true");
     if (atomic && (run.parameters["MU"].as<double>() != 0.0 ||
                    run.parameters["H"].as<double>() != 0.0))
         throw std::invalid_argument("CT-INT atomic input requires MU=0 and H=0");
+    if (atomic)
+        for (const auto *key : {"EPS_0", "EPS_1", "EPSSQ_0", "EPSSQ_1"}) {
+            auto &origin = run.origins.at(std::string("parameters.") + key);
+            if (origin == "default" || origin == "derived") {
+                run.parameters[key] = 0.0;
+                origin = "derived";
+            } else if (run.parameters[key].as<double>() != 0.0)
+                throw std::invalid_argument(std::string("CT-INT atomic input requires ") + key + "=0");
+        }
     matsubara_green_function_t green(run.parameters["NMATSUBARA"].as<unsigned int>(), 1, 2);
     read_ctint_bare_green(run.parameters, run.input, green);
 }

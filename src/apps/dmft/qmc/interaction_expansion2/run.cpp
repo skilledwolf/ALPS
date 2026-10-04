@@ -13,34 +13,29 @@
 #include <alps/solvers.hpp>
 #include <alps/ctint.hpp>
 #include <alps/ngs/signal.hpp>
+#include <alps/alea/hdf5.hpp>
 #include "interaction_expansion.hpp"
 #include <alps/utility/copyright.hpp>
 #include <chrono>
 #ifdef ALPS_HAVE_MPI
-#include <alps/mcmpiadapter.hpp>
-using sim_type = alps::mcmpiadapter<HubbardInteractionExpansion>;
-#else
-using sim_type = HubbardInteractionExpansion;
+#include <alps/alea/mpi.hpp>
+#include <alps/check_schedule.hpp>
+#include <climits>
 #endif
 
-void compute_greens_functions(const alps::results_type<HubbardInteractionExpansion>::type&,
-                             alps::params const&, alps::params const&, alps::params const&);
+void compute_greens_functions(InteractionExpansion::results_type const&,
+                             alps::params const&, alps::params const&, alps::params const&,
+                             alps::hdf5::archive&);
 
 void alps::solvers::ctint(const run_configuration &supplied) {
   auto run = supplied;
   alps::ctint::prepare_run(run);
-  int rank;
-#ifndef ALPS_HAVE_MPI
-  rank=0;
-  sim_type s(run,rank);
-#else
-  boost::mpi::communicator c;
-  c.barrier();
-  rank=c.rank();
-  const auto interval = run.execution["check_interval"].as<double>();
-  sim_type s(run, c, alps::check_schedule(interval, interval),
-             run.execution["bins"].as<std::size_t>());
+  int rank=0;
+#ifdef ALPS_HAVE_MPI
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  MPI_Barrier(MPI_COMM_WORLD);
 #endif
+  HubbardInteractionExpansion s(run, rank);
   if (rank==0) {
     alps::print_copyright(std::cout);
     std::cout << "****************************************************************"<<std::endl;
@@ -54,26 +49,59 @@ void alps::solvers::ctint(const run_configuration &supplied) {
   const auto started = std::chrono::steady_clock::now();
   const auto seconds = run.execution["time_limit"].as<int>();
   alps::ngs::signal signal;
-  s.run([&] {
+  const auto stop = [&] {
     return !signal.empty() || (seconds != 0 && std::chrono::steady_clock::now() - started >=
                                std::chrono::seconds(seconds));
-  });
+  };
 
-  // All MPI ranks participate in collection; only root writes results.
-  auto results = collect_results(s);
-  std::string output_error;
-  if (rank==0) {
-    try {
-      const auto output_file = run.output["results"].as<std::string>();
-      save_results(results, run.parameters, output_file, "/simulation/results");
-      if (results["Sign"].count() != 0)
-        compute_greens_functions(results, run.parameters, run.input, run.output);
-      alps::hdf5::archive archive(output_file, "a");
-      archive["/run_config"] << run;
-    } catch (const std::exception& error) { output_error = error.what(); }
-  }
 #ifdef ALPS_HAVE_MPI
-  boost::mpi::broadcast(c, output_error, 0);
+  // SWEEPS is aggregate work across independent chains, as in the old driver.
+  const auto interval = run.execution["check_interval"].as<double>();
+  alps::check_schedule check(interval, interval);
+  double fraction=0.;
+  do {
+    s.update();
+    s.measure();
+    if (check.pending()) {
+      fraction = stop() ? 1. : s.fraction_completed();
+      MPI_Allreduce(MPI_IN_PLACE, &fraction, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+      check.update(fraction);
+    }
+  } while (fraction < 1.);
+  alps::alea::mpi_reducer reducer(MPI_COMM_WORLD);
+#else
+  s.run(stop);
+#endif
+  // All MPI ranks participate in collection; only root writes results.
+  std::string output_error;
+  try {
+#ifdef ALPS_HAVE_MPI
+    auto results = s.collect_results(&reducer);
+#else
+    auto results = s.collect_results();
+#endif
+    if (rank==0) {
+      const auto output_file = run.output["results"].as<std::string>();
+      alps::hdf5::save_checkpoint(output_file, [&](alps::hdf5::archive& archive) {
+        archive["/parameters"] << run.parameters;
+        const std::string path = "/simulation/results";
+        archive.create_group(path);
+        alps::alea::hdf5_serializer serializer(archive, path);
+        for (auto const& entry : results)
+          if (entry.second.count())
+            serialize(serializer, archive.encode_segment(entry.first), entry.second);
+        archive["/run_config"] << run;
+        if (results.at("Sign").count() != 0)
+          compute_greens_functions(results, run.parameters, run.input, run.output, archive);
+      });
+    }
+  } catch (const std::exception& error) { output_error = error.what(); }
+#ifdef ALPS_HAVE_MPI
+  if (output_error.size() > INT_MAX) output_error = "CT-INT output error exceeds MPI message limit";
+  int length = static_cast<int>(output_error.size());
+  MPI_Bcast(&length, 1, MPI_INT, 0, MPI_COMM_WORLD);
+  output_error.resize(length);
+  MPI_Bcast(output_error.data(), length, MPI_CHAR, 0, MPI_COMM_WORLD);
 #endif
   if (!output_error.empty()) throw std::runtime_error(output_error);
 }

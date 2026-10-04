@@ -27,11 +27,11 @@ void InteractionExpansion::interaction_expansion_step(void)
       return; //we have already reached the highest perturbation order
     metropolis_weight=try_add();
     if(fabs(metropolis_weight)> random()){
-      measurements["VertexInsertion"]<<1.;
+      record_measurement("VertexInsertion", 1.);
       perform_add();
       sign*=metropolis_weight<0?-1:1;
     }else{
-      measurements["VertexInsertion"]<<0.;
+      record_measurement("VertexInsertion", 0.);
       reject_add();
     }
   }else{ // try to REMOVE a vertex
@@ -42,15 +42,14 @@ void InteractionExpansion::interaction_expansion_step(void)
     int vertex_nr=(int)(random() * pert_order);
     metropolis_weight=try_remove(vertex_nr); //get the determinant ratio. don't perform fastupdate yet
     if(fabs(metropolis_weight)> random()){ //do the actual update
-      measurements["VertexRemoval"]<<1.;
+      record_measurement("VertexRemoval", 1.);
       perform_remove(vertex_nr);
       sign*=metropolis_weight<0?-1:1;
     }else{
-      measurements["VertexRemoval"]<<0.;
+      record_measurement("VertexRemoval", 0.);
       reject_remove();
     }
   }//end REMOVE
-  weight=metropolis_weight;
 }
 
 ///Every now and then we have to recreate M from scratch to avoid roundoff
@@ -63,12 +62,10 @@ void InteractionExpansion::reset_perturbation_series()
     vertices_backup.push_back(vertices[i]);
   }
   vertices.clear();
-  sign=1;
+  // Rebuilding the matrices leaves the accepted configuration and its sign unchanged.
   for(spin_t z=0;z<n_flavors;++z){
     resize(M[z].matrix(),0,0);
   }
-  green_matsubara = bare_green_matsubara;
-  green_itime     = bare_green_itime;
   //recompute M from scratch
   for(unsigned int i=0;i<vertices_backup.size();++i){
     vertices.push_back(vertices_backup[i]);
@@ -86,4 +83,3 @@ void InteractionExpansion::reset_perturbation_series()
       std::cout<<"WARNING: roundoff errors in flavor: "<<z<<" max diff "<<max_diff<<std::endl;
   }
 }
-

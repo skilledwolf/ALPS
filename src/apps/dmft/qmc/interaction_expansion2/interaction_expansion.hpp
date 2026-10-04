@@ -16,28 +16,24 @@
 #ifndef DMFT_QMC_WEAK_COUPLING_H
 #define DMFT_QMC_WEAK_COUPLING_H
 
-#include <alps/ngs.hpp>
-#include <alps/mcbase.hpp>
+#include <alps/alea/batch.hpp>
+#include <alps/ngs/random01.hpp>
 #include <alps/run_config.hpp>
 
-#include <alps/alea.h>
+#include <functional>
+#include <map>
 #include <cmath>
 #include "green_function.h"
-#include "alps_solver.h"
 #include "types.h"
-#include "solver.h"
-#include "alps_solver.h"
 #include "fouriertransform.h"
 #include "U_matrix.h"
 #include "operator.hpp"
-#include "green_matrix.hpp"
 #include <alps/numeric/matrix.hpp>
 
 
 /*types*/
 class c_or_cdagger;
 class vertex;
-typedef class histogram simple_hist;
 typedef std::vector<vertex> vertex_array;
 
 
@@ -45,75 +41,6 @@ typedef std::vector<vertex> vertex_array;
 enum measurement_methods {
   selfenergy_measurement_matsubara, //measurement using self energy method
   selfenergy_measurement_itime_rs, //measurement using self energy method in imag time, real space
-};
-
-
-
-class histogram
-{
-public:
-  
-  histogram(unsigned int N):hist_(N, 0){}
-  
-  unsigned long &operator[](unsigned int n){return hist_[n];}
-  const unsigned long &operator[](unsigned int n) const{return hist_[n];}
-  unsigned int size() const{return hist_.size();}
-  
-  unsigned int max_index() const
-  { 
-    unsigned int max_index=0; 
-    double max=0; 
-    for(unsigned int i=0;i<hist_.size();++i){
-      if(max<hist_[i]){
-        max=hist_[i];
-        max_index=i;
-      }
-    }
-    return max_index;
-  }
-  
-  unsigned int top_index() const
-  { 
-    unsigned int top_index=0;
-    for(unsigned int i=0;i<hist_.size();++i){
-      if(hist_[i]!=0){
-        top_index=i;
-      }
-    }
-    return top_index;
-  }
-  
-  double max(const unsigned int index) const
-  { 
-    double max=0; 
-    for(unsigned int i=0;i<index;++i){
-      if(max<hist_[i]){
-        max=hist_[i];
-      }
-    }
-    return max;
-  }
-  
-  double average(const unsigned int index) const{ 
-    double average=0; 
-    for(unsigned int i=0;i<index;++i){
-      average+=hist_[i];
-    }
-    return average/index;
-  }
-  
-  bool is_flat(const unsigned int index)const{return max(index)*0.8<average(index);}
-  
-  void clear()
-  {
-    for(unsigned int i=0;i<hist_.size();++i){
-      hist_[i]=0;
-    }
-  }
-
-private:
-  
-  std::vector<unsigned long> hist_;
 };
 
 
@@ -180,42 +107,15 @@ private:
   std::vector<double> alpha_;             //an array of doubles corresponding to the alphas of Rubtsov for the c, cdaggers at the same index.
 };
 
-/*class InteractionExpansionSim: public alps::scheduler::MCSimulation, public alps::MatsubaraImpurityTask
-{
-public:
-
-  InteractionExpansionSim(const alps::ProcessList &w, const boost::filesystem::path &p) : alps::scheduler::MCSimulation(w,p) {}
-  
-  InteractionExpansionSim(const alps::ProcessList &w, const alps::Parameters &p) : alps::scheduler::MCSimulation(w,p) {p_=p;}
-  
-  std::pair<matsubara_green_function_t,itime_green_function_t> get_result(); 
-
-  void evaluate_selfenergy_measurement_matsubara(const alps::ObservableSet &gathered_measurements, 
-                                                 matsubara_green_function_t &green_matsubara_measured,
-                                                 const matsubara_green_function_t &bare_green_matsubara, 
-                                                 std::vector<double>& densities, const double &beta, 
-                                                 const int n_site, const int n_flavors, const int n_matsubara) const;
-
-  void evaluate_selfenergy_measurement_itime_rs(const alps::ObservableSet &gathered_measurements, itime_green_function_t &green_result,
-                                                const itime_green_function_t &green0, const double &beta, const int n_site, 
-                                                const int n_flavors, const int n_tau, const int n_self) const;
-
-  double green0_spline(const itime_green_function_t &green0, const itime_t delta_t, const int s1, const int s2, 
-                       const spin_t flavor, int n_tau, double beta) const;
-  
-private:
-
-  alps::Parameters p_;
-};*/
-
-
-
-class InteractionExpansion: public alps::mcbase
+class InteractionExpansion
 {
 public:
 
   InteractionExpansion(const alps::run_configuration& run, int rank);
-  ~InteractionExpansion() {}
+  virtual ~InteractionExpansion() = default;
+  using results_type = std::map<std::string, alps::alea::batch_result<double>>;
+  bool run(std::function<bool()> const& stop_callback);
+  results_type collect_results(alps::alea::reducer const* reduction = nullptr) const;
   bool is_thermalized() const {return step >= therm_steps;}
   void update();
   void measure();
@@ -223,11 +123,19 @@ public:
     
 protected:
   
+  struct measurement {
+    bool signed_value;
+    alps::alea::batch_acc<double> accumulator;
+  };
+  alps::params parameters;
+  alps::random01 random;
+  std::map<std::string, measurement> measurements;
+  void record_measurement(std::string const&, std::valarray<double> const&);
+  void record_measurement(std::string const&, double);
+
   /*functions*/
   /*io & initialization*/
-  void initialize_simulation(const alps::params &parms); // called by constructor
   // in file io.cpp
-  void read_bare_green(std::ifstream &G0_omega, std::ifstream &G0_tau);
   void print(std::ostream &os);
   
   /*green's function*/
@@ -263,6 +171,8 @@ protected:
   virtual void perform_remove(unsigned int vertex_nr)=0;
   virtual void reject_remove()=0;
   
+  const std::size_t num_bins;
+
   /*private member variables, constant throughout the simulation*/
   const unsigned int max_order;                        
   const spin_t n_flavors;                                //number of flavors (called 'flavors') in InteractionExpansion
@@ -289,28 +199,17 @@ protected:
   const double almost_zero;                        
   
   /*private member variables*/
-  matsubara_green_function_t green_matsubara;
   matsubara_green_function_t bare_green_matsubara;
   itime_green_function_t bare_green_itime;
-  itime_green_function_t green_itime;
-  std::vector<green_matrix> g0;
-  boost::shared_ptr<FourierTransformer> fourier_ptr;
   
   vertex_array vertices;
   std::vector<inverse_m_matrix> M;
     
-  double weight;
   double sign;
   unsigned int measurement_method;
   
-  simple_hist pert_hist;
-  unsigned int hist_max_index;
-  simple_hist **vertex_histograms;
-  unsigned int vertex_histogram_size;
   
   std::uint64_t step;
-  clock_t update_time;
-  clock_t measurement_time;
 
 };
 
@@ -321,7 +220,6 @@ std::ostream& operator << (std::ostream& os, const std::vector<double>& v);
 std::ostream& operator << (std::ostream &os, const vertex_array &vertices);
 std::ostream& operator << (std::ostream &os, const vertex &v);
 std::ostream& operator << (std::ostream &os, const c_or_cdagger &c);
-std::ostream& operator << (std::ostream& os, const simple_hist &h);
 
 
 

@@ -66,6 +66,26 @@ resolved input/output/execution settings and input/default/derived provenance.
 `pyalps.loadDMFTIterations` can analyse these results. A saved configuration is
 not a complete solver restart checkpoint.
 
+Standalone `interaction` uses modern ALEA batches. Physical measurements retain
+their signed numerator and sign together, so W and density estimates are
+normalized by average sign with their covariance retained. MPI collection pools
+the joint batches before evaluating ratios, including partial bins and empty
+ranks. `execution.bins` is the even number of local batch slots, at least two;
+it does not discard measurements or repartition collected replicas. A single
+occupied bin has an unavailable error. A zero sign denominator, including a
+singular jackknife leave-out estimate, rejects the analysis.
+
+Its `/simulation/results/<name>` groups use the versioned native ALEA batch
+codec (`@version=1`, `@kind=5`). `pyalps.loadMeasurements` retains the reported
+means and errors; `pyalps.alea.BatchResult.read` also exposes per-bin sums and
+counts. Green-function paths are unchanged. The complete HDF5 output replaces
+the destination only after successful evaluation and serialization. These
+analysis files do not resume the solver's Markov chain.
+
+Standalone CT-INT's `input.atomic = true` uses a zero-energy bare level. It
+derives zero `EPS_<f>` and `EPSSQ_<f>` Fourier moments; explicit nonzero moments
+are rejected. This keeps both measurement paths consistent with the atomic input.
+
 Text sidecars require `output.text = true` and an existing
 `output.text_directory`; final numerical Green files require explicit
 `output.final_tau` or `output.final_omega` paths. Outputs cannot replace run or

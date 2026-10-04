@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 
 from pyalps import alea, hdf5, ngs
+import pyalps
 
 
 @pytest.mark.parametrize("complex_values", [False, True])
@@ -57,6 +58,70 @@ def test_batch_statistics_and_mid_batch_continuation(tmp_path, complex_values, c
         assert archive["result/batch/sum"].shape == actual.batch_sums.shape
         assert archive["result/batch/sum"].dtype == np.dtype("complex128" if complex_values else "float64")
         assert archive["result/batch/count"].dtype == np.dtype("uint64")
+
+
+@pytest.mark.parametrize("complex_values", [False, True])
+@pytest.mark.parametrize("components", [1, 3])
+def test_analysis_loader_preserves_modern_means_and_errors(tmp_path, complex_values, components):
+    accumulator_type = alea.ComplexBatchAccumulator if complex_values else alea.BatchAccumulator
+    accumulator = accumulator_type(components, num_batches=8, base_size=3)
+    for i in range(37):
+        sample = np.arange(components, dtype=float) + i % 11
+        if complex_values:
+            sample = sample + 1j * (i % 7 - np.arange(components))
+        accumulator << sample
+    result = accumulator.result()
+    filename = str(tmp_path / "modern-results.h5")
+    name = "Energy / per site"
+    path = "/simulation/results/" + pyalps.hdf5_name_encode(name)
+    with hdf5.archive(filename, "w") as archive:
+        archive["/parameters"] = ngs.params({"L": components})
+        result.save(archive, path)
+        accumulator_type(1).result().save(archive, "/simulation/results/empty")
+    loaded = pyalps.loadMeasurements([filename])
+    assert len(loaded) == 1 and len(loaded[0]) == 1
+    measured = loaded[0][0]
+    assert measured.props["observable"] == name
+    np.testing.assert_array_equal([value.mean for value in measured.y], result.mean)
+    np.testing.assert_array_equal([value.error for value in measured.y], result.error)
+    np.testing.assert_array_equal(measured.x, np.arange(components))
+
+
+@pytest.mark.parametrize("histogram", [False, True])
+def test_ctint_publishes_native_statistics_for_python_analysis(tmp_path, monkeypatch, histogram):
+    from pyalps import ctint
+
+    monkeypatch.chdir(tmp_path)
+    filename = str(tmp_path / "ctint-results.h5")
+    run = ctint.prepare(
+        {"BETA": 2., "U": 0., "MU": 0., "ALPHA": -.01, "N": 8,
+         "NMATSUBARA": 4, "SWEEPS": 37, "THERMALIZATION": 2,
+         "MEASUREMENT_PERIOD": 1, "HISTOGRAM_MEASUREMENT": histogram},
+        input={"atomic": True}, output={"results": filename}, execution={"bins": 8})
+    ctint.solve(run)
+    measured = {entry.props["observable"]: entry for entry in pyalps.loadMeasurements([filename])[0]}
+    with hdf5.archive(filename) as archive:
+        assert archive["/run_config/application"] == "ctint"
+        for name, entry in measured.items():
+            path = "/simulation/results/" + pyalps.hdf5_name_encode(name)
+            assert archive[path + "/@version"] == 1 and archive[path + "/@kind"] == 5
+            result = alea.BatchResult.read(archive, path)
+            assert result.count > 1
+            np.testing.assert_array_equal([value.mean for value in entry.y], result.mean)
+            np.testing.assert_array_equal([value.error for value in entry.y], result.error)
+        np.testing.assert_allclose(archive["/G_omega/0/mean/value"],
+                                   -2j / ((2 * np.arange(4) + 1) * np.pi), atol=1e-12)
+    assert measured["Sign"].y[0].mean == 1.
+    assert measured["Sign"].y[0].error == 0.
+    # Fermion occupation is idempotent: n_sigma**2 = n_sigma. With the
+    # solver's Sz = n_up - n_down convention, the atomic spin square is 1/2.
+    if histogram:
+        assert measured["Sz_0"].y[0].mean == 0.
+        assert measured["Sz2_0"].y[0].mean == pytest.approx(.5)
+        assert measured["Sz0_Sz0"].y[0].mean == pytest.approx(.5)
+    else:
+        np.testing.assert_allclose([value.mean for value in measured["n_i n_j"].y], [.5, .25, .25, .5])
+    assert {path.name for path in tmp_path.iterdir()} == {"ctint-results.h5"}
 
 
 def test_batch_rejected_sample_and_failed_load_preserve_state(tmp_path):

@@ -16,15 +16,14 @@
 #include "interaction_expansion.hpp"
 #include "run_config.hpp"
 #include <complex>
-#include <alps/alea.h>
 
-void evaluate_selfenergy_measurement_matsubara(const alps::results_type<HubbardInteractionExpansion>::type &results, 
+void evaluate_selfenergy_measurement_matsubara(const InteractionExpansion::results_type &results,
                                                                         matsubara_green_function_t &green_matsubara_measured,
                                                                         const matsubara_green_function_t &bare_green_matsubara, 
                                                                         std::vector<double>& densities,
                                                                         const double &beta, std::size_t n_site, 
                                                                         std::size_t n_flavors, std::size_t n_matsubara);
-void evaluate_selfenergy_measurement_itime_rs(const alps::results_type<HubbardInteractionExpansion>::type &results, 
+void evaluate_selfenergy_measurement_itime_rs(const InteractionExpansion::results_type &results,
                                                                        itime_green_function_t &green_result,
                                                                        const itime_green_function_t &green0, 
                                                                        const double &beta, const int n_site, 
@@ -32,7 +31,7 @@ void evaluate_selfenergy_measurement_itime_rs(const alps::results_type<HubbardIn
 
 
 
-void compute_greens_functions(const alps::results_type<HubbardInteractionExpansion>::type &results, const alps::parameters_type<HubbardInteractionExpansion>::type& parms, const alps::params &input, const alps::params &output)
+void compute_greens_functions(const InteractionExpansion::results_type &results, const alps::params& parms, const alps::params &input, const alps::params &output, alps::hdf5::archive& archive)
 {
   std::cout<<"getting result!"<<std::endl;
   unsigned int n_matsubara = parms["NMATSUBARA"].as<unsigned int>();
@@ -51,7 +50,7 @@ void compute_greens_functions(const alps::results_type<HubbardInteractionExpansi
   bool measure_in_matsubara=true;
   if(parms.value_or("HISTOGRAM_MEASUREMENT", false))
     measure_in_matsubara=false;
-  std::vector<double> mean_order=results["PertOrder"].mean<std::vector<double> >();
+  auto mean_order = results.at("PertOrder").mean();
   
   std::cout<<"average matrix size was: "<<std::endl;
   std::ofstream matrix_size;
@@ -66,7 +65,7 @@ void compute_greens_functions(const alps::results_type<HubbardInteractionExpansi
   }
   std::cout<<std::endl;
   if (matrix_size.is_open()) matrix_size<<std::endl;
-  std::cout<<"average sign was: "<<results["Sign"].mean<double>()<<" error: "<<results["Sign"].error<double>()<<std::endl;
+  std::cout<<"average sign was: "<<results.at("Sign").mean()(0)<<" error: "<<results.at("Sign").stderror()(0)<<std::endl;
   //single particle Green function measurements
   matsubara_green_function_t bare_green_matsubara(n_matsubara, n_site, n_flavors);
   std::vector<double> densities(n_flavors);
@@ -98,9 +97,6 @@ void compute_greens_functions(const alps::results_type<HubbardInteractionExpansi
   }
   else 
     fourier_ptr->forward_ft(green_itime_measured, green_matsubara_measured);
-  {
-    alps::hdf5::archive ar(output["results"].as<std::string>(), "a");
-    green_matsubara_measured.write_hdf5(ar, "/G_omega");
-    green_itime_measured.write_hdf5(ar, "/G_tau");
-  }
+  green_matsubara_measured.write_hdf5(archive, "/G_omega");
+  green_itime_measured.write_hdf5(archive, "/G_tau");
 } 

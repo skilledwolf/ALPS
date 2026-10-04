@@ -15,17 +15,8 @@
 
 #include "interaction_expansion.hpp"
 #include <complex>
-#include <alps/alea.h>
-#include <alps/alea/simpleobseval.h>
-#include <alps/scheduler/montecarlo.h>
-#include <alps/osiris/dump.h>
-#include <alps/osiris/std/vector.h>
 
 
-typedef alps::SignedObservable<alps::RealVectorObservable> signed_vec_obs_t;
-typedef alps::RealVectorObservable vec_obs_t;
-typedef alps::SimpleObservable<double,alps::DetailedBinning<double> > simple_obs_t;
-typedef const alps::SimpleObservable<double,alps::DetailedBinning<double> > const_simple_obs_t;
 
 
 #ifdef SSE
@@ -123,8 +114,8 @@ void InteractionExpansion::measure_Wk(std::vector<std::vector<std::valarray<std:
         Wk_real[w] = Wk[flavor][k][w].real();
         Wk_imag[w] = Wk[flavor][k][w].imag();
       }
-      measurements[Wk_real_name.str().c_str()]<<static_cast<std::valarray<double> > (Wk_real*sign);
-      measurements[Wk_imag_name.str().c_str()]<<static_cast<std::valarray<double> > (Wk_imag*sign);
+      record_measurement(Wk_real_name.str().c_str(), static_cast<std::valarray<double> > (Wk_real*sign));
+      record_measurement(Wk_imag_name.str().c_str(), static_cast<std::valarray<double> > (Wk_imag*sign));
     }
   }
 }
@@ -162,27 +153,21 @@ void InteractionExpansion::measure_densities()
       densities[z] += dens[z][i];
       densmeas[i] = 1+dens[z][i];
     }
-    measurements["densities_"+boost::lexical_cast<std::string>(z)] << static_cast<std::valarray<double> > (densmeas*sign);
+    record_measurement("densities_"+std::to_string(z), static_cast<std::valarray<double> > (densmeas*sign));
     densities[z] /= n_site;
     densities[z] = 1 + densities[z];
   }
-  measurements["densities"] << static_cast<std::valarray<double> > (densities*sign);
+  record_measurement("densities", static_cast<std::valarray<double> > (densities*sign));
   double density_correlation = 0.;
   for (unsigned int i=0; i<n_site; ++i) {
     density_correlation += (1+dens[0][i])*(1+dens[1][i]);
   }
   density_correlation /= n_site;
-  measurements["density_correlation"] << (density_correlation*sign);
-  std::valarray<double> ninj(n_site*n_site*4);
-  for (unsigned int i=0; i<n_site; ++i) {
-    for (unsigned int j=0; j<n_site; ++j) {
-      ninj[i*n_site+j] = (1+dens[0][i])*(1+dens[0][j]);
-      ninj[i*n_site+j+1] = (1+dens[0][i])*(1+dens[1][j]);
-      ninj[i*n_site+j+2] = (1+dens[1][i])*(1+dens[0][j]);
-      ninj[i*n_site+j+3] = (1+dens[1][i])*(1+dens[1][j]);
-    }
-  }
-  measurements["n_i n_j"] << static_cast<std::valarray<double> > (ninj*sign);
+  record_measurement("density_correlation", (density_correlation*sign));
+  // The supported single-site model obeys n_sigma^2 = n_sigma.
+  const double n_up = 1 + dens[0][0], n_down = 1 + dens[1][0];
+  std::valarray<double> ninj{n_up, n_up*n_down, n_down*n_up, n_down};
+  record_measurement("n_i n_j", static_cast<std::valarray<double> > (ninj*sign));
 }
 
 
@@ -248,18 +233,21 @@ void InteractionExpansion::compute_W_itime()
         for(unsigned int j=0;j<n_site;++j){
           std::stringstream W_name;
           W_name  <<"W_"  <<flavor<<"_"<<i<<"_"<<j;
-          measurements[W_name  .str().c_str()] << static_cast<std::valarray<double> > (W_z_i_j[flavor][i][j]*(sign/ntaupoints));
+          record_measurement(W_name  .str().c_str(), static_cast<std::valarray<double> > (W_z_i_j[flavor][i][j]*(sign/ntaupoints)));
         }
         std::stringstream density_name;
         density_name<<"density_"<<flavor;
         if (n_site>1) density_name<<"_"<<i;
-        measurements[density_name.str().c_str()]<<(density[flavor][i]*sign);
+        record_measurement(density_name.str().c_str(), (density[flavor][i]*sign));
         if(n_flavors==2 && flavor==0){ //then we know how to compute Sz^2
           std::stringstream sz_name, sz2_name, sz0_szj_name;
           sz_name<<"Sz_"<<i; sz2_name<<"Sz2_"<<i; sz0_szj_name<<"Sz0_Sz"<<i;
-          measurements[sz_name.str().c_str()]<<((density[0][i]-density[1][i])*sign);
-          measurements[sz2_name.str().c_str()]<<((density[0][i]-density[1][i])*(density[0][i]-density[1][i])*sign);
-          measurements[sz0_szj_name.str().c_str()]<<((density[0][0]-density[1][0])*(density[0][i]-density[1][i])*sign);
+          record_measurement(sz_name.str().c_str(), ((density[0][i]-density[1][i])*sign));
+          const double n_up = 1 + density[0][i], n_down = 1 + density[1][i];
+          // Sz = n_up - n_down; both correlators are same-site here.
+          const double spin_squared = n_up + n_down - 2*n_up*n_down;
+          record_measurement(sz2_name.str().c_str(), spin_squared*sign);
+          record_measurement(sz0_szj_name.str().c_str(), spin_squared*sign);
         }
       }
     }
@@ -268,7 +256,7 @@ void InteractionExpansion::compute_W_itime()
 
 
 
-void evaluate_selfenergy_measurement_matsubara(const alps::results_type<HubbardInteractionExpansion>::type &results, 
+void evaluate_selfenergy_measurement_matsubara(const InteractionExpansion::results_type &results,
                                                                         matsubara_green_function_t &green_matsubara_measured,
                                                                         const matsubara_green_function_t &bare_green_matsubara, 
                                                                         std::vector<double>& densities,
@@ -286,14 +274,14 @@ void evaluate_selfenergy_measurement_matsubara(const alps::results_type<HubbardI
       std::stringstream Wk_real_name, Wk_imag_name;
       Wk_real_name  <<"Wk_real_"  <<z<<"_"<<k << "_" << k;
       Wk_imag_name  <<"Wk_imag_"  <<z<<"_"<<k << "_" << k;
-      std::vector<double> mean_real = results[Wk_real_name.str().c_str()].mean<std::vector<double> >();
-      std::vector<double> mean_imag = results[Wk_imag_name.str().c_str()].mean<std::vector<double> >();
+      auto mean_real = results.at(Wk_real_name.str().c_str()).mean();
+      auto mean_imag = results.at(Wk_imag_name.str().c_str()).mean();
       for(unsigned int w=0;w<n_matsubara;++w)
         Wk(w, k, k, z) = std::complex<double>(mean_real[w], mean_imag[w])/( beta*n_site);
       //for(unsigned int w=0;w<n_matsubara;++w)
       //  reduced_bare_green_matsubara(w, k, k, z) = bare_green_matsubara(w, k, k, z);
-      std::vector<double> error_real = results[Wk_real_name.str().c_str()].error<std::vector<double> >();
-      std::vector<double> error_imag = results[Wk_imag_name.str().c_str()].error<std::vector<double> >();
+      auto error_real = results.at(Wk_real_name.str().c_str()).stderror();
+      auto error_imag = results.at(Wk_imag_name.str().c_str()).stderror();
       for (unsigned int e=0; e<error_real.size(); ++e) {
         double ereal = error_real[e];
         double eimag = error_imag[e];
@@ -309,7 +297,7 @@ void evaluate_selfenergy_measurement_matsubara(const alps::results_type<HubbardI
       for(std::size_t w=0;w<n_matsubara;++w)
         green_matsubara_measured(w,k,k, z) = bare_green_matsubara(w,k,k,z) 
         - bare_green_matsubara(w,k,k,z) * bare_green_matsubara(w,k,k,z) * Wk(w,k,k,z);
-  std::vector<double> dens = results["densities"].mean<std::vector<double> >();
+  auto dens = results.at("densities").mean();
   for (std::size_t z=0; z<n_flavors; ++z) 
     densities[z] = dens[z];
 }
@@ -319,7 +307,7 @@ double green0_spline(const itime_green_function_t &green0, const itime_t delta_t
                                               const int s1, const int s2, const spin_t z, int n_tau, double beta);
 
 
-void evaluate_selfenergy_measurement_itime_rs(const alps::results_type<HubbardInteractionExpansion>::type &results, 
+void evaluate_selfenergy_measurement_itime_rs(const InteractionExpansion::results_type &results,
                                                                        itime_green_function_t &green_result,
                                                                        const itime_green_function_t &green0, 
                                                                        const double &beta, const int n_site, 
@@ -340,8 +328,8 @@ void evaluate_selfenergy_measurement_itime_rs(const alps::results_type<HubbardIn
         std::stringstream W_name;
         W_name<<"W_"<<z<<"_"<<i<<"_"<<j;
         W_z_i_j[z][i][j].resize(n_self+1);
-        std::vector<double> tmp=results[W_name.  str().c_str()].mean<std::vector<double> >();
-        std::vector<double> errorvec = results[W_name.  str().c_str()].error<std::vector<double> >();
+        auto tmp = results.at(W_name.  str().c_str()).mean();
+        auto errorvec = results.at(W_name.  str().c_str()).stderror();
         for(int k=0;k<n_self+1;++k){
           W_z_i_j[z][i][j][k]=tmp[k];
           double error = errorvec[k];
@@ -373,23 +361,6 @@ void evaluate_selfenergy_measurement_itime_rs(const alps::results_type<HubbardIn
         green_result(n_tau,i,j,z)=(i==j?-1:0)-green_result(0,i,j,z);
       }
     }
-  }
-  if(n_flavors==2){  
-    double Sz_obs = results["Sz_0"].mean<double>();
-    double Sz_err = results["Sz_0"].error<double>();
-    for(int i=1;i<n_site;i++) {
-      std::stringstream Sz_name;
-      Sz_name << "Sz_" << i;
-      double Sz_i_obs = results[Sz_name.str().c_str()].mean<double>();
-      double Sz_i_err = results[Sz_name.str().c_str()].error<double>();
-      Sz_i_obs *= ((i%2==0) ? 1 : -1);
-      Sz_obs += Sz_i_obs;
-      Sz_err += Sz_i_err;
-    }
-    Sz_obs /= n_site;
-    Sz_err /= std::sqrt(double(n_site));
-    std::ofstream szstream("staggered_sz", std::ios::app);
-    szstream << Sz_obs << "\t" << Sz_err << std::endl;
   }
   clock_t time1=clock();
   std::cout<<"evaluate of SE measurement took: "<<(time1-time0)/(double)CLOCKS_PER_SEC<<std::endl;

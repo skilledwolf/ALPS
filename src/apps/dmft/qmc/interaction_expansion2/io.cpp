@@ -15,41 +15,6 @@
 
 #include "interaction_expansion.hpp"
 
-///read in Green's function file. Format:
-/// Frequency \t val \t val.... 
-void InteractionExpansion::read_bare_green(std::ifstream &G0_omega, std::ifstream &G0_tau)
-{
-  assert(G0_omega.is_open() && G0_tau.is_open());
-  double ignored;
-  for(frequency_t o=0;o<n_matsubara;++o){
-    G0_omega >>ignored;
-    for(spin_t flavor=0;flavor<n_flavors;++flavor){
-      for(site_t j=0;j<n_site;++j){
-        for(site_t k=0;k<n_site;++k){
-          //initialize bare Green's function
-          G0_omega >> bare_green_matsubara(o,j,k, flavor);
-        }
-      }
-    }
-  }
-  green_matsubara=bare_green_matsubara; //starting values for the dressed GF
-  for(itime_index_t tau=0;tau<=n_tau;++tau){
-    G0_tau>>ignored;
-    for(spin_t flavor=0;flavor<n_flavors;++flavor){
-      for(site_t j=0;j<n_site;++j){
-        for(site_t k=0;k<n_site;++k){
-          G0_tau>>bare_green_itime(tau, j, k, flavor);
-        }
-      }
-    }
-  }
-  green_itime=bare_green_itime; //starting values for the dressed green's function
-  // There is no operator<<(ostream&,ifstream&) in the std
-  // std::cout<<"G0_omega: "<<G0_omega<<std::endl;
-  // std::cout<<"G0_tau: "<<G0_tau<<std::endl;
-}
-
-
 void InteractionExpansion::print(std::ostream &os){
   os<<"***********************************************************************************************************"<<std::endl;
   os<<"*** ALPS InteractionExpansion solver                                                                    ***"<<std::endl;
