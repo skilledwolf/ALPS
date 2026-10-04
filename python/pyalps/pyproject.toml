@@ -86,7 +86,7 @@ test-command = 'python {project}/.github/scripts/build_metrics.py run --timeout 
 PIP_ONLY_BINARY = ":all:"
 ALPS_DIR = "$(pwd)/_build/distribution/install/share/alps"
 ALPS_CI_METRICS = "$(pwd)/_build/metrics"
-CMAKE_PREFIX_PATH = "$(pwd)/_build/boost-install:$(pwd)/_build/tomlplusplus-install"
+CMAKE_PREFIX_PATH = "$(pwd)/_build/boost-install:$(pwd)/_build/tomlplusplus-install:$(pwd)/_build/highfive-install"
 CCACHE_DIR = "$(pwd)/_build/ccache"
 CCACHE_NAMESPACE = "pyalps-wheel"
 CCACHE_MAXSIZE = "1G"
@@ -98,12 +98,14 @@ PYALPS_TEST_DOWNSTREAM_EXPORT = "1"
 [tool.cibuildwheel.linux]
 environment-pass = ["GITHUB_REF", "ALPS_VERSION_PRERELEASE", "CMAKE_BUILD_PARALLEL_LEVEL"]
 before-all = [
-  "if command -v dnf >/dev/null 2>&1; then dnf install -y ccache hdf5-devel lapack-devel; else apk add --no-cache boost-dev ccache hdf5-dev lapack-dev; export CXXFLAGS=-DALPS_NGS_NO_STACKTRACE; fi",
+  "if command -v dnf >/dev/null 2>&1; then dnf install -y ccache lapack-devel; else apk add --no-cache boost-dev ccache zlib-dev lapack-dev; export CXXFLAGS=-DALPS_NGS_NO_STACKTRACE; fi",
   "python -m pip install 'cmake>=3.27' 'ninja>=1.12'",
   "cd {project}",
   "ccache --zero-stats",
   "if command -v dnf >/dev/null 2>&1; then ALPS_BOOST_MPI=OFF python .github/scripts/prepare_dependencies.py boost-1.91.0 _build/boost-install; fi",
   "python .github/scripts/prepare_dependencies.py tomlplusplus _build/tomlplusplus-install",
+  "python .github/scripts/prepare_dependencies.py highfive _build/highfive-install",
+  "if command -v dnf >/dev/null 2>&1; then python .github/scripts/prepare_dependencies.py hdf5 _build/hdf5-install; else python .github/scripts/prepare_dependencies.py hdf5-musl _build/hdf5-install; fi",
   "python .github/scripts/build_metrics.py run 'SDK configure' cmake --preset distribution",
   "python .github/scripts/build_metrics.py run 'SDK build and install' cmake --build --preset distribution -j4",
 ]
@@ -111,7 +113,7 @@ repair-wheel-command = [
   "python -m pip install wheel",
   # Boost's transitive libraries need the same search path as its direct ones.
   # Scope this to repair so installed-wheel tests cannot use the build prefix.
-  'LD_LIBRARY_PATH="$(pwd)/_build/boost-install/lib" auditwheel repair -w {dest_dir} {wheel}',
+  'LD_LIBRARY_PATH="$(pwd)/_build/boost-install/lib:$(pwd)/_build/hdf5-install/lib" auditwheel repair -w {dest_dir} {wheel}',
   "python {project}/python/pyalps/_build_support/runtime_manifest.py --wheel {dest_dir}/*.whl",
   "auditwheel show {dest_dir}/*.whl",
 ]
@@ -122,6 +124,7 @@ before-all = [
   "cd {project}",
   "ccache --zero-stats",
   "ALPS_BOOST_MPI=OFF CXX=clang++ python .github/scripts/prepare_dependencies.py boost-1.91.0 _build/boost-install",
+  "python .github/scripts/prepare_dependencies.py highfive _build/highfive-install",
   "python .github/scripts/build_metrics.py run 'SDK configure' cmake --preset distribution -DHDF5_ROOT=$(brew --prefix hdf5)",
   "python .github/scripts/build_metrics.py run 'SDK build and install' cmake --build --preset distribution -j2",
 ]
@@ -132,6 +135,11 @@ repair-wheel-command = [
   "python {project}/python/pyalps/_build_support/runtime_manifest.py --wheel {dest_dir}/*.whl",
   "delocate-listdeps --all {dest_dir}/*.whl",
 ]
+
+[[tool.cibuildwheel.overrides]]
+select = "*-manylinux_* *-musllinux_*"
+inherit.environment = "append"
+environment = { HDF5_ROOT = "$(pwd)/_build/hdf5-install" }
 
 [[tool.cibuildwheel.overrides]]
 select = "*-macosx_*"

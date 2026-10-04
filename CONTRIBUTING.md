@@ -17,7 +17,7 @@ Small fixes can go directly to a pull request. Discuss a substantial new applica
 
 ## Getting started with the code
 
-Build and install the C++ SDK with CMake, then build the Python package against it with pip. The workflow below includes applications and tests, uses one SDK installation, and requires no environment manager. Run commands from the repository root unless stated otherwise.
+Build and install the C++ SDK with CMake, then build the Python package against it with pip. The workflow below includes applications and tests and uses one SDK installation. Run commands from the repository root unless stated otherwise.
 
 ### Fork and clone
 
@@ -32,7 +32,7 @@ git remote add upstream https://github.com/ALPSim/ALPS.git
 ### Prerequisites
 
 - CMake ≥ 3.27, Ninja for the bundled presets, and C++17/C11 compilers such as GCC or Clang.
-- Boost ≥ 1.76 with its compiled libraries and CMake packages, HDF5's C library, LP64 BLAS/LAPACK, and toml++ ≥ 3.4 (header-only). Use serial HDF5 for the default MPI-disabled build; see [numerical libraries](#numerical-libraries).
+- Boost ≥ 1.76 with its compiled libraries and CMake packages, HDF5 ≥ 2.0's C library, HighFive 3.3.0 (header-only), LP64 BLAS/LAPACK, and toml++ ≥ 3.4 (header-only). Use serial HDF5 for the default MPI-disabled build; see [numerical libraries](#numerical-libraries). HighFive is a private implementation dependency for building the SDK; installed SDK consumers do not need it.
 - For native tests (`ALPS_BUILD_TESTING=ON`): Python ≥ 3.11 for the CTest module-architecture audit; this does not require building the Python bindings.
 - For Python development: GIL-enabled CPython ≥ 3.11 in a writable Python environment. Pip installs NumPy, SciPy and Matplotlib with pyalps. Free-threaded Python is unsupported.
 - Optional: MPI and Boost.MPI for `ALPS_ENABLE_MPI=ON`; an OpenMP runtime for `ALPS_ENABLE_OPENMP=ON`; a Fortran compiler for the Fortran examples.
@@ -43,7 +43,9 @@ For example, on Ubuntu 24.04:
 
 ```sh
 sudo apt-get update
-sudo apt-get install build-essential libboost-all-dev libhdf5-dev libblas-dev liblapack-dev libtomlplusplus-dev
+sudo apt-get install build-essential libboost-all-dev libblas-dev liblapack-dev libtomlplusplus-dev
+python3 .github/scripts/prepare_dependencies.py hdf5 _build/hdf5-install
+export HDF5_ROOT="$PWD/_build/hdf5-install"
 ```
 
 On macOS, install Apple's Command Line Tools with `xcode-select --install` if needed. If you use Homebrew:
@@ -54,6 +56,15 @@ export CMAKE_PREFIX_PATH="$(brew --prefix boost):$(brew --prefix hdf5):$(brew --
 ```
 
 These are optional provider examples. For another non-system installation, set the `CMAKE_PREFIX_PATH` environment variable to its dependency prefixes, separated by colons on Linux/macOS. Keep it set for both SDK and Python builds. The CMake command-line form instead uses semicolons: `-DCMAKE_PREFIX_PATH="/prefix/one;/prefix/two"`.
+
+Install the pinned HighFive CMake package into a small header-only prefix, unless your dependency provider already supplies 3.3.0:
+
+```sh
+python3 .github/scripts/prepare_dependencies.py highfive _build/highfive-install
+export CMAKE_PREFIX_PATH="$PWD/_build/highfive-install${CMAKE_PREFIX_PATH:+:$CMAKE_PREFIX_PATH}"
+```
+
+The HDF5 helper above downloads pinned micromamba and installs a serial HDF5 2.2.0 conda-forge build plus its runtime dependencies on glibc Linux x64/ARM64. It adds no compiler or Python environment and needs no activation. Use an existing compatible HDF5 provider instead when available; Ubuntu's HDF5 1.x package is too old. CI uses Homebrew on macOS and the pinned vcpkg baseline for experimental Windows builds. For musllinux wheels, the helper's explicit `hdf5-musl` mode builds only the shared C library with zlib, because no compatible prebuilt 2.x provider is available for the pinned image. All helpers verify archive checksums, reuse matching installed prefixes, and remove temporary source/solver caches.
 
 ### Windows users
 
@@ -242,7 +253,7 @@ add_executable(my_simulation main.cpp)
 target_link_libraries(my_simulation PRIVATE ALPS::alps)
 ```
 
-The imported target carries headers, C++17 requirements, compile definitions and transitive dependencies. Use a compiler and configuration compatible with the SDK's ABI. `ALPS::headers` exposes the compile interface without linking; `ALPS::fortran` supplies the C++ Fortran bridge and its GNU Fortran compatibility flag. Programs using only utilities can request `find_package(ALPS CONFIG REQUIRED COMPONENTS utilities)` and link `ALPS::utilities`. Archive-only programs can similarly request the `hdf5` component and link `ALPS::hdf5`, which also owns archive signal cleanup. Typed parameter programs can request the `params` component and link `ALPS::params`. XML parsing/output and command-line parsing are available through the `xml` and `cli` components and targets `ALPS::xml` and `ALPS::cli`. The parameter-file constructor and typed XML input adapter are removed. The remaining typed-to-`Parameters` bridge serves DMFT's in-process Hirsch-Fye and Interaction Expansion solvers and the lattice tutorials internally through `ALPS::alps`. Package discovery still checks the SDK's complete dependency set; component-specific configuration is future work.
+The imported target carries headers, C++17 requirements, compile definitions and transitive dependencies. Use a compiler and configuration compatible with the SDK's ABI. `ALPS::headers` exposes the compile interface without linking; `ALPS::fortran` supplies the C++ Fortran bridge and its GNU Fortran compatibility flag. Programs using only utilities can request `find_package(ALPS CONFIG REQUIRED COMPONENTS utilities)` and link `ALPS::utilities`. Archive-only programs can similarly request the `hdf5` component and link `ALPS::hdf5`. Typed parameter programs can request the `params` component and link `ALPS::params`. XML parsing/output and command-line parsing are available through the `xml` and `cli` components and targets `ALPS::xml` and `ALPS::cli`. The parameter-file constructor and typed XML input adapter are removed. The remaining typed-to-`Parameters` bridge serves lattice/model code and tutorials internally through `ALPS::alps`. Package discovery still checks the SDK's complete dependency set; component-specific configuration is future work.
 
 Use `ALPS::containers` for array storage and `ALPS::numerics` for matrix/vector algorithms and array mathematics, including the existing `<alps/multi_array.hpp>` umbrella. Numerical archive consumers link `ALPS::numeric_io` and explicitly include `<alps/hdf5/matrix.hpp>` or `<alps/hdf5/numeric_vector.hpp>`. For example:
 

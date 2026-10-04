@@ -79,6 +79,13 @@ jobs:
           path: _build/boost-install
           key: wheel-boost-${{ matrix.plat.family }}-${{ hashFiles('.github/ci-matrix.json', '.github/scripts/build-boost.sh', '.github/scripts/prepare_dependencies.py') }}
 
+      - name: Restore wheel HDF5 provider
+        if: runner.os == 'Linux'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: _build/hdf5-install
+          key: wheel-hdf5-${{ matrix.plat.family }}-${{ matrix.plat.arch }}-${{ hashFiles('.github/dependencies.json', '.github/scripts/prepare_dependencies.py') }}
+
       - name: Restore compiler cache
         id: compiler-cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
@@ -99,7 +106,7 @@ jobs:
           CIBW_BUILD: ${{ matrix.plat.build }}
           # cibuildwheel copies /project; mount the compiler cache explicitly
           # so Linux builds update the directory that Actions saves afterward.
-          CIBW_CONTAINER_ENGINE: 'docker; create_args: --volume "${{ github.workspace }}/_build/boost-install:/project/_build/boost-install" --volume "${{ github.workspace }}/_build/ccache:/project/_build/ccache" --volume "${{ github.workspace }}/_build/metrics:/project/_build/metrics"'
+          CIBW_CONTAINER_ENGINE: 'docker; create_args: --volume "${{ github.workspace }}/_build/boost-install:/project/_build/boost-install" --volume "${{ github.workspace }}/_build/hdf5-install:/project/_build/hdf5-install" --volume "${{ github.workspace }}/_build/ccache:/project/_build/ccache" --volume "${{ github.workspace }}/_build/metrics:/project/_build/metrics"'
           MACOSX_DEPLOYMENT_TARGET: ${{ matrix.plat.target }}
 
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8

@@ -1,6 +1,25 @@
 {
   "manylinux_image": "quay.io/pypa/manylinux_2_28_x86_64@sha256:012f4a50472412f18bb2b450c1cce7158434cfae4ae878591c2748a13a30c2be",
   "musllinux_image": "quay.io/pypa/musllinux_1_2_x86_64@sha256:f130bd3e3aebb39abcdec28a89f987f0d31b52d74bac5852318303698e9a5033",
+  "hdf5": {
+    "version": "2.2.0",
+    "sha256": "1a1ab8209b35586fbc1aa279ba76d102130b95badcb20ca329587219112d8c16",
+    "conda_builds": {
+      "linux-64": "nompi_hc529623_100",
+      "linux-aarch64": "nompi_hdc8a35d_100"
+    }
+  },
+  "micromamba": {
+    "release": "2.9.0-0",
+    "sha256": {
+      "linux-64": "8761c382127e6363bd9e0a2451aa3ef90d071a79133f736e2f759a3bf13040dd",
+      "linux-aarch64": "e705ffeed90ce0659eb546e4b1e1028c9eaf0bc9cc854867b19ac5ce0ba5852f"
+    }
+  },
+  "highfive": {
+    "version": "3.3.0",
+    "sha256": "325cfbcf0c0296a6dd26f3b088801b7ebb8d6f109c0565c11d2d8c4af3253bff"
+  },
   "tomlplusplus": {
     "version": "3.4.0",
     "sha256": "8517f65938a4faae9ccf8ebb36631a38c1cadfb5efa85d9a72e15b9e97d25155"
