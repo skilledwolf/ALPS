@@ -5,22 +5,6 @@
 #include <alps/params.hpp>
 namespace alps::params_ns {
 namespace {
-template <class T> const char *type_name();
-#define ALPS_PARAM_TYPE(T, NAME)                                                                   \
-    template <> const char *type_name<T>() { return NAME; }
-ALPS_PARAM_TYPE(bool, "bool")
-ALPS_PARAM_TYPE(std::int64_t, "int64")
-ALPS_PARAM_TYPE(std::uint64_t, "uint64")
-ALPS_PARAM_TYPE(double, "float64")
-ALPS_PARAM_TYPE(std::complex<double>, "complex128")
-ALPS_PARAM_TYPE(std::string, "string")
-#undef ALPS_PARAM_TYPE
-template <class T> std::string logical_type() {
-    if constexpr (detail::vector_type<T>::value)
-        return std::string(type_name<typename detail::vector_type<T>::element>()) + "[]";
-    else
-        return type_name<T>();
-}
 void validate_checkpoint(const dict_value &value, const std::string &key) {
     // The archive stores C strings. Reject unrepresentable names and values
     // before overwriting a checkpoint rather than silently truncating them.
@@ -46,39 +30,36 @@ void dict_value::save(hdf5::archive &ar) const {
     validate_checkpoint(*this, name_);
     apply_visitor([&](const auto &value) {
         using T = std::decay_t<decltype(value)>;
-        if constexpr (!std::is_same_v<T, None>) {
-            ar["type"] << logical_type<T>();
-            ar["value"] << value;
-        }
+        if constexpr (!std::is_same_v<T, None>)
+            ar[ar.get_context()] << value;
     });
 }
 void dict_value::load(hdf5::archive &ar) {
-    std::string type;
-    ar["type"] >> type;
+    const auto path = ar.get_context();
+    if (!ar.is_data(path) || ar.is_null(path))
+        throw exception::type_mismatch(name_, "checkpoint value must be a native dataset");
+    const auto shape = ar.extent(path);
+    if (shape.size() > 1)
+        throw exception::type_mismatch(name_, "checkpoint values must be scalars or vectors");
     value_type loaded;
     bool matched = false;
-    // The logical type and native HDF5 datatype must agree exactly.
+    // Canonical HDF5 datatype and rank identify the variant without a second
+    // type tag that could disagree with the payload.
     auto read = [&](auto exemplar) {
         using T = decltype(exemplar);
-        if (type != logical_type<T>())
-            return;
-        auto validate = [&](auto element, bool array) {
+        auto matches = [&](auto element, bool array) {
             using E = decltype(element);
-            if (!ar.is_data("value") || !ar.is_datatype<E>("value"))
-                throw exception::type_mismatch(name_,
-                                               "checkpoint payload disagrees with declared type");
-            const auto shape = ar.extent("value");
-            const bool valid = !ar.is_null("value") &&
-                               (array ? shape.size() == 1 : ar.is_scalar("value"));
-            if (!valid)
-                throw exception::type_mismatch(name_, "invalid checkpoint shape");
+            return shape.size() == (array ? 1 : 0) && ar.is_datatype<E>(path);
         };
+        bool compatible;
         if constexpr (detail::vector_type<T>::value)
-            validate(typename T::value_type{}, true);
+            compatible = matches(typename T::value_type{}, true);
         else
-            validate(T{}, false);
+            compatible = matches(T{}, false);
+        if (!compatible)
+            return;
         T v;
-        ar["value"] >> v;
+        ar[path] >> v;
         loaded = std::move(v);
         matched = true;
     };
@@ -95,7 +76,7 @@ void dict_value::load(hdf5::archive &ar) {
     read(std::vector<std::complex<double>>{});
     read(std::vector<std::string>{});
     if (!matched)
-        throw exception::type_mismatch(name_, "unknown checkpoint type '" + type + "'");
+        throw exception::type_mismatch(name_, "unsupported checkpoint datatype");
     val_.swap(loaded);
 }
 void dictionary::save(hdf5::archive &ar) const {
@@ -111,7 +92,7 @@ void dictionary::save(hdf5::archive &ar) const {
     for (const auto &entry : *this) {
         const auto path = "entries/" + std::to_string(i++);
         ar[path + "/name"] << entry.first;
-        ar[path] << entry.second;
+        ar[path + "/value"] << entry.second;
     }
 }
 void dictionary::load(hdf5::archive &ar) {
@@ -129,7 +110,7 @@ void dictionary::load(hdf5::archive &ar) {
         ar[path + "/name"] >> name;
         if (loaded.exists(name))
             throw std::runtime_error("Duplicate parameter in checkpoint: " + name);
-        ar[path] >> loaded[name];
+        ar[path + "/value"] >> loaded[name];
     }
     swap(*this, loaded);
 }

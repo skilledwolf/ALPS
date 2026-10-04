@@ -37,6 +37,7 @@ int main() {
         p["empty strings"] = std::vector<std::string>{};
         p["empty string"] = std::string{};
         p["strings/with.dots"] = std::vector<std::string>{"a,b", "c", ""};
+        p["punctuation/@[]"] = "name is data";
         ar["/parameters"] << p;
         alps::params actual;
         ar["/parameters"] >> actual;
@@ -46,11 +47,10 @@ int main() {
         require(format == "alps.params.v2");
         for (const auto &index : ar.list_children("/parameters/entries")) {
             const auto path = "/parameters/entries/" + index;
-            std::string type;
-            ar[path + "/type"] >> type;
             const auto shape = ar.extent(path + "/value");
             require(!ar.is_null(path + "/value"));
-            require(type.find("[]") == std::string::npos ? shape.empty() : shape.size() == 1);
+            require(shape.size() <= 1);
+            require(!ar.is_data(path + "/type"));
             require(!ar.is_attribute(path + "/value/@__complex__"));
             require(!ar.is_attribute(path + "/value/@__alps_type__"));
         }
@@ -80,7 +80,7 @@ int main() {
         ar["/value"] >> restored_value;
         require(restored_value.as<std::string>() == "kept");
         rejects([&] { ar["/rejected_value"] << value; }, "NUL");
-        require(!ar.is_data("/rejected_value/type") && !ar.is_data("/rejected_value/value"));
+        require(!ar.is_data("/rejected_value"));
         alps::params empty;
         ar["/empty"] << empty;
         ar["/empty"] >> actual;
@@ -93,17 +93,21 @@ int main() {
         ar["/bad/format"] << std::string("alps.params.v1");
         rejects([&] { ar["/bad"] >> actual; }, "offline conversion");
         require(actual.size() == 1);
-        ar["/parameters/entries/1/type"] << std::string("unknown");
+        ar["/parameters/entries/1/value"] << short(1);
         rejects([&] { ar["/parameters"] >> actual; });
         require(actual.size() == 1);
         alps::params single;
         single["n"] = 7;
         ar["/bad"] << single;
         ar["/bad/entries/0/value"] << 7.25;
-        rejects([&] { ar["/bad"] >> actual; });
-        require(actual.size() == 1);
+        ar["/bad"] >> actual;
+        require(actual["n"].as<double>() == 7.25);
         ar["/bad"] << single;
         ar["/bad/entries/0/value"] << std::vector<std::int64_t>{7};
+        ar["/bad"] >> actual;
+        require(actual["n"].as<std::vector<std::int64_t>>() == std::vector<std::int64_t>{7});
+        ar["/bad"] << single;
+        ar["/bad/entries/0/value"] << std::vector<std::vector<double>>{{7}};
         rejects([&] { ar["/bad"] >> actual; });
         require(actual.size() == 1);
         p["unset"];
