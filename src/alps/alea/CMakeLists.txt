@@ -100,6 +100,7 @@ target_sources(alps_statistics PUBLIC
     include/alps/alea/internal/pooling.hpp
     include/alps/alea/internal/util.hpp
     include/alps/alea/mean.hpp
+    include/alps/alea/mpi.hpp
     include/alps/alea/propagation.hpp
     include/alps/alea/result.hpp
     include/alps/alea/serialize.hpp

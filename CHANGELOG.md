@@ -6,6 +6,13 @@ User-facing changes and migration notes are recorded here, starting with the bui
 
 ### Changed
 
+- Preserve independent-run ALEA bins and partial-bin weights during reduction;
+  retain only autocorrelation levels represented in every run. Stage reductions
+  before publishing results and reject malformed shapes and weights collectively.
+  Correct elliptic complex variance centering.
+  Add an optional native MPI reducer with unsigned 64-bit sample counts; custom
+  reducers must implement the unsigned overload and downstream binaries need a
+  rebuild. Remove the unused unsigned 32-bit reinterpretation overload.
 - Remove unused Boost tuple/shared-array HDF5 adapters and their test machinery;
   the archive-copy test uses a standard owning buffer.
 - Expose modern real/complex batch ALEA in Python and migrate the pure Python

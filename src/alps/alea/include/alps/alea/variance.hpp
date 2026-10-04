@@ -263,7 +263,7 @@ public:
     var_data<T,Strategy> &store() { return *store_; }
 
     /** Collect measurements from different instances using sum-reducer */
-    void reduce(const reducer &r) { reduce(r, true, true); }
+    void reduce(const reducer &r);
 
     /** Convert result to a permanent format (write to disk etc.) */
     friend void serialize<>(serializer &, const std::string &, const var_result &);

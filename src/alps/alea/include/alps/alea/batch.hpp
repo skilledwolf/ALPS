@@ -226,7 +226,7 @@ public:
     batch_data<T> &store() { return *store_; }
 
     /** Collect measurements from different instances using sum-reducer */
-    void reduce(const reducer &r) { reduce(r, true, true); }
+    void reduce(const reducer &r);
 
     /** Convert result to a permanent format (write to disk etc.) */
     friend void serialize<>(serializer &, const std::string &, const batch_result &);
@@ -236,9 +236,6 @@ public:
 
     /** Write some info about the result to a stream */
     friend std::ostream &operator<< <>(std::ostream &, const batch_result &);
-
-protected:
-    void reduce(const reducer &r, bool do_pre_commit, bool do_post_commit);
 
 private:
     std::unique_ptr< batch_data<value_type> > store_;

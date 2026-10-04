@@ -36,7 +36,7 @@ void var_data<T,Str>::convert_to_mean()
 {
     // This also works for count_ == 0
     data_ /= count_;
-    data2_ -= count_ * data_.cwiseAbs2();
+    data2_ -= count_ * data_.unaryExpr(typename bind<Str,T>::abs2_op());
 
     // In case of zero unbiased information, the variance is infinite.
     // However, data2_ is 0 in this case as well, so we need to handle it
@@ -66,7 +66,7 @@ void var_data<T,Str>::convert_to_sum()
     else
         data2_ = data2_ * nunbiased;
 
-    data2_ += count_ * data_.cwiseAbs2();
+    data2_ += count_ * data_.unaryExpr(typename bind<Str,T>::abs2_op());
     data_ *= count_;
 }
 
@@ -249,10 +249,21 @@ column<typename var_result<T,Str>::var_type> var_result<T,Str>::stderror() const
 }
 
 template <typename T, typename Str>
+void var_result<T,Str>::reduce(const reducer &r)
+{
+    internal::check_reduction(r, valid(), valid() ? size() : 0);
+    var_result staged(*this);
+    staged.reduce(r, true, true);
+    store_.swap(staged.store_);
+}
+
+template <typename T, typename Str>
 void var_result<T,Str>::reduce(const reducer &r, bool pre_commit, bool post_commit)
 {
     internal::check_valid(*this);
     if (pre_commit) {
+        if (r.get_max(!internal::valid_weight_count(count(), count2())))
+            throw std::runtime_error("invalid ALEA squared-weight count");
         store_->convert_to_sum();
         r.reduce(view<T>(store_->data().data(), store_->data().rows()));
         r.reduce(view<var_type>(store_->data2().data(), store_->data2().rows()));
@@ -264,10 +275,13 @@ void var_result<T,Str>::reduce(const reducer &r, bool pre_commit, bool post_comm
     }
     if (post_commit) {
         reducer_setup setup = r.get_setup();
-        if (setup.have_result)
+        if (r.get_max(setup.have_result && !internal::valid_weight_count(count(), count2())))
+            throw std::runtime_error("invalid ALEA squared-weight count");
+        if (setup.have_result) {
             store_->convert_to_mean();
-        else
+        } else {
             store_.reset();   // free data
+        }
     }
 }
 
@@ -319,8 +333,7 @@ void deserialize(deserializer &s, const std::string &key, var_result<T,Str> &sel
     // deserialize data
     deserialize(s, "count", staged.store_->count_);
     deserialize(s, "count2", staged.store_->count2_);
-    if (!std::isfinite(staged.store_->count2_) || staged.store_->count2_ < 0
-            || ((staged.store_->count_ == 0) != (staged.store_->count2_ == 0)))
+    if (!internal::valid_weight_count(staged.store_->count_, staged.store_->count2_))
         throw std::runtime_error("invalid ALEA squared-weight count");
     {
     internal::deserializer_sentry subgroup(s, "mean");

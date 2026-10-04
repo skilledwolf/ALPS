@@ -54,6 +54,14 @@ target_link_libraries(alps_alea_statistics PRIVATE ALPS::statistics ALPS::hdf5)
 alps_add_test(alps_alea_statistics)
 set_property(TEST alps_alea_statistics PROPERTY LABELS "alea;hdf5")
 
+if(ALPS_ENABLE_MPI)
+  add_executable(alps_alea_mpi mpi.cpp)
+  target_link_libraries(alps_alea_mpi PRIVATE ALPS::statistics MPI::MPI_CXX)
+  add_test(NAME alps_alea_mpi COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2
+    ${MPIEXEC_PREFLAGS} $<TARGET_FILE:alps_alea_mpi> ${MPIEXEC_POSTFLAGS})
+  set_tests_properties(alps_alea_mpi PROPERTIES LABELS "alea;mpi" PROCESSORS 2 TIMEOUT 60)
+endif()
+
 add_executable(alps_alea_ising_checkpoint
   "${PROJECT_SOURCE_DIR}/tutorials/10-ngs/1_accumulator_only/checkpoint.cpp"
   "${PROJECT_SOURCE_DIR}/tutorials/10-ngs/1_accumulator_only/ising.cpp")

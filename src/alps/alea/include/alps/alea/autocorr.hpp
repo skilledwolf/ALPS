@@ -182,7 +182,7 @@ public:
     bool tau_available() const { return find_level(DEFAULT_MIN_SAMPLES) > 0; }
 
     /** Collect measurements from different instances using sum-reducer */
-    void reduce(const reducer &r) { reduce(r, true, true); }
+    void reduce(const reducer &r);
 
     /** Convert result to a permanent format (write to disk etc.) */
     friend void serialize<>(serializer &, const std::string &, const autocorr_result &);
@@ -202,9 +202,6 @@ public:
     const level_result_type &level(size_t i) const { return level_[i]; }
 
     level_result_type &level(size_t i) { return level_[i]; }
-
-protected:
-    void reduce(const reducer &r, bool do_pre_commit, bool do_post_commit);
 
 private:
     const static size_t DEFAULT_MIN_SAMPLES = 1024;

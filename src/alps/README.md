@@ -75,8 +75,7 @@ stream. Aligned independent runs must preserve sample counts and means; their
 merged errors are checked against an independent bin-level calculation. Results
 must retain count, mean, error, variance, autocorrelation and bin data through
 HDF5 reload, including scalar/vector shape and escaped observable names. These
-tests constrain a future implementation without choosing between Core's
-`accumulators` and separate newer `alea` APIs.
+tests constrain migration to Core's newer Eigen-based ALEA implementation.
 
 Uneven or incomplete legacy bin merging is an unresolved scientific gate. Direct
 `MCScalarData` merging of samples 0–999 and 1000–2999 changes count from 3000 to

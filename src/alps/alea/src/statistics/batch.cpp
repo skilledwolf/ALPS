@@ -245,22 +245,33 @@ column<typename bind<circular_var,T>::var_type> batch_result<T>::stderror() cons
 }
 
 template <typename T>
-void batch_result<T>::reduce(const reducer &r, bool pre_commit, bool post_commit)
+void batch_result<T>::reduce(const reducer &r)
 {
-    // FIXME this is bad since it mixes bins
-    internal::check_valid(*this);
-    if (pre_commit) {
-        r.reduce(view<T>(store_->batch().data(), store_->batch().size()));
-        r.reduce(view<uint64_t>(store_->count().data(), store_->num_batches()));
+    auto setup = internal::check_reduction(r, valid(), valid() ? size() : 0);
+    bool malformed = store_->count().size() != store_->batch().cols();
+    for (size_t i = 0; !malformed && i != num_batches(); ++i)
+        malformed = !store_->count()(i) && !store_->batch().col(i).isZero(0);
+    if (r.get_max(malformed)) throw std::runtime_error("invalid ALEA batch weights");
+    if (r.get_max(num_batches() > size_t(std::numeric_limits<int64_t>::max())))
+        throw size_mismatch();
+    auto slots = static_cast<uint64_t>(r.get_max(static_cast<int64_t>(num_batches())));
+    auto limit = static_cast<uint64_t>(std::numeric_limits<Eigen::Index>::max());
+    if (slots > limit / setup.count || slots * setup.count > limit / size())
+        throw size_mismatch();
+
+    // Independent runs are independent bins, including their unfinished bins.
+    // Disjoint rank blocks gather them through the existing sum-only reducer.
+    std::unique_ptr<batch_data<T>> staged(new batch_data<T>(size(), slots * setup.count));
+    if (num_batches()) {
+        auto offset = setup.pos * slots;
+        staged->batch().middleCols(offset, num_batches()) = store_->batch();
+        staged->count().segment(offset, num_batches()) = store_->count();
     }
-    if (pre_commit && post_commit) {
-        r.commit();
-    }
-    if (post_commit) {
-        reducer_setup setup = r.get_setup();
-        if (!setup.have_result)
-            store_.reset();   // free data
-    }
+    r.reduce(view<T>(staged->batch().data(), staged->batch().size()));
+    r.reduce(view<uint64_t>(staged->count().data(), staged->num_batches()));
+    r.commit();
+    if (!setup.have_result) staged.reset();
+    store_.swap(staged);
 }
 
 template column<double> batch_result<double>::var<circular_var>() const;

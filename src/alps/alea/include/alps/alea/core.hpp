@@ -13,6 +13,7 @@
 #include <string>
 #include <vector>
 #include <initializer_list>
+#include <limits>
 
 #include <Eigen/Dense>
 
@@ -212,6 +213,9 @@ struct reducer
     /** Reduce long data-set into `data` */
     virtual void reduce(view<int64_t> data) const = 0;
 
+    /** Reduce unsigned sample counts without signed arithmetic */
+    virtual void reduce(view<uint64_t> data) const = 0;
+
     /** Finish reduction of all data if deferred */
     virtual void commit() const = 0;
 
@@ -224,16 +228,16 @@ struct reducer
     // Convenience functions
 
     void reduce(view<std::complex<double> > data) const {
-        reduce(view<double>((double *)data.data(), 2 * data.size()));
+        reduce(view<double>((double *)data.data(), expanded_size(data.size(), 2)));
     }
     void reduce(view<complex_op<double> > data) const {
-        reduce(view<double>((double *)data.data(), 4 * data.size()));
+        reduce(view<double>((double *)data.data(), expanded_size(data.size(), 4)));
     }
-    void reduce(view<uint32_t> data) const {
-        reduce(view<int32_t>((int32_t *)data.data(), data.size()));
-    }
-    void reduce(view<uint64_t> data) const {
-        reduce(view<int64_t>((int64_t *)data.data(), data.size()));
+private:
+    static size_t expanded_size(size_t size, size_t components) {
+        // Forward an invalid extent so the transport rejects it collectively.
+        auto maximum = std::numeric_limits<size_t>::max();
+        return size > maximum / components ? maximum : components * size;
     }
 };
 

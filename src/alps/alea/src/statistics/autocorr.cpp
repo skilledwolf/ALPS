@@ -199,32 +199,28 @@ column<typename autocorr_result<T>::var_type> autocorr_result<T>::tau() const
 }
 
 template <typename T>
-void autocorr_result<T>::reduce(const reducer &r, bool pre_commit, bool post_commit)
+void autocorr_result<T>::reduce(const reducer &r)
 {
-    internal::check_valid(*this);
-
-    if (pre_commit) {
-        // initialize reduction: we may need to amend the number of levels
-        size_t needs_levels = r.get_max(nlevel());
-        for (size_t i = nlevel(); i != needs_levels; ++i)
-            level_.push_back(level_result_type(var_data<T>(size())));
-
-        // TODO: figure out if this is statistically sound
-        for (size_t i = 0; i != nlevel(); ++i)
-            level_[i].reduce(r, true, false);
-    }
-    if (pre_commit && post_commit) {
-        // perform commit
-        r.commit();
-    }
-    if (post_commit) {
-        // cleanups
-        reducer_setup setup = r.get_setup();
-        for (size_t i = 0; i != nlevel(); ++i)
-            level_[i].reduce(r, false, true);
-        if (!setup.have_result)
-            level_.clear();         // invalidate
-    }
+    bool complete = valid();
+    for (auto const& level : level_) complete = complete && level.valid();
+    auto setup = internal::check_reduction(r, complete, complete ? size() : 0);
+    bool malformed = false;
+    for (auto const& level : level_)
+        malformed = malformed || level.size() != size() || level.count() != count();
+    if (r.get_max(malformed)) throw size_mismatch();
+    if (r.get_max(nlevel() > size_t(std::numeric_limits<int64_t>::max())))
+        throw size_mismatch();
+    auto shared_levels = -r.get_max(-static_cast<int64_t>(nlevel()));
+    if (shared_levels <= 0 || uint64_t(shared_levels) > nlevel()) throw size_mismatch();
+    autocorr_result staged(*this);
+    staged.level_.resize(shared_levels);
+    // Do not invent empty coarse levels for shorter runs. Every retained level
+    // must include all samples from every independent run.
+    for (auto &level : staged.level_) level.reduce(r, true, false);
+    r.commit();
+    for (auto &level : staged.level_) level.reduce(r, false, true);
+    if (!setup.have_result) staged.level_.clear();
+    level_.swap(staged.level_);
 }
 
 template class autocorr_result<double>;

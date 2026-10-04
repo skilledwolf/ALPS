@@ -10,6 +10,9 @@
 #include <stdexcept>
 #include <type_traits>
 #include <vector>
+#include <array>
+#include <functional>
+#include <variant>
 
 namespace {
 namespace aa = alps::alea;
@@ -19,7 +22,294 @@ void require(bool condition, char const* message) {
 template<class F> void rejects(F operation) {
     bool failed = false;
     try { operation(); } catch (std::exception const&) { failed = true; }
-    require(failed, "malformed statistics checkpoint was accepted");
+    require(failed, "invalid statistics operation was accepted");
+}
+
+// A two-participant sum reducer that deliberately defers writes until commit.
+// The peer's primitive contributions are recorded separately from the target.
+struct test_reducer : aa::reducer {
+    using buffer = std::variant<std::vector<double>, std::vector<int32_t>,
+                                std::vector<int64_t>, std::vector<uint64_t>>;
+    aa::reducer_setup setup;
+    std::vector<int64_t> maxima;
+    std::vector<buffer> const* peer;
+    bool fail_commit;
+    mutable size_t query = 0, field = 0;
+    mutable std::vector<buffer> recorded;
+    mutable std::vector<std::function<void()>> pending;
+    test_reducer(aa::reducer_setup setup, std::vector<int64_t> maxima,
+                 std::vector<buffer> const* peer = nullptr, bool fail = false)
+        : setup(setup), maxima(std::move(maxima)), peer(peer), fail_commit(fail) {}
+    aa::reducer_setup get_setup() const override { return setup; }
+    int64_t get_max(int64_t value) const override {
+        require(query < maxima.size() && value <= maxima[query], "invalid reduction consensus query");
+        return maxima[query++];
+    }
+    template<class T> void sum(aa::view<T> data) const {
+        if (!peer) {
+            std::vector<T> copy(data.size());
+            for (size_t i=0; i<data.size(); ++i) copy[i] = data.data()[i];
+            recorded.emplace_back(std::move(copy));
+        } else {
+            require(field < peer->size(), "extra reduction payload");
+            auto const& contribution = std::get<std::vector<T>>((*peer)[field]);
+            require(contribution.size() == data.size(), "inconsistent reduction payload shapes");
+            pending.emplace_back([data, contribution]() mutable {
+                for (size_t i=0; i<data.size(); ++i) data.data()[i] += contribution[i];
+            });
+        }
+        ++field;
+    }
+    void reduce(aa::view<double> data) const override { sum(data); }
+    void reduce(aa::view<int32_t> data) const override { sum(data); }
+    void reduce(aa::view<int64_t> data) const override { sum(data); }
+    void reduce(aa::view<uint64_t> data) const override { sum(data); }
+    void commit() const override {
+        for (auto const& operation : pending) operation();
+        if (fail_commit) throw std::runtime_error("deferred reduction failed");
+    }
+};
+std::vector<int64_t> dimensions(size_t size) { return {0,0,int64_t(size),-int64_t(size)}; }
+template<class R> R reduced(R const& left, R const& right, std::vector<int64_t> maxima) {
+    test_reducer capture({1,2,false}, maxima);
+    auto peer = right;
+    peer.reduce(capture);
+    require(!peer.valid(), "nonrecipient retained a reduction result");
+    test_reducer sum({0,2,true}, maxima, &capture.recorded);
+    auto result = left;
+    result.reduce(sum);
+    require(capture.query == maxima.size() && sum.query == maxima.size(),
+            "missing reduction consensus query");
+    require(sum.field == capture.recorded.size(), "missing reduction payload");
+    return result;
+}
+template<class R> void reduction_failure(R const& left, R const& right,
+                                         std::vector<int64_t> maxima) {
+    test_reducer capture({1,2,false}, maxima);
+    auto peer = right;
+    peer.reduce(capture);
+    test_reducer sum({0,2,true}, maxima, &capture.recorded, true);
+    auto result = left;
+    rejects([&] { result.reduce(sum); });
+    require(result == left, "failed deferred reduction mutated the original result");
+}
+template<class T> std::vector<T> reduction_sample(size_t i, int run) {
+    double a = double(int(i%11)-5) + .25*double(i%3) + 3*run;
+    double b = double(int((7*i)%13)-6) - .5*double(i%4) - 2*run;
+    if constexpr (std::is_same_v<T, std::complex<double>>)
+        return {T(a,.5*b), T(b,-.25*a+run)};
+    else return {a,b};
+}
+template<class T> struct bin { uint64_t count=0; std::array<T,2> sum{}; };
+template<class T> std::vector<bin<T>> raw_bins(int run, size_t count, size_t width) {
+    std::vector<bin<T>> bins;
+    for (size_t i=0; i<count; ++i) {
+        if (bins.empty() || bins.back().count == width) bins.emplace_back();
+        ++bins.back().count;
+        auto value = reduction_sample<T>(i,run);
+        for (size_t j=0; j<2; ++j) bins.back().sum[j] += value[j];
+    }
+    return bins;
+}
+template<class T> T conjugate(T value) {
+    if constexpr (std::is_same_v<T, std::complex<double>>) return std::conj(value);
+    else return value;
+}
+template<class T> struct bin_oracle {
+    uint64_t count=0;
+    double count2=0;
+    std::array<T,2> mean{};
+    std::array<std::array<T,2>,2> cov{};
+    explicit bin_oracle(std::vector<bin<T>> const& bins) {
+        for (auto const& b : bins) {
+            count += b.count;
+            count2 += double(b.count)*b.count;
+            for (size_t j=0; j<2; ++j) mean[j] += b.sum[j];
+        }
+        for (auto& m : mean) m /= double(count);
+        // Independent two-pass weighted covariance of the original bin means.
+        for (auto const& b : bins) if (b.count) {
+            for (size_t j=0; j<2; ++j) for (size_t k=0; k<2; ++k)
+                cov[j][k] += double(b.count) * (b.sum[j]/double(b.count)-mean[j])
+                            * conjugate(b.sum[k]/double(b.count)-mean[k]);
+        }
+        for (auto& row : cov) for (auto& c : row) c /= double(count)-count2/count;
+    }
+    template<class R> void check_variance(R const& result) const {
+        require(result.count() == count && result.count2() == count2,
+                "independent reduction lost samples or original bin weights");
+        for (size_t j=0; j<2; ++j) {
+            require(std::abs(result.mean()(j)-mean[j]) < 1e-11, "independent reduction changed mean");
+            require(std::abs(result.var()(j)-std::real(cov[j][j])) < 1e-10,
+                    "independent bin variance disagrees with two-pass oracle");
+            auto error = std::sqrt(std::real(cov[j][j])*count2/(double(count)*count));
+            require(std::abs(result.stderror()(j)-error) < 1e-11,
+                    "independent bin error disagrees with two-pass oracle");
+        }
+    }
+};
+template<class T> void independent_reductions() {
+    aa::mean_acc<T> mean_left(2), mean_right(2);
+    aa::var_acc<T> var_left(2,3), var_right(2,3);
+    aa::cov_acc<T> cov_left(2,3), cov_right(2,3);
+    aa::autocorr_acc<T> auto_left(2,3,2), auto_right(2,3,2);
+    aa::batch_acc<T> batch_left(2,4,3), batch_right(2,8,5);
+    for (size_t i=0; i<53; ++i) {
+        auto right = reduction_sample<T>(i,1);
+        mean_right << right; var_right << right; cov_right << right;
+        auto_right << right; batch_right << right;
+        if (i<19) {
+            auto left = reduction_sample<T>(i,0);
+            mean_left << left; var_left << left; cov_left << left;
+            auto_left << left; batch_left << left;
+        }
+    }
+    auto bins = raw_bins<T>(0,19,3), peer_bins = raw_bins<T>(1,53,3);
+    bins.insert(bins.end(), peer_bins.begin(), peer_bins.end());
+    bin_oracle<T> oracle(bins);
+    auto mean = reduced(mean_left.result(), mean_right.result(), dimensions(2));
+    reduction_failure(mean_left.result(), mean_right.result(), dimensions(2));
+    require(mean.count() == 72, "unequal-run mean lost samples");
+    for (size_t j=0; j<2; ++j) require(std::abs(mean.mean()(j)-oracle.mean[j]) < 1e-11,
+                                    "unequal-run mean ignored run lengths");
+    auto maxima = dimensions(2); maxima.insert(maxima.end(), {0,0});
+    oracle.check_variance(reduced(var_left.result(), var_right.result(), maxima));
+    reduction_failure(var_left.result(), var_right.result(), maxima);
+    auto covariance = reduced(cov_left.result(), cov_right.result(), maxima);
+    reduction_failure(cov_left.result(), cov_right.result(), maxima);
+    oracle.check_variance(covariance);
+    for (size_t j=0; j<2; ++j) for (size_t k=0; k<2; ++k)
+        require(std::abs(covariance.cov()(j,k)-oracle.cov[j][k]) < 1e-10,
+                "independent reduction changed cross-covariance");
+    auto left = batch_left.result(), right = batch_right.result();
+    std::vector<bin<T>> original_bins;
+    for (auto const* result : {&left,&right}) for (size_t i=0; i<result->num_batches(); ++i) {
+        bin<T> b; b.count = result->store().count()(i);
+        for (size_t j=0; j<2; ++j) b.sum[j] = result->store().batch()(j,i);
+        original_bins.push_back(b);
+    }
+    maxima = dimensions(2); maxima.insert(maxima.end(), {0,0,8});
+    auto batch = reduced(left, right, maxima);
+    reduction_failure(left, right, maxima);
+    require(batch.count() == 72, "partial independent batches lost samples");
+    for (size_t j=0; j<2; ++j) require(std::abs(batch.mean()(j)-oracle.mean[j]) < 1e-11,
+                                     "partial independent batches changed raw mean");
+    bin_oracle<T> batch_oracle(original_bins);
+    batch_oracle.check_variance(batch);
+    for (size_t j=0; j<2; ++j) for (size_t k=0; k<2; ++k)
+        require(std::abs(batch.cov()(j,k)-batch_oracle.cov[j][k]) < 1e-10,
+                "reduction mixed independent run bins");
+    auto al = auto_left.result(), ar = auto_right.result();
+    auto common = std::min(al.nlevel(),ar.nlevel());
+    require(al.nlevel() != ar.nlevel(), "autocorrelation fixture needs unequal hierarchy depths");
+    maxima = dimensions(2); maxima.insert(maxima.end(), {0,0,-int64_t(common)});
+    maxima.insert(maxima.end(), 2*common, 0);
+    auto autocorr = reduced(al, ar, maxima);
+    reduction_failure(al, ar, maxima);
+    require(autocorr.nlevel() == common, "reduction invented unavailable coarse levels");
+    for (size_t level=0, width=3; level<common; ++level, width*=2) {
+        bins = raw_bins<T>(0,19,width); peer_bins = raw_bins<T>(1,53,width);
+        bins.insert(bins.end(), peer_bins.begin(), peer_bins.end());
+        bin_oracle<T>(bins).check_variance(autocorr.level(level));
+    }
+}
+void reduction_limits() {
+    uint64_t a = uint64_t(1)<<62, b = a+1, total = a+b;
+    aa::mean_data<double> ml(1), mr(1);
+    ml.count() = a; mr.count() = b; ml.data()(0) = mr.data()(0) = 1.;
+    auto mean = reduced(aa::mean_result<double>(ml), aa::mean_result<double>(mr), dimensions(1));
+    require(mean.count() == total && mean.mean()(0) == 1., "reduction truncated unsigned sample count");
+    aa::var_data<double> vl(1), vr(1);
+    vl.count() = a; vr.count() = b; vl.count2() = double(a); vr.count2() = double(b);
+    vl.data()(0) = vr.data()(0) = 1.;
+    auto maxima = dimensions(1); maxima.insert(maxima.end(), {0,0});
+    auto variance = reduced(aa::var_result<double>(vl), aa::var_result<double>(vr), maxima);
+    require(variance.count() == total && variance.mean()(0) == 1. && variance.var()(0) == 0.,
+            "variance reduction truncated unsigned sample count");
+    aa::cov_data<double> cl(1), cr(1);
+    cl.count() = a; cr.count() = b; cl.count2() = double(a); cr.count2() = double(b);
+    cl.data()(0) = cr.data()(0) = 1.;
+    auto covariance = reduced(aa::cov_result<double>(cl), aa::cov_result<double>(cr), maxima);
+    require(covariance.count() == total && covariance.mean()(0) == 1. && covariance.cov()(0,0) == 0.,
+            "covariance reduction truncated unsigned sample count");
+
+    aa::batch_acc<double> empty(2,4,3), populated(2,8,3);
+    for (size_t i=0; i<19; ++i) populated << reduction_sample<double>(i,0);
+    auto original = populated.result();
+    maxima = dimensions(2); maxima.insert(maxima.end(), {0,0,8});
+    auto combined = reduced(empty.result(), original, maxima);
+    require(combined.count() == original.count() && combined.count2() == original.count2()
+         && combined.mean() == original.mean() && combined.cov().isApprox(original.cov(),1e-12),
+            "empty independent run changed retained batch statistics");
+
+    aa::batch_data<double> bad_bins(2,2);
+    bad_bins.batch()(0,0) = 1.;
+    aa::batch_result<double> malformed(bad_bins), previous = malformed;
+    maxima = dimensions(2); maxima.push_back(1);
+    test_reducer invalid_bins({0,1,true},maxima);
+    rejects([&] { malformed.reduce(invalid_bins); });
+    require(malformed == previous && invalid_bins.field == 0,
+            "zero-weight nonzero bin was reduced or mutated");
+
+    aa::cov_acc<double> acc(2,3);
+    for (size_t i=0; i<19; ++i) acc << reduction_sample<double>(i,0);
+    auto target = acc.result(), before = target;
+    test_reducer wrong_size({0,2,true},{0,0,3,-2});
+    rejects([&] { target.reduce(wrong_size); });
+    require(target == before && wrong_size.field == 0,
+            "shape disagreement exposed data or changed result");
+    target.store().count2() = 0.;
+    before = target;
+    maxima = dimensions(2); maxima.push_back(1);
+    test_reducer invalid_weights({0,1,true},maxima);
+    rejects([&] { target.reduce(invalid_weights); });
+    require(target == before && invalid_weights.field == 0,
+            "invalid squared-weight count reached reduction or mutated result");
+    test_reducer invalid_setup({1,1,true},{});
+    rejects([&] { target.reduce(invalid_setup); });
+    require(target == before, "invalid reducer setup mutated result");
+}
+void elliptic_reduction() {
+    using T = std::complex<double>;
+    aa::var_acc<T,aa::elliptic_var> vl(2,3), vr(2,3);
+    aa::cov_acc<T,aa::elliptic_var> cl(2,3), cr(2,3);
+    for (size_t i=0; i<53; ++i) {
+        auto right = reduction_sample<T>(i,1); vr << right; cr << right;
+        if (i<19) { auto left = reduction_sample<T>(i,0); vl << left; cl << left; }
+    }
+    auto bins = raw_bins<T>(0,19,3), peer = raw_bins<T>(1,53,3);
+    bins.insert(bins.end(),peer.begin(),peer.end());
+    bin_oracle<T> oracle(bins);
+    auto maxima = dimensions(2); maxima.insert(maxima.end(), {0,0});
+    auto variance = reduced(vl.result(),vr.result(),maxima);
+    auto covariance = reduced(cl.result(),cr.result(),maxima);
+    require(variance.count() == oracle.count && covariance.count() == oracle.count
+         && variance.count2() == oracle.count2 && covariance.count2() == oracle.count2,
+            "elliptic reduction lost weights");
+    for (size_t j=0; j<2; ++j) for (size_t k=0; k<2; ++k) {
+        double expected[4]{};
+        for (auto const& b : bins) {
+            auto x = b.sum[j]/double(b.count)-oracle.mean[j];
+            auto y = b.sum[k]/double(b.count)-oracle.mean[k];
+            expected[0] += b.count*x.real()*y.real();
+            expected[1] += b.count*x.real()*y.imag();
+            expected[2] += b.count*x.imag()*y.real();
+            expected[3] += b.count*x.imag()*y.imag();
+        }
+        auto check = [&](aa::complex_op<double> value, double scale) {
+            double actual[]{value.rere(),value.reim(),value.imre(),value.imim()};
+            for (size_t axis=0; axis<4; ++axis)
+                require(std::abs(actual[axis]-scale*expected[axis]
+                       /(oracle.count-oracle.count2/oracle.count)) < 1e-10,
+                        "elliptic reduction lost real/imaginary covariance");
+        };
+        check(covariance.cov()(j,k),1.);
+        if (j==k) {
+            check(variance.var()(j),1.);
+            auto error = variance.stderror()(j);
+            check(dot(error,error),oracle.count2/(double(oracle.count)*oracle.count));
+        }
+    }
 }
 template<class R> R roundtrip(std::string const& filename, std::string const& name, R const& result) {
     {
@@ -339,6 +629,10 @@ int main() {
         }
         results(filename);
         unequal_merge(filename);
+        independent_reductions<double>();
+        independent_reductions<std::complex<double>>();
+        reduction_limits();
+        elliptic_reduction();
         batch_reset_and_equality();
         large_batch_weights();
         wrong_sized_append();

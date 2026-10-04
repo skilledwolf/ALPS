@@ -243,27 +243,26 @@ column<typename cov_result<T,Str>::var_type> cov_result<T,Str>::stderror() const
 }
 
 template <typename T, typename Str>
-void cov_result<T,Str>::reduce(const reducer &r, bool pre_commit, bool post_commit)
+void cov_result<T,Str>::reduce(const reducer &r)
 {
-    internal::check_valid(*this);
-
-    if (pre_commit) {
-        store_->convert_to_sum();
-        r.reduce(view<T>(store_->data().data(), store_->data().rows()));
-        r.reduce(view<cov_type>(store_->data2().data(), store_->data2().size()));
-        r.reduce(view<uint64_t>(&store_->count(), 1));
-        r.reduce(view<double>(&store_->count2(), 1));
+    auto setup = internal::check_reduction(r, valid(), valid() ? size() : 0);
+    if (r.get_max(!internal::valid_weight_count(count(), count2())))
+        throw std::runtime_error("invalid ALEA squared-weight count");
+    cov_result staged(*this);
+    staged.store_->convert_to_sum();
+    r.reduce(view<T>(staged.store_->data().data(), staged.size()));
+    r.reduce(view<cov_type>(staged.store_->data2().data(), staged.store_->data2().size()));
+    r.reduce(view<uint64_t>(&staged.store_->count(), 1));
+    r.reduce(view<double>(&staged.store_->count2(), 1));
+    r.commit();
+    if (r.get_max(setup.have_result && !internal::valid_weight_count(staged.count(), staged.count2())))
+        throw std::runtime_error("invalid ALEA squared-weight count");
+    if (setup.have_result) {
+        staged.store_->convert_to_mean();
+    } else {
+        staged.store_.reset();
     }
-    if (pre_commit && post_commit) {
-        r.commit();
-    }
-    if (post_commit) {
-        reducer_setup setup = r.get_setup();
-        if (setup.have_result)
-            store_->convert_to_mean();
-        else
-            store_.reset();   // free data
-    }
+    store_.swap(staged.store_);
 }
 
 template class cov_result<double>;
@@ -314,8 +313,7 @@ void deserialize(deserializer &s, const std::string &key, cov_result<T,Str> &sel
     // deserialize data
     deserialize(s, "count", staged.store_->count_);
     deserialize(s, "count2", staged.store_->count2_);
-    if (!std::isfinite(staged.store_->count2_) || staged.store_->count2_ < 0
-            || ((staged.store_->count_ == 0) != (staged.store_->count2_ == 0)))
+    if (!internal::valid_weight_count(staged.store_->count_, staged.store_->count2_))
         throw std::runtime_error("invalid ALEA squared-weight count");
     {
     internal::deserializer_sentry subgroup(s, "mean");

@@ -158,24 +158,19 @@ template bool operator==(const mean_result<std::complex<double>> &r1,
                          const mean_result<std::complex<double>> &r2);
 
 template <typename T>
-void mean_result<T>::reduce(const reducer &r, bool pre_commit, bool post_commit)
+void mean_result<T>::reduce(const reducer &r)
 {
-    internal::check_valid(*this);
-    if (pre_commit) {
-        store_->convert_to_sum();
-        r.reduce(view<T>(store_->data().data(), store_->data().rows()));
-        r.reduce(view<uint64_t>(&store_->count(), 1));
-    }
-    if (pre_commit && post_commit) {
-        r.commit();
-    }
-    if (post_commit) {
-        reducer_setup setup = r.get_setup();
-        if (setup.have_result)
-            store_->convert_to_mean();
-        else
-            store_.reset();   // free data
-    }
+    auto setup = internal::check_reduction(r, valid(), valid() ? size() : 0);
+    mean_result staged(*this);
+    staged.store_->convert_to_sum();
+    r.reduce(view<T>(staged.store_->data().data(), staged.size()));
+    r.reduce(view<uint64_t>(&staged.store_->count(), 1));
+    r.commit();
+    if (setup.have_result)
+        staged.store_->convert_to_mean();
+    else
+        staged.store_.reset();
+    store_.swap(staged.store_);
 }
 
 template class mean_result<double>;

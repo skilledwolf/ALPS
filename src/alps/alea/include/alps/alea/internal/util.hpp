@@ -10,6 +10,9 @@
 #pragma once
 
 #include <alps/alea/core.hpp>
+#include <cmath>
+#include <limits>
+#include <stdexcept>
 
 namespace alps { namespace alea { namespace internal {
 
@@ -18,6 +21,28 @@ inline void check_valid(const Acc &acc)
 {
     if (!acc.valid())
         throw alps::alea::finalized_accumulator();
+}
+
+// Make shape/validity failures collective before exposing any data buffers.
+inline reducer_setup check_reduction(const reducer &r, bool valid, size_t size)
+{
+    auto setup = r.get_setup();
+    if (!setup.count || setup.pos >= setup.count)
+        throw std::invalid_argument("invalid ALEA reducer setup");
+    if (r.get_max(!valid)) throw finalized_accumulator();
+    if (r.get_max(!size || size > size_t(std::numeric_limits<int64_t>::max())))
+        throw size_mismatch();
+    auto dimensions = static_cast<int64_t>(size);
+    auto maximum = r.get_max(dimensions);
+    auto minimum = -r.get_max(-dimensions);
+    if (maximum != minimum) throw size_mismatch();
+    return setup;
+}
+
+inline bool valid_weight_count(uint64_t count, double count2)
+{
+    return std::isfinite(count2) && count2 >= 0
+        && ((count == 0) == (count2 == 0));
 }
 
 

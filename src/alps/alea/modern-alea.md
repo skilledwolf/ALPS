@@ -38,6 +38,22 @@ and replace complete state; `BatchAccumulator.read(archive, path)` and
 `BatchResult.read(archive, path)` construct only after a successful read. Returned
 NumPy arrays own their data. Batch sums have `[slots, components]` axes.
 
+Independent-run result reduction retains every batch and its weight, including
+unfinished batches. Runs with different slot counts use disjoint blocks padded
+with empty slots; their bins are never summed together. Autocorrelation reduction
+retains only levels present in every run, so every retained level contains every
+run's samples. Failed reductions preserve the original result. Reduction does
+not create a resumable combined time series.
+
+The optional `<alps/alea/mpi.hpp>` reducer takes a borrowed `MPI_Comm`; clients
+link `MPI::MPI_CXX` alongside `ALPS::statistics`. The statistics library itself
+remains MPI-free. Construction and reductions are collective and must occur in
+the same order on every rank. Only the chosen root retains the combined result.
+Sample counts use unsigned 64-bit MPI arithmetic.
+Custom reducers must implement `reduce(view<uint64_t>)`; rebuild downstream
+binaries after this interface change. The combined sample count must fit in
+`uint64_t`.
+
 `pyalps.hdf5.save_checkpoint(filename, callback)` calls the existing native
 publication helper. The callback receives a `NativeArchive`; retained callback
 views close before publication, and a failed save preserves the previous file.
