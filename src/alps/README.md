@@ -18,9 +18,9 @@ Its [serialization contracts](alea/modern-alea.md) and the accumulator-only Isin
 pilot cover results, complex covariance and actual batch-accumulator continuation.
 The thin HDF5 adapter shares the canonical primitive mappings. Legacy
 `Observable`/`ObservableSet` APIs remain in `ALPS::alps` while active clients migrate.
-Standalone CT-INT and CT-HYB now use modern ALEA, pooling raw independent
+Standalone CT-INT, CT-HYB and Hirsch-Fye use modern ALEA, pooling raw independent
 replicas before signed analysis and publishing canonical results atomically.
-The older scheduler solvers and other legacy producers still need migration
+The multiband scheduler CT-INT and other legacy producers still need migration
 before their statistical interfaces can be deleted.
 The unsupported NGS backend selector and wrappers are removed. The scalar
 feature-stack API remains for its active Python and SDK clients.

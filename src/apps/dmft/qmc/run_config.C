@@ -2,6 +2,7 @@
 #include "run_config.h"
 #include "dmft_schema.hpp"
 #include "U_matrix.h"
+#include "hirschfyeaux.h"
 #include "interaction_expansion_choice.h"
 #include "hybridization/input.hpp"
 #include <alps/cthyb.hpp>
@@ -90,6 +91,10 @@ void validate_text_outputs(const run_configuration& run, const toml::table& sche
         (entry.is_directory() || protected_paths.count(std::filesystem::weakly_canonical(entry.path()))))
       throw std::invalid_argument("DMFT text output collides with a protected file or directory: " + entry.path().string());
 }
+void validate_hirschfye_execution(const params& execution) {
+  if (execution["bins"].as<std::uint64_t>() % 2)
+    throw std::invalid_argument("Hirsch-Fye execution.bins must be even and at least two");
+}
 void validate_solver(const run_configuration& run) {
   const auto& p = run.parameters;
   const auto kind = selected_solver(run);
@@ -112,6 +117,9 @@ void validate_solver(const run_configuration& run) {
       ctint::prepare_parameters(solver_parameters(p, schema));
       break;
     case solver_kind::hirsch_fye:
+      prepare_hirschfye_parameters(solver_parameters(p, schema));
+      validate_hirschfye_execution(run.execution);
+      break;
     case solver_kind::custom:
       resolve_parameters(solver_parameters(p, schema), schema);
       break;
@@ -164,17 +172,47 @@ void validate(const run_configuration& run, const toml::table& schema) {
   validate_solver(run);
 }
 }
+params prepare_hirschfye_parameters(const params& supplied) {
+  auto parameters = resolve_parameters(supplied, hirschfye_schema);
+  if (parameters["BETA"].as<double>() <= 0.)
+    throw std::invalid_argument("Hirsch-Fye BETA must be positive");
+  const auto slices = parameters["N"].as<std::size_t>();
+  if (slices > std::numeric_limits<std::size_t>::max() / sizeof(double) / slices)
+    throw std::invalid_argument("Hirsch-Fye matrix dimensions exceed the storage range");
+  const auto sweeps = parameters["SWEEPS"].as<std::uint64_t>();
+  const auto thermalization = parameters["THERMALIZATION"].as<std::uint64_t>();
+  if (sweeps > std::numeric_limits<std::uint64_t>::max() - thermalization)
+    throw std::invalid_argument("Hirsch-Fye total sweep count exceeds the counter range");
+  hirschfye_lambda(parameters["BETA"].as<double>(), parameters["U"].as<double>(), slices);
+  return parameters;
+}
+matsubara_green_function_t prepare_hirschfye_run(run_configuration& run) {
+  run = resolve_run_configuration(run, hirschfye_schema, std::filesystem::current_path());
+  run.parameters = prepare_hirschfye_parameters(run.parameters);
+  validate_hirschfye_execution(run.execution);
+  const auto output = std::filesystem::path(run.output["results"].as<std::string>());
+  if (std::filesystem::is_directory(output) || !std::filesystem::is_directory(output.parent_path()))
+    throw std::invalid_argument("Hirsch-Fye output.results must name a file in an existing directory");
+  const auto input = run.input["g0"].as<std::string>();
+  if (!std::filesystem::is_regular_file(input))
+    throw std::invalid_argument("Hirsch-Fye input.g0 must be an existing file");
+  matsubara_green_function_t green(run.parameters["NMATSUBARA"].as<unsigned>(), 1, 2);
+  alps::hdf5::archive archive(input, "r");
+  read_flavor_vectors(archive, "/G0", green);
+  return green;
+}
 solver_kind selected_solver(const run_configuration& run) {
   static const auto fallback = *toml::parse(base_schema)["execution"]["solver"]["default"].value<std::string>();
   const auto name = run.execution.value_or("solver", fallback);
   if (name == "hybridization") return solver_kind::hybridization;
   if (name == "interaction") return solver_kind::interaction;
-  if (name == "Hirsch-Fye") return solver_kind::hirsch_fye;
+  if (name == "hirschfye") return solver_kind::hirsch_fye;
   if (name == "Interaction Expansion") return solver_kind::interaction_expansion;
   return solver_kind::custom;
 }
 bool external(solver_kind kind) {
-  return kind == solver_kind::hybridization || kind == solver_kind::interaction || kind == solver_kind::custom;
+  return kind == solver_kind::hybridization || kind == solver_kind::interaction ||
+         kind == solver_kind::hirsch_fye || kind == solver_kind::custom;
 }
 bool receives_delta(const run_configuration& run) {
   const auto kind = selected_solver(run);

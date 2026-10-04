@@ -15,7 +15,6 @@
  *****************************************************************************/
 
 
-#include "hirschfyesim.h"
 #include "selfconsistency.h"
 #include "externalsolver.h"
 #include "hilberttransformer.h"
@@ -96,13 +95,9 @@ int main(int argc, char** argv) {
       }
       if (!ready()) return 0;
       std::unique_ptr<MatsubaraImpuritySolver> solver;
-      alps::scheduler::BasicFactory<HirschFyeSim,HirschFyeRun> hf;
       alps::scheduler::BasicFactory<InteractionExpansionSim,HubbardInteractionExpansionRun> ss;
       alps::scheduler::BasicFactory<InteractionExpansionSim,MultiBandDensityHubbardInteractionExpansionRun> mb;
       switch (alps::dmft::selected_solver(run)) {
-        case alps::dmft::solver_kind::hirsch_fye:
-          solver.reset(new alps::ImpuritySolver(hf, run, argc, argv));
-          break;
         case alps::dmft::solver_kind::interaction_expansion:
           // load_run rejects the unsupported dimensions.
           if (select_interaction_expansion(p["FLAVORS"].as<int>(), p["SITES"].as<int>()) ==

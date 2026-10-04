@@ -6,6 +6,16 @@ User-facing changes and migration notes are recorded here, starting with the bui
 
 ### Changed
 
+- Migrate Hirsch-Fye to native ALEA joint Green/sign batches and raw MPI
+  collection. Form physical endpoints before accumulation, retain partial bins,
+  exclude warm-up, and publish native statistics, Green functions and provenance
+  atomically. DMFT now selects the external `hirschfye` executable; remove the
+  `Hirsch-Fye` scheduler selector, nonfunctional restart methods and disabled
+  four-point code/settings. Preserve its seeded generator sequence and update
+  cadence, check complete matrices and LAPACK solve failures, bound the rebuild
+  interval and correct the initial determinant sign and negative-weight
+  heat-bath acceptance. Propagate preparation, sampling and output failures
+  across MPI ranks.
 - Migrate CT-HYB to native ALEA batches and MPI collection. Normalize physical
   measurements with the sign from their own measurement cadence, pool raw
   replicas before analysis, and retain G2/H2 component errors in linear memory.

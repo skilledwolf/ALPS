@@ -31,7 +31,7 @@ class DMFTCLIContract(unittest.TestCase):
         specific, sweeps, thermalization = {
             "hybridization": ("N_MEAS=4\nMEASURE_freq=true\nMEASURE_time=true\n",
                               3000, 100),
-            "Hirsch-Fye": ("", 200, 20),
+            "hirschfye": ("", 200, 20),
         }.get(solver, ("ALPHA=-0.01\nMEASUREMENT_PERIOD=1\n", 32, 4))
         retarded_settings = ""
         if retarded:
@@ -110,8 +110,19 @@ time_limit=0
     def test_cthyb_zero_retarded_kernel_retains_the_u0_reference(self):
         self.run_case("hybridization", "sampled", retarded=True)
 
-    def test_in_process_hirsch_fye_two_iterations(self):
-        self.run_case("Hirsch-Fye", "sampled")
+    def test_hirsch_fye_two_iterations(self):
+        self.run_case("hirschfye", "sampled")
+
+    def test_hirsch_fye_validation_uses_the_standalone_numerical_domain(self):
+        changes = [("U=0.0", "U=1.0e300"),
+                   ("U=0.0", "U=0.0\nMEASURE_FOURPOINT_FUNCTION=false"),
+                   ("seed=42", "seed=42\nbins=3"),
+                   ('solver="hirschfye"', 'solver="Hirsch-Fye"')]
+        for old, new in changes:
+            with self.subTest(new=new):
+                path = self.config("hirschfye")
+                path.write_text(path.read_text().replace(old, new))
+                self.validate_preserving_files(path)
 
     def test_in_process_interaction_expansion_two_iterations(self):
         self.run_case("Interaction Expansion", "exact")

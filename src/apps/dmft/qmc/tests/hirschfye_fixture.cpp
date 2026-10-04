@@ -2,6 +2,8 @@
 #include <alps/run_config.hpp>
 #include <alps/hdf5/complex.hpp>
 #include <alps/hdf5/vector.hpp>
+#include <alps/alea/hdf5.hpp>
+#include <alps/alea/batch.hpp>
 #include <cmath>
 #include <complex>
 #include <iostream>
@@ -33,6 +35,16 @@ void verify_output(const std::string& filename) {
       run.parameters["NMATSUBARA"].as<unsigned int>() != frequencies ||
       !run.input.exists("g0") || !run.output.exists("results"))
     throw std::runtime_error("Hirsch-Fye result does not retain the resolved typed run metadata");
+  alps::params parameters;
+  archive["/parameters"] >> parameters;
+  if (parameters["SWEEPS"].as<std::uint64_t>() != 4 ||
+      run.origins.at("execution.bins") != "default")
+    throw std::runtime_error("Hirsch-Fye result lost typed parameters or default provenance");
+  alps::alea::hdf5_serializer serializer(archive, "/simulation/results");
+  alps::alea::batch_result<double> sign;
+  deserialize(serializer, "Sign", sign);
+  if (sign.size() != 1 || sign.count() != 4 || sign.mean()(0) != 1.)
+    throw std::runtime_error("Hirsch-Fye sample count includes warmup or omits completed sweeps");
   for (unsigned int flavor = 0; flavor < 2; ++flavor) {
     std::vector<double> tau;
     std::vector<std::complex<double>> omega;
@@ -44,6 +56,14 @@ void verify_output(const std::string& filename) {
     for (const auto value : tau)
       if (!std::isfinite(value) || std::abs(value + 0.5) > 1.e-10)
         throw std::runtime_error("Hirsch-Fye U=0 G(tau) differs from the exact -1/2 result");
+    alps::alea::batch_result<double> measured;
+    deserialize(serializer, flavor ? "G_meas_down" : "G_meas_up", measured);
+    if (measured.count() != sign.count() || measured.size() != time_points ||
+        !measured.stderror().isZero(1.e-10))
+      throw std::runtime_error("Hirsch-Fye free native measurement lost its count, shape or exact error");
+    for (unsigned int point = 0; point < time_points; ++point)
+      if (std::abs(measured.mean()(point) - tau[point]) > 1.e-10)
+        throw std::runtime_error("Hirsch-Fye native measurement and physical G(tau) disagree");
     for (unsigned int frequency = 0; frequency < frequencies; ++frequency)
       if (!std::isfinite(omega[frequency].real()) || !std::isfinite(omega[frequency].imag()) ||
           std::abs(omega[frequency] - free_green(frequency)) > 1.e-10)

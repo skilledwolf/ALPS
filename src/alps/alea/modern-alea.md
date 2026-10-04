@@ -95,6 +95,13 @@ G/F endpoints are formed before accumulation, so derived means, errors and
 covariance share the same convention. These outputs do not contain the segment
 configuration needed to restart CT-HYB.
 
+Hirsch-Fye also uses native joint batches and raw MPI collection. Physical
+Green samples include the beta endpoint before signed analysis, and warm-up
+excludes the scheduler's former transition/reset sweep. Its canonical kind-5
+results and derived time/frequency Green functions share one atomic output
+with typed parameters and provenance. The auxiliary-spin chain has no solver
+restart interface.
+
 `pyalps.hdf5.save_checkpoint(filename, callback)` calls the existing native
 publication helper. The callback receives a `NativeArchive`; retained callback
 views close before publication, and a failed save preserves the previous file.

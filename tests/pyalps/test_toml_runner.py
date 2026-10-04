@@ -283,6 +283,55 @@ def test_native_cthyb_launcher_roundtrip_when_cli_available(tmp_path, monkeypatc
             assert ar.is_group("/simulation/results/Sign")
 
 
+def test_native_hirschfye_launcher_and_modern_analysis_when_cli_available(tmp_path, monkeypatch):
+    import numpy as np
+    import pyalps
+    from pyalps import alea
+
+    executable = solver_executable("ALPS_HIRSCHFYE_EXECUTABLE", "hirschfye")
+    if not executable:
+        pytest.skip("requires the Hirsch-Fye executable from the SDK integration job")
+    executable = Path(executable).resolve(strict=True)
+    directory = tmp_path / "Hirsch-Fye data with spaces"
+    directory.mkdir()
+    with hdf5.archive(directory / "g0.h5", "w") as archive:
+        for flavor in range(2):
+            archive[f"/G0_{flavor}"] = -2j / ((2*np.arange(4)+1)*np.pi)
+    schema = subprocess.run([executable, "--schema"], check=True,
+                            capture_output=True, text=True).stdout
+    filename = directory / "result.h5"
+    document = write_run_file(directory / "run.toml", schema,
+        parameters={"BETA": 2., "U": 0., "N": 4, "NMATSUBARA": 4,
+                    "SWEEPS": 37, "THERMALIZATION": 2,
+                    "EPS_0": 0., "EPS_1": 0., "EPSSQ_0": 0., "EPSSQ_1": 0.},
+        input={"g0": "g0.h5"}, output={"results": "result.h5"},
+        execution={"bins": 8, "seed": 19})
+    before = (directory / "g0.h5").read_bytes(), Path(document).read_bytes()
+    monkeypatch.chdir(tmp_path)
+    assert execute(executable, [document]) == [str(filename)]
+    assert before == ((directory / "g0.h5").read_bytes(), Path(document).read_bytes())
+    measured = {entry.props["observable"]: entry for entry in
+                pyalps.loadMeasurements([str(filename)])[0]}
+    assert set(measured) == {"Sign", "G_meas_up", "G_meas_down"}
+    with hdf5.archive(filename) as archive:
+        assert archive["/run_config/application"] == "hirschfye"
+        for name, entry in measured.items():
+            path = "/simulation/results/" + name
+            assert archive[path + "/@kind"] == 5 and archive[path + "/@version"] == 1
+            result = alea.BatchResult.read(archive, path)
+            assert result.count == 37  # Warm-up includes the transition sweep.
+            np.testing.assert_array_equal([value.mean for value in entry.y], result.mean)
+            np.testing.assert_array_equal([value.error for value in entry.y], result.error)
+            np.testing.assert_allclose(result.mean, 1. if name == "Sign" else -.5, atol=1e-13)
+            np.testing.assert_allclose(result.error, 0., atol=1e-13)
+            if name != "Sign":
+                flavor = 0 if name == "G_meas_up" else 1
+                np.testing.assert_array_equal(archive[f"/G_tau/{flavor}/mean/value"], result.mean)
+                np.testing.assert_allclose(archive[f"/G_omega/{flavor}/mean/value"],
+                                          -2j / ((2*np.arange(4)+1)*np.pi), atol=1e-13)
+    assert {path.name for path in directory.iterdir()} == {"g0.h5", "run.toml", "result.h5"}
+
+
 def test_native_dmft_ctint_python_workflow_and_u0_reference(tmp_path, monkeypatch):
     """An explicit Python job remains analysable after two real impurity runs."""
     executables = [solver_executable(variable, name) for variable, name in

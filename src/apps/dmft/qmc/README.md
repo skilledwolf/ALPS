@@ -28,9 +28,9 @@ max_iterations = 2
 seed = 42
 ```
 
-`execution.solver` selects the `hybridization` (CT-HYB) or `interaction` (CT-INT)
-executable in the ALPS `bin` directory (`ALPS_BIN_PATH`), or the in-process
-`Hirsch-Fye` and `Interaction Expansion` solvers. Any other value names a custom
+`execution.solver` selects the `hybridization` (CT-HYB), `interaction` (CT-INT)
+or `hirschfye` executable in the ALPS `bin` directory (`ALPS_BIN_PATH`), or the
+in-process `Interaction Expansion` solver. Any other value names a custom
 executable, resolved against that directory unless it is absolute. The driver
 maps its time/frequency grids and flavors to the child application's parameters.
 It passes one TOML file and a separate temporary HDF5 archive holding one vector
@@ -97,8 +97,24 @@ with `pyalps.run_io.execute("dmft", run_files)`, which also accepts job manifest
 All runs are validated before execution. A successful call returns the absolute
 `output.results` path of each run; process failures raise an exception.
 
-The in-process `Hirsch-Fye` and `Interaction Expansion` solvers run on the older
-scheduler, whose `MCRun` consumers still use the older parameter representation;
-a private adapter serves them until the scheduler migration removes it.
+The in-process `Interaction Expansion` solver remains on the older scheduler
+because it supplies the multiband density-density model not yet supported by
+standalone `interaction`. Its private parameter adapter remains until that port.
 Standalone `hirschfye` has its own schema (`hirschfye --schema`, installed under
 `share/alps/schemas`) and reads `/G0_<f>` vectors from the HDF5 file `input.g0`.
+DMFT selects this executable with `execution.solver = "hirschfye"`; the old
+`"Hirsch-Fye"` scheduler selector is removed. DMFT invokes it serially, as it
+does the other external solvers; direct standalone MPI runs retain independent
+chains, aggregate `SWEEPS` and distinct seeds.
+
+Hirsch-Fye uses native ALEA batches for Sign and the two joint Green/sign
+streams. Every physical time sample includes the beta endpoint before
+accumulation; ratios, means and errors therefore follow one convention.
+Replicas pool raw measurements before weighted jackknife analysis, preserving
+partial batches. `execution.bins` must be even and at least two (default 128).
+Warm-up sweeps are excluded, including the transition sweep. Native kind-5
+results, `/G_tau`, `/G_omega`, typed parameters and provenance are published
+together through checked atomic HDF5 replacement. Python's ordinary
+`loadMeasurements` reads the means and errors. These files do not restart the
+auxiliary-spin chain. The disabled four-point implementation and its
+`MEASURE_FOURPOINT_FUNCTION` / `FOURPOINT_INTERVAL` settings are removed.

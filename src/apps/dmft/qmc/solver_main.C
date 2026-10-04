@@ -15,13 +15,16 @@
 
 /* $Id: solver_main.C 285 2008-01-03 15:34:39Z gullc $ */
 
-#include "hirschfyesim.h"
+#include "run_config.h"
 #include "dmft_schema.hpp"
-#include <alps/hdf5/complex.hpp>
 #include <alps/run_config.hpp>
 #include <alps/utility/copyright.hpp>
 #include <iostream>
 #include <string>
+#include <utility>
+#ifdef ALPS_HAVE_MPI
+#include <boost/mpi/environment.hpp>
+#endif
 
 int main(int argc, char** argv) {
   try {
@@ -42,34 +45,36 @@ int main(int argc, char** argv) {
     }
     if (show_schema) { std::cout << alps::dmft::hirschfye_schema; return 0; }
     if (filename.empty()) throw std::invalid_argument("No TOML run file specified");
-    auto run = alps::load_run_configuration(filename, alps::dmft::hirschfye_schema);
-    if (run.parameters["BETA"].as<double>() <= 0.)
-      throw std::invalid_argument("Hirsch-Fye BETA must be positive");
-    matsubara_green_function_t g0(run.parameters["NMATSUBARA"].as<unsigned int>(),
-                                  run.parameters["SITES"].as<unsigned int>(),
-                                  run.parameters["FLAVORS"].as<unsigned int>());
-    {
-      alps::hdf5::archive input(run.input["g0"].as<std::string>(), "r");
-      read_flavor_vectors(input, "/G0", g0);
-    }
+#ifdef ALPS_HAVE_MPI
+    boost::mpi::environment environment(argc, argv);
+    int rank;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+#else
+    const int rank=0;
+#endif
+    alps::run_configuration run;
+    std::string failure;
+    try {
+      run=alps::load_run_configuration(filename,alps::dmft::hirschfye_schema);
+      if (validate) alps::dmft::prepare_hirschfye_run(run);
+    } catch (std::exception const& error) { failure=error.what(); }
+    alps::dmft::agree_hirschfye_failure(failure);
     if (validate) {
-      std::cout << "Valid Hirsch-Fye configuration: " << filename << '\n';
+      if (!rank) std::cout << "Valid Hirsch-Fye configuration: " << filename << '\n';
       return 0;
     }
-    std::cout << "ALPS Hirsch-Fye solver for the single site impurity problem.\n\n";
-    alps::print_copyright(std::cout);
-    std::cout << "****************************************************************\n"
+    if (!rank) {
+      std::cout << "ALPS Hirsch-Fye solver for the single site impurity problem.\n\n";
+      alps::print_copyright(std::cout);
+      std::cout << "****************************************************************\n"
                  "* Recommended citation in scientific publications:             *\n"
                  "* We used the ALPS [1] implementation [2] of the Hirsch-Fye    *\n"
                  "* [3] impurity solver.                                         *\n"
                  "* [1] JSTAT (2011) P05001; [2] CPC 182, 1078 (2011); [3] PRL   *\n"
                  "* 56, 2521 (1986).                                             *\n"
                  "****************************************************************\n";
-    alps::scheduler::BasicFactory<HirschFyeSim,HirschFyeRun> factory;
-    alps::ImpuritySolver solver(factory, run, argc, argv);
-    solver.solve_omega(g0, run.parameters);
-    alps::hdf5::archive output(run.output["results"].as<std::string>(), "a");
-    output["/run_config"] << run;
+    }
+    alps::dmft::run_hirschfye(std::move(run));
     return 0;
   } catch (const std::exception& error) {
     std::cerr << "hirschfye: " << error.what() << '\n';

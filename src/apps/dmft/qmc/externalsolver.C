@@ -193,6 +193,7 @@ void ExternalSolver::write_hybridization(alps::run_configuration& run, const alp
 void ExternalSolver::call(alps::run_configuration run, const invocation_files& files) const {
   if(kind_==alps::dmft::solver_kind::hybridization) alps::cthyb::prepare_run(run);
   else if(kind_==alps::dmft::solver_kind::interaction) alps::ctint::prepare_run(run);
+  else if(kind_==alps::dmft::solver_kind::hirsch_fye) alps::dmft::prepare_hirschfye_run(run);
   else {
     // A custom schema receives the subset of the built-in protocol it declares.
     run.parameters=alps::select_parameters(run.parameters,schema_);

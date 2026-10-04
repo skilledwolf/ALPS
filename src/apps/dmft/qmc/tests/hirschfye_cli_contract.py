@@ -13,11 +13,11 @@ class HirschFyeCLIContract(unittest.TestCase):
         self.addCleanup(temporary.cleanup)
         self.directory = Path(temporary.name)
 
-    def invoke(self, *arguments, unchanged=True):
+    def invoke(self, *arguments, unchanged=True, cwd=None):
         before = {path.relative_to(self.directory): path.read_bytes()
                   for path in self.directory.rglob("*") if path.is_file()}
         result = subprocess.run([str(self.executable), *map(str, arguments)],
-                                cwd=self.directory, capture_output=True,
+                                cwd=cwd or self.directory, capture_output=True,
                                 text=True, timeout=15)
         if unchanged:
             self.assertEqual({path.relative_to(self.directory): path.read_bytes()
@@ -107,6 +107,12 @@ time_limit=0
                    ("time_limit=0", 'time_limit=0\nloop="tau"'),
                    ("time_limit=0", 'time_limit=0\nsolver="interaction"'),
                    ("time_limit=0", "time_limit=-1"),
+                   ("time_limit=0", "time_limit=0\nbins=1"),
+                   ("time_limit=0", "time_limit=0\nbins=3"),
+                   ("U=0.0", "U=1.0e300"),
+                   ("N=4", "N=2147483646"),
+                   ("U=0.0", "U=0.0\nMEASURE_FOURPOINT_FUNCTION=false"),
+                   ("U=0.0", "U=0.0\nFOURPOINT_INTERVAL=1"),
                    ('g0="g0.h5"', "")]
         self.fixture("valid")
         (self.directory / "result.h5").write_bytes(b"existing scientific results")
@@ -114,6 +120,25 @@ time_limit=0
             with self.subTest(new=new):
                 path = self.config()
                 path.write_text(path.read_text().replace(old, new))
+                self.assertNotEqual(self.invoke("--validate", path).returncode, 0)
+
+    def test_wide_counters_and_revalidation_do_not_reinterpret_paths(self):
+        self.fixture("valid")
+        path = self.config()
+        path.write_text(path.read_text().replace("SWEEPS=4", "SWEEPS=1099511627776")
+                        .replace("THERMALIZATION=1", "THERMALIZATION=1099511627776"))
+        unrelated = self.directory / "unrelated directory"
+        unrelated.mkdir()
+        result = self.invoke("--validate", path, cwd=unrelated)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_output_requires_a_file_in_an_existing_directory(self):
+        self.fixture("valid")
+        for destination in ["missing/result.h5", "."]:
+            with self.subTest(destination=destination):
+                path = self.config()
+                path.write_text(path.read_text().replace('results="result.h5"',
+                                                        f'results="{destination}"'))
                 self.assertNotEqual(self.invoke("--validate", path).returncode, 0)
 
     def test_output_cannot_replace_run_or_input(self):
@@ -129,6 +154,8 @@ time_limit=0
         result = self.invoke("--schema")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('application = "hirschfye"', result.stdout)
+        self.assertIn("[execution.bins]", result.stdout)
+        self.assertNotIn("FOURPOINT", result.stdout)
 
     def test_legacy_run_formats_are_rejected(self):
         self.fixture("valid")

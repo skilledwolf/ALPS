@@ -42,7 +42,7 @@ for b in [6., 12.]:
             'BETA'                : b
         },
         output={'results': 'parm_beta_'+str(b)+'.h5'},
-        execution={'solver': 'Hirsch-Fye', 'max_iterations': 10,
+        execution={'solver': 'hirschfye', 'max_iterations': 10,
                    'time_limit': 20, 'seed': 0})
     execute('dmft', run)
 

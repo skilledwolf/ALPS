@@ -2,9 +2,9 @@
 #pragma once
 #include <alps/parameter.h>
 #include <alps/params.hpp>
-// Hirsch-Fye and the multiband scheduler CT-INT still receive Parameters from
-// MCRun. Their numerical helpers already use typed params. This private snapshot
-// disappears with those scheduler constructors; it is not a runtime input parser.
+// The multiband scheduler CT-INT still receives Parameters from MCRun. Its
+// numerical helpers use typed params. This private snapshot disappears with that
+// scheduler constructor; it is not a runtime input parser.
 inline alps::params scheduler_scientific(const alps::Parameters& old) {
   alps::params result;
   for (const char* key : {"BETA", "MU", "H", "U", "J", "U'"})

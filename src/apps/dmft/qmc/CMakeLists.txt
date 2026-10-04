@@ -23,6 +23,7 @@ set(DMFT_QMC_SOURCE
     fouriertransform.C
     hilberttransformer.C
     hirschfyesim.C
+    hirschfye_run.C
     alps_solver.C
     bandstructure.C
     auxiliaryfunctions.C)
@@ -91,7 +92,10 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
 target_include_directories(dmft_qmc_impl
   PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_CURRENT_BINARY_DIR}"
   PRIVATE "$<TARGET_PROPERTY:tomlplusplus::tomlplusplus,INTERFACE_INCLUDE_DIRECTORIES>")
-target_link_libraries(dmft_qmc_impl PUBLIC ALPS::alps ALPS::cthyb ALPS::ctint ALPS::run_config)
+target_link_libraries(dmft_qmc_impl PUBLIC ALPS::alps ALPS::cthyb ALPS::ctint ALPS::run_config ALPS::statistics)
+if(ALPS_ENABLE_MPI)
+  target_link_libraries(dmft_qmc_impl PRIVATE MPI::MPI_CXX)
+endif()
 install(FILES schema/dmft.toml schema/hirschfye.toml
   DESTINATION ${CMAKE_INSTALL_DATADIR}/alps/schemas COMPONENT applications)
 
@@ -121,6 +125,17 @@ if(ALPS_BUILD_TESTING)
     "${CMAKE_CURRENT_SOURCE_DIR}/tests/hirschfye_cli_contract.py"
     $<TARGET_FILE:hirschfye> $<TARGET_FILE:dmft_hirschfye_fixture>)
   set_tests_properties(hirschfye_cli_contract PROPERTIES TIMEOUT 60 LABELS "dmft;run_config")
+  add_executable(hirschfye_statistics tests/hirschfye_statistics.cpp)
+  target_link_libraries(hirschfye_statistics PRIVATE dmft_qmc_impl)
+  alps_add_test(hirschfye_statistics)
+  set_property(TEST hirschfye_statistics PROPERTY LABELS "dmft;hirschfye")
+  if(ALPS_ENABLE_MPI)
+    add_executable(hirschfye_mpi_contract tests/hirschfye_mpi.cpp)
+    target_link_libraries(hirschfye_mpi_contract PRIVATE dmft_qmc_impl MPI::MPI_CXX)
+    add_test(NAME hirschfye_mpi_contract COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2
+      ${MPIEXEC_PREFLAGS} $<TARGET_FILE:hirschfye_mpi_contract> ${MPIEXEC_POSTFLAGS})
+    set_tests_properties(hirschfye_mpi_contract PROPERTIES LABELS "dmft;hirschfye;mpi" PROCESSORS 2 TIMEOUT 60)
+  endif()
   # Regression tests for the shared DMFT QMC infrastructure.
   add_executable(dmft_fouriertransform_offdiag_numeric dmft_fouriertransform_offdiag_numeric.C)
   target_link_libraries(dmft_fouriertransform_offdiag_numeric PRIVATE dmft_qmc_impl)

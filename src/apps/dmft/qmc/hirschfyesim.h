@@ -12,108 +12,48 @@
  *
  *****************************************************************************/
 
-/// @file hirschfyesim.h
-/// @brief the actual Hirsch-Fye simulation
-
 #ifndef ALPS_DMFT_HIRSCHFYESIM_H
 #define ALPS_DMFT_HIRSCHFYESIM_H
 
-#include "types.h"
 #include "hirschfyeaux.h"
-#include "alps_solver.h"
 #include "green_function.h"
+#include <alps/run_config.hpp>
+#include <alps/ngs/random01.hpp>
+#include <alps/alea/batch.hpp>
+#include <array>
+#include <map>
+#include <string>
 
-#include <alps/scheduler/montecarlo.h>
-#include <alps/osiris/dump.h>
-#include <alps/osiris/std/vector.h>
-#include <alps/alea/detailedbinning.h>
-#include <alps/alea/detailedbinning.h>
-#include <alps/alea/nobinning.h>
-
-#include <boost/numeric/ublas/io.hpp>
-
-#include <stack>
-#include <queue>
-#include <vector>
-#include <iostream>
-#include <algorithm>
-#include <cmath>
-
-
-typedef boost::numeric::ublas::matrix<double,boost::numeric::ublas::column_major> dense_matrix;
-typedef alps::SimpleRealVectorObservable vec_obs_t;
-
-class HirschFyeSim : public alps::scheduler::MCSimulation, public alps::MatsubaraImpurityTask
-{
+// Private solver engine. The standalone driver owns stopping and publication;
+// these measurement snapshots do not contain a resumable solver state.
+class HirschFyeRun {
 public:
-  HirschFyeSim(const alps::ProcessList& w, const boost::filesystem::path& p) 
-  : alps::scheduler::MCSimulation(w,p)
-  { 
-  }
-  
-  HirschFyeSim(const alps::ProcessList& w, const alps::Parameters& p) 
-  : alps::scheduler::MCSimulation(w,p) 
-  {
-  }
-  
-  std::pair<matsubara_green_function_t, itime_green_function_t>get_result();
-  
-};
-
-
-///This class implements the Hirsch Fye algorithm.
-class HirschFyeRun : public alps::scheduler::MCRun
-{
-public:
-  ///
-  HirschFyeRun(const alps::ProcessList&,const alps::Parameters&,int);
-  ///store a dump of this simulation
-  void save(alps::ODump&) const;
-  ///load a previously saved simulation
-  void load(alps::IDump&);
-  ///perform one Hirsch Fye step
+  using results_type = std::map<std::string, alps::alea::batch_result<double>>;
+  HirschFyeRun(alps::run_configuration const&, matsubara_green_function_t const& g0, int rank = 0);
   void dostep();
-  ///return true if the simulation has been thermalized
-  bool is_thermalized() const;
-  ///return a value between zero and one, one meaning that the simulation is about to end.
   double work_done() const;
-  
-  ///return the Green's function G
-  itime_green_function_t get_result() const;
-  
-  ///compute vector Green's function from a matrix.
-  void green_vector_from_matrix(itime_green_function_t &green_function, const dense_matrix & green_matrix_up, const dense_matrix & green_matrix_down)const;
-  ///compute matrix Green's function from the vector.
-  void green_matrix_from_vector(const itime_green_function_t & bare_green_function, dense_matrix & green_matrix_up, dense_matrix & green_matrix_down)const;
-  
-  
-private:
-  int sweeps;                    // sweeps done
-  int thermalization_sweeps;        // sweeps to be done for equilibration
-  int total_sweeps;                // sweeps to be done after equilibration
-  double beta;                    // inverse temperature
-  int N;                            // number of time slices
-  int n_site;         // for cluster simulations: number of sites
-  double u;                        // on-site interaction
-  double lambda;                    // cosh(lambda) = exp(delta_tau*u/2)
-  int N_check;                    // number of sweeps with single-spin updates
-  int check_counter;                // counts the number of single-spin updates
-  int fp_interval;                // counts the interval between measurements of the fourpoint function
-  bool measure_fourpoint;
-  double tolerance;                // tolerance for deterioration of precision
-  dense_matrix Green0_up;           // bath Green's function matrix for up spins
-  dense_matrix Green_up;            // Green's function matrix for up spins  
-  dense_matrix Green0_down;        // bath Green's function matrix for down spins
-  dense_matrix Green_down;          // Green's function matrix for down spins     
-  std::vector<int> spins;            // auxiliary Ising spins
-  double max_time;
-  double start_time;
-  int sign;
-  
-  itime_green_function_t bare_green_tau;
-  itime_green_function_t green_tau;
-  
-  
+  results_type collect_results(alps::alea::reducer const* reduction = nullptr) const;
+  static std::pair<matsubara_green_function_t, itime_green_function_t>
+    get_result(results_type const&, alps::params const&);
+
+  void green_vector_from_matrix(itime_green_function_t&, dense_matrix const&, dense_matrix const&) const;
+  void green_matrix_from_vector(itime_green_function_t const&, dense_matrix&, dense_matrix&) const;
+
+protected:
+  // Unsigned Sign, then each spin's signed physical G(tau)[0..N] + sign.
+  std::array<alps::alea::batch_acc<double>, 3> measurements;
+  alps::params parameters;
+  alps::random01 random_01;
+  std::uint64_t sweeps = 0, thermalization_sweeps, total_sweeps;
+  double beta;
+  int N;
+  double lambda;
+  std::uint64_t N_check = 1000, check_counter = 0;
+  double tolerance;
+  dense_matrix Green0_up, Green_up, Green0_down, Green_down;
+  std::vector<int> spins;
+  int sign = 1;
+  itime_green_function_t bare_green_tau, green_tau;
 };
 
 #endif

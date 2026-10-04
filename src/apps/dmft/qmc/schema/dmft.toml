@@ -128,7 +128,7 @@ type = "path"
 [execution.solver]
 type = "string"
 default = "hybridization"
-description = "hybridization, interaction, Hirsch-Fye, Interaction Expansion, or a custom executable."
+description = "hybridization, interaction, hirschfye, Interaction Expansion, or a custom executable."
 [execution.loop]
 type = "string"
 default = "omega"
