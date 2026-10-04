@@ -37,6 +37,7 @@ target_sources(alps_hdf5 PUBLIC
     include/alps/hdf5/archive.hpp
     include/alps/hdf5/array.hpp
     include/alps/hdf5/complex.hpp
+    include/alps/hdf5/detail/sequence.hpp
     include/alps/hdf5/errors.hpp
     include/alps/hdf5/map.hpp
     include/alps/hdf5/multi_array.hpp

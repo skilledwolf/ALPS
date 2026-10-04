@@ -1,296 +1,72 @@
-/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
- *                                                                                 *
- * ALPS Project: Algorithms and Libraries for Physics Simulations                  *
- *                                                                                 *
- * ALPS Libraries                                                                  *
- *                                                                                 *
- * Copyright (C) 2010 - 2011 by Lukas Gamper <gamperl@gmail.com>                   *
- *                                                                                 *
- * ALPS Project: https://alps.comp-phys.org/                                       *
- * SPDX-License-Identifier: MIT                                                    *
- *                                                                                 *
- * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
-
-#ifndef ALPS_NGS_HDF5_STD_VECTOR_HPP
-#define ALPS_NGS_HDF5_STD_VECTOR_HPP
-
-#include <alps/hdf5/archive.hpp>
-#include <alps/ngs/cast.hpp>
-
-#include <boost/type_traits/is_scalar.hpp>
-
+// Copyright (C) 2010–2012 Lukas Gamper; 2026 ALPS Collaboration.
+// SPDX-License-Identifier: MIT
+#pragma once
+#include <alps/hdf5/detail/sequence.hpp>
 #include <vector>
-#include <iterator>
-#include <algorithm>
 
-namespace alps {
-    namespace hdf5 {
-
-        template<typename T, typename A> struct scalar_type<std::vector<T, A> > {
-            typedef typename scalar_type<typename std::vector<T, A>::value_type>::type type;
-        };
-
-        template<typename T, typename A> struct is_content_continuous<std::vector<T, A> >
-            : public is_continuous<T> 
-        {};
-        template<typename A> struct is_content_continuous<std::vector<bool, A> >
-            : public boost::false_type
-        {};
-
-        namespace detail {
-
-            template<typename T, typename A> struct get_extent<std::vector<T, A> > {
-                static std::vector<std::size_t> apply(std::vector<T, A> const & value) {
-                    using alps::hdf5::get_extent;
-                    std::vector<std::size_t> result(1, value.size());
-                    if (value.size()) {
-                        std::vector<std::size_t> first(get_extent(value[0]));
-                        if (!boost::is_scalar<typename std::vector<T, A>::value_type>::value)
-                            for(typename std::vector<T, A>::const_iterator it = value.begin() + 1; it != value.end(); ++it) {
-                                std::vector<std::size_t> size(get_extent(*it));
-                                if (
-                                       first.size() != size.size()
-                                    || !std::equal(first.begin(), first.end(), size.begin())
-                                )
-                                    throw archive_error("no rectangular matrix" + ALPS_STACKTRACE);
-                            }
-                        std::copy(first.begin(), first.end(), std::back_inserter(result));
-                    } else if constexpr (is_continuous<T>::value) {
-                        const auto element = get_extent(T{});
-                        std::copy(element.begin(), element.end(), std::back_inserter(result));
-                    }
-                    return result;
-                }
-            };
-
-            template<typename T, typename A> struct set_extent<std::vector<T, A> > {
-                static void apply(std::vector<T, A> & value, std::vector<std::size_t> const & extent) {
-                    using alps::hdf5::set_extent;
-                    if (extent.empty())
-                        throw archive_error("dimensions do not match" + ALPS_STACKTRACE);
-                    value.resize(extent[0]);
-                    if (extent.size() > 1)
-                        for(typename std::vector<T, A>::iterator it = value.begin(); it != value.end(); ++it)
-                            set_extent(*it, std::vector<std::size_t>(extent.begin() + 1, extent.end()));
-                    else if (extent.size() == 1 && (
-                           (!boost::is_enum<T>::value && !boost::is_same<typename scalar_type<T>::type, T>::value)
-                        || (boost::is_enum<T>::value && is_continuous<T>::value && sizeof(T) != sizeof(typename scalar_type<T>::type))
-                    ))
-                        throw archive_error("dimensions do not match" + ALPS_STACKTRACE);
-                }
-            };
-
-            template<typename A> struct set_extent<std::vector<bool, A> > {
-                static void apply(std::vector<bool, A> & value, std::vector<std::size_t> const & extent) {
-                    if (extent.size() != 1)
-                        throw archive_error("dimensions do not match" + ALPS_STACKTRACE);
-                    if (extent.empty())
-                        throw archive_error("dimensions do not match" + ALPS_STACKTRACE);
-                    value.resize(extent[0]);
-                }
-            };
-
-            template<typename T, typename A> struct is_vectorizable<std::vector<T, A> > {
-                static bool apply(std::vector<T, A> const & value) {
-                    using alps::hdf5::get_extent;
-                    using alps::hdf5::is_vectorizable;
-                    if (value.size()) {
-                        if (!is_vectorizable(value[0]))
-                            return false;
-                        std::vector<std::size_t> first(get_extent(value[0]));
-                        if (!boost::is_scalar<typename std::vector<T, A>::value_type>::value) {
-                            for(typename std::vector<T, A>::const_iterator it = value.begin(); it != value.end(); ++it)
-                                if (!is_vectorizable(*it))
-                                    return false;
-                                else {
-                                    std::vector<std::size_t> size(get_extent(*it));
-                                    if (
-                                           first.size() != size.size() 
-                                        || !std::equal(first.begin(), first.end(), size.begin())
-                                    )
-                                        return false;
-                                }
-                        }
-                    }
-                    return true;
-                }
-            };
-
-            template<typename A> struct is_vectorizable<std::vector<bool, A> > {
-                static bool apply(std::vector<bool, A> const & value) {
-                    return true;
-                }
-            };
-
-            template<typename T, typename A> struct get_pointer<std::vector<T, A> > {
-                static typename alps::hdf5::scalar_type<std::vector<T, A> >::type * apply(std::vector<T, A> & value) {
-                    using alps::hdf5::get_pointer;
-                    return value.size() ? get_pointer(value[0]) : nullptr;
-                }
-            };
-
-            template<typename T, typename A> struct get_pointer<std::vector<T, A> const> {
-                static typename alps::hdf5::scalar_type<std::vector<T, A> >::type const * apply(std::vector<T, A> const & value) {
-                    using alps::hdf5::get_pointer;
-                    return value.size() ? get_pointer(value[0]) : nullptr;
-                }
-            };
-
-            template<typename A> struct get_pointer<std::vector<bool, A> > {
-                static typename alps::hdf5::scalar_type<std::vector<bool, A> >::type * apply(std::vector<bool, A> & value) {
-                    throw archive_error("std::vector<bool, A>[0] cannot be dereferenced" + ALPS_STACKTRACE);
-                    return NULL;
-                }
-            };
-
-            template<typename A> struct get_pointer<std::vector<bool, A> const> {
-                static typename alps::hdf5::scalar_type<std::vector<bool, A> >::type const * apply(std::vector<bool, A> const & value) {
-                    throw archive_error("std::vector<bool>[0] cannot be dereferenced" + ALPS_STACKTRACE);
-                    return NULL;
-                }
-            };
-
-        }
-
-
-        template<typename T, typename A> void save(
-              archive & ar
-            , std::string const & path
-            , std::vector<T, A> const & value
-            , std::vector<std::size_t> size = std::vector<std::size_t>()
-            , std::vector<std::size_t> chunk = std::vector<std::size_t>()
-            , std::vector<std::size_t> offset = std::vector<std::size_t>()
-        ) {
-            using alps::cast;
-            if constexpr (is_continuous<T>::value) {
-                std::vector<std::size_t> extent(get_extent(value));
-                std::copy(extent.begin(), extent.end(), std::back_inserter(size));
-                std::copy(extent.begin(), extent.end(), std::back_inserter(chunk));
-                std::fill_n(std::back_inserter(offset), extent.size(), 0);
-                ar.write(path, get_pointer(value), size, chunk, offset);
-            } else if (value.size() == 0) {
-                if (path.find_last_of('@') != std::string::npos)
-                    throw archive_error("attributes need a native datatype" + ALPS_STACKTRACE);
-                if (ar.is_group(path))
-                    ar.delete_group(path);
-                if (ar.is_data(path))
-                    ar.delete_data(path);
-                ar.create_group(path);
-            }
-            else if (is_vectorizable(value)) {
-                size.push_back(value.size());
-                chunk.push_back(1);
-                offset.push_back(0);
-                for(typename std::vector<T, A>::const_iterator it = value.begin(); it != value.end(); ++it) {
-                    offset.back() = it - value.begin();
-                    save(ar, path, *it, size, chunk, offset);
-                }
-            } else {
-                if (path.find_last_of('@') != std::string::npos)
-                    throw archive_error("attributes need a native datatype" + ALPS_STACKTRACE);
-                if (ar.is_group(path))
-                    ar.delete_group(path);
-                if (path.find_last_of('@') == std::string::npos && ar.is_data(path))
-                    ar.delete_data(path);
-                else if (path.find_last_of('@') != std::string::npos && ar.is_attribute(path))
-                    ar.delete_attribute(path);
-                for(typename std::vector<T, A>::const_iterator it = value.begin(); it != value.end(); ++it)
-                    save(ar, ar.complete_path(path) + "/" + cast<std::string>(it - value.begin()), *it);
-            }
-        }
-
-        template<typename A> void save(
-              archive & ar
-            , std::string const & path
-            , std::vector<bool, A> const & value
-            , std::vector<std::size_t> size = std::vector<std::size_t>()
-            , std::vector<std::size_t> chunk = std::vector<std::size_t>()
-            , std::vector<std::size_t> offset = std::vector<std::size_t>()
-        ) {
-            size.push_back(value.size());
-            chunk.push_back(value.size() ? 1 : 0);
-            offset.push_back(0);
-            if (value.size() == 0)
-                ar.write(path, static_cast<bool const *>(nullptr), size, chunk, offset);
-            else {
-                for(typename std::vector<bool, A>::const_iterator it = value.begin(); it != value.end(); ++it) {
-                    offset.back() = it - value.begin();
-                    bool const elem = *it;
-                    ar.write(path, &elem, size, chunk, offset);
-                }
-            }
-        }        
-
-        template<typename T, typename A> void load(
-              archive & ar
-            , std::string const & path
-            , std::vector<T, A> & value
-            , std::vector<std::size_t> chunk = std::vector<std::size_t>()
-            , std::vector<std::size_t> offset = std::vector<std::size_t>()
-        ) {
-            using alps::cast;
-            if (ar.is_group(path)) {
-                std::vector<std::string> children = ar.list_children(path);
-                for (const auto &child : children) {
-                    const auto index = cast<std::size_t>(child);
-                    if (index >= children.size() || cast<std::string>(index) != child)
-                        throw invalid_path("invalid container index: " + child + ALPS_STACKTRACE);
-                }
-                value.resize(children.size());
-                for (typename std::vector<std::string>::const_iterator it = children.begin(); it != children.end(); ++it)
-                   load(ar, ar.complete_path(path) + "/" + *it, value[cast<std::size_t>(*it)]);
-            } else {
-                std::vector<std::size_t> size(ar.extent(path));
-                if (size.size() <= chunk.size())
-                    throw archive_error("invalid dimensions" + ALPS_STACKTRACE);
-                else if constexpr (is_continuous<T>::value) {
-                    set_extent(value, std::vector<std::size_t>(size.begin() + chunk.size(), size.end()));
-                    std::copy(size.begin() + chunk.size(), size.end(), std::back_inserter(chunk));
-                    std::fill_n(std::back_inserter(offset), size.size() - offset.size(), 0);
-                    ar.read(path, get_pointer(value), chunk, offset);
-                } else {
-                    value.resize(*(size.begin() + chunk.size()));
-                    chunk.push_back(1);
-                    offset.push_back(0);
-                    for(typename std::vector<T, A>::iterator it = value.begin(); it != value.end(); ++it) {
-                        offset.back() = it - value.begin();
-                        load(ar, path, *it, chunk, offset);
-                    }
-                }
-            }
-        }
-
-        template<typename A> void load(
-              archive & ar
-            , std::string const & path
-            , std::vector<bool, A> & value
-            , std::vector<std::size_t> chunk = std::vector<std::size_t>()
-            , std::vector<std::size_t> offset = std::vector<std::size_t>()
-        ) {
-            if (ar.is_group(path))
-                throw archive_error("invalid dimensions" + ALPS_STACKTRACE);
-            else {
-                std::vector<std::size_t> size(ar.extent(path));
-                if (size.size() <= chunk.size())
-                    throw archive_error("invalid dimensions" + ALPS_STACKTRACE);
-                else {
-                    const auto dimensions = chunk.size();
-                    set_extent(value, std::vector<std::size_t>(size.begin() + dimensions, size.end()));
-                    chunk.push_back(value.size() ? 1 : 0);
-                    offset.push_back(0);
-                    if (value.empty())
-                        ar.read(path, static_cast<bool *>(nullptr), chunk, offset);
-                    for(typename std::vector<bool, A>::iterator it = value.begin(); it != value.end(); ++it) {
-                        offset.back() = it - value.begin();
-                        bool elem;
-                        ar.read(path, &elem, chunk, offset);
-                        *it = elem;
-                    }
-                }
-            }
-        }
-
+namespace alps::hdf5 {
+template<typename T, typename A> struct scalar_type<std::vector<T, A>> : scalar_type<T> {};
+template<typename T, typename A> struct is_content_continuous<std::vector<T, A>> : is_continuous<T> {};
+template<typename A> struct is_content_continuous<std::vector<bool, A>> : boost::false_type {};
+namespace detail {
+template<typename T, typename A> struct get_extent<std::vector<T, A>> : sequence_extent<std::vector<T, A>> {};
+template<typename T, typename A> struct set_extent<std::vector<T, A>> : sequence_set_extent<std::vector<T, A>> {};
+template<typename T, typename A> struct is_vectorizable<std::vector<T, A>> : sequence_vectorizable<std::vector<T, A>> {};
+template<typename T, typename A> struct get_pointer<std::vector<T, A>> : sequence_pointer<std::vector<T, A>> {};
+template<typename T, typename A> struct get_pointer<std::vector<T, A> const> : sequence_pointer<std::vector<T, A> const> {};
+template<typename A> struct is_vectorizable<std::vector<bool, A>> {
+    static bool apply(std::vector<bool, A> const&) { return true; }
+};
+template<typename A> struct set_extent<std::vector<bool, A>> {
+    static void apply(std::vector<bool, A>& value, std::vector<std::size_t> const& extent) {
+        if (extent.size() != 1) throw archive_error("dimensions do not match");
+        value.resize(extent[0]);
     }
+};
+template<typename A> struct get_pointer<std::vector<bool, A>> {
+    static bool* apply(std::vector<bool, A>&) {
+        throw archive_error("packed Boolean vectors have no native pointer");
+    }
+};
+template<typename A> struct get_pointer<std::vector<bool, A> const> {
+    static bool const* apply(std::vector<bool, A> const&) {
+        throw archive_error("packed Boolean vectors have no native pointer");
+    }
+};
+} // namespace detail
+
+template<typename T, typename A> void save(archive& ar, std::string const& path, std::vector<T, A> const& value,
+    std::vector<std::size_t> size = {}, std::vector<std::size_t> chunk = {},
+    std::vector<std::size_t> offset = {}) {
+    detail::save_sequence(ar, path, value, std::move(size), std::move(chunk), std::move(offset));
+}
+template<typename T, typename A> void load(archive& ar, std::string const& path, std::vector<T, A>& value,
+    std::vector<std::size_t> chunk = {}, std::vector<std::size_t> offset = {}) {
+    detail::load_sequence(ar, path, value, std::move(chunk), std::move(offset));
 }
 
-#endif
+// std::vector<bool> packs bits; unpack once for one native transfer rather than
+// making a separate HDF5 selection for every element.
+template<typename A> void save(archive& ar, std::string const& path, std::vector<bool, A> const& value,
+    std::vector<std::size_t> size = {}, std::vector<std::size_t> chunk = {},
+    std::vector<std::size_t> offset = {}) {
+    auto buffer = std::make_unique<bool[]>(value.size());
+    for (std::size_t i = 0; i < value.size(); ++i) buffer[i] = value[i];
+    size.push_back(value.size());
+    chunk.push_back(value.size());
+    offset.push_back(0);
+    ar.write(path, buffer.get(), size, chunk, offset);
+}
+template<typename A> void load(archive& ar, std::string const& path, std::vector<bool, A>& value,
+    std::vector<std::size_t> chunk = {}, std::vector<std::size_t> offset = {}) {
+    const auto size = ar.extent(path);
+    if (ar.is_group(path) || size.size() != chunk.size() + 1)
+        throw archive_error("dimensions do not match");
+    const auto count = size.back();
+    auto buffer = std::make_unique<bool[]>(count);
+    chunk.push_back(count);
+    offset.push_back(0);
+    ar.read(path, buffer.get(), chunk, offset);
+    value.assign(buffer.get(), buffer.get() + count);
+}
+} // namespace alps::hdf5

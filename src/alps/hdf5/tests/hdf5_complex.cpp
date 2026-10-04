@@ -98,6 +98,16 @@ int main() {
         std::vector<bool> flags{true};
         ar["/empty-flags"] >> flags;
         require(flags.empty());
+        const std::vector<bool> expected_flags{true, false, true};
+        ar["/scalar/@flags"] << expected_flags;
+        ar["/scalar/@flags"] >> flags;
+        require(flags == expected_flags);
+        const std::vector<std::vector<bool>> nested_flags{{true, false}, {false, true}};
+        ar["/nested-flags"] << nested_flags;
+        std::vector<std::vector<bool>> restored_flags;
+        ar["/nested-flags"] >> restored_flags;
+        require(restored_flags == nested_flags && ar.extent("/nested-flags") ==
+                std::vector<std::size_t>({2, 2}));
         ar["/empty-custom"] << std::vector<std::pair<int, int>>{};
         require(ar.is_group("/empty-custom") && ar.list_children("/empty-custom").empty());
         ar["/empty-map"] << std::map<std::string, int>{};
@@ -140,6 +150,17 @@ int main() {
         std::vector<std::vector<complex>> zero_inner;
         ar["/zero-inner"] >> zero_inner;
         require(zero_inner.size() == 2 && zero_inner[0].empty() && zero_inner[1].empty());
+
+        // Empty outer sequences must still enforce fixed inner dimensions.
+        ar.write("/bad-empty-shape", static_cast<complex const*>(nullptr), {0, 3});
+        std::vector<std::array<complex, 2>> fixed_guard(1);
+        rejected = false;
+        try {
+            ar["/bad-empty-shape"] >> fixed_guard;
+        } catch (const std::exception&) {
+            rejected = true;
+        }
+        require(rejected && fixed_guard.size() == 1);
     }
     std::filesystem::remove(filename);
 }

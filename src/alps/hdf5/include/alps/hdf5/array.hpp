@@ -1,201 +1,28 @@
-/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
- *                                                                                 *
- * ALPS Project: Algorithms and Libraries for Physics Simulations                  *
- *                                                                                 *
- * ALPS Libraries                                                                  *
- *                                                                                 *
- * Copyright (C) 2010 - 2012 by Lukas Gamper <gamperl@gmail.com>                   *
- *                                                                                 *
- * ALPS Project: https://alps.comp-phys.org/                                       *
- * SPDX-License-Identifier: MIT                                                    *
- *                                                                                 *
- * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
-
-#ifndef ALPS_NGS_HDF5_BOOST_ARRAY_HPP
-#define ALPS_NGS_HDF5_BOOST_ARRAY_HPP
-
-#include <alps/hdf5/archive.hpp>
-#include <alps/ngs/cast.hpp>
-
+// Copyright (C) 2010–2012 Lukas Gamper; 2026 ALPS Collaboration.
+// SPDX-License-Identifier: MIT
+#pragma once
+#include <alps/hdf5/detail/sequence.hpp>
 #include <boost/array.hpp>
 
-#include <vector>
-#include <iterator>
-#include <algorithm>
+namespace alps::hdf5 {
+template<typename T, std::size_t N> struct scalar_type<boost::array<T, N>> : scalar_type<T> {};
+template<typename T, std::size_t N> struct is_continuous<boost::array<T, N>> : is_continuous<T> {};
+template<typename T, std::size_t N> struct is_continuous<boost::array<T, N> const> : is_continuous<T> {};
+namespace detail {
+template<typename T, std::size_t N> struct get_extent<boost::array<T, N>> : sequence_extent<boost::array<T, N>> {};
+template<typename T, std::size_t N> struct set_extent<boost::array<T, N>> : sequence_set_extent<boost::array<T, N>> {};
+template<typename T, std::size_t N> struct is_vectorizable<boost::array<T, N>> : sequence_vectorizable<boost::array<T, N>> {};
+template<typename T, std::size_t N> struct get_pointer<boost::array<T, N>> : sequence_pointer<boost::array<T, N>> {};
+template<typename T, std::size_t N> struct get_pointer<boost::array<T, N> const> : sequence_pointer<boost::array<T, N> const> {};
+} // namespace detail
 
-namespace alps {
-    namespace hdf5 {
-
-        template<typename T, std::size_t N> struct scalar_type<boost::array<T, N> > {
-            typedef typename scalar_type<typename boost::array<T, N>::value_type>::type type;
-        };
-
-        template<typename T, std::size_t N> struct is_continuous<boost::array<T, N> >
-            : public is_continuous<T>
-        {};
-        template<typename T, std::size_t N> struct is_continuous<boost::array<T, N> const >
-            : public is_continuous<T>
-        {};
-
-        namespace detail {
-
-            template<typename T, std::size_t N> struct get_extent<boost::array<T, N> > {
-                static std::vector<std::size_t> apply(boost::array<T, N> const & value) {
-                    using alps::hdf5::get_extent;
-                    std::vector<std::size_t> result(1, value.size());
-                    if (value.size()) {
-                        std::vector<std::size_t> first(get_extent(value[0]));
-                        std::copy(first.begin(), first.end(), std::back_inserter(result));
-                    } else if constexpr (is_continuous<T>::value) {
-                        const auto element = get_extent(T{});
-                        std::copy(element.begin(), element.end(), std::back_inserter(result));
-                    }
-                    return result;
-                }
-            };
-
-            template<typename T, std::size_t N> struct set_extent<boost::array<T, N> > {
-                static void apply(boost::array<T, N> & value, std::vector<std::size_t> const & extent) {
-                    using alps::hdf5::set_extent;
-                    if (extent.empty() || extent[0] != N)
-                        throw archive_error("dimensions do not match" + ALPS_STACKTRACE);
-                    if constexpr (N == 0 && is_continuous<T>::value) {
-                        const auto expected = alps::hdf5::get_extent(T{});
-                        if (std::vector<std::size_t>(extent.begin() + 1, extent.end()) != expected)
-                            throw archive_error("dimensions do not match" + ALPS_STACKTRACE);
-                    }
-                    if (extent.size() > 1)
-                        for(typename boost::array<T, N>::iterator it = value.begin(); it != value.end(); ++it)
-                            set_extent(*it, std::vector<std::size_t>(extent.begin() + 1, extent.end()));
-                    else if (extent.size() == 0 && !boost::is_same<typename scalar_type<T>::type, T>::value)
-                        throw archive_error("dimensions do not match" + ALPS_STACKTRACE);
-                }
-            };
-
-            template<typename T, std::size_t N> struct is_vectorizable<boost::array<T, N> > {
-                static bool apply(boost::array<T, N> const & value) {
-                    using alps::hdf5::get_extent;
-                    using alps::hdf5::is_vectorizable;
-                    if (value.size() && !is_continuous<boost::array<T, N> >::value) {
-                        if (!is_vectorizable(value[0]))
-                            return false;
-                        std::vector<std::size_t> first(get_extent(value[0]));
-                        for(typename boost::array<T, N>::const_iterator it = value.begin(); it != value.end(); ++it)
-                            if (!is_vectorizable(*it))
-                                return false;
-                            else {
-                                std::vector<std::size_t> size(get_extent(*it));
-                                if (
-                                       first.size() != size.size() 
-                                    || !std::equal(first.begin(), first.end(), size.begin())
-                                )
-                                    return false;
-                            }
-                    }
-                    return true;
-                }
-            };
-
-            template<typename T, std::size_t N> struct get_pointer<boost::array<T, N> > {
-                static typename alps::hdf5::scalar_type<boost::array<T, N> >::type * apply(boost::array<T, N> & value) {
-                    using alps::hdf5::get_pointer;
-                    return value.size() ? get_pointer(value[0]) : nullptr;
-                }
-            };
-
-            template<typename T, std::size_t N> struct get_pointer<boost::array<T, N> const > {
-                static typename alps::hdf5::scalar_type<boost::array<T, N> >::type const * apply(boost::array<T, N> const & value) {
-                    using alps::hdf5::get_pointer;
-                    return value.size() ? get_pointer(value[0]) : nullptr;
-                }
-            };
-        }
-
-        template<typename T, std::size_t N> void save(
-              archive & ar
-            , std::string const & path
-            , boost::array<T, N> const & value
-            , std::vector<std::size_t> size = std::vector<std::size_t>()
-            , std::vector<std::size_t> chunk = std::vector<std::size_t>()
-            , std::vector<std::size_t> offset = std::vector<std::size_t>()
-        ) {
-            using alps::cast;
-            if constexpr (is_continuous<T>::value) {
-                std::vector<std::size_t> extent(get_extent(value));
-                std::copy(extent.begin(), extent.end(), std::back_inserter(size));
-                std::copy(extent.begin(), extent.end(), std::back_inserter(chunk));
-                std::fill_n(std::back_inserter(offset), extent.size(), 0);
-                ar.write(path, get_pointer(value), size, chunk, offset);
-            } else if (value.size() == 0) {
-                if (path.find_last_of('@') != std::string::npos)
-                    throw archive_error("attributes need a native datatype" + ALPS_STACKTRACE);
-                if (ar.is_group(path))
-                    ar.delete_group(path);
-                if (ar.is_data(path))
-                    ar.delete_data(path);
-                ar.create_group(path);
-            }
-            else if (is_vectorizable(value)) {
-                size.push_back(value.size());
-                chunk.push_back(1);
-                offset.push_back(0);
-                for(typename boost::array<T, N>::const_iterator it = value.begin(); it != value.end(); ++it) {
-                    offset.back() = it - value.begin();
-                    save(ar, path, *it, size, chunk, offset);
-                }
-            } else {
-                if (path.find_last_of('@') != std::string::npos)
-                    throw archive_error("attributes need a native datatype" + ALPS_STACKTRACE);
-                if (ar.is_group(path))
-                    ar.delete_group(path);
-                if (ar.is_data(path))
-                    ar.delete_data(path);
-                ar.create_group(path);
-                for(typename boost::array<T, N>::const_iterator it = value.begin(); it != value.end(); ++it)
-                    save(ar, ar.complete_path(path) + "/" + cast<std::string>(it - value.begin()), *it);
-            }
-        }
-
-        template<typename T, std::size_t N> void load(
-              archive & ar
-            , std::string const & path
-            , boost::array<T, N> & value
-            , std::vector<std::size_t> chunk = std::vector<std::size_t>()
-            , std::vector<std::size_t> offset = std::vector<std::size_t>()
-        ) {
-            using alps::cast;
-            if (ar.is_group(path)) {
-                std::vector<std::string> children = ar.list_children(path);
-                for (const auto &child : children) {
-                    const auto index = cast<std::size_t>(child);
-                    if (index >= children.size() || cast<std::string>(index) != child)
-                        throw invalid_path("invalid container index: " + child + ALPS_STACKTRACE);
-                }
-                if (children.size() != N)
-                    throw invalid_path("size does not match: " + path + ALPS_STACKTRACE);
-                for (typename std::vector<std::string>::const_iterator it = children.begin(); it != children.end(); ++it)
-                    load(ar, ar.complete_path(path) + "/" + *it, value[cast<std::size_t>(*it)]);
-            } else {
-                std::vector<std::size_t> size(ar.extent(path));
-                if (size.size() <= chunk.size() || N != size[chunk.size()])
-                    throw archive_error("dimensions do not match" + ALPS_STACKTRACE);
-                if constexpr (is_continuous<T>::value) {
-                    set_extent(value, std::vector<std::size_t>(size.begin() + chunk.size(), size.end()));
-                    std::copy(size.begin() + chunk.size(), size.end(), std::back_inserter(chunk));
-                    std::fill_n(std::back_inserter(offset), size.size() - offset.size(), 0);
-                    ar.read(path, get_pointer(value), chunk, offset);
-                } else {
-                    set_extent(value, std::vector<std::size_t>(1, *(size.begin() + chunk.size())));
-                    chunk.push_back(1);
-                    offset.push_back(0);
-                    for(typename boost::array<T, N>::iterator it = value.begin(); it != value.end(); ++it) {
-                        offset.back() = it - value.begin();
-                        load(ar, path, *it, chunk, offset);
-                    }
-                }
-            }
-        }
-    }
+template<typename T, std::size_t N> void save(archive& ar, std::string const& path, boost::array<T, N> const& value,
+    std::vector<std::size_t> size = {}, std::vector<std::size_t> chunk = {},
+    std::vector<std::size_t> offset = {}) {
+    detail::save_sequence(ar, path, value, std::move(size), std::move(chunk), std::move(offset));
 }
-
-#endif
+template<typename T, std::size_t N> void load(archive& ar, std::string const& path, boost::array<T, N>& value,
+    std::vector<std::size_t> chunk = {}, std::vector<std::size_t> offset = {}) {
+    detail::load_sequence(ar, path, value, std::move(chunk), std::move(offset));
+}
+} // namespace alps::hdf5
