@@ -197,7 +197,7 @@ public:
     uint64_t count() const { return store_->count().sum(); }
 
     /** Returns sum of squared sample sizes */
-    double count2() const { return store_->count().squaredNorm(); }
+    double count2() const { return store_->count().template cast<double>().squaredNorm(); }
 
     /** Returns average batch size */
     double batch_size() const { return count2() / count(); }

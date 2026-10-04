@@ -69,6 +69,7 @@ void autocorr_acc<T>::add(const computed<T> &source, uint64_t count)
 {
     assert(count_ < nextlevel_);
     internal::check_valid(*this);
+    if (source.size() != size()) throw size_mismatch();
 
     // if we require next level, then do it!
     count_ += count;
@@ -77,23 +78,6 @@ void autocorr_acc<T>::add(const computed<T> &source, uint64_t count)
 
     // now add current element at the bottom and watch it propagate
     level_[0].add(source, count, level_.data() + 1);
-}
-
-template <typename T>
-autocorr_acc<T> &autocorr_acc<T>::operator<<(const autocorr_result<T> &other)
-{
-    internal::check_valid(*this);
-
-    // ensure we have enough levels to hold other data
-    for (size_t i = nlevel(); i < other.nlevel(); ++i)
-        level_.push_back(var_acc<T>(size_, batch_size_));
-
-    // merge the levels
-    // FIXME handle the highers other level by doing proper mergin
-    for (size_t i = 0; i != other.nlevel(); ++i)
-        level_[i] << other.level(i);
-
-    return *this;
 }
 
 template <typename T>

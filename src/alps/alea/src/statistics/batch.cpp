@@ -117,6 +117,7 @@ template <typename T>
 void batch_acc<T>::add(const computed<T> &source, uint64_t count)
 {
     internal::check_valid(*this);
+    if (source.size() != size()) throw size_mismatch();
 
     // batch is full, move the cursor.
     // Doing this before the addition ensures no empty batches.

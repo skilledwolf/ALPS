@@ -174,9 +174,35 @@ void large_batch_weights() {
     data.count() << weight, weight;
     data.batch() << double(weight), 3.*double(weight);
     aa::batch_result<double> result(data);
+    require(result.count2() == 2.*double(weight)*double(weight)
+         && result.batch_size() == double(weight) && result.observations() == 2.,
+            "large batch weights corrupted effective sample counts");
     require(result.mean()(0) == 2. && result.var()(0) == 2.
          && result.cov()(0,0) == 2. && result.stderror()(0) == 1.,
             "large integer batch weights overflowed squared-weight counts");
+}
+void wrong_sized_append() {
+    aa::batch_acc<double> batch(1,8,1);
+    for (size_t i=0; i<8; ++i) batch << double(i);
+    auto control = batch;
+    rejects([&] { batch << std::vector<double>{1.,2.}; });
+    require(batch.result() == control.result() && batch.offset() == control.offset()
+         && batch.cursor().current() == control.cursor().current()
+         && batch.cursor().level() == control.cursor().level()
+         && batch.cursor().cycle() == control.cursor().cycle(),
+            "wrong-sized sample changed a full batch before rejection");
+    for (size_t i=8; i<37; ++i) { batch << double(i); control << double(i); }
+    require(batch.result() == control.result(), "rejected batch sample changed later continuation");
+    for (size_t boundary : {size_t(0), size_t(2)}) {
+        aa::autocorr_acc<double> acc(1,3);
+        for (size_t i=0; i<boundary; ++i) acc << double(i);
+        auto unchanged = acc;
+        rejects([&] { acc << std::vector<double>{1.,2.}; });
+        require(acc.count() == unchanged.count() && acc.nlevel() == unchanged.nlevel(),
+                "wrong-sized sample changed autocorrelation hierarchy before rejection");
+        for (size_t i=boundary; i<97; ++i) { acc << double(i); unchanged << double(i); }
+        require(acc.result() == unchanged.result(), "rejected autocorrelation sample changed later estimates");
+    }
 }
 void covariance_transform(std::string const& filename) {
     aa::cov_acc<double> acc(2);
@@ -315,6 +341,7 @@ int main() {
         unequal_merge(filename);
         batch_reset_and_equality();
         large_batch_weights();
+        wrong_sized_append();
         covariance_transform(filename);
         eigen_orientation(filename);
         failed_loads(filename);

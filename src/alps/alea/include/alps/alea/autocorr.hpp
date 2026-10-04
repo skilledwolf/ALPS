@@ -94,9 +94,6 @@ public:
     /** Add computed vector to the accumulator */
     autocorr_acc& operator<<(const computed<T>& src){ add(src, 1); return *this; }
 
-    /** Merge partial result into accumulator */
-    autocorr_acc &operator<<(const autocorr_result<T> &result);
-
     /** Returns sample size, i.e., number of accumulated data points */
     uint64_t count() const { return count_; }
 
