@@ -243,10 +243,11 @@ def _address(obj):
     return h5py.h5o.get_info(obj.id).addr
 
 
-def _schema_groups(source, pairs, matrices, parameters, alea):
+def _schema_groups(source, pairs, matrices, parameters, alea, core_alea):
     groups = {}
     for kind, paths in (("pair", pairs), ("matrix", matrices),
-                        ("parameters", parameters), ("alea", alea)):
+                        ("parameters", parameters), ("alea", alea),
+                        *(("core-alea:" + kind, [path]) for kind, path in core_alea)):
         for path in paths:
             path = posixpath.normpath("/" + str(path).lstrip("/"))
             obj, parents = source, set()
@@ -498,8 +499,76 @@ def _parameters(group, target):
     group.create_dataset("format", data="alps.params.v2", dtype=h5py.string_dtype("utf-8"))
 
 
+CORE_ALEA_KINDS = {"mean": 1, "variance": 2, "covariance": 3, "autocorr": 4, "batch": 5}
+
+
+def _core_alea(group, family):
+    """Tag explicitly selected released result layouts; never invent missing state."""
+    if family not in CORE_ALEA_KINDS:
+        raise ValueError(f"{group.name}: unknown Core ALEA result kind {family}")
+    if "version" in group.attrs or "kind" in group.attrs:
+        raise ValueError(f"{group.name}: expected an unversioned released Core ALEA result")
+
+    def uint64(identifier):
+        with closing(identifier.get_type()) as datatype:
+            return (datatype.get_class() == h5py.h5t.INTEGER and datatype.get_size() == 8
+                    and datatype.get_sign() == h5py.h5t.SGN_NONE)
+
+    def integer(name, attribute=False):
+        value = _attribute(group, name) if attribute else np.asarray(group[name][()])
+        if attribute:
+            with closing(group.attrs.get_id(name)) as identifier:
+                canonical = uint64(identifier)
+        else: canonical = uint64(group[name].id)
+        if value.shape != () or not canonical:
+            raise ValueError(f"{group.name}/{name}: expected a scalar uint64")
+        return int(value)
+
+    size = integer("size", True)
+    if not size:
+        raise ValueError(f"{group.name}: zero-component ALEA results are unsupported")
+
+    def shaped(name, shapes, complex_allowed=True):
+        value = group[name]
+        if (not isinstance(value, h5py.Dataset) or value.shape not in shapes
+                or not (value.dtype.kind == "f" and value.dtype.itemsize == 8
+                        or complex_allowed and value.dtype.kind == "c" and value.dtype.itemsize == 16)):
+            raise ValueError(f"{group.name}/{name}: invalid {family} result shape/datatype")
+
+    shaped("mean/value", [(size,)])
+    if family != "mean": shaped("mean/error", [(size,), (size, 2, 2)], False)
+    if family == "autocorr":
+        levels = integer("nlevel", True)
+        if not levels or set(group["level"]) != {str(i) for i in range(levels)}:
+            raise ValueError(f"{group.name}: invalid autocorrelation levels")
+        for i in range(levels):
+            level = group[f"level/{i}"]
+            if _attribute(level, "size") != size:
+                raise ValueError(f"{level.name}: inconsistent autocorrelation component count")
+            _core_alea(level, "variance")
+    elif family == "batch":
+        batches = integer("num_batches", True)
+        shaped("batch/sum", [(batches, size)])
+        counts = group["batch/count"]
+        if not batches or counts.shape != (batches,) or not uint64(counts.id):
+            raise ValueError(f"{group.name}: invalid per-batch counts")
+    else:
+        count = integer("count")
+        if family in ("variance", "covariance"):
+            count2 = group["count2"]
+            if count2.shape != () or count2.dtype.kind != "f" or count2.dtype.itemsize != 8:
+                raise ValueError(f"{group.name}: invalid squared-count statistic")
+            value = count2[()]
+            if not np.isfinite(value) or value < 0 or (count == 0) != (value == 0):
+                raise ValueError(f"{group.name}: inconsistent squared-count statistic")
+            if family == "variance": shaped("var", [(size,), (size, 2, 2)], False)
+            else: shaped("cov", [(size, size), (size, size, 2, 2)])
+    group.attrs["version"] = np.uint64(1)
+    group.attrs["kind"] = np.uint32(CORE_ALEA_KINDS[family])
+
+
 def _copy(source, target, boolean_datasets, boolean_attributes, pair_groups, matrix_groups,
-          parameter_groups, alea_groups):
+          parameter_groups, alea_groups, core_alea_groups):
     report = []
     declared = set()
     for path in boolean_datasets:
@@ -512,7 +581,7 @@ def _copy(source, target, boolean_datasets, boolean_attributes, pair_groups, mat
         if name not in obj.attrs or _marker(name) or obj.file != source:
             raise ValueError(f"{path}@{name}: Boolean declaration must name an ordinary input attribute")
         declared.add((_address(obj), name))
-    schemas = _schema_groups(source, pair_groups, matrix_groups, parameter_groups, alea_groups)
+    schemas = _schema_groups(source, pair_groups, matrix_groups, parameter_groups, alea_groups, core_alea_groups)
     conversions = _profiles(source, schemas, declared, report)
     seen = {_address(source): target}
     softlinks = []
@@ -589,6 +658,9 @@ def _copy(source, target, boolean_datasets, boolean_attributes, pair_groups, mat
             seen[address] = converted
         elif kind == "parameters":
             _parameters(obj, target)
+        elif kind.startswith("core-alea:"):
+            _core_alea(obj, kind.split(":", 1)[1])
+            report.append(f"{path}: ALPSCore 2.3.3 ALEA result -> versioned native result")
         if kind in ("pair", "matrix"):
             report.append(f"{path}: legacy {kind} schema")
     for parent, name, original in softlinks:
@@ -605,7 +677,7 @@ def _copy(source, target, boolean_datasets, boolean_attributes, pair_groups, mat
 
 
 def convert(source, destination, *, boolean_datasets=(), boolean_attributes=(),
-            pair_groups=(), matrix_groups=(), parameter_groups=(), alea_groups=()):
+            pair_groups=(), matrix_groups=(), parameter_groups=(), alea_groups=(), core_alea_groups=()):
     """Write a new file; leave the source and any existing destination untouched."""
     source, destination = Path(source), Path(destination)
     if os.path.lexists(destination):
@@ -621,7 +693,7 @@ def convert(source, destination, *, boolean_datasets=(), boolean_attributes=(),
             os.close(fd)
             with h5py.File(temporary, "w", track_order=True) as dst:
                 report = _copy(src, dst, boolean_datasets, boolean_attributes,
-                               pair_groups, matrix_groups, parameter_groups, alea_groups)
+                               pair_groups, matrix_groups, parameter_groups, alea_groups, core_alea_groups)
         # A sibling hard link publishes the complete file atomically and refuses
         # to overwrite a destination created by another process in the meantime.
         os.link(temporary, destination)
@@ -648,12 +720,17 @@ def main(argv=None):
                         help="migrate ALPS 3.0.0 flat parameters to native typed checkpoints (repeatable)")
     parser.add_argument("--alea", action="append", default=[], metavar="GROUP",
                         help="normalize one ALPS 3.0.0 ALEA observable/result (repeatable)")
+    parser.add_argument("--core-alea", action="append", nargs=2, default=[],
+                        metavar=("KIND", "GROUP"),
+                        help="migrate a released ALPSCore 2.3.3 ALEA result; KIND is "
+                             + ", ".join(CORE_ALEA_KINDS) + " (repeatable)")
     args = parser.parse_args(argv)
     try:
         report = convert(args.source, args.destination, boolean_datasets=args.boolean,
                          boolean_attributes=args.boolean_attribute,
                          pair_groups=args.pair, matrix_groups=args.matrix,
-                         parameter_groups=args.parameters, alea_groups=args.alea)
+                         parameter_groups=args.parameters, alea_groups=args.alea,
+                         core_alea_groups=args.core_alea)
     except (OSError, ValueError, KeyError, TypeError) as error:
         parser.exit(1, f"{parser.prog}: {error}\n")
     for line in report:

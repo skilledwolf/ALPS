@@ -6,6 +6,18 @@ User-facing changes and migration notes are recorded here, starting with the bui
 
 ### Changed
 
+- Consolidate ALPSCore's Eigen-based modern ALEA as independent `ALPS::statistics`,
+  with one canonical HDF5 adapter and explicit result versions/kinds. Add actual
+  resumable batch-accumulator checkpoints and migrate the accumulator-only Ising
+  tutorial, preserving RNG and unfinished batch state. Fix incoming Eigen layout
+  serialization and nonsquare linear-transform dimensions.
+- Replace legacy statistical objects only after successful load; remove stale
+  optional datasets on save. Publish scheduler HDF5 snapshots through checked
+  close while preserving their existing XDR/XML coordination.
+- Remove dormant deprecated accumulator code and its obsolete include exemptions.
+  Convert released ALPSCore 2.3.3 ALEA results offline, with a compiled Core fixture
+  and native readers covering covariance and per-batch counts.
+
 - Replace the hand-written HDF5 backend with HighFive 3.3.0 and require HDF5 2.x. Complex numbers use ordinary compound datatypes, Booleans use enums, and empty arrays keep their zero-length dimensions. HighFive is private to the implementation; installed SDK consumers do not need it. Remove legacy complex markers, numeric/string coercions and old pair/matrix readers from the runtime.
 - Add the standalone `alps-hdf5-convert` tool (Python, h5py and NumPy) to translate legacy complex and marked Boolean encodings into ordinary HDF5 compound/enum datatypes. Explicit `--parameters GROUP` and `--alea GROUP` profiles migrate the flat parameter and observable/result schemas written by ALPS 3.0.0. It writes a separate file and rejects ambiguous type/shape reconstruction. See the [conversion guide](src/tools/hdf5/README.md).
 - Simplify archive ownership: independent opens have independent permissions, modes are exactly `r` (read), `a` (create/update) and `w` (truncate), and explicit close invalidates copied views. Remove family, memory and compression mode modifiers and the global filename registry. Publish full checkpoints through explicit `alps::hdf5::save_checkpoint`, preserving the previous file on serialization failure and closing the temporary file before publication.

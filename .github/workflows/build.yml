@@ -230,6 +230,7 @@ jobs:
           ALPS_DIR: ${{ github.workspace }}/_build/ci/install/share/alps
           CMAKE_GENERATOR: Ninja
           PYALPS_TEST_DOWNSTREAM_EXPORT: '1'
+          ALPS_ALEA_MIGRATION_READER: ${{ github.workspace }}/_build/ci/bin/alps_alea_migration
         run: |
           cmake --install _build/ci
           python -m pip install build 'nanobind==2.15.0' 'scikit-build-core>=1.0' numpy scipy matplotlib h5py patchelf

@@ -26,6 +26,7 @@ The destination filesystem must support hard links for atomic publication.
 | Signed bytes marked `__alps_type__ = "int8"` | Ordinary signed bytes |
 | Explicitly selected ALPS 3.0.0 flat parameter groups | Indexed `alps.params.v2` names and native values |
 | Explicitly selected ALPS 3.0.0 ALEA observable/result groups | Native Boolean flags and schema-established empty array extents |
+| Explicitly selected ALPSCore 2.3.3 ALEA result groups | Canonical primitives and versioned modern ALEA result metadata |
 | Other datasets and attributes | Their existing datatypes and values |
 
 Generic complex leaf conversion preserves component width and byte order,
@@ -124,6 +125,34 @@ Private `alps.params.v1` checkpoints created during development of this branch
 are not an official release schema and have no automatic upgrade profile.
 Other scientific result schemas and cross-schema statistical normalization
 remain the responsibility of their domain serializers/readers.
+
+## Released ALPSCore ALEA results
+
+For modern ALEA results written by ALPSCore 2.3.3, select the estimator explicitly:
+
+```sh
+alps-hdf5-convert core.h5 converted.h5 \
+  --core-alea covariance /results/EnergyMagnetization \
+  --core-alea batch /results/Correlations
+```
+
+Kinds are `mean`, `variance`, `covariance`, `autocorr` and `batch`. The profile
+validates their field shapes and adds modern ALEA's `version=1` and estimator
+`kind` attributes, including variance results nested in autocorrelation levels.
+It preserves counts, squared weights, batch sums and per-batch counts, full
+covariance and Eigen's physical `[columns, rows]` axes. Complex circular
+covariance uses complex compounds; elliptic covariance keeps its real 2×2
+operator axes. Results remain results: conversion cannot recover an accumulator's
+missing merge cursor or unfinished sampling state. It cannot reconstruct
+cross-covariance from separately saved scalar summaries.
+
+`tests/cli/fixtures/alpscore-v2.3.3-alea.h5` was produced by compiled Core writers
+from the pinned reference; its adjacent JSON records the producer, fixture hash
+and comparison with release `f2ccddc5343bdc2297727f10a1a12d9c717cd0ab`. The
+released statistical serializers are unchanged; `batch.cpp` has only an added
+`<algorithm>` include. The native migration reader compares all converted
+estimators with the same known sample streams, including both complex covariance
+conventions.
 
 ## Older explicit container schema migration
 

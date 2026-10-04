@@ -63,3 +63,7 @@ target_link_libraries(alps_alea_ising_checkpoint PRIVATE
   ALPS::statistics ALPS::params ALPS::hdf5)
 alps_add_test(alps_alea_ising_checkpoint)
 set_property(TEST alps_alea_ising_checkpoint PROPERTY LABELS "alea;hdf5;tutorial")
+
+# Conversion integration is driven by pytest with its converted temporary file.
+add_executable(alps_alea_migration migration.cpp)
+target_link_libraries(alps_alea_migration PRIVATE ALPS::statistics ALPS::hdf5)

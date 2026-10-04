@@ -18,6 +18,81 @@ import pytest
 SCRIPT = Path(__file__).resolve().parents[2] / "src/tools/hdf5/convert.py"
 
 
+def core_alea_fixture():
+    folder = Path(__file__).with_name("fixtures")
+    fixture = folder / "alpscore-v2.3.3-alea.h5"
+    metadata = json.loads(fixture.with_suffix(".json").read_text())
+    assert hashlib.sha256(fixture.read_bytes()).hexdigest() == metadata["fixture_sha256"]
+    selections = [(kind, "/results/" + name) for name, kind in metadata["selections"].items()]
+    return fixture, selections
+
+
+def test_released_core_alea_results_preserve_statistics_and_load_natively(converter, tmp_path):
+    source, selections = core_alea_fixture()
+    output = tmp_path / "converted.h5"
+    converter.convert(source, output, core_alea_groups=selections)
+    with h5py.File(output, "r") as archive:
+        for kind, path in selections:
+            assert archive[path].attrs["version"] == 1
+            assert archive[path].attrs["kind"] == converter.CORE_ALEA_KINDS[kind]
+        np.testing.assert_array_equal(archive["results/mean/mean/value"],
+                                      [33., 33., sum(i % 7 for i in range(67)) / 67.])
+        assert archive["results/variance/count"][()] == 67
+        assert archive["results/batch/batch/count"][...].sum() == 67
+        assert archive["results/batch/batch/sum"].shape == (16, 3)
+        assert archive["results/circular/cov"].shape == (2, 2)
+        assert archive["results/circular/cov"].dtype == np.dtype("complex128")
+        assert archive["results/elliptic/cov"].shape == (2, 2, 2, 2)
+        assert archive["results/elliptic/cov"].dtype == np.dtype("float64")
+        for group in archive["results/autocorr/level"].values():
+            assert group.attrs["version"] == 1 and group.attrs["kind"] == 2
+    native = os.environ.get("ALPS_ALEA_MIGRATION_READER")
+    if native:
+        subprocess.run([native, str(output)], check=True)
+
+
+@pytest.mark.parametrize("fault", ["unknown-kind", "wrong-kind", "wrong-components", "missing-count2",
+                                  "negative-count", "already-versioned", "wrong-level-size",
+                                  "zero-count2", "negative-count2", "nan-count2",
+                                  "narrow-count", "narrow-covariance", "narrow-size", "enum-count"])
+def test_core_alea_conversion_rejects_invalid_result_layouts(converter, tmp_path, fault):
+    fixture, _ = core_alea_fixture()
+    source, output = tmp_path / "source.h5", tmp_path / "output.h5"
+    shutil.copy2(fixture, source)
+    kind, path = "covariance", "/results/covariance"
+    with h5py.File(source, "a") as archive:
+        group = archive[path]
+        if fault == "unknown-kind": kind = "accumulator"
+        elif fault == "wrong-kind": kind = "batch"
+        elif fault == "wrong-components": group.attrs["size"] = np.uint64(4)
+        elif fault == "missing-count2": del group["count2"]
+        elif fault == "negative-count":
+            del group["count"]
+            group["count"] = np.int64(-1)
+        elif fault == "already-versioned": group.attrs["version"] = np.uint64(1)
+        elif fault == "narrow-count":
+            del group["count"]
+            group["count"] = np.int32(67)
+        elif fault == "narrow-covariance":
+            values = group["cov"][...].astype(np.float32)
+            del group["cov"]
+            group["cov"] = values
+        elif fault == "narrow-size": group.attrs["size"] = np.uint32(3)
+        elif fault == "enum-count":
+            del group["count"]
+            group.create_dataset("count", data=67, dtype=h5py.enum_dtype({"N": 67}, basetype="u8"))
+        elif fault.endswith("count2"):
+            group["count2"][()] = {"zero-count2": 0., "negative-count2": -1., "nan-count2": np.nan}[fault]
+        else:
+            kind, path = "autocorr", "/results/autocorr"
+            archive[path + "/level/1"].attrs["size"] = np.uint64(4)
+    before = source.read_bytes()
+    with pytest.raises((ValueError, KeyError)):
+        converter.convert(source, output, core_alea_groups=[(kind, path)])
+    assert source.read_bytes() == before
+    assert set(tmp_path.iterdir()) == {source}
+
+
 @pytest.fixture
 def converter():
     spec = importlib.util.spec_from_file_location("alps_hdf5_converter", SCRIPT)
