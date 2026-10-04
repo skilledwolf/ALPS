@@ -9,17 +9,17 @@ The HDF5 backend uses HDF5 2.x and HighFive 3.3.0. Complex values use compound
 empty arrays retain explicit zero-length dimensions. The old marker datatypes,
 trailing complex dimension and numeric/string cast engine are removed. Legacy
 conversion belongs to the [standalone converter](../tools/hdf5/README.md), which
-also upgrades explicitly versioned parameter checkpoints from v1 to v2. Generic
+also migrates selected released parameter and ALEA schemas. Generic
 NULL dataspaces have lost their array shape; converting those or an application's
 checkpoint layout still requires its scientific schema.
 
-Use these buffer ownership, shape/type and error contracts with the new ALEA
-maintainer. Start one measurement-application pilot alongside params
-reconciliation. MaxEnt remains an
-acceptance test for the foundations; it does not exercise ALEA migration.
-`src/alps/alea/` still contains the legacy `Observable`/`ObservableSet`
-implementation; this pass imports neither new ALEA nor a compatibility shim.
-The pinned ALPSCore probes disable ALEA, so they do not validate ALEA compatibility.
+The Eigen-based modern ALEA core is independently linkable as `ALPS::statistics`.
+Its [serialization contracts](alea/modern-alea.md) and the accumulator-only Ising
+pilot cover results, complex covariance and actual batch-accumulator continuation.
+The thin HDF5 adapter shares the canonical primitive mappings. Legacy
+`Observable`/`ObservableSet` APIs remain in `ALPS::alps` while active clients migrate.
+The old `ALPS_NGS_USE_NEW_ALEA` experiment is separate from modern ALEA.
+Historical reconciliation probes disabled ALEA; they do not validate this import.
 
 ## Consolidation acceptance contracts
 
@@ -64,9 +64,8 @@ on both return and exception; archive copies share file ownership, while copy
 assignment is disabled because overwriting the context pointer bypasses that ownership.
 
 Opening an archive leaves process signal handlers alone. Termination polling
-belongs to utilities and solver execution. The shared archive registry remains
-necessary for simultaneous handles to see replacement-file writes and for
-read-only handles to share a later writer's context.
+belongs to utilities and solver execution. Independent opens have independent
+permissions; copied views share ownership and close together.
 
 The measurement pilot in [checkpoint contracts](../../tests/pyalps/test_checkpoint_contracts.py)
 uses deterministic scalar/vector sample streams. A checkpoint must preserve an
@@ -86,8 +85,9 @@ These paths are unchanged from upstream master at `c22bfd701`; their outcomes
 are not acceptance oracles for a replacement.
 Require exact retained sample counts and means before admitting those merges;
 errors for independent runs need not equal errors for a concatenated correlated
-stream. Measurement collection loading also needs an explicit replacement-versus-
-overlay contract. Existing result-format coverage does not settle these questions.
+stream. Result collection loads replace their contents; observable collection
+loads retain their existing overlay behavior. Direct statistical object loads
+replace validated state and preserve their destination on failure.
 
 ## Source ownership
 
@@ -110,7 +110,8 @@ Each module uses `include/`, `src/` and `tests/` where applicable. Public includ
 | `legacy_parameters/`, `expression/` | Older `alps::Parameters` and expression evaluation | `ALPS::alps` |
 | `graph/`, `lattice/`, `model/` | Graph helpers, lattice definitions and physical models | `ALPS::headers`, `ALPS::alps` |
 | `random/` | Random generators and their factories | `ALPS::alps` |
-| `alea/`, `accumulators/` | Observable/result facilities and accumulator implementations | `ALPS::alps` |
+| `alea/` | Legacy observables and modern Eigen-based statistical estimators | `ALPS::alps`, `ALPS::statistics` |
+| `accumulators/` | Retained experimental NGS backend | `ALPS::alps` |
 | `mc/`, `scheduler/`, `parapack/` | Simulation API, execution and scheduling | `ALPS::alps` |
 | `fortran/` | C++ bridge with public headers in `include/alps/fortran/` | `ALPS::fortran` |
 | `solvers/` | Shared `<alps/solvers.hpp>` declarations for MaxEnt and CT-QMC | `ALPS::solver_headers` |
@@ -164,11 +165,15 @@ Update the owning module's CMake declarations when adding files or dependencies;
 
 ### Recorded architectural debt
 
-With application builds enabled, `alps-module-architecture.json` inventories 37 source owners, 509 public include spellings and 640 production files. The owners include `numeric_io`, `cli`, `plotting`, separate MaxEnt solver/executable owners, and nine [tool groups](../tools/README.md). Tool ownership includes historical inactive C++ sources without adding executable targets. These are ownership counts, not counts of independent libraries or passing tests. The earlier code checkpoint `f6f4501c0` had 24 owners, before the CLI and plotting modules were separated.
+The architecture manifest records current source ownership, public includes and
+production files. Tool ownership includes historical inactive C++ sources;
+ownership does not establish independent linkability or passing tests.
 
 The foundation include cycle involving containers, HDF5, numerics, utilities and XML is removed. The current observed include graph retains the separate two-module cycle between `expression` and `legacy_parameters`; it still needs deliberate reconciliation. Dependency declarations constrain new include edges. Regenerate the report after changing module ownership or dependencies.
 
-The report inventories 82 exact unresolved file/include pairs already present at baseline `0f7b995d5`: 80 in dormant accumulator code and two in the optional `USE_LATTICE_CONSTANT_2D` graph backend. Each exemption names its file, include and reason; they do not establish support for those inactive paths. Resolve or remove these dependencies deliberately rather than adding broad exclusions.
+Only the two exact unresolved includes in the optional `USE_LATTICE_CONSTANT_2D`
+graph backend remain exempted. The dormant accumulator implementation and its
+80 obsolete include exemptions are removed.
 
 With `ALPS_BUILD_TESTING=ON`, CTest runs `module_architecture` and writes `<build-dir>/alps-module-architecture.json`; this requires a Python interpreter ≥ 3.11. Builds with testing disabled do not need Python for module configuration or manifest generation.
 

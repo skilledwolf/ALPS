@@ -136,7 +136,7 @@ endif()
 # This keeps header installation policy identical for runtimes and interfaces.
 foreach(target IN ITEMS alps alps_utilities alps_hdf5 alps_params alps_osiris
                         alps_xml alps_cli alps_headers alps_configuration alps_run_config
-                        alps_containers alps_numerics alps_numeric_io alps_solver_headers)
+                        alps_containers alps_numerics alps_numeric_io alps_solver_headers alps_statistics)
   get_target_property(header_sets ${target} INTERFACE_HEADER_SETS)
   set(header_install_args "")
   if(header_sets)

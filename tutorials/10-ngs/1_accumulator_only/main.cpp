@@ -13,67 +13,42 @@
 
 #include "ising.hpp"
 #include "spin_config.hpp"
-
-#include <alps/ngs.hpp>
-
-#include <boost/chrono.hpp>
-#include <boost/lexical_cast.hpp>
-#include <boost/filesystem/path.hpp>
-
-#include <string>
+#include <alps/alea/hdf5.hpp>
+#include <alps/ngs/signal.hpp>
+#include <chrono>
+#include <filesystem>
 #include <iostream>
-#include <stdexcept>
 
-struct stop_callback {
-    stop_callback(std::size_t timelimit)
-        : limit(timelimit)
-        , start(boost::chrono::high_resolution_clock::now())
-    {}
-
-    bool operator()() {
-        return !signals.empty() 
-            || (limit.count() > 0 && boost::chrono::high_resolution_clock::now() > start + limit);
-    }
-
-    boost::chrono::duration<std::size_t> limit;
-    alps::ngs::signal signals;
-    boost::chrono::high_resolution_clock::time_point start;
-};
-
-int main(int argc, char *argv[]) {
-
+int main(int argc, char* argv[]) {
     if (argc != 3) {
-        std::cerr << "Usage: timelimit parameter-file" << std::endl;
+        std::cerr << "Usage: ising timelimit parameter-file\n";
         return EXIT_FAILURE;
     }
-
     try {
-
-        std::size_t timelimit = boost::lexical_cast<std::size_t>(argv[1]);
-        boost::filesystem::path input_file = argv[2];
-        std::string basename = std::string(argv[2]).substr(0, std::string(argv[2]).find_last_of('.'));
-        boost::filesystem::path checkpoint_file = basename + ".clone0.h5";
-        boost::filesystem::path output_file = basename +  ".out.h5";
-
-        auto parameters = load_spin_parameters(input_file.string());
-
-        ising_sim sim(parameters);
-
-        sim.run(stop_callback(timelimit));
-        // TODO: either drop checkpoint file or add support for resuming (in a second example?)
-        sim.save(checkpoint_file);
-
-        using alps::collect_results;
-        alps::results_type<ising_sim>::type results = collect_results(sim);
-
-        std::cout << results << std::endl;
-        alps::hdf5::archive ar(output_file, "w");
-        ar["/parameters"] << parameters;
-        ar["/simulation/results"] << results;
-
-    } catch (std::exception const & e) {
-        std::cerr << "Caught exception: " << e.what() << std::endl;
+        auto parameters = load_spin_parameters(argv[2]);
+        auto basename = std::filesystem::path(argv[2]).replace_extension().string();
+        auto checkpoint = basename + ".clone0.h5";
+        ising_sim simulation(parameters);
+        if (std::filesystem::exists(checkpoint)) simulation.load(checkpoint);
+        auto limit = std::chrono::seconds(std::stoul(argv[1]));
+        auto started = std::chrono::steady_clock::now();
+        alps::ngs::signal signals;
+        if (simulation.fraction_completed() < 1)
+            simulation.run([&] {
+                return !signals.empty() || (limit.count() && std::chrono::steady_clock::now() - started > limit);
+            });
+        simulation.save(checkpoint);
+        auto results = simulation.collect_results();
+        alps::hdf5::save_checkpoint(basename + ".out.h5", [&](alps::hdf5::archive& archive) {
+            archive["/parameters"] << simulation.get_parameters();
+            alps::alea::hdf5_serializer bridge(archive, "/simulation/results");
+            for (auto const& entry : results) {
+                std::cout << entry.first << ": " << entry.second << '\n';
+                serialize(bridge, entry.first, entry.second);
+            }
+        });
+    } catch (std::exception const& error) {
+        std::cerr << error.what() << '\n';
         return EXIT_FAILURE;
     }
-    return EXIT_SUCCESS;
 }

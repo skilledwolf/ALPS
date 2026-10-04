@@ -15,8 +15,10 @@
 
 #include <cmath>
 #include <sstream>
+#include <alps/alea/hdf5.hpp>
+#include <alps/hdf5/vector.hpp>
 
-ising_sim::ising_sim(parameters_type const & params)
+ising_sim::ising_sim(alps::params const & params)
     : parameters(params)
     , random(boost::mt19937((parameters.value_or("SEED", 42))), boost::uniform_real<>())
     , length(parameters["L"])
@@ -28,13 +30,9 @@ ising_sim::ising_sim(parameters_type const & params)
 {
     for(int i = 0; i < length; ++i)
         spins[i] = (random() < 0.5 ? 1 : -1);
-    measurements
-        << alps::ngs::RealObservable("Energy")
-        << alps::ngs::RealObservable("Magnetization")
-        << alps::ngs::RealObservable("Magnetization^2")
-        << alps::ngs::RealObservable("Magnetization^4")
-        << alps::ngs::RealVectorObservable("Correlations")
-    ;
+    for (auto const* name : {"Energy", "Magnetization", "Magnetization^2", "Magnetization^4"})
+        measurements.emplace(name, alps::alea::batch_acc<double>(1, 64));
+    measurements.emplace("Correlations", alps::alea::batch_acc<double>(length, 64));
 }
 
 void ising_sim::update() {
@@ -54,23 +52,21 @@ void ising_sim::measure() {
     if (sweeps > thermalization_sweeps) {
         double tmag = 0;
         double ten = 0;
-        double sign = 1;
         std::vector<double> corr(length);
         for (int i = 0; i < length; ++i) {
             tmag += spins[i];
-            sign *= spins[i];
             ten += -spins[i] * spins[ i + 1 < length ? i + 1 : 0 ];
             for (int d = 0; d < length; ++d)
                 corr[d] += spins[i] * spins[( i + d ) % length ];
         }
-        std::transform(corr.begin(), corr.end(), corr.begin(), boost::lambda::_1 / double(length));
+        for (auto& value : corr) value /= length;
         ten /= length;
         tmag /= length;
-        measurements["Energy"] << ten;
-        measurements["Magnetization"] << tmag;
-        measurements["Magnetization^2"] << tmag * tmag;
-        measurements["Magnetization^4"] << tmag * tmag * tmag * tmag;
-        measurements["Correlations"] << corr;
+        measurements["Energy"] << alps::alea::make_adapter(ten);
+        measurements["Magnetization"] << alps::alea::make_adapter(tmag);
+        measurements["Magnetization^2"] << alps::alea::make_adapter(tmag * tmag);
+        measurements["Magnetization^4"] << alps::alea::make_adapter(tmag * tmag * tmag * tmag);
+        measurements["Correlations"] << alps::alea::make_adapter(corr);
     }
 }
 
@@ -78,7 +74,7 @@ double ising_sim::fraction_completed() const {
     return (sweeps < thermalization_sweeps ? 0. : ( sweeps - thermalization_sweeps ) / double(total_sweeps));
 }
 
-bool ising_sim::run(boost::function<bool ()> const & stop_callback) {
+bool ising_sim::run(std::function<bool()> const& stop_callback) {
     bool stopped = false;
     do {
         update();
@@ -87,83 +83,55 @@ bool ising_sim::run(boost::function<bool ()> const & stop_callback) {
     return !stopped;
 }
 
-// implement a nice keys(m) function
-ising_sim::result_names_type ising_sim::result_names() const {
-    result_names_type names;
-    for(accumulators_type::const_iterator it = measurements.begin(); it != measurements.end(); ++it)
-        names.push_back(it->first);
-    return names;
+std::map<std::string, alps::alea::batch_result<double>> ising_sim::collect_results() const {
+    std::map<std::string, alps::alea::batch_result<double>> results;
+    for (auto const& entry : measurements)
+        results.emplace(entry.first, entry.second.result());
+    return results;
 }
 
-ising_sim::result_names_type ising_sim::unsaved_result_names() const {
-    return result_names_type(); 
-}
-
-ising_sim::results_type ising_sim::collect_results() const {
-    return collect_results(result_names());
-}
-
-ising_sim::results_type ising_sim::collect_results(result_names_type const & names) const {
-    results_type partial_results;
-    for(result_names_type::const_iterator it = names.begin(); it != names.end(); ++it)
-        partial_results.insert(*it, alps::mcresult(measurements[*it]));
-    return partial_results;
-}
-
-void ising_sim::save(boost::filesystem::path const & filename) const {
-    alps::hdf5::save_checkpoint(filename, [this](alps::hdf5::archive& ar) {
-        ar["/"] << *this;
+void ising_sim::save(std::string const& filename) const {
+    alps::hdf5::save_checkpoint(filename, [this](alps::hdf5::archive& archive) {
+        save(archive);
     });
 }
 
-void ising_sim::load(boost::filesystem::path const & filename) {
-    alps::hdf5::archive ar(filename);
-    ar["/"] >> *this;
+void ising_sim::load(std::string const& filename) {
+    alps::hdf5::archive archive(filename);
+    load(archive);
+    archive.close();
 }
 
-void ising_sim::save(alps::hdf5::archive & ar) const {
-    std::string context = ar.get_context();
-
-    ar["/parameters"] << parameters;
-
-    ar.set_context("/simulation/realizations/0/clones/0");
-    ar["measurements"] << measurements;
-
-    ar.set_context("checkpoint");
-    ar["sweeps"] << sweeps;
-    ar["spins"] << spins;
-
-    {
-        std::ostringstream os;
-        os << random.engine();
-        ar["engine"] << os.str();
-    }
-
-    ar.set_context(context);
+void ising_sim::save(alps::hdf5::archive& archive) const {
+    archive["/parameters"] << parameters;
+    alps::alea::hdf5_serializer bridge(archive, "/simulation/realizations/0/clones/0/measurements");
+    for (auto const& entry : measurements)
+        serialize(bridge, entry.first, entry.second);
+    archive["/simulation/checkpoint/sweeps"] << sweeps;
+    archive["/simulation/checkpoint/spins"] << spins;
+    std::ostringstream state;
+    state << random.engine();
+    archive["/simulation/checkpoint/engine"] << state.str();
 }
 
-void ising_sim::load(alps::hdf5::archive & ar) {
-    std::string context = ar.get_context();
-
-    ar["/parameters"] >> parameters;
-    length = int(parameters["L"]);
-    thermalization_sweeps = int(parameters["THERMALIZATION"]);
-    total_sweeps = int(parameters["SWEEPS"]);
-    beta = 1. / double(parameters["T"]);
-
-    ar.set_context("/simulation/realizations/0/clones/0");
-    ar["measurements"] >> measurements;
-
-    ar.set_context("checkpoint");
-    ar["sweeps"] >> sweeps;
-    ar["spins"] >> spins;
-
-    {
-        std::string state;
-        ar["engine"] >> state;
-        std::istringstream is(state);
-        is >> random.engine();
+void ising_sim::load(alps::hdf5::archive& archive) {
+    alps::params loaded;
+    archive["/parameters"] >> loaded;
+    ising_sim restored(loaded);
+    alps::alea::hdf5_serializer bridge(archive, "/simulation/realizations/0/clones/0/measurements");
+    for (auto& entry : restored.measurements) {
+        auto expected = entry.second.size();
+        deserialize(bridge, entry.first, entry.second);
+        if (entry.second.size() != expected)
+            throw std::runtime_error("invalid Ising measurement shape");
     }
-
-    ar.set_context(context);
+    archive["/simulation/checkpoint/sweeps"] >> restored.sweeps;
+    archive["/simulation/checkpoint/spins"] >> restored.spins;
+    std::string engine;
+    archive["/simulation/checkpoint/engine"] >> engine;
+    std::istringstream state(engine + " ");
+    if (!(state >> restored.random.engine()) || !state.eof()
+            || restored.spins.size() != std::size_t(restored.length))
+        throw std::runtime_error("invalid Ising checkpoint");
+    *this = std::move(restored);
 }

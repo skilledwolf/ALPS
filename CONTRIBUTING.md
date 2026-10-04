@@ -32,7 +32,7 @@ git remote add upstream https://github.com/ALPSim/ALPS.git
 ### Prerequisites
 
 - CMake ≥ 3.27, Ninja for the bundled presets, and C++17/C11 compilers such as GCC or Clang.
-- Boost ≥ 1.76 with its compiled libraries and CMake packages, HDF5 ≥ 2.0's C library, HighFive 3.3.0 (header-only), LP64 BLAS/LAPACK, and toml++ ≥ 3.4 (header-only). Use serial HDF5 for the default MPI-disabled build; see [numerical libraries](#numerical-libraries). HighFive is a private implementation dependency for building the SDK; installed SDK consumers do not need it.
+- Boost ≥ 1.76 with its compiled libraries and CMake packages, HDF5 ≥ 2.0's C library, HighFive 3.3.0 (header-only), Eigen 3.3–5.x (header-only), LP64 BLAS/LAPACK, and toml++ ≥ 3.4 (header-only). Use serial HDF5 for the default MPI-disabled build; see [numerical libraries](#numerical-libraries). HighFive is a private implementation dependency for building the SDK; installed SDK consumers do not need it.
 - For native tests (`ALPS_BUILD_TESTING=ON`): Python ≥ 3.11 for the CTest module-architecture audit; this does not require building the Python bindings.
 - For Python development: GIL-enabled CPython ≥ 3.11 in a writable Python environment. Pip installs NumPy, SciPy and Matplotlib with pyalps. Free-threaded Python is unsupported.
 - Optional: MPI and Boost.MPI for `ALPS_ENABLE_MPI=ON`; an OpenMP runtime for `ALPS_ENABLE_OPENMP=ON`; a Fortran compiler for the Fortran examples.
@@ -43,7 +43,7 @@ For example, on Ubuntu 24.04:
 
 ```sh
 sudo apt-get update
-sudo apt-get install build-essential libboost-all-dev libblas-dev liblapack-dev libtomlplusplus-dev
+sudo apt-get install build-essential libboost-all-dev libeigen3-dev libblas-dev liblapack-dev libtomlplusplus-dev
 python3 .github/scripts/prepare_dependencies.py hdf5 _build/hdf5-install
 export HDF5_ROOT="$PWD/_build/hdf5-install"
 ```
@@ -51,7 +51,7 @@ export HDF5_ROOT="$PWD/_build/hdf5-install"
 On macOS, install Apple's Command Line Tools with `xcode-select --install` if needed. If you use Homebrew:
 
 ```sh
-brew install boost hdf5 openblas tomlplusplus
+brew install boost eigen hdf5 openblas tomlplusplus
 export CMAKE_PREFIX_PATH="$(brew --prefix boost):$(brew --prefix hdf5):$(brew --prefix openblas):$(brew --prefix tomlplusplus)"
 ```
 

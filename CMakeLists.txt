@@ -83,6 +83,7 @@ if(ALPS_ENABLE_MPI)
   set(ALPS_HAVE_BOOST_MPI 1)
 endif()
 find_package(Boost 1.76 CONFIG REQUIRED GLOBAL COMPONENTS ${ALPS_BOOST_COMPONENTS})
+find_package(Eigen3 3.3...<6 CONFIG REQUIRED)
 
 # FindHDF5 supplies HDF5::HDF5 and preserves the provider's configurations.
 find_package(HDF5 2.0 MODULE REQUIRED COMPONENTS C)

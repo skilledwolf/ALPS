@@ -11,68 +11,39 @@
  *                                                                                 *
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
-#ifndef ALPS_TUTORIAL_ISING_HPP
-#define ALPS_TUTORIAL_ISING_HPP
+#pragma once
 
+#include <alps/alea.hpp>
+#include <alps/alea/checkpoint.hpp>
 #include <alps/hdf5/archive.hpp>
-#include <alps/hdf5/vector.hpp>
-
 #include <alps/params.hpp>
-#include <alps/ngs/mcobservables.hpp>
-#include <alps/ngs/mcresults.hpp>
-#include <alps/ngs/observablewrappers.hpp>
-#include <alps/ngs/numeric.hpp>
-
-#include <boost/function.hpp>
-#include <boost/filesystem/path.hpp>
+#include <boost/random/mersenne_twister.hpp>
 #include <boost/random/uniform_real.hpp>
 #include <boost/random/variate_generator.hpp>
-#include <boost/random/mersenne_twister.hpp>
-
-#include <vector>
+#include <functional>
+#include <map>
 #include <string>
+#include <vector>
 
 class ising_sim {
+public:
+    explicit ising_sim(alps::params const& parameters);
+    void update();
+    void measure();
+    double fraction_completed() const;
+    alps::params const& get_parameters() const { return parameters; }
+    bool run(std::function<bool()> const& stop);
+    std::map<std::string, alps::alea::batch_result<double>> collect_results() const;
+    void save(std::string const& filename) const;
+    void load(std::string const& filename);
+    void save(alps::hdf5::archive& archive) const;
+    void load(alps::hdf5::archive& archive);
 
-    typedef alps::mcobservables accumulators_type;
-
-    public:
-
-        typedef alps::params parameters_type;
-        typedef std::vector<std::string> result_names_type;
-        typedef alps::mcresults results_type;
-
-        ising_sim(parameters_type const & params);
-
-        void update();
-        void measure();
-        double fraction_completed() const;
-        bool run(boost::function<bool ()> const & stop_callback);
-
-        result_names_type result_names() const;
-        result_names_type unsaved_result_names() const;
-        results_type collect_results() const;
-        results_type collect_results(result_names_type const & names) const;
-
-        void save(boost::filesystem::path const & filename) const;
-        void load(boost::filesystem::path const & filename);
-        void save(alps::hdf5::archive & ar) const;
-        void load(alps::hdf5::archive & ar);
-
-    protected:
-
-        parameters_type parameters;
-        boost::variate_generator<boost::mt19937, boost::uniform_real<> > random;
-        accumulators_type measurements;
-
-    private:
-        
-        int length;
-        int sweeps;
-        int thermalization_sweeps;
-        int total_sweeps;
-        double beta;
-        std::vector<int> spins;
+private:
+    alps::params parameters;
+    boost::variate_generator<boost::mt19937, boost::uniform_real<>> random;
+    std::map<std::string, alps::alea::batch_acc<double>> measurements;
+    int length, sweeps, thermalization_sweeps, total_sweeps;
+    double beta;
+    std::vector<int> spins;
 };
-
-#endif

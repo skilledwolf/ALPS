@@ -48,3 +48,18 @@ endforeach()
 
 add_executable(dumpbench dumpbench.C)
 target_link_libraries(dumpbench PRIVATE ALPS::alps)
+
+add_executable(alps_alea_statistics statistics.cpp)
+target_link_libraries(alps_alea_statistics PRIVATE ALPS::statistics ALPS::hdf5)
+alps_add_test(alps_alea_statistics)
+set_property(TEST alps_alea_statistics PROPERTY LABELS "alea;hdf5")
+
+add_executable(alps_alea_ising_checkpoint
+  "${PROJECT_SOURCE_DIR}/tutorials/10-ngs/1_accumulator_only/checkpoint.cpp"
+  "${PROJECT_SOURCE_DIR}/tutorials/10-ngs/1_accumulator_only/ising.cpp")
+target_include_directories(alps_alea_ising_checkpoint PRIVATE
+  "${PROJECT_SOURCE_DIR}/tutorials/10-ngs/1_accumulator_only")
+target_link_libraries(alps_alea_ising_checkpoint PRIVATE
+  ALPS::statistics ALPS::params ALPS::hdf5)
+alps_add_test(alps_alea_ising_checkpoint)
+set_property(TEST alps_alea_ising_checkpoint PROPERTY LABELS "alea;hdf5;tutorial")
