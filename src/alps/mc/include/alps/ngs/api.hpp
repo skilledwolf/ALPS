@@ -19,10 +19,6 @@
 #include <alps/ngs/mcresults.hpp>
 #include <alps/ngs/mcobservables.hpp>
 
-#ifdef ALPS_NGS_USE_NEW_ALEA
-    #include <alps/ngs/accumulator.hpp>
-#endif
-
 #include <boost/filesystem/path.hpp>
 
 #include <string>
@@ -64,11 +60,6 @@ namespace alps {
     template<typename S> double fraction_completed(S const & s) {
         return s.fraction_completed();
     }
-
-    #ifdef ALPS_NGS_USE_NEW_ALEA
-        ALPS_DECL void save_results(alps::accumulator::accumulator_set const & observables, params const & params, boost::filesystem::path const & filename, std::string const & path);
-        ALPS_DECL void save_results(alps::accumulator::result_set const & results, params const & params, boost::filesystem::path const & filename, std::string const & path);
-    #endif
 
     ALPS_DECL void save_results(mcresults const & results, params const & params, boost::filesystem::path const & filename, std::string const & path);
 

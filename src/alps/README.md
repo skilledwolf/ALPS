@@ -18,7 +18,8 @@ Its [serialization contracts](alea/modern-alea.md) and the accumulator-only Isin
 pilot cover results, complex covariance and actual batch-accumulator continuation.
 The thin HDF5 adapter shares the canonical primitive mappings. Legacy
 `Observable`/`ObservableSet` APIs remain in `ALPS::alps` while active clients migrate.
-The old `ALPS_NGS_USE_NEW_ALEA` experiment is separate from modern ALEA.
+The unsupported NGS backend selector and wrappers are removed. The scalar
+feature-stack API remains for its active Python and SDK clients.
 Historical reconciliation probes disabled ALEA; they do not validate this import.
 
 ## Consolidation acceptance contracts
@@ -111,7 +112,7 @@ Each module uses `include/`, `src/` and `tests/` where applicable. Public includ
 | `graph/`, `lattice/`, `model/` | Graph helpers, lattice definitions and physical models | `ALPS::headers`, `ALPS::alps` |
 | `random/` | Random generators and their factories | `ALPS::alps` |
 | `alea/` | Legacy observables and modern Eigen-based statistical estimators | `ALPS::alps`, `ALPS::statistics` |
-| `accumulators/` | Retained experimental NGS backend | `ALPS::alps` |
+| `accumulators/` | Scalar feature-stack accumulator headers | `ALPS::headers` |
 | `mc/`, `scheduler/`, `parapack/` | Simulation API, execution and scheduling | `ALPS::alps` |
 | `fortran/` | C++ bridge with public headers in `include/alps/fortran/` | `ALPS::fortran` |
 | `solvers/` | Shared `<alps/solvers.hpp>` declarations for MaxEnt and CT-QMC | `ALPS::solver_headers` |

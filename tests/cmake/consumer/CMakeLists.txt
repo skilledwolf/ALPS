@@ -51,6 +51,13 @@ else()
      OR EXISTS "${expected_prefix}/include/alps/python/save_observable_to_hdf5.hpp")
     message(FATAL_ERROR "The C++ SDK still installs Python-owned headers")
   endif()
+  foreach(removed_header IN ITEMS alps/ngs/accumulator.hpp alps/ngs/accumulator/accumulator.hpp
+                                  alps/ngs/accumulator/wrappers.hpp alps/ngs/accumulator/feature/weight.hpp
+                                  alps/ngs/accumulator/feature/weight_holder.hpp)
+    if(EXISTS "${expected_prefix}/include/${removed_header}")
+      message(FATAL_ERROR "The SDK still installs the removed experimental backend: ${removed_header}")
+    endif()
+  endforeach()
   foreach(private_directory IN ITEMS alps/utilities alps/hdf5/include alps/hdf5/src
                                      alps/hdf5/tests alps/params/include alps/params/src
                                      alps/common/include alps/common/src alps/common/tests alps/runtime
