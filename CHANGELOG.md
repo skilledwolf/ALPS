@@ -6,6 +6,14 @@ User-facing changes and migration notes are recorded here, starting with the bui
 
 ### Changed
 
+- Expose modern real/complex batch ALEA in Python and migrate the pure Python
+  Ising tutorial to the shared native checkpoint codec and publication helper.
+  Reject malformed RNG checkpoints without changing the stream. Fix squared
+  batch-weight overflow and reject wrong-sized samples before changing state;
+  remove the unsafe autocorrelation accumulator/result merge.
+- Remove the unsupported `ALPS_NGS_USE_NEW_ALEA` backend selector, unused wrappers
+  and unregistered tests; preserve the active scalar feature-stack API.
+
 - Consolidate ALPSCore's Eigen-based modern ALEA as independent `ALPS::statistics`,
   with one canonical HDF5 adapter and explicit result versions/kinds. Add actual
   resumable batch-accumulator checkpoints and migrate the accumulator-only Ising

@@ -193,6 +193,11 @@ NB_MODULE(pyngshdf5_c, m) {
         });
     m.def("register_archive_exception_type",
           &alps::detail::register_exception_type);
+    m.def("save_checkpoint", [](std::string const& filename, nb::object const& save) {
+        alps::hdf5::save_checkpoint(filename, [&](auto& archive) {
+            save(pyalps::owned_native_archive(archive));
+        });
+    }, nb::arg("filename"), nb::arg("save"));
     nb::class_<alps::hdf5::archive>(m, "NativeArchive")
         .def(nb::init<std::string, std::string>())
         .def_prop_ro("filename", &alps::hdf5::archive::get_filename)

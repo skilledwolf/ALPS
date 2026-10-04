@@ -7,6 +7,7 @@
 // SPDX-License-Identifier: MIT
 #include <nanobind/nanobind.h>
 #include <nanobind/ndarray.h>
+#include <nanobind/eigen/dense.h>
 #include <nanobind/stl/pair.h>
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/vector.h>
@@ -14,15 +15,19 @@
 #include <alps/alea/mcanalyze.hpp>
 #include <alps/alea/mcdata.hpp>
 #include <alps/alea/value_with_error.hpp>
+#include <alps/alea/checkpoint.hpp>
+#include <alps/alea/hdf5.hpp>
 #include <alps/hdf5.hpp>
 #include <alps/numeric/vector_functions.hpp>
 #include "numpy_compat.hpp"
 #include "save_observable_to_hdf5.hpp"
+#include "archive_savable.hpp"
 #include <alps/random.h>
 #include <cstddef>
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <valarray>
 #include <vector>
@@ -174,9 +179,75 @@ nb::object ts_to_numpy_vector_rows(TS const & ts) {
     }
     return alps::python::make_numpy_array<double>(std::move(flat), {nrows, ncols});
 }
+template<class T> void bind_statistics_io(nb::class_<T>& cls) {
+    cls.def("save", [](T const& value, nb::handle object, std::string const& path) {
+        pyalps::with_native_archive(object, [&](auto& archive) {
+            alps::alea::hdf5_serializer bridge(archive, path);
+            serialize(bridge, "", value);
+        });
+    }, nb::arg("archive"), nb::arg("path") = "")
+    .def("load", [](T& value, nb::handle object, std::string const& path) {
+        pyalps::with_native_archive(object, [&](auto& archive) {
+            alps::alea::hdf5_serializer bridge(archive, path);
+            deserialize(bridge, "", value);
+        });
+    }, nb::arg("archive"), nb::arg("path") = "")
+    .def_static("read", [](nb::handle object, std::string const& path) {
+        T value;
+        pyalps::with_native_archive(object, [&](auto& archive) {
+            alps::alea::hdf5_serializer bridge(archive, path);
+            deserialize(bridge, "", value);
+        });
+        return value;
+    }, nb::arg("archive"), nb::arg("path") = "");
+    pyalps::mark_archive_savable(cls);
+}
+
+template<class T> void bind_batches(nb::module_& module, char const* accumulator_name, char const* result_name) {
+    using A = alps::alea::batch_acc<T>;
+    using R = alps::alea::batch_result<T>;
+    nb::class_<R> result(module, result_name);
+    // Results are constructed by result() or read(), so Python never receives
+    // the Core default result with an absent store.
+    result.def_prop_ro("count", &R::count)
+        .def_prop_ro("mean", [](R const& value) { return value.mean().eval(); })
+        .def_prop_ro("error", [](R const& value) { return value.stderror().eval(); })
+        .def_prop_ro("variance", [](R const& value) { return value.template var<>().eval(); })
+        .def_prop_ro("covariance", [](R const& value) { return value.template cov<>(); })
+        .def_prop_ro("batch_sums", [](R const& value) { return value.store().batch().transpose().eval(); })
+        .def_prop_ro("batch_counts", [](R const& value) { return value.store().count(); })
+        .def_prop_ro("count2", &R::count2)
+        .def_prop_ro("observations", &R::observations)
+        .def("__repr__", &stream_repr<R>);
+    bind_statistics_io(result);
+    nb::class_<A> accumulator(module, accumulator_name);
+    accumulator.def("__init__", [](A* self, size_t size, size_t batches, uint64_t base_size) {
+            if (!size) throw std::invalid_argument("ALEA requires at least one component");
+            new (self) A(size, batches, base_size);
+        }, nb::arg("size") = 1, nb::arg("num_batches") = 64, nb::arg("base_size") = 1)
+        .def_prop_ro("size", &A::size)
+        .def_prop_ro("count", &A::count)
+        .def("reset", &A::reset)
+        .def("result", &A::result)
+        .def("__lshift__", [](A& self, nb::handle sample) -> A& {
+            auto array = alps::python::numpy_module().attr("asarray")(sample);
+            auto kind = nb::cast<std::string>(array.attr("dtype").attr("kind"));
+            if (std::string("biufc").find(kind) == std::string::npos
+                    || (std::is_same_v<T, double> && kind == "c"))
+                throw nb::type_error("ALEA expects a numeric sample of the accumulator's value type");
+            auto values = alps::python::as_contiguous<T>(array);
+            if (values.ndim() != 1) throw nb::value_error("ALEA samples must be scalars or one-dimensional arrays");
+            typename alps::alea::eigen<T>::const_col_map vector(values.data(), values.shape(0));
+            self << alps::alea::make_adapter(vector);
+            return self;
+        }, nb::rv_policy::none);
+    bind_statistics_io(accumulator);
+}
 } // namespace
 NB_MODULE(pyalea_c, m) {
     m.doc() = "ALPS alea bindings (nanobind)";
+    bind_batches<double>(m, "BatchAccumulator", "BatchResult");
+    bind_batches<std::complex<double>>(m, "ComplexBatchAccumulator", "ComplexBatchResult");
     // ─── scalar-valarray observables ─────────────────────────────────
     using RealVecObs = alps::alea::WrappedValarrayObservable<alps::RealVectorObservable>;
     using RealVecTsObs = alps::alea::WrappedValarrayObservable<alps::RealVectorTimeSeriesObservable>;

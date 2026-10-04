@@ -26,6 +26,7 @@ This module contains classes for the evaluation of Monte Carlo measurements:
 
 from .cxx.pymcdata_c import *
 from .cxx.pyalea_c import RealObservable, RealVectorObservable, RealTimeSeriesObservable, RealVectorTimeSeriesObservable
+from .cxx.pyalea_c import BatchAccumulator, BatchResult, ComplexBatchAccumulator, ComplexBatchResult
 from .cxx.pyalea_c import MCScalarTimeseries, MCScalarTimeseriesView, MCVectorTimeseries, MCVectorTimeseriesView, ValueWithError, StdPairDouble, size, mean, variance, integrated_autocorrelation_time, running_mean, reverse_running_mean
 from . import alea_detail as detail
 import numpy
@@ -108,4 +109,3 @@ returns: A float or numpyarray (depending on the dimension of the timeseries) wi
     return detail.binning_error(timeseries)
   if selector == "uncorrelated":
     return detail.uncorrelated_error(timeseries)
-

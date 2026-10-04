@@ -12,7 +12,7 @@ public:
     hdf5_serializer(hdf5::archive& archive, std::string path)
         : archive_(archive), path_(archive.complete_path(std::move(path))) {}
     void enter(std::string const& group) override {
-        validate_key(group);
+        if (!group.empty()) validate_key(group); // Empty group denotes the current path.
         groups_.push_back(group);
     }
     void exit() override {

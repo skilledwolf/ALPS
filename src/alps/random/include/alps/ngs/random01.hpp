@@ -21,6 +21,7 @@
 
 #include <string>
 #include <sstream>
+#include <stdexcept>
 
 namespace alps {
 
@@ -29,17 +30,20 @@ namespace alps {
             : boost::variate_generator<boost::mt19937, boost::uniform_01<double> >(boost::mt19937(seed), boost::uniform_01<double>())
         {}
 
-        void save(alps::hdf5::archive & ar) const { // TODO: move this to hdf5 archive!
+        void save(alps::hdf5::archive & ar) const {
             std::ostringstream os;
             os << this->engine();
             ar["engine"] << os.str();
         }
 
-        void load(alps::hdf5::archive & ar) { // TODO: move this to hdf5 archive!
+        void load(alps::hdf5::archive & ar) {
             std::string state;
             ar["engine"] >> state;
-            std::istringstream is(state);
-            is >> this->engine();
+            auto restored = this->engine();
+            std::istringstream is(state + " ");
+            if (!(is >> restored) || !is.eof())
+                throw std::runtime_error("invalid random01 checkpoint");
+            this->engine() = restored;
         }
     };
 

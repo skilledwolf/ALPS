@@ -11,33 +11,28 @@
 
 import pyalps
 import pyalps.hdf5 as hdf5
-import pyalps.ngs as ngs # move mcbase usw to pyalps.montecarlo
+from pyalps.alea import BatchAccumulator
+from pyalps.ngs import params, random01
+from contextlib import nullcontext
 import numpy as np
-import sys
-import traceback
+
+
 class sim:
 
-    # TODO: how do we deal with typedefs?
-    def __init__(self, params):
-        self.parameters = ngs.params(params)
-        self.random = ngs.random01(self.parameters.valueOrDefault('SEED', 42))
-        self.measurements = {
-            'Energy':  ngs.createRealObservable('Energy'),
-            'Magnetization': ngs.createRealObservable('Magnetization'),
-            'Magnetization^2': ngs.createRealObservable('Magnetization^2'),
-            'Magnetization^4': ngs.createRealObservable('Magnetization^4'),
-            'Correlations': ngs.createRealVectorObservable('Correlations')
-        }
-
+    def __init__(self, parameters):
+        self.parameters = params(parameters)
+        self.random = random01(self.parameters.valueOrDefault('SEED', 42))
         self.length = int(self.parameters['L'])
         self.sweeps = 0
         self.thermalization_sweeps = int(self.parameters['THERMALIZATION'])
         self.total_sweeps = int(self.parameters['SWEEPS'])
         self.beta = 1. / float(self.parameters['T'])
         self.spins = np.array([(-x if self.random() < 0.5 else x) for x in np.ones(self.length)])
-        
-        self.realization = '0'
-        self.clone = '0'
+        self.measurements = {
+            name: BatchAccumulator() for name in
+            ('Energy', 'Magnetization', 'Magnetization^2', 'Magnetization^4')
+        }
+        self.measurements['Correlations'] = BatchAccumulator(self.length)
 
     def update(self):
         for j in range(self.length):
@@ -53,11 +48,9 @@ class sim:
         if self.sweeps > self.thermalization_sweeps:
             tmag = 0
             ten = 0
-            sign = 1
             corr = np.zeros(self.length)
             for i in range(self.length):
                 tmag += self.spins[i]
-                sign *= self.spins[i]
                 ten += -self.spins[i] * self.spins[i + 1 if i + 1 < self.length else 0]
             for d in range(self.length):
                 corr[d] = np.inner(self.spins, np.roll(self.spins, d)) / float(self.length)
@@ -73,76 +66,52 @@ class sim:
         return 0 if self.sweeps < self.thermalization_sweeps else (self.sweeps - self.thermalization_sweeps) / float(self.total_sweeps)
 
     def run(self, stopCallback):
-        stopped = False
-        while True:
+        while self.fraction_completed() < 1.:
             self.update()
             self.measure()
-            stopped = stopCallback()
-            if (stopped or self.fraction_completed() >= 1.):
-                return not stopped
+            if stopCallback():
+                return False
+        return True
 
-    def result_names(self):
-        return self.measurements.keys()
-
-    def unsaved_result_names(self):
-        return self.result_names_type(self)
-
-    def collectResults(self, names = None):
-        if names == None:
-            names = self.result_names()
-        partial_results = {}
-        for name in names:
-            partial_results[name] = ngs.observable2result(self.measurements[name])
-        return partial_results
+    def collectResults(self):
+        return {name: accumulator.result() for name, accumulator in self.measurements.items()}
 
     def save(self, ar):
-    
-        try:
+        # Atomic checkpoint callbacks already own a NativeArchive. Ordinary
+        # Python archives transfer ownership once for the complete operation.
+        with ar.native() if isinstance(ar, hdf5.archive) else nullcontext(ar) as native:
+            native['/parameters'] = self.parameters
+            base = '/simulation/realizations/0/clones/0'
+            for name, accumulator in self.measurements.items():
+                accumulator.save(native, base + '/measurements/' + pyalps.hdf5_name_encode(name))
+            native[base + '/checkpoint/sweeps'] = self.sweeps
+            native[base + '/checkpoint/spins'] = self.spins
+            native[base + '/checkpoint'] = self.random
 
-            ar["/parameters"] = self.parameters
-            context = ar.context
-            ar.set_context("/simulation/realizations/0/clones/0")
-            for name, observable in self.measurements.items():
-                ar["measurements/" + pyalps.hdf5_name_encode(name)] = observable
-
-            ar.set_context("checkpoint")
-            ar["sweeps"] = self.sweeps
-            ar["spins"] = self.spins
-            # random01.save() writes its state under <context>/engine, so it
-            # takes the archive directly -- ar["engine"] = self.random would
-            # nest it a second level down at <context>/engine/engine.
-            self.random.save(ar)
-
-            ar.set_context(context);
-
-        except:
-            traceback.print_exc(file=sys.stderr)
-            raise
-
-    def load(self,  ar):
-
-        try:
-
-            self.parameters.load(ar, "/parameters")
-
-            context = ar.context
-            ar.set_context("/simulation/realizations/0/clones/0")
-            # Each observable has an explicit scientific checkpoint field.
-            for name, observable in self.measurements.items():
-                observable.load(ar, "measurements/" + pyalps.hdf5_name_encode(name))
-
-            self.length = int(self.parameters["L"])
-            self.thermalization_sweeps = int(self.parameters["THERMALIZATION"])
-            self.total_sweeps = int(self.parameters["SWEEPS"])
-            self.beta = 1. / float(self.parameters["T"])
-
-            ar.set_context("checkpoint")
-            self.sweeps = int(ar["sweeps"])
-            self.spins = ar["spins"]
-            self.random.load(ar)
-
-            ar.set_context(context)
-
-        except:
-            traceback.print_exc(file=sys.stderr)
-            raise
+    def load(self, ar):
+        with ar.native() if isinstance(ar, hdf5.archive) else nullcontext(ar) as native:
+            restored = sim(dict(params(native, '/parameters')))
+            base = '/simulation/realizations/0/clones/0'
+            for name, accumulator in restored.measurements.items():
+                size = accumulator.size
+                accumulator.load(native, base + '/measurements/' + pyalps.hdf5_name_encode(name))
+                if accumulator.size != size:
+                    raise ValueError('invalid Ising measurement shape')
+            sweeps = native[base + '/checkpoint/sweeps']
+            restored.spins = native[base + '/checkpoint/spins']
+            if (not isinstance(sweeps, np.integer) or sweeps < 0
+                    or sweeps > restored.thermalization_sweeps + restored.total_sweeps
+                    or restored.spins.shape != (restored.length,)
+                    or not np.all(np.abs(restored.spins) == 1)):
+                raise ValueError('invalid Ising checkpoint')
+            restored.sweeps = int(sweeps)
+            count = max(restored.sweeps - restored.thermalization_sweeps, 0)
+            if any(accumulator.count != count for accumulator in restored.measurements.values()):
+                raise ValueError('Ising measurement count does not match checkpoint progress')
+            context = native.context
+            try:
+                native.set_context(base + '/checkpoint')
+                restored.random.load(native)
+            finally:
+                native.set_context(context)
+        self.__dict__ = restored.__dict__

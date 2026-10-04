@@ -14,6 +14,12 @@ import posixpath
 import h5py
 
 from .cxx.pyngshdf5_c import NativeArchive, register_archive_exception_type
+from .cxx.pyngshdf5_c import save_checkpoint as _save_checkpoint
+
+
+def save_checkpoint(filename, save):
+    """Publish a closed native snapshot; preserve the previous file on failure."""
+    _save_checkpoint(os.fspath(filename), save)
 
 
 class ArchiveError(Exception): pass

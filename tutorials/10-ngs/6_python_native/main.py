@@ -11,7 +11,10 @@
 
 import pyalps.hdf5 as hdf5
 import pyalps
-import sys, time, traceback, getopt
+import getopt
+from pathlib import Path
+import sys
+import time
 
 import ising
 
@@ -20,15 +23,11 @@ if __name__ == '__main__':
     try:
         optlist, positional = getopt.getopt(sys.argv[1:], 'T:c')
         args = dict(optlist)
-        try:
-            limit = float(args['-T'])
-        except KeyError:
-            limit = 0
-        resume = True if 'c' in args else False
+        limit = float(args.get('-T', 0))
+        resume = '-c' in args
         outfile = positional[0]
-    except (IndexError, getopt.GetoptError):
-        print('usage: [-T timelimit] [-c] outputfile')
-        exit()
+    except (IndexError, ValueError, getopt.GetoptError):
+        sys.exit('usage: [-T timelimit] [-c] outputfile')
 
     sim = ising.sim({
         'L': 100,
@@ -37,26 +36,26 @@ if __name__ == '__main__':
         'T': 2
     })
 
-    if resume:
-        try:
-            with hdf5.archive(outfile[0:outfile.rfind('.h5')] + '.clone0.h5', 'r') as ar:
-                sim.load(ar)
-        except hdf5.ArchiveNotFound: pass
+    checkpoint = Path(outfile).with_suffix('.clone0.h5')
+    if resume and checkpoint.exists():
+        with hdf5.archive(checkpoint, 'r') as ar:
+            sim.load(ar)
 
     if limit == 0:
         sim.run(lambda: False)
     else:
-        start = time.time()
-        sim.run(lambda: time.time() > start + float(limit))
+        start = time.monotonic()
+        sim.run(lambda: time.monotonic() > start + limit)
 
-    with hdf5.archive(outfile[0:outfile.rfind('.h5')] + '.clone0.h5', 'w') as ar:
-        ar['/'] = sim
+    hdf5.save_checkpoint(str(checkpoint), sim.save)
 
-    results = sim.collectResults() # TODO: how should we do that?
+    results = sim.collectResults()
     for key, value in results.items():
-        print("{}: {}".format(key, value))
+        print(f'{key}: {value.mean} +/- {value.error}')
 
-    with hdf5.archive(outfile, 'w') as ar:
+    def save_results(ar):
         ar['/parameters'] = sim.parameters
         for name, value in results.items():
             ar['/simulation/results/' + pyalps.hdf5_name_encode(name)] = value
+
+    hdf5.save_checkpoint(outfile, save_results)

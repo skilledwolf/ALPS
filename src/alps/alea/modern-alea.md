@@ -26,4 +26,21 @@ validate that state before replacement. Only the cursor's level and position
 are stored; its other fields are derived. Merging unrelated time series into a
 resumable batch accumulator is unsupported; variance and covariance estimators
 retain weighted result merging. Other accumulator types have no
-checkpoint overload: saving a result is not a resumable checkpoint.
+checkpoint overload: saving a result is not a resumable checkpoint. Autocorrelation
+results retain their reduction API; inserting a result into a live autocorrelation
+accumulator is unsupported because it cannot reconstruct the partial hierarchy.
+
+Python exposes `pyalps.alea.BatchAccumulator` and `ComplexBatchAccumulator` with
+the same native estimators and checkpoint codecs. Samples are scalar or 1D numeric
+arrays; means and errors are always vectors, including one-component results.
+`result()` exports a snapshot. `save(archive, path)` / `load(archive, path)` store
+and replace complete state; `BatchAccumulator.read(archive, path)` and
+`BatchResult.read(archive, path)` construct only after a successful read. Returned
+NumPy arrays own their data. Batch sums have `[slots, components]` axes.
+
+`pyalps.hdf5.save_checkpoint(filename, callback)` calls the existing native
+publication helper. The callback receives a `NativeArchive`; retained callback
+views close before publication, and a failed save preserves the previous file.
+The pure Python Ising tutorial uses this path and checks complete restart against
+an uninterrupted spin stream. Both Python and C++ pilots use one canonical
+representation for real and complex batch state.
