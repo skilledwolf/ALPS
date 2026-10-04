@@ -6,6 +6,10 @@ User-facing changes and migration notes are recorded here, starting with the bui
 
 ### Changed
 
+- Add componentwise real/imaginary ratio propagation for native elliptic ALEA
+  results, retaining numerator/denominator covariance with linear storage.
+  Expose squared weights and ordinary standard errors through the existing
+  heterogeneous result facade; reject invalid ratio domains without mutation.
 - Migrate standalone CT-INT to native ALEA batches and MPI reduction. Normalize
   sign-weighted W and density estimates using joint numerator/sign batches;
   retain partial replica bins and unsigned diagnostics. Write versioned batch

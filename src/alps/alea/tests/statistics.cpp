@@ -24,6 +24,10 @@ template<class F> void rejects(F operation) {
     try { operation(); } catch (std::exception const&) { failed = true; }
     require(failed, "invalid statistics operation was accepted");
 }
+template<class E, class F> void throws_estimate(F operation) {
+    try { operation(); } catch (E const&) { return; }
+    throw std::runtime_error("statistics accessor did not report its estimate limitation");
+}
 
 // A two-participant sum reducer that deliberately defers writes until commit.
 // The peer's primitive contributions are recorded separately from the target.
@@ -593,6 +597,150 @@ signed_batch_oracle signed_oracle(aa::batch_data<double> const& data) {
     expected.covariance /= expected.count - expected.count2/expected.count;
     return expected;
 }
+void elliptic_signed_ratios(std::string const& filename) {
+    using complex = std::complex<double>;
+    using accumulator = aa::var_acc<complex,aa::elliptic_var>;
+    accumulator left(2,3), right(2,3);
+    std::vector<bin<complex>> bins;
+    for (int run=0; run<2; ++run) {
+        for (size_t i=0; i<(run ? 53 : 19); ++i) {
+            if (i%3 == 0) bins.emplace_back();
+            auto sign = i%5 == 0 ? -1. : 1.;
+            std::vector<complex> value{{sign*(1. + .125*(i%7) + .5*run),sign},
+                                      {sign*(-2. + .0625*(i%9) - .25*run),sign}};
+            (run ? right : left) << value;
+            ++bins.back().count;
+            for (size_t j=0; j<2; ++j) bins.back().sum[j] += value[j];
+        }
+    }
+    auto maxima = dimensions(2); maxima.insert(maxima.end(), {0,0});
+    auto pooled = reduced(left.result(),right.result(),maxima);
+    pooled = roundtrip(filename,"elliptic-signed-joint",pooled);
+    auto before = pooled;
+    auto ratio = aa::ratio_real_imag(pooled);
+    require(pooled == before && ratio.count() == pooled.count() && ratio.count2() == pooled.count2(),
+            "componentwise ratio changed its joint state or bin weights");
+    for (size_t j=0; j<2; ++j) {
+        aa::batch_data<double> pairs(2,bins.size());
+        for (size_t i=0; i<bins.size(); ++i) {
+            pairs.count()(i) = bins[i].count;
+            pairs.batch()(0,i) = bins[i].sum[j].real();
+            pairs.batch()(1,i) = bins[i].sum[j].imag();
+        }
+        auto oracle = signed_oracle(pairs);
+        Eigen::Vector2d gradient(1./oracle.mean(1), -oracle.mean(0)/std::pow(oracle.mean(1),2));
+        auto variance = double((gradient.transpose()*oracle.covariance*gradient)(0,0));
+        auto error = std::sqrt(variance*oracle.count2/(oracle.count*oracle.count));
+        require(std::abs(ratio.mean()(j)-oracle.mean(0)/oracle.mean(1)) < 1e-13
+             && std::abs(ratio.var()(j)-variance) < 1e-11
+             && std::abs(ratio.stderror()(j)-error) < 1e-12,
+                "componentwise signed ratio disagrees with independent raw covariance");
+        auto diagonal_only = gradient(0)*gradient(0)*oracle.covariance(0,0)
+                           + gradient(1)*gradient(1)*oracle.covariance(1,1);
+        require(diagonal_only > 2*variance, "elliptic fixture does not distinguish sign covariance");
+    }
+    roundtrip(filename,"elliptic-signed-ratio",ratio);
+
+    accumulator empty(2), single(1), zero_sign(1), constant(2);
+    auto unavailable = aa::ratio_real_imag(empty.result());
+    require(unavailable.size() == 2 && unavailable.count() == 0 && unavailable.count2() == 0.
+         && unavailable.mean().array().isNaN().all() && unavailable.stderror().array().isNaN().all(),
+            "empty ratio lost its shape or invented an estimate");
+    single << complex(4.,-1.);
+    unavailable = aa::ratio_real_imag(single.result());
+    require(unavailable.count() == 1 && unavailable.mean()(0) == -4.
+         && std::isnan(unavailable.stderror()(0)), "single observation acquired an independent error");
+    zero_sign << complex(2.,1.) << complex(-3.,-1.);
+    auto zero = zero_sign.result();
+    throws_estimate<std::domain_error>([&] { aa::ratio_real_imag(zero); });
+    require(zero == zero_sign.result(), "undefined ratio changed the original result");
+    for (size_t i=0; i<193; ++i) {
+        auto sign = i%4 == 0 ? -1. : 1.;
+        constant << std::vector<complex>{{2*sign,sign},{3.,1.}};
+    }
+    auto exact = aa::ratio_real_imag(constant.result());
+    require(exact.mean()(0) == 2. && exact.mean()(1) == 3.
+         && exact.stderror().isZero(1e-7), "constant correlated ratios acquired spurious errors");
+
+    aa::var_data<complex,aa::elliptic_var> data(1);
+    data.count() = 100; data.count2() = 100.; data.data()(0) = complex(2.,1.);
+    auto epsilon = std::numeric_limits<double>::epsilon();
+    data.data2()(0) = aa::complex_op<double>(4.-4*epsilon,2.,2.,1.);
+    auto clamped = aa::ratio_real_imag(aa::var_result<complex,aa::elliptic_var>(data));
+    require(clamped.var()(0) == 0., "cancelled signed variance was not bounded by roundoff");
+    data.data2()(0).rere() = 3.;
+    throws_estimate<std::domain_error>([&] {
+        aa::ratio_real_imag(aa::var_result<complex,aa::elliptic_var>(data));
+    });
+    data.data()(0) = complex(2e-12,1e-12);
+    data.data2()(0) = aa::complex_op<double>(4e-24,1e-24,1e-24,1e-24);
+    auto scaled = aa::ratio_real_imag(aa::var_result<complex,aa::elliptic_var>(data));
+    require(scaled.mean()(0) == 2. && std::abs(scaled.var()(0)-4.) < 1e-14,
+            "small denominator changed the componentwise ratio propagation scale");
+    data.data()(0) = complex(1e154,1e154);
+    data.data2()(0) = aa::complex_op<double>(1e308,1e308,1e308,1e308);
+    auto cancelling = aa::ratio_real_imag(aa::var_result<complex,aa::elliptic_var>(data));
+    require(cancelling.mean()(0) == 1. && cancelling.var()(0) == 0.
+         && cancelling.stderror()(0) == 0., "finite correlated covariance overflowed before cancellation");
+    data.data()(0) = complex(1e200,1.);
+    data.data2()(0) = aa::complex_op<double>(0.,0.,0.,0.);
+    auto large = aa::ratio_real_imag(aa::var_result<complex,aa::elliptic_var>(data));
+    require(large.mean()(0) == 1e200 && large.var()(0) == 0. && large.stderror()(0) == 0.,
+            "zero covariance acquired overflow from a large finite ratio");
+    data.data()(0) = complex(std::numeric_limits<double>::max(),.5);
+    throws_estimate<std::overflow_error>([&] {
+        aa::ratio_real_imag(aa::var_result<complex,aa::elliptic_var>(data));
+    });
+    data.data()(0) = complex(.5,.25);
+    data.data2()(0).rere() = std::numeric_limits<double>::max()/2;
+    throws_estimate<std::overflow_error>([&] {
+        aa::ratio_real_imag(aa::var_result<complex,aa::elliptic_var>(data));
+    });
+    data.data()(0) = complex(2.,1.);
+    data.data2()(0).rere() = std::numeric_limits<double>::infinity();
+    throws_estimate<std::domain_error>([&] {
+        aa::ratio_real_imag(aa::var_result<complex,aa::elliptic_var>(data));
+    });
+    data.data2()(0).rere() = -1.;
+    throws_estimate<std::domain_error>([&] {
+        aa::ratio_real_imag(aa::var_result<complex,aa::elliptic_var>(data));
+    });
+    throws_estimate<aa::finalized_accumulator>([&] {
+        aa::ratio_real_imag(aa::var_result<complex,aa::elliptic_var>());
+    });
+    aa::result ellipse(pooled);
+    require(ellipse.count2() == pooled.count2(), "elliptic wrapper lost sample weights");
+    throws_estimate<aa::estimate_type_mismatch>([&] { ellipse.stderror<complex>(); });
+}
+template<class R> void wrapped_result(R const& value) {
+    using T = typename aa::traits<R>::value_type;
+    aa::result wrapped(value);
+    require(wrapped.count() == value.count() && wrapped.count2() == value.count2()
+         && wrapped.mean<T>() == value.mean() && wrapped.stderror<T>().isApprox(value.stderror(),1e-13),
+            "native result wrapper changed its typed estimate");
+}
+template<class T> void result_accessors() {
+    aa::mean_acc<T> mean(2);
+    aa::var_acc<T> variance(2,3);
+    aa::cov_acc<T> covariance(2,3);
+    aa::batch_acc<T> batch(2,8,3);
+    aa::autocorr_acc<T> autocorr(2,3);
+    for (size_t i=0; i<53; ++i) {
+        auto value = reduction_sample<T>(i,0);
+        mean << value; variance << value; covariance << value; batch << value; autocorr << value;
+    }
+    wrapped_result(variance.result()); wrapped_result(covariance.result());
+    wrapped_result(batch.result()); wrapped_result(autocorr.result());
+    aa::result mean_only(mean.result());
+    throws_estimate<aa::estimate_unavailable>([&] { mean_only.count2(); });
+    throws_estimate<aa::estimate_unavailable>([&] { mean_only.stderror<T>(); });
+    using other_type = std::conditional_t<std::is_same_v<T,double>,std::complex<double>,double>;
+    aa::result wrong_type(variance.result());
+    throws_estimate<aa::estimate_type_mismatch>([&] { wrong_type.stderror<other_type>(); });
+    aa::result empty;
+    throws_estimate<aa::finalized_accumulator>([&] { empty.count2(); });
+    throws_estimate<aa::finalized_accumulator>([&] { empty.stderror<T>(); });
+}
 void signed_statistics(std::string const& filename) {
     // The observable and sign share every sample and every batch boundary.
     aa::scalar_binary_transformer<double> ratio([](double numerator, double sign) {
@@ -874,6 +1022,9 @@ int main() {
         large_batch_weights();
         wrong_sized_append();
         covariance_transform(filename);
+        elliptic_signed_ratios(filename);
+        result_accessors<double>();
+        result_accessors<std::complex<double>>();
         signed_statistics(filename);
         eigen_orientation(filename);
         failed_loads(filename);

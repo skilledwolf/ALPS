@@ -56,9 +56,16 @@ public:
     /** Returns number of accumulated data points */
     uint64_t count() const;
 
+    /** Returns sum of squared sample weights, if the estimator retains it */
+    double count2() const;
+
     /** Returns sample mean */
     template <typename T>
     column<T> mean() const;
+
+    /** Returns circular standard errors for ordinary real or complex results */
+    template <typename T>
+    column<typename bind<circular_var,T>::var_type> stderror() const;
 
     /** Returns bias-corrected sample variance for given strategy */
     template <typename T, typename Str=circular_var>

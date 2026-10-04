@@ -7,8 +7,6 @@
 
 #include <type_traits>
 
-#include <iostream> // FIXME
-
 namespace alps { namespace alea {
 
 struct valid_visitor
@@ -33,6 +31,28 @@ struct count_visitor
 
     template <typename Res>
     uint64_t operator() (const Res &r) const { return r.count(); }
+};
+
+struct count2_visitor
+{
+    typedef double result_type;
+    template <typename T>
+    double operator() (const mean_result<T> &) const { throw estimate_unavailable(); }
+    template <typename Res>
+    double operator() (const Res &r) const { return r.count2(); }
+};
+
+template <typename T>
+struct stderror_visitor
+{
+    typedef column<typename bind<circular_var,T>::var_type> result_type;
+    result_type operator() (const mean_result<T> &) const { throw estimate_unavailable(); }
+    result_type operator() (const var_result<T> &r) const { return r.stderror(); }
+    result_type operator() (const cov_result<T> &r) const { return r.stderror(); }
+    result_type operator() (const autocorr_result<T> &r) const { return r.stderror(); }
+    result_type operator() (const batch_result<T> &r) const { return r.stderror(); }
+    template <typename Res>
+    result_type operator() (const Res &) const { throw estimate_type_mismatch(); }
 };
 
 template <typename T>          // T = double or std::complex<double>
@@ -135,6 +155,22 @@ uint64_t result::count() const
 {
     return boost::apply_visitor(count_visitor(), res_);
 }
+
+double result::count2() const
+{
+    if (!valid()) throw finalized_accumulator();
+    return boost::apply_visitor(count2_visitor(), res_);
+}
+
+template <typename T>
+column<typename bind<circular_var,T>::var_type> result::stderror() const
+{
+    if (!valid()) throw finalized_accumulator();
+    return boost::apply_visitor(stderror_visitor<T>(), res_);
+}
+
+template column<double> result::stderror<double>() const;
+template column<double> result::stderror<std::complex<double>>() const;
 
 template <typename T>
 column<T> result::mean() const

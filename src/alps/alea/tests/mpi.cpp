@@ -1,6 +1,7 @@
 // Copyright (C) 2026 ALPS Collaboration. SPDX-License-Identifier: MIT
 #include <alps/alea.hpp>
 #include <alps/alea/mpi.hpp>
+#include <alps/alea/transform.hpp>
 #include <cmath>
 #include <complex>
 #include <iostream>
@@ -80,6 +81,43 @@ void empty_autocorrelation(int rank, aa::reducer const& reducer) {
     rejects([&] { result.reduce(reducer); });
     require(result.valid() && result.count() == 0 && result.level(0).count2() == (rank ? 0. : 1.),
             "malformed empty-rank rejection changed the original result");
+}
+void elliptic_signed_ratio(int rank, aa::reducer const& reducer) {
+    aa::var_acc<std::complex<double>,aa::elliptic_var> joint(2,2);
+    for (int i=0; i<(rank ? 5 : 3); ++i) {
+        auto sign = rank && i>=3 ? -1. : 1.;
+        auto numerator = sign*(rank ? 5. : 2.);
+        joint << std::vector<std::complex<double>>{{numerator,sign},{-2*numerator,sign}};
+    }
+    auto pooled = joint.result();
+    pooled.reduce(reducer);
+    require(pooled.valid() == (rank == 1), "elliptic ratio raw state survived on wrong rank");
+    bool ok = true;
+    if (rank == 1) try {
+        auto original = pooled;
+        auto result = aa::ratio_real_imag(pooled);
+        // Original independent bins: (weight, numerator sum, sign sum).
+        double bins[][3]{{2.,4.,2.},{1.,2.,1.},{2.,10.,2.},{2.,0.,0.},{1.,-5.,-1.}};
+        double count=0., count2=0., numerator=0., denominator=0.;
+        for (auto const& bin : bins) {
+            count += bin[0]; count2 += bin[0]*bin[0];
+            numerator += bin[1]; denominator += bin[2];
+        }
+        auto mean = numerator/denominator;
+        double variance = 0.;
+        for (auto const& bin : bins) {
+            auto residual = (bin[1]/bin[0]-mean*bin[2]/bin[0])/(denominator/count);
+            variance += bin[0]*residual*residual;
+        }
+        variance /= count-count2/count;
+        auto error = std::sqrt(variance*count2/(count*count));
+        ok = pooled == original && result.count() == count && result.count2() == count2
+          && result.mean()(0) == mean && result.mean()(1) == -2*mean
+          && std::abs(result.var()(0)-variance) < 1e-12
+          && std::abs(result.stderror()(0)-error) < 1e-12
+          && std::abs(result.stderror()(1)-2*error) < 1e-12;
+    } catch (...) { ok = false; }
+    require(ok, "elliptic signed ratio lost pooled means, cross-sign covariance or partial-bin weights");
 }
 void contract(int rank) {
     aa::mpi_reducer reducer(MPI_COMM_WORLD, 1);
@@ -164,6 +202,7 @@ void contract(int rank) {
                          && levels.nlevel() == size_t(common)),
             "unequal runs invented autocorrelation levels or lost samples");
     empty_autocorrelation(rank, reducer);
+    elliptic_signed_ratio(rank, reducer);
 }
 }
 

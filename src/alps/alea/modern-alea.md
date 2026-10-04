@@ -61,6 +61,17 @@ needed for the error. The transformer defines its domain and should reject a
 zero denominator. Jackknife requires two occupied bins and skips empty slots.
 Its result is an analysis result, not an accumulator checkpoint.
 
+For large collections of componentwise signed measurements, an elliptic
+`var_acc<std::complex<double>, elliptic_var>` can store each signed numerator
+as the real part and its sign as the imaginary part. `ratio_real_imag(result)`
+returns a real variance result using their retained 2×2 covariance. Storage
+is linear in the number of components; these errors assume independent samples
+and do not estimate autocorrelation or covariance between components. Empty
+and single-observation results retain unavailable errors; zero average signs
+and invalid ratio domains fail without changing the source result.
+The heterogeneous `result` facade also exposes `count2()` and `stderror<T>()`;
+mean-only results cannot provide either estimate.
+
 The standalone CT-INT solver stores sign-weighted physical measurements as
 joint native batches. It reduces those batches across MPI ranks before taking
 ratios, keeping independent partial bins and their counts. Unsigned diagnostics
