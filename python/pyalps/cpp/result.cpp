@@ -183,7 +183,7 @@ NB_MODULE(pyngsresult_c, m) {
         .def("sinh", static_cast<R(*)(R)>(&sinh))
         .def("cosh", static_cast<R(*)(R)>(&cosh))
         .def("tanh", static_cast<R(*)(R)>(&tanh))
-        .def("save", &R::save)
-        .def("load", &R::load);
+        .def("save", [](R const & self, nb::handle ar) { pyalps::with_native_archive(ar, [&](auto & native) { self.save(native); }); })
+        .def("load", [](R & self, nb::handle ar) { pyalps::with_native_archive(ar, [&](auto & native) { self.load(native); }); });
     pyalps::mark_archive_savable(m.attr("result"));
 }

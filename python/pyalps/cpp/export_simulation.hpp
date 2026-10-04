@@ -13,6 +13,7 @@
 
 #include <alps/hdf5/archive.hpp>
 #include <alps/mcbase.hpp>
+#include "archive_savable.hpp"
 
 #include <nanobind/nanobind.h>
 #include <nanobind/stl/string.h>
@@ -83,12 +84,12 @@ void export_sim_to_python(nb::module_ & module, char const * name) {
         .def("collectResults", &wrapper::collect_results_python,
              nb::arg("names") = typename wrapper::result_names_type())
         .def("save",
-             [](wrapper const & self, alps::hdf5::archive & archive) {
-                 static_cast<Simulation const &>(self).save(archive);
+             [](wrapper const & self, nb::handle archive) {
+                 pyalps::with_native_archive(archive, [&](auto & native) { static_cast<Simulation const &>(self).save(native); });
              })
         .def("load",
-             [](wrapper & self, alps::hdf5::archive & archive) {
-                 static_cast<Simulation &>(self).load(archive);
+             [](wrapper & self, nb::handle archive) {
+                 pyalps::with_native_archive(archive, [&](auto & native) { static_cast<Simulation &>(self).load(native); });
              });
 }
 

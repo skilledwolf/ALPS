@@ -10,6 +10,7 @@
  # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 
 import pyalps.hdf5 as hdf5
+import pyalps
 import sys, time, traceback, getopt
 
 import ising
@@ -57,4 +58,5 @@ if __name__ == '__main__':
 
     with hdf5.archive(outfile, 'w') as ar:
         ar['/parameters'] = sim.parameters
-        ar['/simulation/results'] = results
+        for name, value in results.items():
+            ar['/simulation/results/' + pyalps.hdf5_name_encode(name)] = value

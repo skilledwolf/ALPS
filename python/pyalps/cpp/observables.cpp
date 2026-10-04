@@ -48,10 +48,12 @@ namespace nb = nanobind;
 #include <cstdint>
 #include <string>
 namespace {
-void mcobservables_load(alps::mcobservables & self, alps::hdf5::archive & ar, std::string const & path) {
-    alps::hdf5::archive reader(ar);
-    reader.set_context(ar.complete_path(path));
-    self.load(reader);
+void mcobservables_load(alps::mcobservables & self, nb::handle object, std::string const & path) {
+    pyalps::with_native_archive(object, [&](auto & ar) {
+        alps::hdf5::archive reader(ar);
+        reader.set_context(ar.complete_path(path));
+        self.load(reader);
+    });
 }
 void createRealObservable(alps::mcobservables & self, std::string const & name, std::uint32_t binnum) {
     self << alps::ngs::RealObservable(name, binnum);
@@ -103,7 +105,7 @@ NB_MODULE(pyngsobservables_c, m) {
         // set operators, exhausted after one pass) and pyalps/ngs.py cannot
         // recover it -- its guard skips any name the C++ class already provides.
         .def("reset", &alps::mcobservables::reset, nb::arg("equilibrated") = false)
-        .def("save",  &alps::mcobservables::save)
+        .def("save", [](alps::mcobservables const & self, nb::handle ar) { pyalps::with_native_archive(ar, [&](auto & native) { self.save(native); }); })
         .def("load",  &mcobservables_load)
         .def("__lshift__", &addObservable)
         .def("createRealObservable",       &createRealObservable,

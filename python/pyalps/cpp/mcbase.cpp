@@ -83,10 +83,18 @@ namespace alps {
             // Non-pure: fall through to the C++ implementation when the
             // Python subclass doesn't override (NB_OVERRIDE, not _PURE).
             void save(alps::hdf5::archive & ar) const override {
-                NB_OVERRIDE(save, ar);
+                nb::detail::ticket ticket(nb_trampoline, "save", false);
+                if (ticket.key.is_valid())
+                    nb_trampoline.base().attr(ticket.key)(pyalps::owned_native_archive(ar));
+                else
+                    mcbase::save(ar);
             }
             void load(alps::hdf5::archive & ar) override {
-                NB_OVERRIDE(load, ar);
+                nb::detail::ticket ticket(nb_trampoline, "load", false);
+                if (ticket.key.is_valid())
+                    nb_trampoline.base().attr(ticket.key)(pyalps::owned_native_archive(ar));
+                else
+                    mcbase::load(ar);
             }
     };
 }
@@ -138,11 +146,11 @@ NB_MODULE(pyngsbase_c, m) {
         // ngs.mcbase.save(self, ar) -- or super().save(ar) -- re-entered its
         // own override and ran the body twice. Overriding subclasses still
         // reach C++ through the trampoline's NB_OVERRIDE, which is unaffected.
-        .def("save", [](alps::mcbase const & self, alps::hdf5::archive & ar) {
-                         self.alps::mcbase::save(ar);
+        .def("save", [](alps::mcbase const & self, nb::handle ar) {
+                         pyalps::with_native_archive(ar, [&](auto & native) { self.alps::mcbase::save(native); });
                      })
-        .def("load", [](alps::mcbase & self, alps::hdf5::archive & ar) {
-                         self.alps::mcbase::load(ar);
+        .def("load", [](alps::mcbase & self, nb::handle ar) {
+                         pyalps::with_native_archive(ar, [&](auto & native) { self.alps::mcbase::load(native); });
                      });
     pyalps::mark_archive_savable(m.attr("mcbase"));
 }

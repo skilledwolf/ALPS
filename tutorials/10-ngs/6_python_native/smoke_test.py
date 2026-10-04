@@ -49,7 +49,7 @@ with tempfile.TemporaryDirectory() as directory:
     checkpoint = os.path.join(directory, "ising.clone0.h5")
 
     # `archive['/'] = simulation` dispatches to the Python-defined save(),
-    # which in turn stores an ngs.params and a dict of observables.
+    # which stores parameters and explicitly named scientific observables.
     with hdf5.archive(checkpoint, "w") as archive:
         archive["/"] = simulation
 

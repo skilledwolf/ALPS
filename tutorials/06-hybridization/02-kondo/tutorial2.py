@@ -125,7 +125,7 @@ for un,u in enumerate(Uvalues):
 
     if mpi.rank==0:
       # extract the local spin susceptiblity
-      ar=archive(results,'w')
+      ar=archive(results,'r')
       nn_0_0=ar['simulation/results/nnw_re_0_0/mean/value']
       nn_1_1=ar['simulation/results/nnw_re_1_1/mean/value']
       nn_1_0=ar['simulation/results/nnw_re_1_0/mean/value']

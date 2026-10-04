@@ -477,6 +477,10 @@ namespace alps {
                         ar >> make_pvp("mean/value", mean_);
                     if (ar.is_data("mean/error"))
                         ar >> make_pvp("mean/error", error_);
+                    // Observable checkpoints (SimpleObservableData and
+                    // binning classes) store bin sums; mcdata stores means.
+                    // These paths decode active scientific schemas, distinct
+                    // from the offline conversion of HDF5 primitive encodings.
                     if (ar.is_attribute("@nonlinearoperations"))
                         ar >> make_pvp("@nonlinearoperations", cannot_rebin_);
                     else if (ar.is_attribute("@cannotrebin"))

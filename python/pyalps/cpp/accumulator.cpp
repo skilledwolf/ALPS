@@ -71,8 +71,8 @@ void bind_result_operators(nb::class_<Result> & cls) {
 template <typename T>
 void bind_serializable(nb::class_<T> & cls) {
     cls.def("__str__", &print_value<T>)
-       .def("save", &T::save)
-       .def("load", &T::load)
+       .def("save", [](T const & self, nb::handle ar) { pyalps::with_native_archive(ar, [&](auto & native) { self.save(native); }); })
+       .def("load", [](T & self, nb::handle ar) { pyalps::with_native_archive(ar, [&](auto & native) { self.load(native); }); })
        .def("reset", &T::reset);
     pyalps::mark_archive_savable(cls);
 }

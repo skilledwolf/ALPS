@@ -47,7 +47,7 @@ def read(ar):
         raise Exception('invalid scalar extent')
     if ar.extent("/np/int") != [3] or ar.extent("/np/cplx") != [2, 2]:
         raise Exception('invalid array extent')
-    if type(i) != int or type(d) != float or type(c) != complex or type(s) != str:
+    if not isinstance(i, np.integer) or not isinstance(d, np.floating) or not isinstance(c, np.complexfloating) or type(s) != str:
         raise Exception('invalid type')
     if i != 9 or d - 9.123 > 0.001 or s != "test" or np.any(n != np.array([1, 2, 3])):
         raise Exception('invalid scalar value')
@@ -104,13 +104,13 @@ def test_archive_open_state():
         assert ar.is_open is False
         assert ar.closed is True
 
-        # xml() consults `closed`, so it must now refuse a closed archive
+        # Primitive IO refuses a closed archive
         try:
-            ar.xml()
+            ar["/a"]
         except h5.ArchiveClosed:
             pass
         else:
-            raise AssertionError("xml() on a closed archive must raise ArchiveClosed")
+            raise AssertionError("read on a closed archive must raise ArchiveClosed")
 
         # the context manager closes on exit
         with h5.archive(path, 'r') as reader:

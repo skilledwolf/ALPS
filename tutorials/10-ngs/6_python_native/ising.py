@@ -102,7 +102,8 @@ class sim:
             ar["/parameters"] = self.parameters
             context = ar.context
             ar.set_context("/simulation/realizations/0/clones/0")
-            ar["measurements"] = self.measurements
+            for name, observable in self.measurements.items():
+                ar["measurements/" + pyalps.hdf5_name_encode(name)] = observable
 
             ar.set_context("checkpoint")
             ar["sweeps"] = self.sweeps
@@ -126,8 +127,7 @@ class sim:
 
             context = ar.context
             ar.set_context("/simulation/realizations/0/clones/0")
-            # save() stored the measurements dict as a group with one
-            # HDF5-encoded child per observable; read each one back in place.
+            # Each observable has an explicit scientific checkpoint field.
             for name, observable in self.measurements.items():
                 observable.load(ar, "measurements/" + pyalps.hdf5_name_encode(name))
 

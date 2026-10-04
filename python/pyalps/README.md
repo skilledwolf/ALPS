@@ -49,7 +49,7 @@ python -m pip install --no-build-isolation -e python/pyalps \
   --config-setting "build-dir=$PWD/_build/manual-python"
 ```
 
-The example uses the SDK installed by the `distribution` preset above. For another SDK, change `ALPS_DIR` to its installed `share/alps` directory. The Linux `patchelf` dependency is required when bundling applications; `--no-build-isolation` makes installing build dependencies your responsibility. Pip installs NumPy, SciPy, and Matplotlib as runtime dependencies.
+The example uses the SDK installed by the `distribution` preset above. For another SDK, change `ALPS_DIR` to its installed `share/alps` directory. The Linux `patchelf` dependency is required when bundling applications; `--no-build-isolation` makes installing build dependencies your responsibility. Pip installs NumPy, h5py, SciPy, and Matplotlib as runtime dependencies.
 
 For a smaller SDK and core-only editable Python installation on Linux/macOS, use the `sdk` preset and disable both solver bindings and bundled programs. After installing the build dependencies above:
 
@@ -121,6 +121,24 @@ Wheel installation writes `pyalps/runtime.json`. After auditwheel or delocate re
 
 CMake derives build-time search paths from the imported targets. If you install or redistribute your extension, set its `INSTALL_RPATH` for the destination layout using normal CMake installation rules. The target does not hard-code the build environment's Python installation into installed extensions. For an extension installed for the same environment, CMake's `INSTALL_RPATH_USE_LINK_PATH` target property can retain the runtime search paths.
 
+## HDF5 IO
+
+`pyalps.hdf5.archive` owns an h5py file. Primitive datasets and attributes follow
+h5py's dtype and shape rules; use NumPy arrays with explicit dtypes for scientific
+fields. Reading a group returns an h5py Group. Dictionaries and ragged lists are
+not inferred as containers: write their named fields explicitly. Modes are exactly
+`r` (read), `a` (create/update), and `w` (truncate).
+
+Scientific objects such as params, observables, results, RNGs, and simulations
+retain their native save/load methods. These methods transfer file ownership for
+the complete operation, closing h5py and reopening it afterwards. Native virtual
+callbacks receive a small native archive that accepts scalars and explicit NumPy
+arrays. Previously borrowed h5py groups/datasets become invalid during this
+transfer; retained native callback views are closed before h5py reopens. Native
+and h5py may use different HDF5 libraries and never share raw
+HDF5 identifiers. Downstream C++ bindings that accept `alps::hdf5::archive&` use
+`with archive.native() as native_archive:` around the complete native operation.
+
 ## Typed params and TOML migration
 
 `ngs.params` now owns scalar and one-dimensional homogeneous values. Assignment
@@ -133,7 +151,8 @@ loss of precision. Boolean flags must use `True`/`False`.
 
 Params checkpoints are explicitly versioned as `alps.params.v2`; old checkpoints
 are not accepted by `ngs.params.load`. Use the [offline converter](../../src/tools/hdf5/README.md)
-to upgrade explicit v1 checkpoints. The
+with `--parameters GROUP` to upgrade official flat parameter groups. The
+unreleased `alps.params.v1` format is unsupported. The
 analysis loaders still handle result groups from the unmigrated `Parameters`
 applications as well as the new typed checkpoints. Checkpoints reject names and
 string values containing NUL before overwriting stored parameters.

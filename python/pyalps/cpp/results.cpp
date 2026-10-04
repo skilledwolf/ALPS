@@ -25,14 +25,16 @@ namespace alps {
             sstr << self;
             return sstr.str();
         }
-        void mcresults_load(alps::mcresults & self, alps::hdf5::archive & ar, std::string const & path) {
-            alps::hdf5::archive reader(ar);
-            reader.set_context(ar.complete_path(path));
-            alps::mcresults loaded;
-            loaded.load(reader);
-            while (!self.empty())
-                pyalps::erase_map_item(self, self.begin()->first);
-            self.swap(loaded);
+        void mcresults_load(alps::mcresults & self, nb::handle object, std::string const & path) {
+            pyalps::with_native_archive(object, [&](auto & ar) {
+                alps::hdf5::archive reader(ar);
+                reader.set_context(ar.complete_path(path));
+                alps::mcresults loaded;
+                loaded.load(reader);
+                while (!self.empty())
+                    pyalps::erase_map_item(self, self.begin()->first);
+                self.swap(loaded);
+            });
         }
     }
 }
@@ -67,7 +69,7 @@ NB_MODULE(pyngsresults_c, m) {
         // set operators, exhausted after one pass) and pyalps/ngs.py cannot
         // recover it -- its guard skips any name the C++ class already provides.
         .def("__str__",      &alps::detail::mcresults_print)
-        .def("save",         &alps::mcresults::save)
+        .def("save", [](alps::mcresults const & self, nb::handle ar) { pyalps::with_native_archive(ar, [&](auto & native) { self.save(native); }); })
         .def("load",         &alps::detail::mcresults_load);
     pyalps::mark_archive_savable(m.attr("results"));
 }

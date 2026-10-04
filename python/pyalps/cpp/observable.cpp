@@ -57,11 +57,12 @@ namespace alps {
                 throw nb::type_error("observable samples must be numeric scalars or contiguous float64 arrays");
             }
         }
-        void observable_load(alps::mcobservable & self, alps::hdf5::archive & ar, std::string const & path) {
-            std::string current = ar.get_context();
-            ar.set_context(path);
-            self.load(ar);
-            ar.set_context(current);
+        void observable_load(alps::mcobservable & self, nb::handle object, std::string const & path) {
+            pyalps::with_native_archive(object, [&](auto & ar) {
+                alps::hdf5::archive reader(ar);
+                reader.set_context(ar.complete_path(path));
+                self.load(reader);
+            });
         }
         // Construct the underlying alea observable inside libalps rather than
         // in this translation unit.
@@ -112,7 +113,7 @@ NB_MODULE(pyngsobservable_c, m) {
              },
              nb::rv_policy::none)
         .def("merge",           &alps::mcobservable::merge)
-        .def("save",            &alps::mcobservable::save)
+        .def("save", [](alps::mcobservable const & self, nb::handle ar) { pyalps::with_native_archive(ar, [&](auto & native) { self.save(native); }); })
         .def("load",            &alps::detail::observable_load)
         // Mirrors the legacy Boost.Python module, which (oddly, but
         // load-compatibly) bound addToObservable to the same helper

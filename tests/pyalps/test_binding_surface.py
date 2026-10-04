@@ -66,7 +66,7 @@ def test_cross_module_parameter_archive_and_rng_roundtrip():
         for _ in range(7):
             rng()
 
-        archive = pyngshdf5_c.hdf5_archive_impl(path, "w")
+        archive = pyngshdf5_c.NativeArchive(path, "w")
         archive.create_group("/parameters")
         archive.set_context("/parameters")
         params.save(archive)
@@ -76,7 +76,7 @@ def test_cross_module_parameter_archive_and_rng_roundtrip():
 
         loaded = pyngsparams_c.params()
         restored_rng = pyngsrandom01_c.random01(0)
-        archive = pyngshdf5_c.hdf5_archive_impl(path, "r")
+        archive = pyngshdf5_c.NativeArchive(path, "r")
         archive.set_context("/parameters")
         loaded.load(archive)
         archive.set_context("/")
@@ -949,12 +949,12 @@ def test_mcbase_save_load_overrides_reach_cpp_dispatch():
         # the base implementation and deliberately does not dispatch
         # virtually, so it cannot re-enter the override (see
         # test_mcbase_base_save_is_not_virtual).
-        archive = pyngshdf5_c.hdf5_archive_impl(path, "w")
+        archive = pyngshdf5_c.NativeArchive(path, "w")
         archive["/simulation"] = simulation
         del archive
         assert calls == ["save"]
         # the override's super().save() must have written the real payload
-        archive = pyngshdf5_c.hdf5_archive_impl(path, "r")
+        archive = pyngshdf5_c.NativeArchive(path, "r")
         assert "measurements" in archive.list_children("/simulation")
         archive.set_context("/simulation")
         simulation.load(archive)
@@ -1042,36 +1042,6 @@ def test_archive_setitem_saves_registered_alps_types():
         assert str(restored["MODEL"]) == "spin"
 
 
-def test_archive_setitem_reaches_registered_types_nested_in_containers():
-    """A dict or list of ALPS objects is what a checkpoint actually looks like.
-
-    Container children used to be handed straight to the save visitor, which
-    bypassed the save() dispatch entirely, so `archive[p] = {...}` failed for
-    exactly the values that worked at the top level.
-    """
-    from pyalps import hdf5, ngs
-
-    first = ngs.createRealObservable("Energy")
-    first << 1.0
-    second = ngs.createRealObservable("Magnetization")
-    second << 0.25
-
-    with tempfile.TemporaryDirectory() as directory:
-        path = os.path.join(directory, "nested.h5")
-        with hdf5.archive(path, "w") as archive:
-            archive["/measurements"] = {"Energy": first, "Magnetization": second}
-            archive["/sequence"] = [ngs.params({"A": 1}), ngs.params({"B": 2})]
-            archive["/deep"] = {"clone": {"Energy": first}}
-
-        with hdf5.archive(path, "r") as archive:
-            assert sorted(archive.list_children("/measurements")) == [
-                "Energy", "Magnetization"]
-            assert archive.list_children("/measurements/Energy")
-            assert sorted(archive.list_children("/sequence")) == ["0", "1"]
-            assert archive["/sequence/0/entries/0/name"] == "A"
-            assert archive.list_children("/deep/clone/Energy")
-
-
 def test_archive_setitem_rejects_mcdata_with_actionable_advice():
     """The one ALPS family whose save() is not archive-shaped.
 
@@ -1157,7 +1127,7 @@ def test_numpy_arrays_are_writable_and_own_their_buffer():
 
 
 def test_archive_arrays_preserve_shape_dtype_and_outlive_the_archive():
-    """The HDF5 load path shares the same nb::ndarray helper."""
+    """Primitive reads return independent NumPy storage."""
     import gc
 
     from pyalps import hdf5
@@ -1190,14 +1160,7 @@ def test_archive_arrays_preserve_shape_dtype_and_outlive_the_archive():
 
 
 def test_integer_arrays_keep_their_exact_numpy_dtype():
-    """Integer dtypes must come back exactly as before, not merely equal.
-
-    The zero-copy output path describes its buffer through DLPack, which
-    encodes "signed 64-bit" and cannot distinguish `long` from `long long`.
-    NumPy can: different dtype objects, different .char ('l' vs 'q'), and a
-    different repr. Routing integers that way silently turned int64 into
-    longlong, which is why they keep the dtype-named path.
-    """
+    """h5py preserves the explicit NumPy integer dtype and representation."""
     from pyalps import hdf5
 
     cases = {

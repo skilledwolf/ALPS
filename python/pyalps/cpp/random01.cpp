@@ -20,7 +20,7 @@ NB_MODULE(pyngsrandom01_c, m) {
         .def("__call__",
              static_cast<alps::random01::result_type (alps::random01::*)()>(
                  &alps::random01::operator()))
-        .def("save", &alps::random01::save)
-        .def("load", &alps::random01::load);
+        .def("save", [](alps::random01 const & self, nb::handle ar) { pyalps::with_native_archive(ar, [&](auto & native) { self.save(native); }); })
+        .def("load", [](alps::random01 & self, nb::handle ar) { pyalps::with_native_archive(ar, [&](auto & native) { self.load(native); }); });
     pyalps::mark_archive_savable(m.attr("random01"));
 }

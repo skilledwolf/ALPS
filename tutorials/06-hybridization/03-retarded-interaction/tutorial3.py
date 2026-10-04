@@ -39,6 +39,7 @@
 import shutil
 import pyalps.mpi as mpi                # mpi library
 from pyalps.hdf5 import archive            # hdf5 interface
+from pyalps.ngs import params
 import pyalps.cthyb as cthyb            # the solver module
 from numpy import sqrt,cosh,sinh,exp,pi #some math
 from numpy import array,zeros,append
@@ -183,8 +184,8 @@ for it in range(dmft_iterations):
   # write parameters for reference (on master only)
   if mpi.rank==0:
     ar=archive('hyb.param.h5','a')
-    ar['/parameters']=parms
-    ar['/parameters%i'%it]=parms # this is a backup for each iteration
+    ar['/parameters']=params(parms)
+    ar['/parameters%i'%it]=params(parms) # this is a backup for each iteration
     del ar
 
   # solve the impurity model in parallel
@@ -232,4 +233,3 @@ for it in range(dmft_iterations):
   mpi.world.barrier() # wait until solver input is written
 
 # go back and loop
-

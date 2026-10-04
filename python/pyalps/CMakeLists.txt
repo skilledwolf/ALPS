@@ -135,7 +135,7 @@ endif()
 
 # scikit-build owns Python sources. CMake owns native build and runtime resources.
 install(FILES _build_support/pyalpsConfig.cmake DESTINATION pyalps/cmake)
-install(FILES cpp/export_simulation.hpp DESTINATION pyalps/include/pyalps)
+install(FILES cpp/export_simulation.hpp cpp/archive_savable.hpp DESTINATION pyalps/include/pyalps)
 if(NOT EXISTS "${ALPS_DATA_DIR}/xml/ALPS.xsl")
   message(FATAL_ERROR "The ALPS SDK is missing its XML resources: ${ALPS_DATA_DIR}/xml")
 endif()

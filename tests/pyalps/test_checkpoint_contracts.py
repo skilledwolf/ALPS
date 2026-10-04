@@ -279,6 +279,44 @@ def test_parameter_helpers_and_analysis_read_typed_checkpoints(tmp_path):
         assert archive["/parameters/format"] == "alps.params.v2"
 
 
+@pytest.mark.parametrize("vector", [False, True])
+def test_analysis_loader_transfers_to_native_alea_for_results(tmp_path, vector):
+    import pyalps
+
+    value = result(vector)
+    filename = str(tmp_path / "analysis.h5")
+    with hdf5.archive(filename, "w") as archive:
+        archive["parameters"] = ngs.params({"L": 2})
+        archive["simulation/results/energy"] = value
+    loaded = pyalps.loadMeasurements([filename], what=["energy"])
+    assert len(loaded) == 1 and len(loaded[0]) == 1
+    measured = loaded[0][0].y
+    if vector:
+        np.testing.assert_array_equal(measured.mean, value.mean)
+        np.testing.assert_array_equal(measured.error, value.error)
+    else:
+        assert measured[0].mean == value.mean
+        assert measured[0].error == value.error
+
+
+def test_save_results_empty_collection_replaces_old_results(tmp_path):
+    filename = str(tmp_path / "empty-results.h5")
+    populated = ngs.results()
+    populated["old"] = result()
+    with hdf5.archive(filename, "w") as archive:
+        ngs.saveResults(populated, ngs.params({"seed": 42}), archive, "/simulation/results")
+        archive["unrelated"] = np.int64(9)
+        ngs.saveResults(ngs.results(), ngs.params({"seed": 91}), archive, "/simulation/results")
+        assert archive.is_group("/simulation/results")
+        assert archive.list_children("/simulation/results") == []
+        assert ngs.params(archive, "/parameters")["seed"] == 91
+        assert archive["unrelated"] == 9
+    restored = ngs.results()
+    with hdf5.archive(filename, "r") as archive:
+        restored.load(archive, "/simulation/results")
+    assert len(restored) == 0
+
+
 def test_extended_parameter_scalars_reject_lossy_conversion():
     if np.finfo(np.longdouble).nmant <= np.finfo(np.float64).nmant:
         pytest.skip("platform has no extended floating-point precision")
@@ -309,6 +347,7 @@ def test_parameter_checkpoint_uses_native_hdf5_types_and_zero_extents(tmp_path):
         assert entries["empty complex"]["value"].shape == (0,)
         assert entries["empty string"]["value"].asstr()[()] == ""
         for entry in entries.values():
+            assert set(entry) == {"name", "value"}
             assert not any(name in entry["value"].attrs
                            for name in ("__complex__", "__alps_type__"))
 
@@ -335,8 +374,6 @@ def test_parameter_checkpoint_rejects_obsolete_or_mismatched_payloads(tmp_path, 
                 value = entry.create_dataset("value", data=np.array([[1., 2.]]))
                 value.attrs["__complex__"] = np.int8(1)
             elif fault == "byte-bool":
-                del entry["type"]
-                entry["type"] = "bool[]"
                 entry["value"] = np.array([0, 1], dtype="i1")
             else:
                 entry["value"] = np.array([[1 + 2j]])

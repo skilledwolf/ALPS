@@ -12,7 +12,7 @@
 ising_sim::ising_sim(parameters_type const & parameters,
                      std::size_t seed_offset)
     : alps::mcbase(parameters, seed_offset),
-      total_sweeps_(parameters["SWEEPS"] | 10) {
+      total_sweeps_(parameters.exists("SWEEPS") ? parameters["SWEEPS"].as<std::size_t>() : 10) {
     measurements << alps::accumulator::RealObservable("Magnetization");
 }
 

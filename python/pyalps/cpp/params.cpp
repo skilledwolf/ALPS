@@ -67,10 +67,12 @@ bool params_contains(alps::params & self, nb::object const & key_obj) {
 nb::object value_or_default(alps::params & self, nb::object const & key, nb::object const & dflt) {
     return params_contains(self, key) ? params_getitem(self, key) : dflt;
 }
-void params_load(alps::params & self, alps::hdf5::archive & ar, std::string const & path) {
-    alps::hdf5::archive reader(ar);
-    reader.set_context(ar.complete_path(path));
-    self.load(reader);
+void params_load(alps::params & self, nb::handle object, std::string const & path) {
+    pyalps::with_native_archive(object, [&](auto & ar) {
+        alps::hdf5::archive reader(ar);
+        reader.set_context(ar.complete_path(path));
+        self.load(reader);
+    });
 }
 std::string params_print(alps::params & self) {
     std::stringstream ss;
@@ -90,7 +92,7 @@ NB_MODULE(pyngsparams_c, m) {
                  new (self) alps::params(pyalps::params_from_dict(d));
              },
              nb::arg("dict"))
-        .def("__init__", [](alps::params * self, alps::hdf5::archive & ar, std::string const & path) {
+        .def("__init__", [](alps::params * self, nb::handle ar, std::string const & path) {
                  alps::params loaded;
                  params_load(loaded, ar, path);
                  new (self) alps::params(loaded);
@@ -121,7 +123,7 @@ NB_MODULE(pyngsparams_c, m) {
                              })
         .def("__str__",      &params_print)
         .def("valueOrDefault", &value_or_default)
-        .def("save",         &alps::params::save)
+        .def("save", [](alps::params const & self, nb::handle ar) { pyalps::with_native_archive(ar, [&](auto & native) { self.save(native); }); })
         .def("load",         &params_load,
              nb::arg("archive"),
              nb::arg("path") = std::string("/parameters"));
@@ -136,8 +138,8 @@ NB_MODULE(pyngsparams_c, m) {
         .def_ro("execution", &alps::run_configuration::execution)
         .def_ro("origins", &alps::run_configuration::origins)
         .def_ro("source_file", &alps::run_configuration::source_file)
-        .def("save", &alps::run_configuration::save)
-        .def("load", &alps::run_configuration::load);
+        .def("save", [](alps::run_configuration const & self, nb::handle ar) { pyalps::with_native_archive(ar, [&](auto & native) { self.save(native); }); })
+        .def("load", [](alps::run_configuration & self, nb::handle ar) { pyalps::with_native_archive(ar, [&](auto & native) { self.load(native); }); });
     pyalps::mark_archive_savable(m.attr("RunConfiguration"));
     m.def("format_run_configuration", &alps::format_run_configuration, nb::arg("run"));
     m.def("load_run_configuration", [](const std::string &filename, const std::string &schema) {

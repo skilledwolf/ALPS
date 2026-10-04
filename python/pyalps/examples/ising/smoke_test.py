@@ -19,7 +19,7 @@ import pyalps.ngs as ngs
 
 parameters = ngs.params({"SEED": 7, "SWEEPS": 10,
                          "couplings": np.array([1., 2.]),
-                         "metadata": {"label": "checkpoint", "matrix": np.ones((2, 3))}})
+                         "label": "checkpoint"})
 simulation = ising_c.sim(parameters)
 
 assert issubclass(ising_c.sim, ngs.mcbase)
@@ -43,15 +43,20 @@ with tempfile.TemporaryDirectory() as directory:
     checkpoint = os.path.join(directory, "ising.h5")
     with hdf5.archive(checkpoint, "w") as archive:
         simulation.save(archive)
+        archive["metadata/matrix"] = np.ones((2, 3), dtype="f8")
 
     restored = ising_c.sim(parameters)
     with hdf5.archive(checkpoint, "r") as archive:
         restored.load(archive)
+        np.testing.assert_array_equal(archive["metadata/matrix"], np.ones((2, 3)))
 
     after = restored.collectResults()
     np.testing.assert_array_equal(restored.parameters["couplings"], [3., 6.])
-    assert restored.parameters["metadata"]["matrix"].shape == (2, 3)
-    restored.parameters["couplings"][0] = 4
+    assert restored.parameters["label"] == "checkpoint"
+    changed = restored.parameters["couplings"]
+    changed[0] = 4
+    assert restored.parameters["couplings"][0] == 3
+    restored.parameters["couplings"] = changed
     assert restored.parameters["couplings"][0] == 4
     assert restored.resultNames() == simulation.resultNames()
     assert after["Magnetization"].count == before["Magnetization"].count

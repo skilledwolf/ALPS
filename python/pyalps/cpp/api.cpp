@@ -14,13 +14,15 @@
 #include <alps/params.hpp>
 #include <alps/hdf5/archive.hpp>
 #include <alps/mcbase.hpp>
+#include "archive_savable.hpp"
 namespace nb = nanobind;
 namespace alps {
     namespace detail {
-        void save_results_export(mcresults const & res, params const & par, alps::hdf5::archive & ar, std::string const & path) {
-            ar["/parameters"] << par;
-            if (res.size())
+        void save_results_export(mcresults const & res, params const & par, nb::handle object, std::string const & path) {
+            pyalps::with_native_archive(object, [&](auto & ar) {
+                ar["/parameters"] << par;
                 ar[path] << res;
+            });
         }
     }
 }

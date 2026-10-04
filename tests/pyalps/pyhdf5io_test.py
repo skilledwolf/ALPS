@@ -1,408 +1,156 @@
- # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
- #                                                                                 #
- # ALPS Project: Algorithms and Libraries for Physics Simulations                  #
- #                                                                                 #
- # ALPS Libraries                                                                  #
- #                                                                                 #
- # Copyright (C) 2010 - 2012 by Lukas Gamper <gamperl@gmail.com>                   #
- #               2016 - 2016 by Michele Dolfi <dolfim@phys.ethz.ch>                #
- #                                                                                 #
- # ALPS Project: https://alps.comp-phys.org/                                       #
- # SPDX-License-Identifier: MIT                                                    #
- #                                                                                 #
- # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-
-# Assertion-based HDF5 round-trip test. The expectations encode the
-# legacy Boost.Python on-disk behaviour recorded in pyhdf5io.output:
-# exact-type homogeneous lists keep their element type on disk
-# ([1, 2, 3] stays int32), bool/mixed/ragged lists become groups that
-# read back as lists, and equal-shape numpy-array lists stack into one
-# dataset with numpy's dtype.
-
-import os
-import tempfile
-
+"""h5py primitive IO and native scientific checkpoint ownership boundaries."""
+import h5py
 import numpy as np
-import pyalps.hdf5 as hdf5
+import pytest
+from pyalps import hdf5, ngs
 
 
-def _write_all(ar):
-    a = np.array([1, 2, 3])
-    b = np.array([1.1, 2.0, 3.5])
-    c = np.array([1.1 + 1j, 2.0j, 3.5])
-    d = {"a": a, 2 + 3j: "foo"}
-
-    ar["/list"] = [1, 2, 3]
-    ar["/list2"] = [[[1, 2], [3, 4]], [[1, 2], [3, 4]], [[1, 2], [3, 4]], [[1, 2], [3, 4]]]
-    ar["/tuple"] = (1, 2, 3)
-    ar["/dict"] = {"scalar": 1, "numpy": a, "numpycpx": c, "list": [1, 2, 3], "string": "str", 1: 1, 4: d}
-    ar["/numpy"] = a
-    ar["/numpy2"] = b
-    ar["/numpy3"] = c
-    ar["/numpyel"] = a[0]
-    ar["/numpyel2"] = b[0]
-    ar["/numpyel3"] = c[0]
-    ar["/int"] = int(1)
-    ar["/long"] = 1
-    ar["/double"] = float(1)
-    ar["/complex"] = complex(1, 1)
-    ar["/string"] = "str"
-    ar["/stringlist"] = ['a', 'list', 'of', 'strings']
-    ar["/inhomogenious"] = [[1, 2, 3], a, "gurke", [[a, 2, 3], ["x", complex(1, 1)]]]
-    ar["/inhomogenious2"] = [[[1, 2], [3, 4]], [[1, 2], [3, 4]], [[1, 2], [3, 4]], [[1, 2], [3]]]
-    ar["/inhomogenious3"] = [np.arange(3), np.arange(5)]
-    ar["/inhomogenious4"] = [np.arange(3), 10 * np.arange(3)]
-    ar["/inhomogenious5"] = [list(range(3)), list(range(5)), list(range(3))]
-    ar["/numpylist1"] = [np.arange(5), np.arange(5, 10)]
-    ar["/numpylist2"] = [np.arange(5), np.arange(10)]
-    # regression cases for the nanobind save path
-    ar["/floatlist"] = [1.5, 2.5]
-    ar["/cplxlist"] = [1 + 1j, 2j]
-    ar["/boollist"] = [True, False]
-    ar["/mixedlist"] = [1, 2.5]
-    ar["/biglist"] = [2 ** 40, 2 ** 41]
-    ar["/npscalars"] = list(np.arange(3))          # numpy.int64 scalars
-    ar["/npboollist"] = list(np.array([True, False]))
-    ar["/numpylist3"] = [np.arange(3), [3, 4, 5]]  # ndarray/list mix, legacy stacked
-    ar["/boolmix"] = [np.arange(2), [True, False]]  # bool leaves veto stacking
-    ar["/longmixed"] = [1, 2.5, "x"] + list(range(10))  # 13-child group
-    ar["/emptylist"] = []
-    ar["/shrink"] = [1, "a", "b"]
-    ar["/shrink"] = [1, "a"]                       # group re-save must drop stale children
+@pytest.mark.parametrize("dtype", ["i4", "i8", "u8", "f4", "f8", "c8", "c16", "bool"])
+@pytest.mark.parametrize("shape", [(), (3,), (2, 3), (0,), (2, 0)])
+def test_explicit_numpy_dtype_shape_and_noncontiguous_arrays(tmp_path, dtype, shape):
+    value = np.arange(int(np.prod(shape))).reshape(shape).astype(dtype)
+    if len(shape) == 2:
+        value = np.asfortranarray(value)
+    filename = tmp_path / "data.h5"
+    with hdf5.archive(filename, "w") as archive:
+        archive["value"] = value
+        actual = archive["value"]
+        assert np.asarray(actual).dtype == value.dtype
+        assert np.asarray(actual).shape == value.shape
+        np.testing.assert_array_equal(actual, value)
+        assert archive.extent("value") == list(shape)
+    with h5py.File(filename, "r") as independent:
+        assert independent["value"].dtype == value.dtype
+        np.testing.assert_array_equal(independent["value"][()], value)
 
 
-def _assert_int_array(value, expected, dtype=np.int32):
-    assert isinstance(value, np.ndarray), repr(value)
-    assert value.dtype == dtype, "expected %s, got %s" % (dtype, value.dtype)
-    np.testing.assert_array_equal(value, expected)
+def test_groups_have_no_inferred_python_container_type(tmp_path):
+    with hdf5.archive(tmp_path / "groups.h5", "w") as archive:
+        archive.create_group("items")
+        archive["items/0"] = np.array([1, 2], dtype="i8")
+        archive["items/1"] = np.array([3], dtype="i8")
+        group = archive["items"]
+        assert isinstance(group, h5py.Group)
+        assert list(group) == ["0", "1"]
+        with pytest.raises((ValueError, TypeError)):
+            archive["items"] = [[1, 2], [3]]
+        np.testing.assert_array_equal(archive["items/0"], [1, 2])
 
 
-def test_hdf5io():
-    with tempfile.TemporaryDirectory() as directory:
-        path = os.path.join(directory, "pyngs.h5")
-        ar = hdf5.archive(path, "w")
-        _write_all(ar)
-        del ar
-
-        ar = hdf5.archive(path, "r")
-
-        assert len(ar.list_children("/")) == 35
-
-        # homogeneous int lists/tuples keep the int element type on disk
-        _assert_int_array(ar["/list"], [1, 2, 3])
-        _assert_int_array(ar["/tuple"], [1, 2, 3])
-        list2 = ar["/list2"]
-        assert list2.dtype == np.int32
-        assert list2.shape == (4, 2, 2)
-        np.testing.assert_array_equal(list2, [[[1, 2], [3, 4]]] * 4)
-
-        # dict → group keyed by stringified keys
-        d = ar["/dict"]
-        assert sorted(d.keys()) == ["1", "4", "list", "numpy", "numpycpx", "scalar", "string"]
-        assert d["scalar"] == 1 and d["1"] == 1 and d["string"] == "str"
-        _assert_int_array(d["list"], [1, 2, 3])
-        np.testing.assert_array_equal(d["numpy"], [1, 2, 3])
-        np.testing.assert_allclose(d["numpycpx"], [1.1 + 1j, 2.0j, 3.5])
-        assert d["4"]["(2+3j)"] == "foo"
-        np.testing.assert_array_equal(d["4"]["a"], [1, 2, 3])
-
-        # numpy arrays and scalars round-trip
-        np.testing.assert_array_equal(ar["/numpy"], [1, 2, 3])
-        assert np.issubdtype(ar["/numpy"].dtype, np.integer)
-        np.testing.assert_allclose(ar["/numpy2"], [1.1, 2.0, 3.5])
-        np.testing.assert_allclose(ar["/numpy3"], [1.1 + 1j, 2.0j, 3.5])
-        assert ar["/numpyel"] == 1
-        assert abs(ar["/numpyel2"] - 1.1) < 1e-12
-        assert ar["/numpyel3"] == 1.1 + 1j
-
-        # python scalars keep their types
-        assert type(ar["/int"]) is int and ar["/int"] == 1
-        assert type(ar["/long"]) is int and ar["/long"] == 1
-        assert type(ar["/double"]) is float and ar["/double"] == 1.0
-        assert type(ar["/complex"]) is complex and ar["/complex"] == 1 + 1j
-        assert ar["/string"] == "str"
-        assert ar["/stringlist"] == ['a', 'list', 'of', 'strings']
-
-        # heterogeneous list → group, read back as a list
-        i1 = ar["/inhomogenious"]
-        assert isinstance(i1, list) and len(i1) == 4
-        _assert_int_array(i1[0], [1, 2, 3])
-        np.testing.assert_array_equal(i1[1], [1, 2, 3])
-        assert i1[2] == "gurke"
-        np.testing.assert_array_equal(i1[3][0][0], [1, 2, 3])
-        assert i1[3][0][1] == 2 and i1[3][0][2] == 3
-        assert i1[3][1] == ["x", 1 + 1j]
-
-        # rectangular prefix + one ragged entry → group of matrices
-        i2 = ar["/inhomogenious2"]
-        assert isinstance(i2, list) and len(i2) == 4
-        for entry in i2[:3]:
-            assert entry.dtype == np.int32 and entry.shape == (2, 2)
-            np.testing.assert_array_equal(entry, [[1, 2], [3, 4]])
-        _assert_int_array(i2[3][0], [1, 2])
-        _assert_int_array(i2[3][1], [3])
-
-        # numpy-array lists: unequal shapes → group; equal shapes → stacked
-        i3 = ar["/inhomogenious3"]
-        assert isinstance(i3, list) and len(i3) == 2
-        np.testing.assert_array_equal(i3[0], np.arange(3))
-        np.testing.assert_array_equal(i3[1], np.arange(5))
-        i4 = ar["/inhomogenious4"]
-        assert isinstance(i4, np.ndarray) and i4.shape == (2, 3)
-        assert np.issubdtype(i4.dtype, np.integer)
-        np.testing.assert_array_equal(i4, [[0, 1, 2], [0, 10, 20]])
-        i5 = ar["/inhomogenious5"]
-        assert isinstance(i5, list) and len(i5) == 3
-        for entry, size in zip(i5, (3, 5, 3)):
-            _assert_int_array(entry, np.arange(size))
-        nl1 = ar["/numpylist1"]
-        assert isinstance(nl1, np.ndarray) and nl1.shape == (2, 5)
-        assert np.issubdtype(nl1.dtype, np.integer)
-        np.testing.assert_array_equal(nl1, [np.arange(5), np.arange(5, 10)])
-        nl2 = ar["/numpylist2"]
-        assert isinstance(nl2, list) and len(nl2) == 2
-        np.testing.assert_array_equal(nl2[0], np.arange(5))
-        np.testing.assert_array_equal(nl2[1], np.arange(10))
-
-        # regression: homogeneous float / complex lists keep their type
-        fl = ar["/floatlist"]
-        assert fl.dtype == np.float64
-        np.testing.assert_allclose(fl, [1.5, 2.5])
-        cl = ar["/cplxlist"]
-        assert cl.dtype == np.complex128
-        np.testing.assert_allclose(cl, [1 + 1j, 2j])
-
-        # regression: bool and mixed-type lists follow the legacy
-        # per-element group behaviour instead of silently widening
-        assert ar["/boollist"] == [True, False]
-        ml = ar["/mixedlist"]
-        assert ml == [1, 2.5]
-        assert type(ml[0]) is int and type(ml[1]) is float
-
-        # regression: out-of-int32-range values widen to int64, not float
-        bl = ar["/biglist"]
-        assert np.issubdtype(bl.dtype, np.integer)
-        np.testing.assert_array_equal(bl, [2 ** 40, 2 ** 41])
-
-        # regression: numpy-scalar lists keep their dtype in one dataset
-        # (numpy.int64 etc. were vectorizable in the legacy build)
-        nps = ar["/npscalars"]
-        assert isinstance(nps, np.ndarray) and np.issubdtype(nps.dtype, np.integer)
-        np.testing.assert_array_equal(nps, [0, 1, 2])
-        # Boolean arrays use the ordinary HDF5 FALSE/TRUE enum mapping.
-        npb = ar["/npboollist"]
-        assert isinstance(npb, np.ndarray)
-        assert npb.dtype == np.bool_
-        np.testing.assert_array_equal(npb, [1, 0])
-
-        # regression: rectangular ndarray/list mixes stack, like legacy
-        nl3 = ar["/numpylist3"]
-        assert isinstance(nl3, np.ndarray) and nl3.shape == (2, 3)
-        np.testing.assert_array_equal(nl3, [[0, 1, 2], [3, 4, 5]])
-
-        # regression: plain bools among the leaves veto stacking — numpy
-        # would silently promote True to 1
-        bm = ar["/boolmix"]
-        assert isinstance(bm, list) and len(bm) == 2
-        np.testing.assert_array_equal(bm[0], [0, 1])
-        assert bm[1] == [True, False]
-
-        # regression: a group-saved list with more than ten elements
-        # still loads as a list, in order (children come back from HDF5
-        # lexicographically)
-        lm = ar["/longmixed"]
-        assert lm == [1, 2.5, "x"] + list(range(10)), lm
-
-        # regression: empty lists stay integer-typed datasets
-        el = ar["/emptylist"]
-        assert len(el) == 0
-
-        # regression: re-saving a group-shaped list drops stale children
-        assert ar["/shrink"] == [1, "a"]
-
-        del ar
+@pytest.mark.parametrize("dtype", ["i2", "i8", "u1", "u8", "f4", "f8", "c8", "c16", "bool"])
+@pytest.mark.parametrize("shape", [(), (2, 3), (2, 0)])
+def test_native_callbacks_preserve_numeric_scalar_dtype_and_array_rank(tmp_path, dtype, shape):
+    value = np.arange(int(np.prod(shape))).reshape(shape).astype(dtype)
+    with hdf5.archive(tmp_path / "native-dtype.h5", "w") as archive:
+        with archive.native() as native:
+            native["value"] = value
+            actual = native["value"]
+            assert np.asarray(actual).dtype == value.dtype
+            assert np.asarray(actual).shape == shape
+            if not shape:
+                assert isinstance(actual, np.generic)
+            np.testing.assert_array_equal(actual, value)
+        np.testing.assert_array_equal(archive["value"], value)
 
 
-def test_hdf5_empty_dict_roundtrip():
-    with tempfile.TemporaryDirectory() as directory:
-        path = os.path.join(directory, "empty-dict.h5")
-        ar = hdf5.archive(path, "w")
-        ar["/value"] = {}
-        del ar
-
-        ar = hdf5.archive(path, "r")
-        value = ar["/value"]
-        assert type(value) is dict
-        assert value == {}
-        del ar
-
-
-def test_hdf5_dict_key_roundtrip():
-    expected = {
-        "a/b": 1,
-        "a": {"b": 2},
-        "amp&key": 3,
-        "entity&#47;": 4,
-    }
-    with tempfile.TemporaryDirectory() as directory:
-        path = os.path.join(directory, "dict-keys.h5")
-        ar = hdf5.archive(path, "w")
-        ar["/value"] = expected
-        ar.create_group("/rawamp")
-        ar["/rawamp/literal&child"] = 5
-        del ar
-
-        ar = hdf5.archive(path, "r")
-        assert ar["/value"] == expected
-        # A raw ampersand from a non-pyalps HDF5 producer is not an
-        # encoded path entity and must remain literal.
-        assert ar["/rawamp"] == {"literal&child": 5}
-        del ar
+@pytest.mark.parametrize("value", [np.array("é"),
+                                  np.array([["", "é"], ["spin", "longer"]]),
+                                  np.empty((2, 0), dtype="U8")])
+def test_native_callbacks_preserve_unicode_array_shape(tmp_path, value):
+    with hdf5.archive(tmp_path / "native-strings.h5", "w") as archive:
+        with archive.native() as native:
+            native["labels"] = value
+            actual = native["labels"]
+            assert np.asarray(actual).shape == value.shape
+            assert np.asarray(actual).dtype.kind == "U"
+            np.testing.assert_array_equal(actual, value)
+        np.testing.assert_array_equal(archive["labels"], value)
 
 
-def test_hdf5_nested_numpy_scalar_vectorization():
-    with tempfile.TemporaryDirectory() as directory:
-        path = os.path.join(directory, "nested-numpy-scalars.h5")
-        ar = hdf5.archive(path, "w")
-        ar["/rectangular"] = [
-            [np.int16(1), np.int16(2)],
-            [np.int16(3), np.int16(4)],
-        ]
-        ar["/ragged"] = [
-            [np.int16(1)],
-            [np.int16(2), np.int16(3)],
-        ]
-        ar["/mixed"] = [
-            [np.int16(1), np.int16(2)],
-            [np.int32(3), np.int32(4)],
-        ]
-        ar["/arrayandscalar"] = [np.arange(2), np.int64(3)]
-        del ar
-
-        ar = hdf5.archive(path, "r")
-        rectangular = ar["/rectangular"]
-        assert isinstance(rectangular, np.ndarray)
-        assert rectangular.dtype == np.int16
-        assert rectangular.shape == (2, 2)
-        np.testing.assert_array_equal(rectangular, [[1, 2], [3, 4]])
-
-        # The new recursive case must not widen its acceptance: ragged
-        # trees, mixed NumPy scalar dtypes, and sequence/scalar mixtures
-        # retain the existing group representation.
-        ragged = ar["/ragged"]
-        assert isinstance(ragged, list) and len(ragged) == 2
-        assert all(row.dtype == np.int16 for row in ragged)
-        np.testing.assert_array_equal(ragged[0], [1])
-        np.testing.assert_array_equal(ragged[1], [2, 3])
-        mixed = ar["/mixed"]
-        assert isinstance(mixed, list) and len(mixed) == 2
-        assert mixed[0].dtype == np.int16
-        assert mixed[1].dtype == np.int32
-        array_and_scalar = ar["/arrayandscalar"]
-        assert isinstance(array_and_scalar, list)
-        np.testing.assert_array_equal(array_and_scalar[0], [0, 1])
-        assert array_and_scalar[1] == 3
-        del ar
+def test_native_checkpoints_transfer_ownership_and_preserve_context(tmp_path):
+    filename = tmp_path / "checkpoint.h5"
+    parameters = ngs.params({"count": 2**53 + 1, "mask": np.array([True, False])})
+    rng = ngs.random01(91)
+    with hdf5.archive(filename, "w") as archive:
+        archive["primitive"] = np.array([1.5, 2.5], dtype="f4")
+        borrowed_group = archive["/"]
+        archive.set_context("/state")
+        archive["parameters"] = parameters
+        assert not borrowed_group.id.valid  # h5py owner closed during native save
+        assert archive.context == "/state"
+        archive["random"] = rng
+        restored = ngs.params(archive, "/state/parameters")
+        assert restored["count"] == 2**53 + 1
+        np.testing.assert_array_equal(restored["mask"], [True, False])
+        with archive.native() as native:
+            assert native.context == "/state"
+            native["explicit-array"] = np.array([1, 2], dtype="i4")
+            with pytest.raises(TypeError, match="explicit NumPy"):
+                native["implicit-list"] = [1, 2]
+            with pytest.raises(hdf5.ArchiveError, match="owns"):
+                archive["primitive"]
+            with pytest.raises(hdf5.ArchiveError, match="owns"):
+                archive.set_context("/wrong-owner")
+        np.testing.assert_array_equal(archive["explicit-array"], [1, 2])
+        np.testing.assert_array_equal(archive["/primitive"], [1.5, 2.5])
+        with pytest.raises((hdf5.ArchiveError, RuntimeError)):
+            ngs.params(archive, "/missing")
+        archive["after-error"] = np.int64(7)
+        assert archive.context == "/state"
+        assert archive["after-error"] == 7
 
 
-def test_hdf5_zero_dimensional_and_zero_extent_arrays():
-    scalar_cases = [
-        np.array(True),
-        np.array(-3, dtype=np.int32),
-        np.array(2**40, dtype=np.int64),
-        np.array(1.25, dtype=np.float32),
-        np.array(1.25, dtype=np.float64),
-        np.array(1 + 2j, dtype=np.complex64),
-        np.array(1 + 2j, dtype=np.complex128),
-    ]
-    empty_cases = [
-        np.empty((0,), dtype=np.float64),
-        np.empty((0, 2), dtype=np.int32),
-        np.empty((2, 0), dtype=np.int32),
-        np.empty((2, 0, 3), dtype=np.complex128),
-    ]
+def test_retained_native_callback_archive_is_closed_before_h5py_reopens(tmp_path):
+    retained = []
 
-    with tempfile.TemporaryDirectory() as directory:
-        path = os.path.join(directory, "zero-shapes.h5")
-        with hdf5.archive(path, "w") as ar:
-            for index, value in enumerate(scalar_cases):
-                ar[f"/scalar/{index}"] = value
-            for index, value in enumerate(empty_cases):
-                ar[f"/empty/{index}"] = value
+    class Field:
+        def save(self, native):
+            native["value"] = np.array([3, 4], dtype="i4")
 
-        with hdf5.archive(path, "r") as ar:
-            for index, expected in enumerate(scalar_cases):
-                actual = ar[f"/scalar/{index}"]
-                assert np.asarray(actual).shape == ()
-                assert actual == expected.item()
-                if expected.dtype == np.complex64:
-                    assert np.asarray(actual).dtype == np.complex64
-            for index, expected in enumerate(empty_cases):
-                actual = ar[f"/empty/{index}"]
-                assert isinstance(actual, np.ndarray)
-                assert actual.shape == expected.shape
-                assert actual.dtype == expected.dtype
+    class Simulation(ngs.mcbase):
+        def update(self): pass
+        def measure(self): pass
+        def fraction_completed(self): return 1.0
+        def save(self, native):
+            retained.append(native)
+            super().save(native)
+            native["weights"] = np.array([1.5, 2.5], dtype="f8")
+            native["field"] = Field()
+
+    simulation = Simulation({"SEED": 42})
+    simulation.measurements << ngs.RealObservable("energy")
+    simulation.measurements["energy"] << 1.0
+    with hdf5.archive(tmp_path / "retained.h5", "w") as archive:
+        with archive.native() as native:
+            native["simulation"] = simulation
+            assert retained[0].is_open
+        assert not retained[0].is_open
+        with pytest.raises(hdf5.ArchiveClosed):
+            retained[0]["weights"]
+        np.testing.assert_array_equal(archive["simulation/weights"], [1.5, 2.5])
+        np.testing.assert_array_equal(archive["simulation/field/value"], [3, 4])
+        archive["after-native"] = np.int64(7)
 
 
-def test_hdf5_complex_array_precision_roundtrip():
-    values = [
-        np.array([1 + 2j, 3 + 4j], dtype=np.complex64),
-        np.array([[1 + 2j], [3 + 4j]], dtype=np.complex64),
-        np.array([1 + 2j, 3 + 4j], dtype=np.complex128),
-    ]
-    with tempfile.TemporaryDirectory() as directory:
-        path = os.path.join(directory, "complex-precision.h5")
-        with hdf5.archive(path, "w") as ar:
-            for index, value in enumerate(values):
-                ar[f"/{index}"] = value
-        with hdf5.archive(path, "r") as ar:
-            for index, expected in enumerate(values):
-                actual = ar[f"/{index}"]
-                assert actual.dtype == expected.dtype
-                np.testing.assert_array_equal(actual, expected)
+def test_python_checkpoint_hook_uses_h5py_and_native_methods_serially(tmp_path):
+    class State:
+        def save(self, archive):
+            archive["weights"] = np.array([1.25, 2.5], dtype="f8")
+            archive["parameters"] = ngs.params({"seed": 91})
+            archive["complete"] = np.bool_(True)
+
+    with hdf5.archive(tmp_path / "state.h5", "w") as archive:
+        archive["nested/state"] = State()
+        assert archive.context == "/"
+        np.testing.assert_array_equal(archive["nested/state/weights"], [1.25, 2.5])
+        assert ngs.params(archive, "/nested/state/parameters")["seed"] == 91
+        assert archive["nested/state/complete"]
 
 
-def test_hdf5_strided_array_roundtrip():
-    base = np.arange(24, dtype=np.float64).reshape(4, 6)
-    values = [
-        base[:, ::2],
-        base.T,
-        base[::-1, ::-2],
-        np.ma.array(base[:, ::2], mask=False),
-        (base.astype(np.complex64) * (1 + 2j))[::2, 1::2],
-    ]
-    assert all(not value.flags.c_contiguous for value in values)
-    with tempfile.TemporaryDirectory() as directory:
-        path = os.path.join(directory, "strided.h5")
-        with hdf5.archive(path, "w") as ar:
-            for index, value in enumerate(values):
-                ar[f"/{index}"] = value
-        with hdf5.archive(path, "r") as ar:
-            for index, expected in enumerate(values):
-                actual = ar[f"/{index}"]
-                assert actual.dtype == expected.dtype
-                np.testing.assert_array_equal(actual, expected)
-
-
-def test_hdf5_non_native_array_error_is_actionable():
-    value = np.arange(4, dtype=np.int32).byteswap().view(np.dtype(">i4"))
-    with tempfile.TemporaryDirectory() as directory:
-        path = os.path.join(directory, "non-native.h5")
-        with hdf5.archive(path, "w") as ar:
-            try:
-                ar["/value"] = value
-                raise AssertionError("non-native arrays must be rejected")
-            except RuntimeError as error:
-                assert "not native" in str(error)
-
-
-if __name__ == "__main__":
-    test_hdf5io()
-    test_hdf5_empty_dict_roundtrip()
-    test_hdf5_dict_key_roundtrip()
-    test_hdf5_nested_numpy_scalar_vectorization()
-    test_hdf5_zero_dimensional_and_zero_extent_arrays()
-    test_hdf5_complex_array_precision_roundtrip()
-    test_hdf5_strided_array_roundtrip()
-    test_hdf5_non_native_array_error_is_actionable()
-    print("SUCCESS")
+def test_explicit_native_close_inside_transfer_reopens_h5py(tmp_path):
+    with hdf5.archive(tmp_path / "closed-callback.h5", "w") as archive:
+        with archive.native() as native:
+            native["value"] = np.float32(1.5)
+            native.close()
+        assert archive["value"] == np.float32(1.5)
+        archive["after-close"] = np.int64(7)

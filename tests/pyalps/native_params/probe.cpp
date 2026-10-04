@@ -1,5 +1,6 @@
 // A separately compiled consumer catches ABI, cross-module and GIL errors.
 #include <alps/params.hpp>
+#include <alps/hdf5/archive.hpp>
 #include <nanobind/nanobind.h>
 #include <nanobind/stl/vector.h>
 #include <nanobind/stl/string.h>

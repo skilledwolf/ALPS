@@ -56,28 +56,31 @@ with tempfile.TemporaryDirectory() as directory:
     filename = directory + "/shared-archive.h5"
     with hdf5.archive(filename, "w") as archive:
         archive["initial"] = 1
+    # Each provider owns its own file. Close h5py before a native writer opens it.
+    native.append_archive(filename)
     with hdf5.archive(filename, "r") as archive:
-        # A second SDK runtime copy would break the shared archive registry.
-        native.append_archive(filename)
         assert archive["initial"] == 1 and archive["from_native"] == 42
     for i, values in enumerate(([True, False], [2**53+1, 2], [1+2j, 3+4j], ["a,b", "c"])):
         with hdf5.archive(directory + f"/params-{i}.h5", "w") as archive:
             archive["parameters"] = ngs.params({"value": values})
             archive.set_context("/parameters")
             restored = native.empty_vectors()
-            native.load(restored, archive)
+            with archive.native() as native_archive:
+                native.load(restored, native_archive)
             np.testing.assert_array_equal(restored["value"], values)
             assert archive.context == "/parameters"
             archive.set_context("/resaved")
-            native.save(restored, archive)
-            native.load(restored, archive)
+            with archive.native() as native_archive:
+                native.save(restored, native_archive)
+                native.load(restored, native_archive)
             np.testing.assert_array_equal(restored["value"], values)
             assert archive.context == "/resaved"
     # Legacy parameter groups are explicitly rejected, without partial load.
     with hdf5.archive(directory + "/legacy.h5", "w") as archive:
         archive["value"] = [2., 4.]
         try:
-            native.load(clone, archive)
+            with archive.native() as native_archive:
+                native.load(clone, native_archive)
         except RuntimeError:
             pass
         else:

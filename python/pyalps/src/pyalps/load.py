@@ -419,7 +419,8 @@ class Hdf5Loader:
                     elif "error" in self.h5f.list_children(respath+'/'+m+'/mean'): 
                         if self.h5f.is_scalar(respath+'/'+m+'/mean/value'):
                             obs = pa.MCScalarData()
-                            obs.load(self.h5fname, respath+'/'+m)
+                            with self.h5f.native():
+                                obs.load(self.h5fname, respath+'/'+m)
                             obs=np.array([obs])
                             size=1
                             if obs[0].count==0:
@@ -441,7 +442,8 @@ class Hdf5Loader:
                                 size = obs.size
                             else:
                                 obs = pa.MCVectorData()
-                                obs.load(self.h5fname, respath+'/'+m)
+                                with self.h5f.native():
+                                    obs.load(self.h5fname, respath+'/'+m)
                                 size=len(obs.mean)
                                 if obs.count==0:
                                     obs=None
