@@ -43,7 +43,7 @@ void ising_sim::update() {
         int i = int(double(length) * random());
         int right = ( i + 1 < length ? i + 1 : 0 );
         int left = ( i - 1 < 0 ? length - 1 : i - 1 );
-        double p = exp( 2. * beta * spins[i] * ( spins[right] + spins[left] ));
+        double p = exp(-2. * beta * spins[i] * ( spins[right] + spins[left] ));
         if ( p >= 1. || random() < p )
             spins[i] = -spins[i];
     }

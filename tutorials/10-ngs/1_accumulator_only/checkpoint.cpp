@@ -1,5 +1,6 @@
 // Copyright (C) 2026 ALPS collaboration. SPDX-License-Identifier: MIT
 #include "ising.hpp"
+#include <cmath>
 #include <filesystem>
 #include <stdexcept>
 
@@ -22,6 +23,13 @@ int main() {
     std::filesystem::remove(filename);
     for (int i = 148; i < 712; ++i) { resumed.update(); resumed.measure(); }
     auto expected = uninterrupted.collect_results(), actual = resumed.collect_results();
+    // Exact finite periodic-chain energy from the Ising transfer matrix.
+    double u = std::tanh(1. / double(parameters["T"]));
+    double energy = -(u + std::pow(u, int(parameters["L"]) - 1))
+                  / (1. + std::pow(u, int(parameters["L"])));
+    auto const& measured = expected.at("Energy");
+    if (!(std::abs(measured.mean()(0) - energy) <= 6. * measured.stderror()(0)))
+        throw std::runtime_error("Ising energy disagrees with the Boltzmann distribution");
     for (auto const& entry : expected) {
         auto const& restored = actual.at(entry.first);
         if (entry.second != restored || entry.second.store().count() != restored.store().count()

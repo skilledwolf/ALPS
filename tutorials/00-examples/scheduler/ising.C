@@ -97,7 +97,7 @@ void IsingSimulation::dostep()
       int left=( i-1 < 0 ? length-1 : i-1);
 
       // calculate change in the weight of the configuration
-      double p=exp(2.*beta*spins[i]*(spins[right]+spins[left]));
+      double p=exp(-2.*beta*spins[i]*(spins[right]+spins[left]));
 
       // Metropolis updating: accept if random number is smaller than p
       if (p>=1. || random_real() < p)
