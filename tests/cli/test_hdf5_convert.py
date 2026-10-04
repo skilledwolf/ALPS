@@ -1,6 +1,8 @@
 """Validate offline migration with independent h5py-produced input files."""
 
 import importlib.util
+import hashlib
+import json
 from contextlib import closing
 import os
 from pathlib import Path
@@ -415,12 +417,13 @@ def test_installed_script_runs_after_standalone_relocation(tmp_path):
     source, output = directory / "input.h5", directory / "output.h5"
     with h5py.File(source, "w") as archive:
         marked_complex(archive, "science/value", np.array([[1.25, -0.0], [3., 4.]]))
-        legacy_params(archive)
+        release_parameters(archive)
         pair = archive.create_group("pair")
         pair["first"], pair["second"] = 1, 2
         padded_matrix(archive, "matrix", 2, 3, 4)
     result = subprocess.run([sys.executable, "-I", str(script), str(source), str(output),
-                             "--pair", "/pair", "--matrix", "/matrix"],
+                             "--pair", "/pair", "--matrix", "/matrix",
+                             "--parameters", "/parameters", "--boolean", "/parameters/flag"],
                             cwd=directory, capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
     with h5py.File(output, "r") as archive:
@@ -431,185 +434,6 @@ def test_installed_script_runs_after_standalone_relocation(tmp_path):
         assert archive["parameters/format"].asstr()[()] == "alps.params.v2"
         assert set(archive["pair"]) == {"0", "1"}
         assert archive["matrix"].shape == (3, 2)
-
-
-def legacy_params(archive, path="parameters"):
-    """An independent v1 checkpoint, including historically ambiguous NULLs."""
-    group = archive.create_group(path)
-    group["format"] = "alps.params.v1"
-    entries = group.create_group("entries")
-    examples = [
-        ("flag", "bool", np.int8(1)),
-        ("wide", "int64", np.int64(2**53 + 1)),
-        ("unsigned", "uint64", np.uint64(2**64 - 1)),
-        ("real", "float64", np.float64(-0.0)),
-        ("complex", "complex128", np.array([np.inf, -0.0])),
-        ("label/with.dots", "string", "a,b"),
-        ("flags", "bool[]", np.array([0, 1], dtype="i1")),
-        ("ints", "int64[]", np.array([-7, 2**53 + 1], dtype="i8")),
-        ("uints", "uint64[]", np.array([2**64 - 1], dtype="u8")),
-        ("reals", "float64[]", np.array([np.nan, -np.inf])),
-        ("complexes", "complex128[]", np.array([[1.25, -2.5], [0.0, -0.0]])),
-        ("labels", "string[]", np.array(["", "x/y"], dtype=h5py.string_dtype())),
-    ]
-    for name, logical, values in examples:
-        entry = entries.create_group(str(len(entries)))
-        entry["name"], entry["type"] = name, logical
-        dataset = entry.create_dataset("value", data=values)
-        if logical.startswith("complex"):
-            dataset.attrs["__complex__"] = np.int8(1)
-    for logical, dtype in [("bool", "i1"), ("int64", "i8"), ("uint64", "u8"),
-                           ("float64", "f8"), ("complex128", "f8"),
-                           ("string", h5py.string_dtype())]:
-        entry = entries.create_group(str(len(entries)))
-        entry["name"], entry["type"] = "empty " + logical, logical + "[]"
-        dataset = entry.create_dataset("value", data=h5py.Empty(dtype))
-        if logical == "complex128":
-            dataset.attrs["__complex__"] = np.int8(1)
-    group.attrs["scientific-note"] = "keep this"
-    return group
-
-
-def test_params_v1_migrates_declared_types_and_recovers_empty_vector_rank(converter, tmp_path):
-    source, output = tmp_path / "source.h5", tmp_path / "output.h5"
-    with h5py.File(source, "w") as archive:
-        group = legacy_params(archive, "custom/checkpoint")
-        # A hard link encountered before the checkpoint group must see the same
-        # logical-type conversion and preserve object identity.
-        archive["alias-mask"] = group["entries/6/value"]
-        archive.create_group("empty-dictionary")["format"] = "alps.params.v1"
-        archive["empty-dictionary"].create_group("entries")
-        archive["generic-null"] = h5py.Empty("f8")
-    before = source.read_bytes()
-    report = converter.convert(source, output)
-    assert source.read_bytes() == before
-    assert "/custom/checkpoint: alps.params.v1 -> alps.params.v2" in report
-    with h5py.File(output, "r") as archive:
-        group = archive["custom/checkpoint"]
-        assert group["format"].asstr()[()] == "alps.params.v2"
-        assert group.attrs["scientific-note"] == "keep this"
-        assert archive["empty-dictionary/format"].asstr()[()] == "alps.params.v2"
-        assert len(archive["empty-dictionary/entries"]) == 0
-        entries = {entry["name"].asstr()[()]: entry for entry in group["entries"].values()}
-        for entry in entries.values():
-            logical = entry["type"].asstr()[()]
-            value = entry["value"]
-            assert len(value.shape) == (1 if logical.endswith("[]") else 0)
-            assert not any(name.startswith("__complex__") or name.startswith("__alps_type__")
-                           for name in value.attrs)
-        assert entries["flag"]["value"].dtype == np.dtype(bool)
-        assert entries["flag"]["value"][()] == np.bool_(True)
-        assert entries["wide"]["value"][()] == 2**53 + 1
-        assert entries["unsigned"]["value"][()] == 2**64 - 1
-        assert np.signbit(entries["real"]["value"][()])
-        scalar = compound_values(entries["complex"]["value"], "f8", ())
-        assert np.isposinf(scalar["r"]) and np.signbit(scalar["i"])
-        np.testing.assert_array_equal(entries["flags"]["value"], [False, True])
-        assert archive["alias-mask"].id == entries["flags"]["value"].id
-        for name, entry in entries.items():
-            if name.startswith("empty "):
-                assert entry["value"].shape == (0,)
-        assert archive["generic-null"].shape is None
-
-
-@pytest.mark.parametrize("fault", ["unknown-type", "wrong-type", "wrong-rank", "null-scalar",
-                                  "invalid-bool", "duplicate-name", "sparse-entries", "extra-field"])
-def test_malformed_params_v1_fails_without_publishing(converter, tmp_path, fault):
-    source, output = tmp_path / "source.h5", tmp_path / "output.h5"
-    with h5py.File(source, "w") as archive:
-        group = legacy_params(archive)
-        entry = group["entries/0"]
-        if fault == "unknown-type":
-            del entry["type"]
-            entry["type"] = "guess"
-        elif fault == "wrong-type":
-            del entry["value"]
-            entry["value"] = np.float64(1)
-        elif fault == "wrong-rank":
-            del entry["value"]
-            entry["value"] = np.array([0, 1], dtype="i1")
-        elif fault == "null-scalar":
-            del entry["value"]
-            entry["value"] = h5py.Empty("i1")
-        elif fault == "invalid-bool":
-            entry["value"][()] = np.int8(2)
-        elif fault == "duplicate-name":
-            del group["entries/1/name"]
-            group["entries/1/name"] = "flag"
-        elif fault == "sparse-entries":
-            group["entries"].move("1", "99")
-        else:
-            entry["unexpected"] = 1
-    before = source.read_bytes()
-    with pytest.raises(ValueError):
-        converter.convert(source, output)
-    assert source.read_bytes() == before
-    assert not output.exists()
-    assert set(tmp_path.iterdir()) == {source}
-
-
-def test_params_converter_output_loads_in_native_sdk(converter, tmp_path):
-    if not os.environ.get("ALPS_DIR"):
-        pytest.skip("installed ALPS SDK is unavailable")
-    from pyalps import hdf5, ngs
-    source, output = tmp_path / "legacy-params.h5", tmp_path / "params.h5"
-    with h5py.File(source, "w") as archive:
-        legacy_params(archive)
-    converter.convert(source, output)
-    with hdf5.archive(str(output), "r") as archive:
-        parameters = ngs.params(archive, "/parameters")
-    assert parameters["wide"] == 2**53 + 1
-    assert parameters["unsigned"] == 2**64 - 1
-    assert parameters["flag"] is True
-    np.testing.assert_array_equal(parameters["flags"], [False, True])
-    for logical in ("bool", "int64", "uint64", "float64", "complex128", "string"):
-        assert len(parameters["empty " + logical]) == 0
-
-
-def test_params_old_ascii_charset_with_utf8_bytes_becomes_utf8_text(converter, tmp_path):
-    source, output = tmp_path / "source.h5", tmp_path / "output.h5"
-    with h5py.File(source, "w") as archive:
-        group = archive.create_group("parameters")
-        group["format"] = "alps.params.v1"
-        entry = group.create_group("entries/0")
-        dtype = h5py.string_dtype("ascii")
-        entry.create_dataset("name", data="Δ/name".encode(), dtype=dtype)
-        entry.create_dataset("type", data=b"string", dtype=dtype)
-        entry.create_dataset("value", data="λ value".encode(), dtype=dtype)
-    converter.convert(source, output)
-    with h5py.File(output, "r") as archive:
-        entry = archive["parameters/entries/0"]
-        assert entry["name"].asstr()[()] == "Δ/name"
-        assert entry["value"].asstr()[()] == "λ value"
-        for name in ("name", "type", "value"):
-            assert h5py.check_string_dtype(entry[name].dtype).encoding == "utf-8"
-
-
-@pytest.mark.parametrize("fault", ["nul-string", "invalid-utf8", "raw-bool-enum", "format-alias"])
-def test_params_preflight_rejects_unrepresentable_text_and_boolean_codes(converter, tmp_path, fault):
-    source, output = tmp_path / "source.h5", tmp_path / "output.h5"
-    with h5py.File(source, "w") as archive:
-        group = legacy_params(archive)
-        entry = group["entries/0"]
-        if fault in ("nul-string", "invalid-utf8"):
-            del entry["type"], entry["value"]
-            entry["type"] = "string"
-            entry["value"] = np.bytes_(b"abc\0def" if fault == "nul-string" else b"\xff")
-        elif fault == "raw-bool-enum":
-            del entry["value"]
-            dataset = entry.create_dataset("value", shape=(), dtype=bool)
-            with closing(dataset.id.get_type()) as datatype:
-                dataset.id.write(h5py.h5s.ALL, h5py.h5s.ALL, np.array(2, dtype="u1"), mtype=datatype)
-        else:
-            del entry["type"], entry["value"]
-            entry["type"] = "string"
-            entry["value"] = group["format"]
-    before = source.read_bytes()
-    with pytest.raises((ValueError, UnicodeError)):
-        converter.convert(source, output)
-    assert source.read_bytes() == before
-    assert not output.exists()
-    assert set(tmp_path.iterdir()) == {source}
 
 
 def padded_matrix(parent, name, rows, columns, stride, *, complex_values=False, **options):
@@ -807,43 +631,6 @@ def test_cli_repeatable_pair_and_matrix_options(converter, tmp_path):
             assert archive[name].shape == (3, 2)
 
 
-def test_params_text_conversion_preserves_layout_and_utf8_fill(converter, tmp_path):
-    source, output = tmp_path / "source.h5", tmp_path / "output.h5"
-    with h5py.File(source, "w") as archive:
-        group = archive.create_group("parameters")
-        group["format"] = "alps.params.v1"
-        entry = group.create_group("entries/0")
-        entry["name"], entry["type"] = "text", "string[]"
-        entry.create_dataset("value", data=np.array([b"one"], dtype=object),
-                             dtype=h5py.string_dtype("ascii"), chunks=(1,), maxshape=(None,),
-                             compression="gzip", compression_opts=4, fillvalue=b"next")
-    converter.convert(source, output)
-    with h5py.File(output, "r") as archive:
-        dataset = archive["parameters/entries/0/value"]
-        assert dataset.chunks == (1,) and dataset.maxshape == (None,)
-        assert dataset.compression == "gzip" and dataset.compression_opts == 4
-        assert dataset.fillvalue == b"next"
-        dataset_values = dataset.asstr()[...]
-        np.testing.assert_array_equal(dataset_values, ["one"])
-
-
-@pytest.mark.parametrize("field", ["int64", "uint64"])
-def test_params_numeric_enum_is_not_relabelled_as_a_plain_integer(converter, tmp_path, field):
-    source, output = tmp_path / "source.h5", tmp_path / "output.h5"
-    with h5py.File(source, "w") as archive:
-        group = archive.create_group("parameters")
-        group["format"] = "alps.params.v1"
-        entry = group.create_group("entries/0")
-        entry["name"], entry["type"] = "x", field
-        entry.create_dataset("value", data=1, dtype=h5py.enum_dtype({"ONE": 1},
-                             basetype="i8" if field == "int64" else "u8"))
-    before = source.read_bytes()
-    with pytest.raises(ValueError, match="disagrees"):
-        converter.convert(source, output)
-    assert source.read_bytes() == before
-    assert set(tmp_path.iterdir()) == {source}
-
-
 @pytest.mark.parametrize("rows,columns,stride", [(0, 2, 0), (2, 0, 5)])
 @pytest.mark.parametrize("complex_values", [False, True])
 def test_declared_matrix_shape_recovers_null_empty_storage(converter, tmp_path, rows, columns,
@@ -888,3 +675,364 @@ def test_boolean_matrix_rejects_invalid_raw_enum_codes(converter, tmp_path, faul
         converter.convert(source, output, matrix_groups=["/matrix"])
     assert source.read_bytes() == before
     assert set(tmp_path.iterdir()) == {source}
+
+
+def release_parameters(archive, path="parameters"):
+    """Independent inputs using the official flat native-leaf writer contract."""
+    group = archive.create_group(path)
+    group["flag"] = np.int8(1)
+    group["N"] = np.int32(7)
+    group["real"] = np.float64(-0.0)
+    group["wide"] = np.int64(2**53 + 1)
+    group["unsigned"] = np.uint64(2**64 - 1)
+    group["ints"] = np.array([-7, 23], dtype="i4")
+    group["empty-int"] = h5py.Empty("i4")
+    group["empty-real"] = h5py.Empty("f8")
+    group["empty-string"] = h5py.Empty(h5py.string_dtype("ascii"))
+    group.create_dataset("EXPRESSION", data=b"sqrt(2) + unknown", dtype=h5py.string_dtype("ascii"))
+    marked_complex(group, "complex", np.array([np.inf, -0.0]))
+    group.attrs["note"] = "keep this"
+    return group
+
+
+def parameter_values(group):
+    assert group["format"].asstr()[()] == "alps.params.v2"
+    assert set(group) == {"format", "entries"}
+    values = {}
+    for entry in group["entries"].values():
+        assert set(entry) == {"name", "value"}
+        values[entry["name"].asstr()[()]] = entry["value"]
+    return values
+
+
+def test_released_flat_parameters_preserve_names_expressions_aliases_and_empty_types(converter, tmp_path):
+    source, output = tmp_path / "source.h5", tmp_path / "output.h5"
+    with h5py.File(source, "w") as archive:
+        group = release_parameters(archive)
+        # The official writers do NOT encode names. Literal escape text is a key.
+        group["literal&#47;and&#38;name"] = np.int32(19)
+        group["entries"], group["format"] = np.int32(1), "a legitimate parameter"
+        archive["alias-value"] = group["N"]
+        archive["alias-parameters"] = group
+        archive["unresolved"] = h5py.Empty("f8")
+    before = source.read_bytes()
+    report = converter.convert(source, output, parameter_groups=["/parameters"],
+                               boolean_datasets=["/parameters/flag"])
+    assert source.read_bytes() == before
+    assert any("ALPS 3.0.0 flat parameters" in line for line in report)
+    with h5py.File(output, "r") as archive:
+        values = parameter_values(archive["parameters"])
+        assert values["N"].dtype == np.dtype("i8") and values["N"][()] == 7
+        assert archive["alias-value"].id == values["N"].id
+        assert archive["alias-parameters"].id == archive["parameters"].id
+        assert values["flag"].dtype == np.dtype(bool) and values["flag"][()]
+        assert values["wide"][()] == 2**53 + 1
+        assert values["unsigned"][()] == 2**64 - 1
+        assert np.signbit(values["real"][()])
+        complex_value = compound_values(values["complex"], "f8", ())
+        assert np.isposinf(complex_value["r"]) and np.signbit(complex_value["i"])
+        assert values["literal&#47;and&#38;name"][()] == 19
+        assert values["format"].asstr()[()] == "a legitimate parameter"
+        assert values["entries"][()] == 1
+        assert values["EXPRESSION"].asstr()[()] == "sqrt(2) + unknown"
+        assert values["empty-int"].shape == (0,) and values["empty-int"].dtype == np.dtype("i8")
+        assert values["empty-real"].shape == (0,)
+        assert values["empty-string"].shape == (0,)
+        assert h5py.check_string_dtype(values["empty-string"].dtype).encoding == "utf-8"
+        assert archive["parameters"].attrs["note"] == "keep this"
+        assert archive["unresolved"].shape is None
+
+
+@pytest.mark.parametrize("fault", ["ambiguous-byte", "rank-two", "nested-key", "numeric-enum",
+                                  "nul-string", "invalid-utf8", "raw-bool-enum", "soft-key"])
+def test_malformed_released_parameters_leave_source_and_destination_untouched(converter, tmp_path, fault):
+    source, output = tmp_path / "source.h5", tmp_path / "output.h5"
+    with h5py.File(source, "w") as archive:
+        group = release_parameters(archive)
+        if fault in ("rank-two", "nested-key", "numeric-enum", "soft-key"):
+            del group["N"]
+        if fault == "rank-two":
+            group["N"] = np.ones((2, 2))
+        elif fault == "nested-key":
+            group["N/key"] = 1
+        elif fault == "numeric-enum":
+            group.create_dataset("N", data=1, dtype=h5py.enum_dtype({"ONE": 1}, basetype="i8"))
+        elif fault == "soft-key":
+            group["N"] = h5py.SoftLink("/parameters/wide")
+        elif fault in ("nul-string", "invalid-utf8"):
+            group["bad"] = np.bytes_(b"abc\0def" if fault == "nul-string" else b"\xff")
+        elif fault == "raw-bool-enum":
+            del group["flag"]
+            dataset = group.create_dataset("flag", shape=(), dtype=bool)
+            with closing(dataset.id.get_type()) as datatype:
+                dataset.id.write(h5py.h5s.ALL, h5py.h5s.ALL, np.array(2, dtype="u1"), mtype=datatype)
+    before = source.read_bytes()
+    with pytest.raises((ValueError, UnicodeError)):
+        converter.convert(source, output, parameter_groups=["/parameters"],
+                          boolean_datasets=[] if fault == "ambiguous-byte" else ["/parameters/flag"])
+    assert source.read_bytes() == before
+    assert set(tmp_path.iterdir()) == {source}
+
+
+def test_released_parameter_text_uses_utf8_and_preserves_layout_fill_and_expression(converter, tmp_path):
+    source, output = tmp_path / "source.h5", tmp_path / "output.h5"
+    with h5py.File(source, "w") as archive:
+        group = archive.create_group("parameters")
+        group.create_dataset("Δ key", data=np.array([b"unknown + 1", "λ".encode()], dtype=object),
+                             dtype=h5py.string_dtype("ascii"), chunks=(1,), maxshape=(None,),
+                             compression="gzip", compression_opts=4, fillvalue="δ".encode())
+    converter.convert(source, output, parameter_groups=["/parameters"])
+    with h5py.File(output, "r") as archive:
+        dataset = parameter_values(archive["parameters"])["Δ key"]
+        assert dataset.chunks == (1,) and dataset.maxshape == (None,)
+        assert dataset.compression == "gzip" and dataset.compression_opts == 4
+        assert dataset.fillvalue == "δ".encode()
+        np.testing.assert_array_equal(dataset.asstr()[...], ["unknown + 1", "λ"])
+        assert h5py.check_string_dtype(dataset.dtype).encoding == "utf-8"
+
+
+def test_official_v3_writer_fixture_profiles_are_pinned_and_preserve_science(converter, tmp_path):
+    folder = Path(__file__).with_name("fixtures")
+    fixture = folder / "alps-v3.0.0-profiles.h5"
+    metadata = json.loads((folder / "alps-v3.0.0-profiles.json").read_text())
+    assert metadata["source_revision"] == "1950cc6f682d7c4c1deae8b816f283857b1819d1"
+    assert metadata["release"] == "ALPS v3.0.0"
+    assert "Reconstructed" in metadata["provenance"]
+    assert hashlib.sha256(fixture.read_bytes()).hexdigest() == metadata["sha256"]
+    source, output = tmp_path / "released.h5", tmp_path / "converted.h5"
+    shutil.copy2(fixture, source)
+    before = source.read_bytes()
+    report = converter.convert(source, output,
+                               parameter_groups=["/ngs-parameters", "/legacy-parameters"],
+                               boolean_datasets=["/ngs-parameters/ENABLED"],
+                               alea_groups=["/scalar-mcdata", "/scalar-evaluator", "/scalar-observable", "/vector-observable"])
+    assert source.read_bytes() == before
+    assert any("unrecoverable-empty-vector-observable" in line and "NULL" in line for line in report)
+    assert not any("/vector-observable/timeseries/data: NULL" in line for line in report)
+    with h5py.File(output, "r") as archive:
+        values = parameter_values(archive["ngs-parameters"])
+        assert values["TITLE"].asstr()[()] == "Δ experiment"
+        assert values["EXPRESSION"].asstr()[()] == "sqrt(2) + unknown"
+        assert values["N"].dtype == np.dtype("i8") and values["EMPTY_INT"].shape == (0,)
+        assert parameter_values(archive["legacy-parameters"])["EXPRESSION"].asstr()[()] == "2 * unresolved"
+        scalar = archive["scalar-mcdata"]
+        assert scalar["timeseries/data"].shape == scalar["jacknife/data"].shape == (0,)
+        assert scalar.attrs["cannotrebin"] == np.bool_(False)
+        assert scalar["timeseries/data"].attrs["binsize"] == 0
+        evaluator = archive["scalar-evaluator"]
+        assert evaluator["count"].dtype == np.dtype("f8") and evaluator["count"][()] == 6
+        assert evaluator.attrs["changed"] == np.bool_(False)
+        assert evaluator.attrs["nonlinearoperations"] == np.bool_(True)
+        assert evaluator["timeseries/data2"].shape == (0,)
+        np.testing.assert_array_equal(evaluator["timeseries/data"], [1., 2., 3.])
+        labels = archive["scalar-observable/labels"]
+        assert labels.shape == () and labels.asstr()[()] == "Δ energy"
+        assert h5py.check_string_dtype(labels.dtype).encoding == "utf-8"
+        vector = archive["vector-observable"]
+        np.testing.assert_array_equal(vector["labels"].asstr()[...], ["x", "λ"])
+        for field in ("data", "data2"):
+            assert vector["timeseries/" + field].shape == (0, 2)
+            assert vector["timeseries/" + field].dtype == np.dtype("f8")
+        np.testing.assert_array_equal(vector["timeseries/logbinning"], [[1., 2.]])
+        np.testing.assert_array_equal(vector["timeseries/partialbin"], [1., 2.])
+        assert vector["timeseries/partialbin"].attrs["count"] == 1
+        assert archive["unrecoverable-empty-vector-observable/timeseries/data"].shape is None
+
+
+@pytest.mark.parametrize("fault", ["no-element-shape", "no-value-type", "conflicting-shape", "flagless",
+                                  "invalid-flag", "vector-flag", "invalid-count", "bad-counts",
+                                  "scalar-vector-label-mismatch", "rank-two-label", "numeric-label"])
+def test_alea_profile_rejects_ambiguous_or_malformed_released_fields(converter, tmp_path, fault):
+    source, output = tmp_path / "source.h5", tmp_path / "output.h5"
+    with h5py.File(source, "w") as archive:
+        group = archive.create_group("result")
+        group["count"] = np.uint64(3)
+        group.attrs["cannotrebin"] = np.int8(0)
+        group["mean/value"] = np.array([1., 2.])
+        group["mean/error"] = np.array([.1, .2])
+        group["timeseries/data"] = np.array([[.5, 1.]])
+        if fault == "no-element-shape":
+            del group["mean"], group["timeseries"]
+            group["timeseries/logbinning"] = h5py.Empty("i4")
+        elif fault == "no-value-type":
+            del group["timeseries/data"]
+            group["timeseries/data"] = h5py.Empty("i4")
+        elif fault == "conflicting-shape":
+            del group["mean/error"]
+            group["mean/error"] = np.ones(3)
+        elif fault == "flagless":
+            del group.attrs["cannotrebin"]
+        elif fault == "invalid-flag":
+            group.attrs["cannotrebin"] = np.int8(2)
+        elif fault == "vector-flag":
+            group.attrs["cannotrebin"] = np.array([0], dtype="i1")
+        elif fault == "invalid-count":
+            del group["count"]
+            group["count"] = np.nan
+        elif fault == "bad-counts":
+            group["timeseries/logbinning_counts"] = np.ones((1, 2), dtype="u8")
+        elif fault == "scalar-vector-label-mismatch":
+            group.create_dataset("labels", data="scalar", dtype=h5py.string_dtype("utf-8"))
+        elif fault == "rank-two-label":
+            group.create_dataset("labels", data=[[b"x", b"y"]], dtype=h5py.string_dtype("ascii"))
+        elif fault == "numeric-label":
+            group["labels"] = np.array([1, 2])
+    before = source.read_bytes()
+    with pytest.raises(ValueError):
+        converter.convert(source, output, alea_groups=["/result"])
+    assert source.read_bytes() == before
+    assert set(tmp_path.iterdir()) == {source}
+
+
+def test_alea_null_bin_conversion_uses_value_exemplar_and_preserves_aliases(converter, tmp_path):
+    source, output = tmp_path / "source.h5", tmp_path / "output.h5"
+    with h5py.File(source, "w") as archive:
+        group = archive.create_group("result")
+        group["count"] = np.float64(2)
+        group.attrs["changed"], group.attrs["nonlinearoperations"] = np.int8(0), np.int8(0)
+        group["mean/value"] = np.array([1., 2.])
+        group["mean/error"] = np.array([.1, .2])
+        # Integer measurement bins and floating averages intentionally differ.
+        group["timeseries/data"] = np.array([[1, 2], [1, 2]], dtype="i4")
+        group["timeseries/data2"] = h5py.Empty("i4")
+        group["jacknife/data"] = h5py.Empty("i4")
+        archive["alias"] = group["timeseries/data2"]
+    converter.convert(source, output, alea_groups=["/result"])
+    with h5py.File(output, "r") as archive:
+        assert archive["result/timeseries/data2"].shape == (0, 2)
+        assert archive["result/timeseries/data2"].dtype == np.dtype("i4")
+        assert archive["alias"].id == archive["result/timeseries/data2"].id
+        assert archive["result/jacknife/data"].dtype == np.dtype("f8")
+        np.testing.assert_array_equal(archive["result/timeseries/data"], [[1, 2], [1, 2]])
+
+
+def test_release_profiles_are_explicit_and_repeatable_on_cli(converter, tmp_path):
+    source, output = tmp_path / "source.h5", tmp_path / "output.h5"
+    with h5py.File(source, "w") as archive:
+        for name in ("one", "two"):
+            group = archive.create_group(name)
+            group["N"] = np.int32(7)
+        for name in ("a", "b"):
+            group = archive.create_group(name)
+            group["count"] = np.uint64(1)
+            group["mean/value"] = 1.
+            group.attrs["cannotrebin"] = np.int8(0)
+            group["timeseries/data"] = h5py.Empty("f8")
+    assert converter.main([str(source), str(output), "--parameters", "/one", "--parameters", "/two",
+                           "--alea", "/a", "--alea", "/b"]) == 0
+    with h5py.File(output, "r") as archive:
+        assert parameter_values(archive["one"])["N"][()] == 7
+        assert parameter_values(archive["two"])["N"][()] == 7
+        assert archive["a/timeseries/data"].shape == archive["b/timeseries/data"].shape == (0,)
+
+
+def test_release_params_profile_output_loads_in_native_sdk(converter, tmp_path):
+    if not os.environ.get("ALPS_DIR"):
+        pytest.skip("installed ALPS SDK is unavailable")
+    from pyalps import hdf5, ngs
+    source, output = tmp_path / "released-params.h5", tmp_path / "params.h5"
+    with h5py.File(source, "w") as archive:
+        release_parameters(archive)
+    converter.convert(source, output, parameter_groups=["/parameters"],
+                      boolean_datasets=["/parameters/flag"])
+    with hdf5.archive(str(output), "r") as archive:
+        parameters = ngs.params(archive, "/parameters")
+    assert parameters["wide"] == 2**53 + 1 and parameters["unsigned"] == 2**64 - 1
+    assert parameters["flag"] is True
+    assert parameters["EXPRESSION"] == "sqrt(2) + unknown"
+    for name in ("empty-int", "empty-real", "empty-string"):
+        assert len(parameters[name]) == 0
+
+
+def test_alea_null_complex_vector_bins_use_known_partialbin_datatype(converter, tmp_path):
+    source, output = tmp_path / "source.h5", tmp_path / "output.h5"
+    with h5py.File(source, "w") as archive:
+        group = archive.create_group("observable")
+        group["count"] = np.uint64(1)
+        values = np.array([[np.inf, -0.0], [3., -4.]])
+        marked_complex(group, "mean/value", values)
+        marked_complex(group, "timeseries/partialbin", values)
+        marked_complex(group, "timeseries/logbinning", values[np.newaxis, ...])
+        # Unlike the scalar typed-NULL case, vector<valarray<complex>> lost T.
+        group["timeseries/data"] = h5py.Empty("i4")
+    converter.convert(source, output, alea_groups=["/observable"])
+    with h5py.File(output, "r") as archive:
+        dataset = archive["observable/timeseries/data"]
+        assert dataset.shape == (0, 2)
+        compound_values(dataset, "f8", (0, 2))
+        values = compound_values(archive["observable/timeseries/partialbin"], "f8", (2,))
+        assert np.isposinf(values["r"][0]) and np.signbit(values["i"][0])
+
+
+def test_null_declared_boolean_parameter_rejects_invalid_fill(converter, tmp_path):
+    source, output = tmp_path / "source.h5", tmp_path / "output.h5"
+    with h5py.File(source, "w") as archive:
+        group = archive.create_group("parameters")
+        group.create_dataset("flags", shape=None, dtype="i1", fillvalue=np.int8(2))
+    before = source.read_bytes()
+    with pytest.raises(ValueError, match="Boolean"):
+        converter.convert(source, output, parameter_groups=["/parameters"],
+                          boolean_datasets=["/parameters/flags"])
+    assert source.read_bytes() == before
+    assert set(tmp_path.iterdir()) == {source}
+
+
+@pytest.mark.parametrize("link", ["/parameters/N", "/parameters/format"])
+def test_parameter_schema_changes_cannot_retarget_soft_links(converter, tmp_path, link):
+    source, output = tmp_path / "source.h5", tmp_path / "output.h5"
+    with h5py.File(source, "w") as archive:
+        archive["parameters/N"] = np.int32(7)
+        archive["view"] = h5py.SoftLink(link)
+    before = source.read_bytes()
+    with pytest.raises(ValueError, match="changes a soft-link target"):
+        converter.convert(source, output, parameter_groups=["/parameters"])
+    assert source.read_bytes() == before
+    assert set(tmp_path.iterdir()) == {source}
+
+
+def test_released_fixture_profiles_load_through_native_params_and_result_readers(converter, tmp_path):
+    if not os.environ.get("ALPS_DIR"):
+        pytest.skip("installed ALPS SDK is unavailable")
+    from pyalps import alea, hdf5, ngs
+    source = Path(__file__).with_name("fixtures") / "alps-v3.0.0-profiles.h5"
+    output = tmp_path / "converted.h5"
+    converter.convert(source, output,
+                      parameter_groups=["/ngs-parameters", "/legacy-parameters"],
+                      boolean_datasets=["/ngs-parameters/ENABLED"],
+                      alea_groups=["/scalar-mcdata", "/scalar-evaluator", "/scalar-observable", "/vector-observable"])
+    # Each provider owns the file separately; no h5py/native overlap is needed.
+    with hdf5.archive(str(output), "r") as archive:
+        parameters = ngs.params(archive, "/ngs-parameters")
+    assert parameters["N"] == 7 and parameters["ENABLED"] is True
+    assert parameters["TITLE"] == "Δ experiment"
+    assert parameters["EXPRESSION"] == "sqrt(2) + unknown"
+    np.testing.assert_array_equal(parameters["VECTOR"], [1, 2, 3])
+    for name in ("EMPTY_INT", "EMPTY_REAL", "EMPTY_TEXT"):
+        assert len(parameters[name]) == 0
+    scalar = alea.MCScalarData()
+    scalar.load(str(output), "/scalar-mcdata")
+    assert scalar.count == 0 and scalar.bins.size == 0
+    with pytest.raises(RuntimeError, match="No measurements available"):
+        _ = scalar.mean
+    evaluator = alea.MCScalarData()
+    evaluator.load(str(output), "/scalar-evaluator")
+    assert evaluator.count == 6 and evaluator.mean == 1 and evaluator.error == .25
+    # SimpleObservableData stores bin sums. The live domain reader supplies the
+    # cross-schema sums-to-means rule; the offline converter kept [1,2,3] intact.
+    np.testing.assert_array_equal(evaluator.bins, [.5, 1., 1.5])
+    vector = alea.MCVectorData()
+    vector.load(str(output), "/vector-observable")
+    assert vector.count == 1 and vector.bins.size == 0
+    np.testing.assert_array_equal(vector.mean, [1., 2.])
+
+
+def test_parameter_profile_respects_an_explicit_integer_byte_marker(converter, tmp_path):
+    source, output = tmp_path / "source.h5", tmp_path / "output.h5"
+    with h5py.File(source, "w") as archive:
+        dataset = archive.create_dataset("parameters/code", data=np.int8(1))
+        dataset.attrs["__alps_type__"] = "int8"
+    converter.convert(source, output, parameter_groups=["/parameters"])
+    with h5py.File(output, "r") as archive:
+        dataset = parameter_values(archive["parameters"])["code"]
+        assert dataset.dtype == np.dtype("i8") and dataset[()] == 1
+        assert "__alps_type__" not in dataset.attrs

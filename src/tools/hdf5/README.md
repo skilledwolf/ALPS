@@ -24,15 +24,18 @@ The destination filesystem must support hard links for atomic publication.
 | Real/integer components with a trailing dimension of two and scalar `__complex__` marker | HDF5 compound with `r` and `i` members, removing that trailing dimension |
 | Signed bytes marked `__alps_type__ = "bool"` | HDF5 enum with `FALSE` and `TRUE` members |
 | Signed bytes marked `__alps_type__ = "int8"` | Ordinary signed bytes |
-| Typed `alps.params.v1` dictionaries | Validated `alps.params.v2` dictionaries with native datatypes and ranks |
+| Explicitly selected ALPS 3.0.0 flat parameter groups | Indexed `alps.params.v2` names and native values |
+| Explicitly selected ALPS 3.0.0 ALEA observable/result groups | Native Boolean flags and schema-established empty array extents |
 | Other datasets and attributes | Their existing datatypes and values |
 
-Complex component width and byte order are preserved, including integer
-components. Floating complex values are readable as NumPy complex arrays.
+Generic complex leaf conversion preserves component width and byte order,
+including integer components. The parameter profile instead canonicalizes
+numeric widths as described below. Floating complex values are readable as NumPy complex arrays.
 Components are assigned separately to preserve infinities, NaNs and signed zero.
-Boolean payloads and fill values must contain only zero or one, including raw
-codes in existing Boolean enums. Consumed ALPS markers are removed;
-the converter adds no replacement type markers or private format envelope.
+Converted Boolean payloads and fill values must contain only zero or one,
+including raw codes in selected existing Boolean enums. Consumed ALPS markers
+are removed; generic leaf conversion adds no replacement type markers or envelope.
+The parameter profile writes its domain checkpoint version and indexed entries.
 The same conversions apply to attributes using `__complex__:NAME` and
 `__alps_type__:NAME` sibling markers. Malformed, orphaned, unknown and conflicting
 markers fail conversion.
@@ -51,7 +54,78 @@ alps-hdf5-convert old.h5 converted.h5 \
 Both options can be repeated. They cannot override an explicit integer or complex
 marker, and misspelled paths fail conversion.
 
-## Explicit container schema migration
+## Released parameter and ALEA profiles
+
+The supported release boundary is files produced by the
+[ALPS v3.0.0 writers](https://github.com/ALPSim/ALPS/tree/v3.0.0), revision
+`1950cc6f682d7c4c1deae8b816f283857b1819d1`. Select each parameter group and
+each individual numeric scalar/vector observable or result explicitly:
+
+```sh
+alps-hdf5-convert old.h5 converted.h5 \
+  --parameters /parameters \
+  --boolean /parameters/ENABLED \
+  --alea /simulation/results/Energy \
+  --alea /simulation/results/Magnetization
+```
+
+Both profiles are repeatable; selections cannot overlap. They never infer a
+domain from a group name. Unselected groups retain their scientific schema.
+
+`--parameters` accepts the flat key/dataset groups written by the released
+NGS `params` and legacy `Parameters` APIs. It stores each key in
+`entries/{n}/name` and its native payload in `entries/{n}/value`, with
+`format = "alps.params.v2"`. Datatype and scalar/vector rank determine the value
+type; no per-entry type tag is written. Integers are widened to signed/unsigned
+64-bit storage, floating values to 64-bit and floating complex values to two
+64-bit compound members. Unsupported types or higher ranks are rejected.
+Known primitive NULL vectors become ranked empty arrays. Unmarked signed-byte
+parameters need an explicit `--boolean` declaration because they could also
+come from Python integer storage. String values, including unresolved parameter
+expressions, stay text; they are never evaluated or parsed as numbers.
+
+Released parameter writers did not encode keys. Literal `&#47;` and `&#38;`
+text therefore remains literal text and is not decoded. An actual `/` became
+nested HDF5 paths without recording the original flat-key intent; the profile
+rejects nested groups instead of inventing names. Parameter names and values
+are validated as UTF-8 without interior NULs. Old string writers placed UTF-8
+bytes under an ASCII declaration; selected parameter text is rewritten with a
+UTF-8 datatype while retaining supported layout, filters and fill values.
+Group and payload attributes and hard-link identity are retained. Soft links
+whose target would change after indexing cause conversion to fail.
+
+`--alea` covers the numeric scalar/vector field layouts from `mcdata`,
+`SimpleObservableData`, `SimpleBinning` and `DetailedBinning`. It converts their
+known scalar `cannotrebin`, `changed` and `nonlinearoperations` attributes to
+Boolean enums. These are distinct domain flags; no flag is renamed. Numeric
+statistics, convergence flags, bin counts, attributes and stored bin values
+retain their meaning. In particular, the profile does not reinterpret sums
+as means or infer a missing bin size.
+
+A non-NULL mean, sum, partial bin or bin array establishes the scientific
+element shape. Empty scalar bin arrays then have shape `[0]`; empty vector bin
+arrays have shape `[0, components]`. The original writer sometimes stored an
+empty outer vector as INT NULL, losing its element datatype as well as shape.
+Value bins require a non-NULL value-bin/partial-bin exemplar to recover that
+type: floating means alone are insufficient because integer measurements can
+have floating averages. Logarithmic/jackknife result bins use a result-type
+exemplar. Without the required evidence, the profile rejects the file.
+Scalar observable labels remain scalar text, and vector labels and logarithmic
+counts retain rank one. Generic NULL fields
+outside the selected schema remain NULL and are reported.
+
+The compact fixture `tests/cli/fixtures/alps-v3.0.0-profiles.h5` and adjacent
+JSON record the pinned writers, source revision and fixture hash. It is an
+explicitly labeled h5py reconstruction of those writer contracts, not output
+from a compiled release. Tests cover both recoverable empty bins and a genuine
+writer layout whose empty vector lost the necessary element evidence.
+
+Private `alps.params.v1` checkpoints created during development of this branch
+are not an official release schema and have no automatic upgrade profile.
+Other scientific result schemas and cross-schema statistical normalization
+remain the responsibility of their domain serializers/readers.
+
+## Older explicit container schema migration
 
 Old pair and numerical matrix groups require an explicit selection; their child
 names alone do not establish container intent:
@@ -97,18 +171,6 @@ Generic NULL dataspaces remain NULL and are reported. Older empty-container
 writers lost the original array rank; the converter does not invent one.
 HighFive 3.3's ordinary vector read does not accept NULL as an empty vector.
 Ranked zero-length arrays retain their shape and can be read normally.
-
-Explicit `alps.params.v1` dictionaries are upgraded to `alps.params.v2`.
-The indexed names and logical types are validated before conversion. Declared
-Boolean values resolve otherwise ambiguous signed bytes, and declared vector
-types recover NULL values as one-dimensional empty arrays. Scalars must have
-scalar rank; vectors must have rank one after complex conversion. Unknown types,
-mismatched physical datatypes/ranks, duplicate names and sparse entry indices
-are rejected. Names containing `/` or TOML punctuation remain indexed names.
-String names and values are validated as UTF-8 without interior NULs. Old writers
-stored UTF-8 bytes under an ASCII charset declaration; typed dictionary text is
-rewritten with a UTF-8 HDF5 string datatype while retaining supported layout,
-compression and fill values.
 
 Files with user blocks, external links/storage, virtual datasets, named datatypes,
 object/region references (including dimension-scale references), and unsupported

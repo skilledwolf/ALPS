@@ -2,8 +2,8 @@
 """Convert ALPS archive leaf encodings to ordinary HDF5 complex/Boolean types.
 
 Requires h5py and NumPy, but no ALPS installation. Scientific group layouts are
-preserved. Typed alps.params.v1 dictionaries are upgraded to alps.params.v2;
-other solver checkpoint schemas are not changed.
+preserved. Explicit profiles migrate released ALPS 3.0.0 parameter and ALEA
+schemas; unspecified solver checkpoint schemas are not changed.
 """
 
 # SPDX-License-Identifier: MIT
@@ -144,9 +144,11 @@ def _values(data, kind, dtype, where):
         if np.any((data != 0) & (data != 1)):
             raise ValueError(f"{where}: Boolean payload contains a value other than 0 or 1")
         return data.astype(bool)
-    if kind == "params-text":
+    if kind == "text":
         return np.array([_text(value, where) for value in data.flat],
                         dtype=object).reshape(data.shape)
+    if kind == "numeric":
+        return data.astype(dtype, copy=False)
     return data
 
 
@@ -173,7 +175,14 @@ def _fill_value(source, kind, dtype):
             props.get_fill_value(fill)
     if kind == "complex":
         fill = np.full((2,), fill, dtype=source.dtype)
-    return _values(fill, kind, dtype, source.name)[()]
+    fill = _values(fill, kind, dtype, source.name)[()]
+    if dtype.names == ("r", "i") and np.asarray(fill).dtype.names is None:
+        # A NULL outer container's placeholder type may be integer. HDF5 does
+        # not provide numeric-to-compound conversion for its default zero fill.
+        if fill != 0:
+            raise ValueError(f"{source.name}: NULL placeholder has a nonzero complex fill value")
+        fill = np.zeros((), dtype=dtype)[()]
+    return fill
 
 
 def _blocks(shape, itemsize):
@@ -195,12 +204,13 @@ def _blocks(shape, itemsize):
 
 
 def _dataset(source, parent, name, kind, dtype, shape):
-    if kind == "params-text":
+    if kind == "text":
         dtype = h5py.string_dtype("utf-8")
-    if source.shape is None and shape == (0,):
-        # An explicit params vector type recovers the rank lost by NULL storage.
-        return parent.create_dataset(name, shape=shape, dtype=dtype)
-    if kind not in ("complex", "bool", "params-text"):
+    if source.shape is None and shape is not None:
+        # A selected scientific schema recovers only known empty extents.
+        return parent.create_dataset(name, shape=shape, dtype=dtype,
+                                     fillvalue=_fill_value(source, kind, dtype))
+    if kind not in ("complex", "bool", "text", "numeric"):
         source.file.copy(source, parent, name=name, without_attrs=True)
         return parent[name]
     # Only lossless filters supported by h5py's public creation API are carried
@@ -222,7 +232,7 @@ def _dataset(source, parent, name, kind, dtype, shape):
         options["fillvalue"] = _fill_value(source, kind, dtype)
     target = parent.create_dataset(name, shape=shape, dtype=dtype, **options)
     if shape is not None:
-        for selection in _blocks(shape, BUFFER_BYTES if kind == "params-text" else dtype.itemsize):
+        for selection in _blocks(shape, BUFFER_BYTES if kind == "text" else dtype.itemsize):
             source_selection = selection + (slice(None),) if kind == "complex" else selection
             data = _boolean_values(source, source_selection) if kind == "bool" else source[source_selection]
             target[selection] = _values(data, kind, dtype, source.name)
@@ -233,9 +243,10 @@ def _address(obj):
     return h5py.h5o.get_info(obj.id).addr
 
 
-def _schema_groups(source, pairs, matrices):
+def _schema_groups(source, pairs, matrices, parameters, alea):
     groups = {}
-    for kind, paths in (("pair", pairs), ("matrix", matrices)):
+    for kind, paths in (("pair", pairs), ("matrix", matrices),
+                        ("parameters", parameters), ("alea", alea)):
         for path in paths:
             path = posixpath.normpath("/" + str(path).lstrip("/"))
             obj, parents = source, set()
@@ -252,7 +263,7 @@ def _schema_groups(source, pairs, matrices):
                 raise ValueError(f"{path}: conflicting schema selections")
             fields = {"first", "second"} if kind == "pair" else {
                 "size1", "size2", "reserved_size1", "values"}
-            if set(obj) != fields:
+            if kind in ("pair", "matrix") and set(obj) != fields:
                 raise ValueError(f"{path}: unexpected {kind} fields")
             if kind == "matrix":
                 if h5py.h5o.get_info(obj.id).rc != 1:
@@ -327,100 +338,168 @@ def _matrix(group, parent):
 
 def _text(value, where):
     value = value.decode("utf-8") if isinstance(value, bytes) else str(value)
+    value.encode("utf-8")
     if "\0" in value:
         raise ValueError(f"{where}: string contains NUL")
     return value
 
 
-def _scalar_text(dataset):
-    if (not isinstance(dataset, h5py.Dataset) or dataset.shape != ()
-            or h5py.check_string_dtype(dataset.dtype) is None):
-        raise ValueError(f"{dataset.name}: expected a scalar string")
-    return _text(dataset[()], dataset.name)
+def _profiles(source, schemas, declared, report):
+    """Normalize only types/extents established by a selected released schema."""
+    conversions = {}
+
+    def remember(dataset, kind, dtype, shape):
+        address = _address(dataset)
+        conversion = kind, np.dtype(dtype), shape
+        if address in conversions and conversions[address] != conversion:
+            raise ValueError(f"{dataset.name}: conflicting profile interpretations of a hard link")
+        conversions[address] = conversion
+
+    def encoding(dataset):
+        _check_object(dataset)
+        return _encoding(dataset, None, (_address(dataset), None) in declared, [])
+
+    for kind, path, _ in schemas.values():
+        group = source[path]
+        if kind == "parameters":
+            for name in group:
+                dataset = group[name]
+                if (not isinstance(group.get(name, getlink=True), h5py.HardLink)
+                        or not isinstance(dataset, h5py.Dataset)):
+                    raise ValueError(f"{group.name}/{name}: flat parameters require hard-linked datasets")
+                _text(name, group.name)
+                conversion, dtype, shape = encoding(dataset)
+                with closing(dataset.id.get_type()) as datatype:
+                    physical_class = datatype.get_class()
+                if shape is not None and len(shape) > 1:
+                    raise ValueError(f"{dataset.name}: parameters require scalars or rank-one vectors")
+                if dtype.kind == "i" and dtype.itemsize == 1 and conversion not in ("bool", "int8"):
+                    raise ValueError(f"{dataset.name}: ambiguous byte parameter; declare Boolean explicitly")
+                if dtype.kind == "b":
+                    conversion, dtype = "bool", np.dtype(bool)
+                elif h5py.check_string_dtype(dtype) is not None:
+                    conversion, dtype = "text", h5py.string_dtype("utf-8")
+                elif dtype.kind in "iu" and physical_class == h5py.h5t.INTEGER and not dtype.metadata:
+                    if dtype.itemsize > 8:
+                        raise ValueError(f"{dataset.name}: unsupported parameter integer width")
+                    conversion, dtype = "numeric", np.dtype("i8" if dtype.kind == "i" else "u8")
+                elif dtype.kind == "f" and dtype.itemsize <= 8 and physical_class == h5py.h5t.FLOAT:
+                    conversion, dtype = "numeric", np.dtype("f8")
+                elif conversion == "complex" and dtype.fields["r"][0].kind == "f" and dtype.fields["r"][0].itemsize <= 8:
+                    dtype = np.dtype([("r", "f8"), ("i", "f8")])
+                elif dtype.kind == "c" and dtype.itemsize <= 16:
+                    conversion, dtype = "numeric", np.dtype("c16")
+                else:
+                    raise ValueError(f"{dataset.name}: unsupported released parameter datatype")
+                if shape is None:
+                    shape = (0,)
+                remember(dataset, conversion, dtype, shape)
+            report.append(f"{path}: ALPS 3.0.0 flat parameters -> alps.params.v2")
+        elif kind == "alea":
+            if "count" not in group or not isinstance(group["count"], h5py.Dataset):
+                raise ValueError(f"{path}: ALEA profile requires a count dataset")
+            count = group["count"]
+            with closing(count.id.get_type()) as datatype:
+                numeric = datatype.get_class() in (h5py.h5t.INTEGER, h5py.h5t.FLOAT)
+            if (count.shape != () or not numeric or not np.isfinite(count[()])
+                    or count[()] < 0 or count[()] != int(count[()])):
+                raise ValueError(f"{count.name}: ALEA count must be a nonnegative integral scalar")
+            for name in ("cannotrebin", "changed", "nonlinearoperations"):
+                if name in group.attrs:
+                    with closing(group.attrs.get_id(name)) as attribute:
+                        if attribute.shape != ():
+                            raise ValueError(f"{path}@{name}: ALEA flag must be scalar")
+                    declared.add((_address(group), name))
+            # Flagless mcdata and regular observable histories can look identical.
+            # Do not guess the older sum-to-mean normalization convention.
+            if ("mean/value" in group and "timeseries/data" in group
+                    and not ("cannotrebin" in group.attrs or "changed" in group.attrs
+                             or "timeseries/logbinning" in group)):
+                raise ValueError(f"{path}: ambiguous pre-3.0 ALEA result flags/bin semantics")
+            leaves = ("mean/value", "mean/error", "variance/value", "tau/value", "sum", "sum2",
+                      "timeseries/partialbin", "timeseries/partialbin2")
+            bins = ("timeseries/data", "timeseries/data2", "jacknife/data",
+                    "timeseries/logbinning", "timeseries/logbinning2", "timeseries/logbinning_lastbin")
+            element_shape, exemplars = None, {}
+            for field in leaves + bins:
+                if field not in group:
+                    continue
+                dataset = group[field]
+                if not isinstance(dataset, h5py.Dataset):
+                    raise ValueError(f"{dataset.name}: ALEA numeric field must be a dataset")
+                conversion, dtype, shape = encoding(dataset)
+                if shape is None:
+                    continue
+                candidate = shape[1:] if field in bins else shape
+                if (len(candidate) > 1 or dtype.kind not in "iufc" and dtype.names != ("r", "i")
+                        or dtype.kind in "iuf" and dtype.metadata):
+                    raise ValueError(f"{dataset.name}: unsupported ALEA element shape/datatype")
+                if element_shape is not None and element_shape != candidate:
+                    raise ValueError(f"{dataset.name}: inconsistent ALEA element shapes")
+                element_shape = candidate
+                exemplars[field] = dtype
+            for field in leaves + bins + ("mean/error_convergence", "timeseries/logbinning_counts", "labels"):
+                if field not in group:
+                    continue
+                dataset = group[field]
+                if not isinstance(dataset, h5py.Dataset):
+                    raise ValueError(f"{dataset.name}: ALEA field must be a dataset")
+                conversion, dtype, shape = encoding(dataset)
+                if field == "labels":
+                    if (h5py.check_string_dtype(dtype) is None
+                            or shape is not None and (len(shape) > 1
+                                or element_shape is not None and len(shape) != len(element_shape))):
+                        raise ValueError(f"{dataset.name}: ALEA labels must match the scalar/vector element rank")
+                    remember(dataset, "text", h5py.string_dtype("utf-8"), (0,) if shape is None else shape)
+                    continue
+                if shape is not None:
+                    if field == "timeseries/logbinning_counts" and (len(shape) != 1 or dtype.kind not in "iu" or dtype.metadata):
+                        raise ValueError(f"{dataset.name}: ALEA bin counts must be an integer vector")
+                    if field == "mean/error_convergence" and (dtype.kind not in "iu" or dtype.metadata or shape != element_shape):
+                        raise ValueError(f"{dataset.name}: invalid ALEA error convergence shape/type")
+                    continue
+                if field == "timeseries/logbinning_counts":
+                    if dtype.kind not in "iu" or dtype.metadata:
+                        raise ValueError(f"{dataset.name}: invalid ALEA bin counts datatype")
+                    shape = (0,)
+                elif element_shape is None:
+                    raise ValueError(f"{dataset.name}: NULL ALEA storage lost its element shape/type")
+                elif field in bins:
+                    if element_shape:
+                        # The outer empty vector stored INT NULL, losing T.
+                        # mean is average_type<T>, which need not have T's dtype.
+                        family = (("timeseries/data", "timeseries/data2", "timeseries/partialbin", "timeseries/partialbin2")
+                                  if field in ("timeseries/data", "timeseries/data2") else
+                                  ("mean/value", "sum", "timeseries/logbinning", "timeseries/logbinning2", "timeseries/logbinning_lastbin", "jacknife/data"))
+                        dtype = next((exemplars[p] for p in family if p in exemplars), None)
+                        if dtype is None:
+                            raise ValueError(f"{dataset.name}: NULL ALEA bins lost their value datatype")
+                    shape = (0,) + element_shape
+                    conversion = None
+                elif element_shape == (0,):
+                    shape = (0,)
+                    conversion = None
+                else:
+                    raise ValueError(f"{dataset.name}: NULL ALEA value disagrees with its scientific exemplar")
+                remember(dataset, conversion, dtype, shape)
+            report.append(f"{path}: ALPS 3.0.0 ALEA observable/result profile")
+    return conversions
 
 
-def _params_v1(source, declared, report):
-    """Validate the explicit dictionary schema before publishing any output."""
-    shapes, formats, payloads, texts = {}, set(), set(), set()
-
-    def visit(_, obj):
-        if not isinstance(obj, h5py.Group) or "format" not in obj:
-            return
-        format_dataset = obj["format"]
-        if (not isinstance(format_dataset, h5py.Dataset) or format_dataset.shape != ()
-                or h5py.check_string_dtype(format_dataset.dtype) is None):
-            return
-        if format_dataset[()] not in ("alps.params.v1", b"alps.params.v1"):
-            return
-        if "entries" not in obj or not isinstance(obj["entries"], h5py.Group):
-            raise ValueError(f"{obj.name}: params checkpoint requires an entries group")
-        entries = obj["entries"]
-        if set(entries) != {str(i) for i in range(len(entries))}:
-            raise ValueError(f"{entries.name}: params entry indices must be contiguous")
-        names = set()
-        for index in range(len(entries)):
-            entry = entries[str(index)]
-            if not isinstance(entry, h5py.Group) or set(entry) != {"name", "type", "value"}:
-                raise ValueError(f"{entry.name}: invalid params entry")
-            name, logical = _scalar_text(entry["name"]), _scalar_text(entry["type"])
-            texts.update(_address(entry[field]) for field in ("name", "type"))
-            payloads.update(_address(entry[field]) for field in ("name", "type", "value"))
-            if name in names:
-                raise ValueError(f"{entry.name}: duplicate parameter name")
-            names.add(name)
-            array = logical.endswith("[]")
-            base = logical[:-2] if array else logical
-            value = entry["value"]
-            if not isinstance(value, h5py.Dataset):
-                raise ValueError(f"{value.name}: params value must be a dataset")
-            address = _address(value)
-            boolean = base == "bool" or (address, None) in declared
-            kind, dtype, shape = _encoding(value, None, boolean, [])
-            with closing(value.id.get_type()) as datatype:
-                physical_class = datatype.get_class()
-            valid_type = {
-                "bool": dtype.kind == "b",
-                "int64": dtype.kind == "i" and dtype.itemsize == 8 and not dtype.metadata
-                         and physical_class == h5py.h5t.INTEGER,
-                "uint64": dtype.kind == "u" and dtype.itemsize == 8 and not dtype.metadata
-                          and physical_class == h5py.h5t.INTEGER,
-                "float64": dtype.kind == "f" and dtype.itemsize == 8 and not dtype.metadata
-                           and physical_class == h5py.h5t.FLOAT,
-                "complex128": (dtype.kind == "c" and dtype.itemsize == 16) or (
-                    dtype.names == ("r", "i") and all(
-                        dtype.fields[field][0].kind == "f" and dtype.fields[field][0].itemsize == 8
-                        for field in ("r", "i"))),
-                "string": h5py.check_string_dtype(dtype) is not None,
-            }.get(base, False)
-            if not valid_type:
-                raise ValueError(f"{value.name}: params payload disagrees with declared {logical}")
-            if array and shape is None:
-                shapes[address] = (0,)
-            elif shape is None or (len(shape) != 1 if array else shape != ()):
-                raise ValueError(f"{value.name}: invalid params checkpoint rank")
-            if base == "bool":
-                declared.add((address, None))
-            if base == "string":
-                texts.add(address)
-                if value.shape is not None:
-                    for selection in _blocks(value.shape, BUFFER_BYTES):
-                        for text in np.asarray(value[selection]).flat:
-                            _text(text, value.name)
-            # Validate Boolean values now as well as during streamed copying.
-            if kind == "bool" and value.shape is not None:
-                for selection in _blocks(value.shape, value.dtype.itemsize):
-                    _values(_boolean_values(value, selection), kind, dtype, value.name)
-        formats.add(_address(format_dataset))
-        report.append(f"{obj.name}: alps.params.v1 -> alps.params.v2")
-
-    visit("", source)
-    source.visititems(visit)
-    if formats & payloads:
-        raise ValueError("params format dataset aliases an entry payload")
-    return shapes, formats, texts
+def _parameters(group, target):
+    # Build anonymously so valid parameter names 'entries'/'format' never collide.
+    entries = target.create_group(None, track_order=True)
+    for name in list(group):
+        entry = entries.create_group(str(len(entries)))
+        entry.create_dataset("name", data=name, dtype=h5py.string_dtype("utf-8"))
+        entry["value"] = group[name]
+        del group[name]
+    group["entries"] = entries
+    group.create_dataset("format", data="alps.params.v2", dtype=h5py.string_dtype("utf-8"))
 
 
-def _copy(source, target, boolean_datasets, boolean_attributes, pair_groups, matrix_groups):
+def _copy(source, target, boolean_datasets, boolean_attributes, pair_groups, matrix_groups,
+          parameter_groups, alea_groups):
     report = []
     declared = set()
     for path in boolean_datasets:
@@ -433,8 +512,8 @@ def _copy(source, target, boolean_datasets, boolean_attributes, pair_groups, mat
         if name not in obj.attrs or _marker(name) or obj.file != source:
             raise ValueError(f"{path}@{name}: Boolean declaration must name an ordinary input attribute")
         declared.add((_address(obj), name))
-    schemas = _schema_groups(source, pair_groups, matrix_groups)
-    shapes, formats, texts = _params_v1(source, declared, report)
+    schemas = _schema_groups(source, pair_groups, matrix_groups, parameter_groups, alea_groups)
+    conversions = _profiles(source, schemas, declared, report)
     seen = {_address(source): target}
     softlinks = []
 
@@ -480,16 +559,11 @@ def _copy(source, target, boolean_datasets, boolean_attributes, pair_groups, mat
             elif isinstance(child, h5py.Dataset):
                 _check_object(child)
                 kind, dtype, shape = _encoding(child, None, (address, None) in declared, report)
-                if address in shapes:
+                if address in conversions and shape is None:
                     report.remove(f"{child.name}: NULL dataspace preserved; original array rank is unavailable")
-                    report.append(f"{child.name}: declared empty vector shape (0,)")
-                if address in formats:
-                    result = out.create_dataset(name, data="alps.params.v2",
-                                                dtype=h5py.string_dtype("utf-8"))
-                else:
-                    if address in texts:
-                        kind = "params-text"
-                    result = _dataset(child, out, name, kind, dtype, shapes.get(address, shape))
+                    report.append(f"{child.name}: schema establishes empty shape {conversions[address][2]}")
+                kind, dtype, shape = conversions.get(address, (kind, dtype, shape))
+                result = _dataset(child, out, name, kind, dtype, shape)
                 seen[address] = result
                 attributes(child, result)
             else:
@@ -503,7 +577,7 @@ def _copy(source, target, boolean_datasets, boolean_attributes, pair_groups, mat
             for old, new in (("first", "0"), ("second", "1")):
                 obj.move(old, new)
                 renamed[address, old] = new
-        else:
+        elif kind == "matrix":
             parent, name = target[posixpath.dirname(path)], posixpath.basename(path)
             null_storage = obj["values"].shape is None
             converted = _matrix(obj, parent)
@@ -513,7 +587,10 @@ def _copy(source, target, boolean_datasets, boolean_attributes, pair_groups, mat
             del parent[name]
             parent[name] = converted
             seen[address] = converted
-        report.append(f"{path}: legacy {kind} schema")
+        elif kind == "parameters":
+            _parameters(obj, target)
+        if kind in ("pair", "matrix"):
+            report.append(f"{path}: legacy {kind} schema")
     for parent, name, original in softlinks:
         obj = seen[parent]
         name = renamed.get((parent, name), name)
@@ -528,7 +605,7 @@ def _copy(source, target, boolean_datasets, boolean_attributes, pair_groups, mat
 
 
 def convert(source, destination, *, boolean_datasets=(), boolean_attributes=(),
-            pair_groups=(), matrix_groups=()):
+            pair_groups=(), matrix_groups=(), parameter_groups=(), alea_groups=()):
     """Write a new file; leave the source and any existing destination untouched."""
     source, destination = Path(source), Path(destination)
     if os.path.lexists(destination):
@@ -544,7 +621,7 @@ def convert(source, destination, *, boolean_datasets=(), boolean_attributes=(),
             os.close(fd)
             with h5py.File(temporary, "w", track_order=True) as dst:
                 report = _copy(src, dst, boolean_datasets, boolean_attributes,
-                               pair_groups, matrix_groups)
+                               pair_groups, matrix_groups, parameter_groups, alea_groups)
         # A sibling hard link publishes the complete file atomically and refuses
         # to overwrite a destination created by another process in the meantime.
         os.link(temporary, destination)
@@ -567,11 +644,16 @@ def main(argv=None):
                         help="migrate an explicitly selected first/second pair group (repeatable)")
     parser.add_argument("--matrix", action="append", default=[], metavar="GROUP",
                         help="migrate an explicitly selected padded numerical matrix group (repeatable)")
+    parser.add_argument("--parameters", action="append", default=[], metavar="GROUP",
+                        help="migrate ALPS 3.0.0 flat parameters to native typed checkpoints (repeatable)")
+    parser.add_argument("--alea", action="append", default=[], metavar="GROUP",
+                        help="normalize one ALPS 3.0.0 ALEA observable/result (repeatable)")
     args = parser.parse_args(argv)
     try:
         report = convert(args.source, args.destination, boolean_datasets=args.boolean,
                          boolean_attributes=args.boolean_attribute,
-                         pair_groups=args.pair, matrix_groups=args.matrix)
+                         pair_groups=args.pair, matrix_groups=args.matrix,
+                         parameter_groups=args.parameters, alea_groups=args.alea)
     except (OSError, ValueError, KeyError, TypeError) as error:
         parser.exit(1, f"{parser.prog}: {error}\n")
     for line in report:

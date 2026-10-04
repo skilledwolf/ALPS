@@ -1,0 +1,20 @@
+{
+  "generator": "reconstruct_alps_v3_profiles.py",
+  "fixture": "alps-v3.0.0-profiles.h5",
+  "sha256": "59926240716a0ada845b212b9492eedd1654cfb9334072913868535d8d8d3231",
+  "provenance": "Reconstructed with h5py from the pinned C++ writer contracts; not emitted by a compiled ALPS release.",
+  "release": "ALPS v3.0.0",
+  "source_revision": "1950cc6f682d7c4c1deae8b816f283857b1819d1",
+  "source_url": "https://github.com/ALPSim/ALPS/tree/v3.0.0",
+  "writers": {
+    "ngs-parameters": "src/alps/ngs/lib/params.cpp:114-116; src/alps/ngs/lib/paramvalue.cpp:115-119",
+    "legacy-parameters": "src/alps/parameter/parameters.C:126-145",
+    "scalar-mcdata": "src/alps/alea/mcdata.hpp:462-489",
+    "scalar-evaluator": "src/alps/alea/simpleobsdata.h:935-972",
+    "scalar-observable": "src/alps/alea/abstractsimpleobservable.h:84; src/alps/alea/abstractsimpleobservable.ipp:30-46 (base observable fields, scalar label_type=std::string)",
+    "vector-observable": "src/alps/alea/abstractsimpleobservable.ipp:30-59; src/alps/alea/simplebinning.h:652-669; src/alps/alea/detailedbinning.h:286-327",
+    "unrecoverable-empty-vector-observable": "Same binning writers with count=0 and no component-shape exemplar."
+  },
+  "encoding_notes": "Old archive native std::string is variable-length H5T_C_S1 (ASCII declaration, UTF-8 bytes). Native bool is signed byte. Empty primitive vectors use typed NULL; empty vectors of valarrays use INT NULL. Floating values are doubles, int is represented as signed 32-bit and count widths are explicit in the fixture.",
+  "coverage_boundary": "Released writer layouts only. Flagless legacy sum-to-mean semantics, arbitrary lost array ranks, and private WIP params.v1 envelopes are outside the automatic profile."
+}

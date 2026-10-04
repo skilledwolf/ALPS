@@ -20,7 +20,9 @@ native compound complex values, Boolean enums and ranked zero-length arrays;
 the pinned Core writes older physical encodings. Consequently archive
 cross-provider failures are characterizations, while every same-provider
 archive value must round-trip. Use the standalone `alps-hdf5-convert` tool
-to migrate older physical encodings and typed v1 dictionaries offline.
+to migrate older physical encodings and explicitly selected official flat
+parameter groups offline. Unreleased typed v1 dictionaries are not a supported
+conversion input.
 
 The recorded pre-consolidation baseline is historical: `alps.params.v1` deliberately
 breaks old parameter checkpoint interchange. Rerunning the updated probe against
