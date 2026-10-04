@@ -112,6 +112,8 @@ BOOST_AUTO_TEST_CASE(explicit_adapter_storage_layout)
         archive["/dense"] << dense;
         archive["/vector"] << vector;
         archive["/empty"] << matrix<double>();
+        archive["/zero-rows"] << matrix<std::complex<double>>(0, 3);
+        archive["/zero-columns"] << matrix<std::complex<double>>(2, 0);
     }
     {
         alps::hdf5::archive archive(filename, "r");
@@ -125,10 +127,21 @@ BOOST_AUTO_TEST_CASE(explicit_adapter_storage_layout)
         BOOST_CHECK_EQUAL(restored, dense);
 
         BOOST_CHECK(archive.is_complex("/vector"));
-        BOOST_CHECK(archive.extent("/vector") == std::vector<std::size_t>({2, 2}));
+        BOOST_CHECK(archive.extent("/vector") == std::vector<std::size_t>({2}));
         alps::numeric::vector<std::complex<double>> restored_vector;
         archive["/vector"] >> restored_vector;
         BOOST_CHECK(std::equal(values.begin(), values.end(), restored_vector.begin(), restored_vector.end()));
+        BOOST_CHECK(archive.is_datatype<std::complex<double>>("/vector"));
+        BOOST_CHECK(archive.extent("/empty") == std::vector<std::size_t>({0, 0}));
+        BOOST_CHECK(archive.extent("/zero-rows") == std::vector<std::size_t>({3, 0}));
+        BOOST_CHECK(archive.extent("/zero-columns") == std::vector<std::size_t>({0, 2}));
+        matrix<std::complex<double>> zero_rows, zero_columns;
+        archive["/zero-rows"] >> zero_rows;
+        archive["/zero-columns"] >> zero_columns;
+        BOOST_CHECK_EQUAL(zero_rows.num_rows(), 0);
+        BOOST_CHECK_EQUAL(zero_rows.num_cols(), 3);
+        BOOST_CHECK_EQUAL(zero_columns.num_rows(), 2);
+        BOOST_CHECK_EQUAL(zero_columns.num_cols(), 0);
         matrix<double> empty(2, 3);
         archive["/empty"] >> empty;
         BOOST_CHECK_EQUAL(empty.num_rows(), 0);

@@ -4,6 +4,7 @@
 #include <hdf5.h>
 
 #include <array>
+#include <complex>
 #include <cstdio>
 #include <iostream>
 #include <limits>
@@ -74,6 +75,7 @@ void attribute_replacements(alps::hdf5::archive & ar, std::string const & path) 
     std::array<int, 6> const values{1, 2, 3, 4, 5, 6};
     ar.write(path, 7);
     require(ar.is_scalar(path));
+    require(ar.extent(path).empty());
     ar.write(path, values.data(), {2, 3});
     require(!ar.is_scalar(path));
     require(ar.extent(path) == std::vector<std::size_t>({2, 3}));
@@ -92,8 +94,8 @@ void attribute_replacements(alps::hdf5::archive & ar, std::string const & path) 
     int scalar = 0;
     ar.read(path, scalar);
     require(ar.is_scalar(path) && scalar == 9);
-    ar.write(path, static_cast<int const *>(nullptr), {});
-    require(ar.is_null(path));
+    ar.write(path, static_cast<int const *>(nullptr), {0});
+    require(!ar.is_null(path) && ar.extent(path) == std::vector<std::size_t>{0});
     ar.write(path, values.data(), {2, 3});
     ar.read(path, actual.data(), {2, 3});
     require(actual == values);
@@ -133,17 +135,14 @@ void replacements(alps::hdf5::archive & ar) {
 }
 
 void empty_writes(alps::hdf5::archive & ar) {
-    for (auto path : {"/null", "/group/@null"}) {
-        ar.write(path, static_cast<int const *>(nullptr), {});
-        require(ar.is_null(path));
-    }
     // A ranked empty array has a SIMPLE dataspace and retains its shape.
-    for (auto path : {"/empty", "/group/@empty"}) {
-        ar.write(path, static_cast<int const *>(nullptr), {2, 0});
-        require(!ar.is_null(path));
-        require(ar.dimensions(path) == 2);
-        require(ar.extent(path) == std::vector<std::size_t>({2, 0}));
-    }
+    for (auto const & shape : {std::vector<std::size_t>{0}, {0, 0}, {2, 0}})
+        for (auto path : {"/empty", "/group/@empty"}) {
+            ar.write(path, static_cast<int const *>(nullptr), shape);
+            require(!ar.is_null(path));
+            require(ar.dimensions(path) == shape.size());
+            require(ar.extent(path) == shape);
+        }
     for (auto path : {"/empty_string", "/group/@empty_string"}) {
         ar.write(path, static_cast<std::string const *>(nullptr), {2, 0});
         require(!ar.is_null(path));
@@ -203,6 +202,10 @@ void invalid_selections(alps::hdf5::archive & ar) {
         preserved();
         rejects([&] { ar.write(path, static_cast<std::string const *>(nullptr), {2, 3}); });
         preserved();
+        rejects([&] { ar.write(path, static_cast<int const *>(nullptr), {}); });
+        preserved();
+        rejects([&] { ar.write(path, std::string("embedded\0NUL", 12)); });
+        preserved();
         rejects([&] {
             ar.write(path, values.data(), {maximum / sizeof(int) + 1, 1}, {1, 1}, {0, 0});
         });
@@ -212,6 +215,30 @@ void invalid_selections(alps::hdf5::archive & ar) {
     require(!ar.is_group("/missing"));
     rejects([&] { ar.write("/missing/@value", texts.data(), {2, 3}); });
     require(!ar.is_group("/missing"));
+}
+
+void replace_ascii_strings(std::string const& filename) {
+    // H5Tequal reports ASCII and UTF-8 VLEN types as equal, although HDF5
+    // rejects a UTF-8 write into an ASCII dataset or attribute.
+    auto file = H5Fopen(filename.c_str(), H5F_ACC_RDWR, H5P_DEFAULT);
+    auto type = H5Tcopy(H5T_C_S1);
+    require(file >= 0 && type >= 0 && H5Tset_size(type, H5T_VARIABLE) >= 0);
+    auto space = H5Screate(H5S_SCALAR);
+    auto dataset = H5Dcreate2(file, "/ascii", type, space, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+    auto attribute = H5Acreate2(file, "ascii", type, space, H5P_DEFAULT, H5P_DEFAULT);
+    char const* text = "before";
+    require(dataset >= 0 && attribute >= 0);
+    require(H5Dwrite(dataset, type, H5S_ALL, H5S_ALL, H5P_DEFAULT, &text) >= 0);
+    require(H5Awrite(attribute, type, &text) >= 0);
+    require(H5Aclose(attribute) >= 0 && H5Dclose(dataset) >= 0);
+    require(H5Sclose(space) >= 0 && H5Tclose(type) >= 0 && H5Fclose(file) >= 0);
+    alps::hdf5::archive ar(filename, "a");
+    for (auto path : {"/ascii", "/@ascii"}) {
+        ar.write(path, std::string("after"));
+        std::string value;
+        ar.read(path, value);
+        require(value == "after");
+    }
 }
 }
 
@@ -226,6 +253,10 @@ int main() {
             array_writes<int>(ar, "numbers", {0, 1, 2, 3, 4, 5}, {7, 8});
             array_writes<double>(ar, "reals", {0.5, 1.5, 2.5, 3.5, 4.5, 5.5}, {7.5, 8.5});
             array_writes<bool>(ar, "flags", {false, true, false, true, false, true}, {true, true});
+            using complex = std::complex<double>;
+            std::array<complex, 6> const complex_values{{{0, 1}, {2, 3}, {4, 5}, {6, 7}, {8, 9}, {10, 11}}};
+            std::array<complex, 2> const complex_patch{{{12, 13}, {14, 15}}};
+            array_writes<complex>(ar, "complex", complex_values, complex_patch);
             array_writes<std::string>(ar, "strings", {"", "one", "two", "three", "four", "five"}, {"seven", "eight"});
             ar.write("/group/@sibling", 99);
             for (auto path : {"/group/@value", "/numbers/@value", "/@root", "@root"})
@@ -250,6 +281,7 @@ int main() {
             ar.read("/numbers", actual.data(), {2, 3});
             require(actual == std::array<int, 6>({0, 1, 2, 3, 4, 5}));
         }
+        replace_ascii_strings(filename);
         require(H5Fget_obj_count(H5F_OBJ_ALL, H5F_OBJ_ALL) == objects_before);
         require(std::remove(filename.c_str()) == 0);
     } catch (std::exception const & error) {

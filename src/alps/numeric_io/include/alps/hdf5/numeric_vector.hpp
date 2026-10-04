@@ -31,7 +31,7 @@ namespace hdf5 {
                   , std::vector<std::size_t> chunk = std::vector<std::size_t>()
                   , std::vector<std::size_t> offset = std::vector<std::size_t>()
                   ) {
-            ar[path] << static_cast<MemoryBlock const&>(value);
+            save(ar, path, static_cast<MemoryBlock const&>(value), size, chunk, offset);
         }
         template <typename T, typename MemoryBlock>
         void load(
@@ -42,7 +42,7 @@ namespace hdf5 {
                   , std::vector<std::size_t> offset = std::vector<std::size_t>()
                   ) {
             MemoryBlock tmp;
-            ar[path] >> tmp;
+            load(ar, path, tmp, chunk, offset);
             value = alps::numeric::vector<T, MemoryBlock>(tmp.begin(), tmp.end());
         }
 }

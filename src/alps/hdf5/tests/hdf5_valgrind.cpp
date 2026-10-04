@@ -18,7 +18,6 @@
 #include <vector>
 #include <alps/hdf5/archive.hpp>
 #include <alps/hdf5/vector.hpp>
-#include <alps/ngs/cast.hpp>
 #include <hdf5.h>
 
 int main() {
@@ -46,25 +45,16 @@ int main() {
             ar["/doubles"] << doubles;
         }
 
-        auto expect_overflow = [&](auto read) {
+        auto expect_wrong_type = [&](auto read) {
+            auto const before = H5Fget_obj_count(H5F_OBJ_ALL, H5F_OBJ_ALL);
             try {
                 read();
-            } catch (std::out_of_range const & error) {
-                if (error.what() != "integer parameter out of range: " + overflow)
-                    throw std::runtime_error("string conversion exception changed");
+            } catch (alps::hdf5::wrong_type const &) {
+                if (H5Fget_obj_count(H5F_OBJ_ALL, H5F_OBJ_ALL) != before)
+                    throw std::runtime_error("HDF5 object leaked during a rejected read");
                 return;
             }
-            throw std::runtime_error("overflowing string conversion did not throw");
-        };
-        auto expect_bad_cast = [&](auto read) {
-            try {
-                read();
-            } catch (alps::bad_cast const & error) {
-                if (std::string(error.what()).find("cannot cast from ") != 0)
-                    throw std::runtime_error("vector conversion exception changed");
-                return;
-            }
-            throw std::runtime_error("unsupported vector conversion did not throw");
+            throw std::runtime_error("string/numeric type mismatch did not throw");
         };
 
         // Repeat successful and throwing reads so a leak detector can expose
@@ -76,7 +66,7 @@ int main() {
                 ar.read(path, actual);
                 if (actual != overflow)
                     throw std::runtime_error("scalar string read changed");
-                expect_overflow([&] {
+                expect_wrong_type([&] {
                     int value = 0;
                     ar.read(path, value);
                 });
@@ -87,25 +77,23 @@ int main() {
                 ar.read(path, actual.data(), shape);
                 if (actual != values)
                     throw std::runtime_error("vector string read changed");
-                // Legacy VLEN vector-to-number access rejects char* values;
-                // cleanup must preserve this exception, not enable a conversion.
-                expect_bad_cast([&] {
+                expect_wrong_type([&] {
                     std::vector<int> converted(values.size());
                     ar.read(path, converted.data(), shape);
                 });
             }
 
-            // The memory buffer has two elements; the file has six. Reclaim
-            // against the memory dataspace, even when conversion throws.
+            // The memory buffer has two elements; the file has six. Successful
+            // selected reads must reclaim against the memory dataspace.
             std::vector<std::string> selected(2);
             ar.read("/vector", selected.data(), chunk, {1, 1});
             if (selected != std::vector<std::string>{"55", "66"})
                 throw std::runtime_error("partial string read changed");
             std::vector<int> converted(2);
-            expect_bad_cast([&] {
+            expect_wrong_type([&] {
                 ar.read("/vector", converted.data(), chunk, {1, 1});
             });
-            expect_bad_cast([&] {
+            expect_wrong_type([&] {
                 ar.read("/vector", converted.data(), chunk, {0, 0});
             });
 

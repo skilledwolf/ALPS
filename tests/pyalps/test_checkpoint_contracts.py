@@ -276,7 +276,7 @@ def test_parameter_helpers_and_analysis_read_typed_checkpoints(tmp_path):
     props = pyalps.loadProperties(paths)[0]
     assert props["wide"] == 2 ** 53 + 1 and props["label"] == "a,b"
     with hdf5.archive(paths[0], "r") as archive:
-        assert archive["/parameters/format"] == "alps.params.v1"
+        assert archive["/parameters/format"] == "alps.params.v2"
 
 
 def test_extended_parameter_scalars_reject_lossy_conversion():
@@ -286,3 +286,63 @@ def test_extended_parameter_scalars_reject_lossy_conversion():
     for supplied in (value, np.clongdouble(value + 1j)):
         with pytest.raises(TypeError, match="lossy"):
             ngs.params({"x": supplied})
+
+
+def test_parameter_checkpoint_uses_native_hdf5_types_and_zero_extents(tmp_path):
+    import h5py
+
+    values = {"flag": True, "complex": 2 - 3j, "complexes": np.array([1 + 2j, 3 - 4j]),
+              "empty flags": np.array([], dtype=bool),
+              "empty complex": np.array([], dtype=np.complex128), "empty string": ""}
+    filename = tmp_path / "native-params.h5"
+    with hdf5.archive(str(filename), "w") as archive:
+        archive["parameters"] = ngs.params(values)
+    with h5py.File(filename, "r") as archive:
+        assert archive["parameters/format"].asstr()[()] == "alps.params.v2"
+        entries = {entry["name"].asstr()[()]: entry
+                   for entry in archive["parameters/entries"].values()}
+        assert entries["flag"]["value"].dtype == np.dtype(bool)
+        assert entries["complex"]["value"].dtype == np.dtype(np.complex128)
+        assert entries["complex"]["value"].shape == ()
+        assert entries["complexes"]["value"].shape == (2,)
+        assert entries["empty flags"]["value"].shape == (0,)
+        assert entries["empty complex"]["value"].shape == (0,)
+        assert entries["empty string"]["value"].asstr()[()] == ""
+        for entry in entries.values():
+            assert not any(name in entry["value"].attrs
+                           for name in ("__complex__", "__alps_type__"))
+
+
+@pytest.mark.parametrize("fault", ["v1", "null-vector", "pair-real-complex", "byte-bool", "extra-axis"])
+def test_parameter_checkpoint_rejects_obsolete_or_mismatched_payloads(tmp_path, fault):
+    import h5py
+
+    filename = tmp_path / "bad-params.h5"
+    original = ngs.params({"x": np.array([1 + 2j])})
+    with hdf5.archive(str(filename), "w") as archive:
+        archive["parameters"] = original
+    with h5py.File(filename, "r+") as archive:
+        group = archive["parameters"]
+        entry = group["entries/0"]
+        if fault == "v1":
+            del group["format"]
+            group["format"] = "alps.params.v1"
+        else:
+            del entry["value"]
+            if fault == "null-vector":
+                entry["value"] = h5py.Empty(np.complex128)
+            elif fault == "pair-real-complex":
+                value = entry.create_dataset("value", data=np.array([[1., 2.]]))
+                value.attrs["__complex__"] = np.int8(1)
+            elif fault == "byte-bool":
+                del entry["type"]
+                entry["type"] = "bool[]"
+                entry["value"] = np.array([0, 1], dtype="i1")
+            else:
+                entry["value"] = np.array([[1 + 2j]])
+    parameters = ngs.params({"kept": 42})
+    with hdf5.archive(str(filename), "r") as archive:
+        with pytest.raises(Exception):
+            parameters.load(archive, "/parameters")
+        assert archive.context == "/"
+    assert parameters["kept"] == 42 and list(parameters) == ["kept"]

@@ -192,7 +192,7 @@ int verify_dmft(const std::filesystem::path& file,const std::string& reference) 
         std::vector<std::complex<double>> frequency,bare;
         const auto frequency_path=base+"G_omega/"+std::to_string(flavor)+"/mean/value";
         require(archive.is_complex(frequency_path) &&
-                archive.extent(frequency_path)==std::vector<std::size_t>{nw,2}, "wrong complex frequency shape");
+                archive.extent(frequency_path)==std::vector<std::size_t>{nw}, "wrong complex frequency shape");
         archive[frequency_path]>>frequency;
         archive[base+"G0_omega/"+std::to_string(flavor)+"/mean/value"]>>bare;
         require(frequency.size()==nw && bare.size()==nw, "wrong Matsubara data length");

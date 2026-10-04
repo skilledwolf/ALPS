@@ -43,9 +43,9 @@ def read(ar):
     
     if len(childs) != 7:
         raise Exception('invalid length of \'/\'')
-    if len(ar.extent("/int")) != 1 or ar.extent("/int")[0] != 1 or len(ar.extent("/cplx")) != 1 or ar.extent("/cplx")[0] != 1:
+    if ar.extent("/int") != [] or ar.extent("/cplx") != []:
         raise Exception('invalid scalar extent')
-    if len(ar.extent("/np/int")) != 1 or ar.extent("/cplx")[0] != 1 or len(ar.extent("/np/cplx")) != 2 or ar.extent("/np/cplx")[0] != 2 or ar.extent("/np/cplx")[1] != 2:
+    if ar.extent("/np/int") != [3] or ar.extent("/np/cplx") != [2, 2]:
         raise Exception('invalid array extent')
     if type(i) != int or type(d) != float or type(c) != complex or type(s) != str:
         raise Exception('invalid type')

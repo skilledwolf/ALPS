@@ -131,8 +131,9 @@ objects, nested dictionaries, multidimensional arrays and `None` are rejected.
 Python integers use signed 64-bit storage; integer-to-real conversion rejects
 loss of precision. Boolean flags must use `True`/`False`.
 
-Params checkpoints are explicitly versioned as `alps.params.v1`; old checkpoints
-are not accepted by `ngs.params.load`. A standalone converter is deferred. The
+Params checkpoints are explicitly versioned as `alps.params.v2`; old checkpoints
+are not accepted by `ngs.params.load`. Use the [offline converter](../../src/tools/hdf5/README.md)
+to upgrade explicit v1 checkpoints. The
 analysis loaders still handle result groups from the unmigrated `Parameters`
 applications as well as the new typed checkpoints. Checkpoints reject names and
 string values containing NUL before overwriting stored parameters.

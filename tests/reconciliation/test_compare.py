@@ -22,7 +22,7 @@ def run_report(tmp_path, monkeypatch):
         programs[provider] = tmp_path / provider
         programs[provider].write_text("probe fixture\n")
 
-    def run(*, core=False, corrupt=None, revisions=()):
+    def run(*, core=False, corrupt=None, revisions=(), cross_archive_failure=False):
         def probe(command, **kwargs):
             provider, action = Path(command[0]).name, command[1]
             if action == "semantics":
@@ -33,8 +33,12 @@ def run_report(tmp_path, monkeypatch):
                 values = {"save": "ok"}
             elif action == "read-archive":
                 values = {"/int": "ok", "bool_type_marker": "1"}
+                if cross_archive_failure and not Path(command[2]).name.startswith(provider + "-"):
+                    values["/int"] = "throws"
             else:
                 values = dict(COMMON)
+                if provider == "ALPS":
+                    values["format"] = "alps.params.v2"
                 if action == "read-extended-params":
                     values.update(unsigned="42", float="1.25", wide="1099511627776")
             if corrupt and (provider, action) == corrupt[:2]:
@@ -79,3 +83,15 @@ def test_reference_report_keeps_explicit_revision_labels(run_report):
 def test_archive_self_read_failure_is_not_labeled_interchange(run_report):
     with pytest.raises(SystemExit, match="Typed archive value check failed: ALPS->ALPS/archive"):
         run_report(corrupt=("ALPS", "read-archive", "/int", "mismatch"))
+
+
+def test_cross_provider_archive_differences_are_characterizations(run_report):
+    report = run_report(core=True, cross_archive_failure=True)
+    assert report["measurements"]["ALPS->ALPSCore/archive"]["/int"] == "throws"
+    assert report["measurements"]["ALPSCore->ALPS/archive"]["/int"] == "throws"
+    assert report["measurements"]["ALPS->ALPS/archive"]["/int"] == "ok"
+
+
+def test_alps_self_read_requires_current_params_schema(run_report):
+    with pytest.raises(SystemExit, match="Params self-check failed: ALPS"):
+        run_report(corrupt=("ALPS", "read-params", "format", "alps.params.v1"))

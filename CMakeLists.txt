@@ -85,7 +85,13 @@ endif()
 find_package(Boost 1.76 CONFIG REQUIRED GLOBAL COMPONENTS ${ALPS_BOOST_COMPONENTS})
 
 # FindHDF5 supplies HDF5::HDF5 and preserves the provider's configurations.
-find_package(HDF5 MODULE REQUIRED COMPONENTS C)
+find_package(HDF5 2.0 MODULE REQUIRED COMPONENTS C)
+# Keep the selected provider ahead of a compiler's implicit dependency headers.
+foreach(_alps_hdf5_target IN ITEMS HDF5::HDF5 ${HDF5_LIBRARIES})
+  if(TARGET "${_alps_hdf5_target}")
+    set_property(TARGET "${_alps_hdf5_target}" PROPERTY SYSTEM FALSE)
+  endif()
+endforeach()
 if(HDF5_IS_PARALLEL AND NOT ALPS_ENABLE_MPI)
   message(FATAL_ERROR "Parallel HDF5 requires ALPS_ENABLE_MPI=ON")
 endif()

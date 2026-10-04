@@ -32,11 +32,7 @@ namespace alps {
             , std::vector<std::size_t> offset = std::vector<std::size_t>()
         ) {
             save(ar, ar.complete_path(path) + "/0", value.first);
-            if (has_complex_elements<typename alps::detail::remove_cvr<T>::type>::value)
-                ar.set_complex(ar.complete_path(path) + "/0");
             save(ar, ar.complete_path(path) + "/1", value.second);
-            if (has_complex_elements<typename alps::detail::remove_cvr<U>::type>::value)
-                ar.set_complex(ar.complete_path(path) + "/1");
         }
 
         template <typename T, typename U> void load(
@@ -46,13 +42,8 @@ namespace alps {
             , std::vector<std::size_t> chunk = std::vector<std::size_t>()
             , std::vector<std::size_t> offset = std::vector<std::size_t>()
         ) {
-            try {
-                load(ar, ar.complete_path(path) + "/0", value.first);
-                load(ar, ar.complete_path(path) + "/1", value.second);
-            } catch (path_not_found exc) {
-                load(ar, ar.complete_path(path) + "/first", value.first);
-                load(ar, ar.complete_path(path) + "/second", value.second);
-            }
+            load(ar, ar.complete_path(path) + "/0", value.first);
+            load(ar, ar.complete_path(path) + "/1", value.second);
         }
 
         template<typename T> struct scalar_type<std::pair<T *, std::vector<std::size_t> > > {
@@ -63,20 +54,23 @@ namespace alps {
             : public is_continuous<T> 
         {};
 
-        template<typename T> struct has_complex_elements<std::pair<T *, std::vector<std::size_t> > > 
-            : public has_complex_elements<typename alps::detail::remove_cvr<T>::type>
-        {};
-
         namespace detail {
 
             template<typename T> struct get_extent<std::pair<T *, std::vector<std::size_t> > > {
                 static std::vector<std::size_t> apply(std::pair<T *, std::vector<std::size_t> > const & value) {
                     using alps::hdf5::get_extent;
                     std::vector<std::size_t> extent(value.second);
-                    std::vector<std::size_t> size(value.second.size() ? get_extent(*value.first) : std::vector<std::size_t>());
+                    const auto count = std::accumulate(value.second.begin(), value.second.end(), std::size_t(1), std::multiplies<std::size_t>());
+                    if (count && !value.first)
+                        throw archive_error("null pointer for nonempty data" + ALPS_STACKTRACE);
+                    std::vector<std::size_t> size;
+                    if (count)
+                        size = get_extent(*value.first);
+                    else if constexpr (is_continuous<T>::value)
+                        size = get_extent(typename alps::detail::remove_cvr<T>::type{});
                     if (!is_continuous<T>::value && value.second.size()) {
                         for (std::size_t i = 1; i < std::accumulate(value.second.begin(), value.second.end(), std::size_t(1), std::multiplies<std::size_t>()); ++i)
-                            if (!std::equal(size.begin(), size.end(), get_extent(value.first[i]).begin()))
+                            if (size != get_extent(value.first[i]))
                                 throw archive_error("no rectengual matrix" + ALPS_STACKTRACE);
                     }
                     std::copy(size.begin(), size.end(), std::back_inserter(extent));
@@ -87,7 +81,8 @@ namespace alps {
             template<typename T> struct set_extent<std::pair<T *, std::vector<std::size_t> > > {
                 static void apply(std::pair<T *, std::vector<std::size_t> > & value, std::vector<std::size_t> const & size) {
                     using alps::hdf5::set_extent;
-                    if (value.second.size() > size.size() || !std::equal(value.second.begin(), value.second.end(), size.begin()))
+                    if ((is_continuous<T>::value && value.second.size() != size.size()) ||
+                        value.second.size() > size.size() || !std::equal(value.second.begin(), value.second.end(), size.begin()))
                         throw archive_error("invalid data size" + ALPS_STACKTRACE);
                     if (!is_continuous<T>::value && value.second.size() && value.second.size() < size.size())
                         for (std::size_t i = 0; i < std::accumulate(value.second.begin(), value.second.end(), std::size_t(1), std::multiplies<std::size_t>()); ++i)
@@ -99,9 +94,16 @@ namespace alps {
                 static bool apply(std::pair<T *, std::vector<std::size_t> > const & value) {
                     using alps::hdf5::get_extent;
                     using alps::hdf5::is_vectorizable;
+                    const auto count = std::accumulate(value.second.begin(), value.second.end(), std::size_t(1), std::multiplies<std::size_t>());
+                    if (!count)
+                        return true;
+                    if (!value.first)
+                        throw archive_error("null pointer for nonempty data" + ALPS_STACKTRACE);
+                    if (!is_vectorizable(*value.first))
+                        return false;
                     std::vector<std::size_t> size(get_extent(*value.first));
                     for (std::size_t i = 1; i < std::accumulate(value.second.begin(), value.second.end(), std::size_t(1), std::multiplies<std::size_t>()); ++i)
-                        if (!is_vectorizable(value.first[i]) || !std::equal(size.begin(), size.end(), get_extent(value.first[i]).begin()))
+                        if (!is_vectorizable(value.first[i]) || size != get_extent(value.first[i]))
                             return false;
                     return true;
                 }
@@ -110,14 +112,16 @@ namespace alps {
             template<typename T> struct get_pointer<std::pair<T *, std::vector<std::size_t> > > {
                 static typename alps::hdf5::scalar_type<std::pair<T *, std::vector<std::size_t> > >::type * apply(std::pair<T *, std::vector<std::size_t> > & value) {
                     using alps::hdf5::get_pointer;
-                    return get_pointer(*value.first);
+                    return value.first && std::find(value.second.begin(), value.second.end(), 0) == value.second.end()
+                        ? get_pointer(*value.first) : nullptr;
                 }
             };
 
             template<typename T> struct get_pointer<std::pair<T *, std::vector<std::size_t> > const> {
                 static typename alps::hdf5::scalar_type<std::pair<T *, std::vector<std::size_t> > >::type const * apply(std::pair<T *, std::vector<std::size_t> > const & value) {
                     using alps::hdf5::get_pointer;
-                    return get_pointer(*value.first);
+                    return value.first && std::find(value.second.begin(), value.second.end(), 0) == value.second.end()
+                        ? get_pointer(*value.first) : nullptr;
                 }
             };
 
@@ -131,15 +135,25 @@ namespace alps {
             , std::vector<std::size_t> chunk = std::vector<std::size_t>()
             , std::vector<std::size_t> offset = std::vector<std::size_t>()
         ) {
-            if (is_continuous<T>::value) {
+            if constexpr (is_continuous<T>::value) {
                 std::vector<std::size_t> extent(get_extent(value));
                 std::copy(extent.begin(), extent.end(), std::back_inserter(size));
                 std::copy(extent.begin(), extent.end(), std::back_inserter(chunk));
                 std::fill_n(std::back_inserter(offset), extent.size(), 0);
                 ar.write(path, get_pointer(value), size, chunk, offset);
-            } else if (value.second.size() == 0)
-                ar.write(path, static_cast<int const *>(NULL), std::vector<std::size_t>());
-            else if (is_vectorizable(value)) {
+            } else if (std::find(value.second.begin(), value.second.end(), 0) != value.second.end()) {
+                if (path.find_last_of('@') != std::string::npos)
+                    throw archive_error("attributes need a native datatype" + ALPS_STACKTRACE);
+                if (ar.is_group(path))
+                    ar.delete_group(path);
+                if (ar.is_data(path))
+                    ar.delete_data(path);
+                ar.create_group(path);
+            } else if (value.second.empty()) {
+                if (!value.first)
+                    throw archive_error("null pointer for nonempty data" + ALPS_STACKTRACE);
+                save(ar, path, *value.first, size, chunk, offset);
+            } else if (is_vectorizable(value)) {
                 std::copy(value.second.begin(), value.second.end(), std::back_inserter(size));
                 std::fill_n(std::back_inserter(chunk), value.second.size(), 1);
                 for (
@@ -196,6 +210,17 @@ namespace alps {
             , std::vector<std::size_t> offset = std::vector<std::size_t>()
         ) {
             if (ar.is_group(path)) {
+                if (std::find(value.second.begin(), value.second.end(), 0) != value.second.end()) {
+                    if (!ar.list_children(path).empty())
+                        throw archive_error("invalid data size" + ALPS_STACKTRACE);
+                    return;
+                }
+                if (value.second.empty()) {
+                    if (!value.first)
+                        throw archive_error("null pointer for nonempty data" + ALPS_STACKTRACE);
+                    load(ar, path, *value.first, chunk, offset);
+                    return;
+                }
                 offset = std::vector<std::size_t>(value.second.size(), 0);
                 do {
                     std::size_t last = offset.size() - 1, pos = 0;
@@ -219,10 +244,12 @@ namespace alps {
                 } while (offset[0] < value.second[0]);
             } else {
                 std::vector<std::size_t> size(ar.extent(path));
+                if (size.size() < chunk.size())
+                    throw archive_error("invalid data size" + ALPS_STACKTRACE);
                 set_extent(value, std::vector<std::size_t>(size.begin() + chunk.size(), size.end()));
-                if (is_continuous<T>::value) {
-                    std::copy(size.begin(), size.end(), std::back_inserter(chunk));
-                    std::fill_n(std::back_inserter(offset), size.size(), 0);
+                if constexpr (is_continuous<T>::value) {
+                    std::copy(size.begin() + chunk.size(), size.end(), std::back_inserter(chunk));
+                    std::fill_n(std::back_inserter(offset), size.size() - offset.size(), 0);
                     ar.read(path, get_pointer(value), chunk, offset);
                 } else if (value.second.size()) {
                     std::fill_n(std::back_inserter(chunk), value.second.size(), 1);

@@ -93,9 +93,8 @@ int main(int argc, char **argv) {
     rejects([&] { alps::ctint::prepare_run(file_run); }, "vector of length 4");
     {
         alps::hdf5::archive archive(input_file, "w");
-        const std::vector<double> malformed(12, 0.0);
+        const std::vector<std::complex<double>> malformed(12, {0.0, 0.0});
         archive.write("/G0_0", malformed.data(), std::vector<std::size_t>{4, 3});
-        archive.set_complex("/G0_0");
     }
     rejects([&] { alps::ctint::prepare_run(file_run); }, "complex vector");
     write_input(4, true);

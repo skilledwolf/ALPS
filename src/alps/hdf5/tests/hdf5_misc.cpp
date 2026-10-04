@@ -196,7 +196,7 @@ int main () {
     {
         alps::hdf5::archive ar("data.h5");
         std::string s;
-        ar >> alps::make_pvp("/value", s);
+        expect_failure<alps::hdf5::wrong_type>(ar, "/", [&] { ar >> alps::make_pvp("/value", s); });
     }
 
     {
@@ -225,8 +225,7 @@ int main () {
     }
 
     {
-        long *d = new long[17];
-        // fill the array
+        long *d = new long[17]{};
         alps::hdf5::archive ar("data.h5", "w");
         ar << alps::make_pvp("/c/array", d, 17);
         delete[] d;

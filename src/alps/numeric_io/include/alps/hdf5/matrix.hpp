@@ -21,9 +21,6 @@
 
 #include <algorithm>
 
-// This one is only required for the old matrix hdf5 format
-#include <alps/hdf5/vector.hpp>
-
 namespace alps {
 namespace hdf5 {
 
@@ -31,11 +28,6 @@ namespace hdf5 {
     struct scalar_type<alps::numeric::matrix<T, MemoryBlock> > {
         typedef typename scalar_type<typename alps::numeric::matrix<T,MemoryBlock>::value_type>::type type;
     };
-
-    template<typename T, typename MemoryBlock>
-    struct has_complex_elements<alps::numeric::matrix<T, MemoryBlock> >
-    : public has_complex_elements<typename alps::detail::remove_cvr<typename alps::numeric::matrix<T, MemoryBlock>::value_type>::type>
-    {};
 
 namespace detail {
 
@@ -77,6 +69,8 @@ namespace detail {
         static void apply(alps::numeric::matrix<T,MemoryBlock>& m, std::vector<std::size_t> const& size) {
             using alps::hdf5::set_extent;
             typedef typename alps::numeric::matrix<T,MemoryBlock>::const_col_element_iterator col_iterator;
+            if ((is_continuous<T>::value && size.size() != 2) || size.size() < 2)
+                throw archive_error("invalid dimensions" + ALPS_STACKTRACE);
             m.reserve(size[1],size[0]);
             m.resize(size[1],size[0]);
             assert(m.capacity().first  == size[1]);
@@ -122,7 +116,7 @@ namespace detail {
     struct get_pointer<alps::numeric::matrix<T,MemoryBlock> > {
         static typename alps::hdf5::scalar_type<alps::numeric::matrix<T,MemoryBlock> >::type * apply(alps::numeric::matrix<T,MemoryBlock>& m) {
             using alps::hdf5::get_pointer;
-            return get_pointer(m(0,0));
+            return m.empty() ? nullptr : get_pointer(m(0,0));
         }
     };
 
@@ -130,7 +124,7 @@ namespace detail {
     struct get_pointer<alps::numeric::matrix<T,MemoryBlock> const> {
         static typename alps::hdf5::scalar_type<alps::numeric::matrix<T,MemoryBlock> >::type const * apply(alps::numeric::matrix<T,MemoryBlock> const& m) {
             using alps::hdf5::get_pointer;
-            return get_pointer(m(0,0));
+            return m.empty() ? nullptr : get_pointer(m(0,0));
         }
     };
 
@@ -147,11 +141,15 @@ namespace detail {
         using std::copy;
         using std::fill_n;
         using alps::cast;
-        if (is_continuous<T>::value && m.empty())
-            ar.write(path, static_cast<typename scalar_type<alps::numeric::matrix<T, MemoryBlock> >::type const *>(NULL), std::vector<std::size_t>());
-        else if (is_continuous<T>::value) {
+        if constexpr (is_continuous<T>::value) {
             std::vector<std::size_t> extent(get_extent(m));
             copy(extent.begin(),extent.end(), std::back_inserter(size));
+            if (m.empty()) {
+                copy(extent.begin(), extent.end(), std::back_inserter(chunk));
+                fill_n(std::back_inserter(offset), extent.size(), 0);
+                ar.write(path, get_pointer(m), size, chunk, offset);
+                return;
+            }
             // We want to write one column:
             chunk.push_back(1);
             // How much memory does the column and the elements it contains need?
@@ -163,9 +161,13 @@ namespace detail {
                 offset[offset_col_index] = j;
                 ar.write(path, get_pointer(*(col(m, j).first)), size, chunk, offset);
             }
-        } else if (m.empty())
-            ar.write(path, static_cast<int const *>(NULL), std::vector<std::size_t>());
-        else if (is_vectorizable(m)) {
+        } else if (m.empty()) {
+            if (ar.is_data(path))
+                ar.delete_data(path);
+            if (ar.is_group(path))
+                ar.delete_group(path);
+            ar.create_group(path);
+        } else if (is_vectorizable(m)) {
             size.push_back(num_cols(m));
             size.push_back(num_rows(m));
             // We want to write element by element:
@@ -199,51 +201,33 @@ namespace detail {
         , std::vector<std::size_t> offset = std::vector<std::size_t>()
     ){
         using std::copy;
-        if(ar.is_data(path + "/size1") && ar.is_scalar(path + "/size1")) {
-            // Old matrix hdf5 format
-            std::size_t size1(0), size2(0), reserved_size1(0);
-            ar[path + "/size1"] >> size1;
-            ar[path + "/size2"] >> size2;
-            ar[path + "/reserved_size1"] >> reserved_size1;
-            std::vector<T> data;
-            ar[path + "/values"] >> data;
-            alps::numeric::matrix<T,MemoryBlock> m2(reserved_size1,size2);
-            assert(m2.capacity().first  == reserved_size1);
-            copy(data.begin(), data.end(), col(m2,0).first);
-            m2.resize(size1,size2);
-            swap(m, m2);
-            return;
-        }
-
         alps::numeric::matrix<T,MemoryBlock> m2;
         if(ar.is_group(path)) {
             std::vector<std::string> const columns = ar.list_children(path);
-            std::vector<std::string> const rows = ar.list_children(path + "/" +columns[0]);
+            std::vector<std::string> const rows = columns.empty()
+                ? std::vector<std::string>{} : ar.list_children(path + "/0");
             m2.resize(rows.size(), columns.size());
-            // Check if all columns have the same number of elements
-            for(std::vector<std::string>::const_iterator it = columns.begin(); it != columns.end(); ++it) {
-                std::vector<std::string> const elements = ar.list_children(path + "/" + *it);
-                if(elements.size() != rows.size())
+            // Canonical numbered paths bound every matrix access; malformed
+            // names fail on lookup before the temporary can replace m.
+            for (std::size_t j = 0; j < columns.size(); ++j) {
+                const auto column = path + "/" + cast<std::string>(j);
+                const auto elements = ar.list_children(column);
+                if (elements.size() != rows.size())
                     throw invalid_path("invalid path" + ALPS_STACKTRACE);
-                for(std::vector<std::string>::const_iterator eit = elements.begin(); eit != elements.end(); ++eit) {
-                    load(ar, ar.complete_path(path) + "/" + *it + "/" + *eit, m2(cast<std::size_t>(*eit),cast<std::size_t>(*it)));
-                }
+                for (std::size_t i = 0; i < rows.size(); ++i)
+                    load(ar, ar.complete_path(column) + "/" + cast<std::string>(i), m2(i, j));
             }
         } else {
-            if (ar.is_complex(path) != has_complex_elements<T>::value)
-                throw archive_error("no complex value in archive" + ALPS_STACKTRACE);
             std::vector<std::size_t> size(ar.extent(path));
-            if (size.size() == 1 && size[0] == 0)
-                m.resize(0, 0);
-            else if (size.size() < 2)
+            if (size.size() < chunk.size() + 2)
                 throw archive_error("invalid dimensions" + ALPS_STACKTRACE);
-            else if (is_continuous<T>::value) {
+            else if constexpr (is_continuous<T>::value) {
                 // We need to make sure that reserve() will reserve exactly the num_rows() we asked for.
                 // The only way to ensure that is by creating a new matrix which has no reserved space.
                 set_extent(m2,std::vector<std::size_t>(size.begin() + chunk.size(), size.end()));
                 copy(size.begin()+chunk.size(), size.end(), std::back_inserter(chunk));
                 fill_n(std::back_inserter(offset), size.size() - offset.size(), 0);
-                ar.read(path,get_pointer(m2(0,0)),chunk,offset);
+                ar.read(path,get_pointer(m2),chunk,offset);
             } else { // i.e. is_vectorizable
                 std::vector<std::size_t> mysize;
                 mysize.push_back(*(size.begin() + chunk.size()));

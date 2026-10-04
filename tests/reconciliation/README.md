@@ -15,10 +15,17 @@ additionally rejects any measurement change
 from an earlier report. A known defect recorded in a baseline is not a desired
 contract: review and update that expectation when fixing it.
 
+Current ALPS self-reads also require the `alps.params.v2` format. ALPS writes
+native compound complex values, Boolean enums and ranked zero-length arrays;
+the pinned Core writes older physical encodings. Consequently archive
+cross-provider failures are characterizations, while every same-provider
+archive value must round-trip. Use the standalone `alps-hdf5-convert` tool
+to migrate older physical encodings and typed v1 dictionaries offline.
+
 The recorded pre-consolidation baseline is historical: `alps.params.v1` deliberately
 breaks old parameter checkpoint interchange. Rerunning the updated probe against
 this branch must produce a new report, not match the old `--expect` file. The
-archive payload checks still apply; ALPSCore's INI/argv/default bookkeeping is
+same-provider archive payload checks still apply; ALPSCore's INI/argv/default bookkeeping is
 not part of the new params layer.
 
 The conversion observations include Boolean-to-integer access, integer-to-float
@@ -28,7 +35,7 @@ converts homogeneous vectors element by element; the pinned Core permits the
 first two conversions and requires matching vector storage types. Observations
 characterize each provider and are not assertions that their policies must match.
 
-## Current typed-params baseline
+## Historical typed-params v1 baseline
 
 The [typed-params v1 baseline](baseline-darwin-arm64-typed-params-v1.json) records
 the 3 October 2026 comparison of ALPS SDK `fc02e70f0`, probe source `f05b07f4a`
@@ -74,6 +81,7 @@ the reference was an unmodified checkout at
 # Set these to existing absolute paths. Keep this scratch tree outside the SDK.
 alps_repo="$PWD"
 alps_sdk="$alps_repo/_build/dev/darwin-arm64/install"
+alps_hdf5=/absolute/path/to/hdf5-2.x
 deps="$alps_repo/.pixi/envs/default"
 core_source=/absolute/path/to/pinned/ALPSCore
 scratch=/absolute/path/to/reconciliation-build
@@ -94,7 +102,7 @@ cmake --install "$scratch/core-sdk"
 cmake -S "$alps_repo/tests/reconciliation" -B "$scratch/alps-probe" -G Ninja \
   -DCMAKE_BUILD_TYPE=Release -DRECONCILIATION_PROVIDER=ALPS \
   -DALPS_DIR="$alps_sdk/share/alps" \
-  -DCMAKE_PREFIX_PATH="$deps" -DHDF5_ROOT="$deps" \
+  -DCMAKE_PREFIX_PATH="$deps" -DHDF5_ROOT="$alps_hdf5" \
   -DCMAKE_C_COMPILER="$deps/bin/cc" -DCMAKE_CXX_COMPILER="$deps/bin/c++"
 cmake --build "$scratch/alps-probe" --parallel 2
 

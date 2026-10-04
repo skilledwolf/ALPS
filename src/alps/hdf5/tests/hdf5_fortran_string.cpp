@@ -32,5 +32,5 @@ int main() {
 	std::cout<<"is datatype<string>: " << (ia.is_datatype<std::string>(path) ? "True" : "False")<<std::endl;
 	ia[path] >> test;
 	std::cout << test << std::endl;
-	return ia.is_datatype<std::string>(path) ? 0 : -1;
+	return ia.is_datatype<std::string>(path) && test == "N_total" && ia.extent(path).empty() ? 0 : -1;
 }

@@ -37,10 +37,6 @@ namespace alps {
             : public boost::false_type
         {};
 
-        template<typename T, typename A> struct has_complex_elements<std::vector<T, A> > 
-            : public has_complex_elements<typename alps::detail::remove_cvr<typename std::vector<T, A>::value_type>::type>
-        {};
-
         namespace detail {
 
             template<typename T, typename A> struct get_extent<std::vector<T, A> > {
@@ -59,6 +55,9 @@ namespace alps {
                                     throw archive_error("no rectangular matrix" + ALPS_STACKTRACE);
                             }
                         std::copy(first.begin(), first.end(), std::back_inserter(result));
+                    } else if constexpr (is_continuous<T>::value) {
+                        const auto element = get_extent(T{});
+                        std::copy(element.begin(), element.end(), std::back_inserter(result));
                     }
                     return result;
                 }
@@ -67,6 +66,8 @@ namespace alps {
             template<typename T, typename A> struct set_extent<std::vector<T, A> > {
                 static void apply(std::vector<T, A> & value, std::vector<std::size_t> const & extent) {
                     using alps::hdf5::set_extent;
+                    if (extent.empty())
+                        throw archive_error("dimensions do not match" + ALPS_STACKTRACE);
                     value.resize(extent[0]);
                     if (extent.size() > 1)
                         for(typename std::vector<T, A>::iterator it = value.begin(); it != value.end(); ++it)
@@ -82,6 +83,8 @@ namespace alps {
             template<typename A> struct set_extent<std::vector<bool, A> > {
                 static void apply(std::vector<bool, A> & value, std::vector<std::size_t> const & extent) {
                     if (extent.size() != 1)
+                        throw archive_error("dimensions do not match" + ALPS_STACKTRACE);
+                    if (extent.empty())
                         throw archive_error("dimensions do not match" + ALPS_STACKTRACE);
                     value.resize(extent[0]);
                 }
@@ -122,14 +125,14 @@ namespace alps {
             template<typename T, typename A> struct get_pointer<std::vector<T, A> > {
                 static typename alps::hdf5::scalar_type<std::vector<T, A> >::type * apply(std::vector<T, A> & value) {
                     using alps::hdf5::get_pointer;
-                    return get_pointer(value[0]);
+                    return value.size() ? get_pointer(value[0]) : nullptr;
                 }
             };
 
             template<typename T, typename A> struct get_pointer<std::vector<T, A> const> {
                 static typename alps::hdf5::scalar_type<std::vector<T, A> >::type const * apply(std::vector<T, A> const & value) {
                     using alps::hdf5::get_pointer;
-                    return get_pointer(value[0]);
+                    return value.size() ? get_pointer(value[0]) : nullptr;
                 }
             };
 
@@ -159,18 +162,21 @@ namespace alps {
             , std::vector<std::size_t> offset = std::vector<std::size_t>()
         ) {
             using alps::cast;
-            if (ar.is_group(path))
-                ar.delete_group(path);
-            if (is_continuous<T>::value && value.size() == 0)
-                ar.write(path, static_cast<typename scalar_type<std::vector<T, A> >::type const *>(NULL), std::vector<std::size_t>());
-            else if (is_continuous<T>::value) {
+            if constexpr (is_continuous<T>::value) {
                 std::vector<std::size_t> extent(get_extent(value));
                 std::copy(extent.begin(), extent.end(), std::back_inserter(size));
                 std::copy(extent.begin(), extent.end(), std::back_inserter(chunk));
                 std::fill_n(std::back_inserter(offset), extent.size(), 0);
                 ar.write(path, get_pointer(value), size, chunk, offset);
-            } else if (value.size() == 0)
-                ar.write(path, static_cast<int const *>(NULL), std::vector<std::size_t>());
+            } else if (value.size() == 0) {
+                if (path.find_last_of('@') != std::string::npos)
+                    throw archive_error("attributes need a native datatype" + ALPS_STACKTRACE);
+                if (ar.is_group(path))
+                    ar.delete_group(path);
+                if (ar.is_data(path))
+                    ar.delete_data(path);
+                ar.create_group(path);
+            }
             else if (is_vectorizable(value)) {
                 size.push_back(value.size());
                 chunk.push_back(1);
@@ -180,6 +186,10 @@ namespace alps {
                     save(ar, path, *it, size, chunk, offset);
                 }
             } else {
+                if (path.find_last_of('@') != std::string::npos)
+                    throw archive_error("attributes need a native datatype" + ALPS_STACKTRACE);
+                if (ar.is_group(path))
+                    ar.delete_group(path);
                 if (path.find_last_of('@') == std::string::npos && ar.is_data(path))
                     ar.delete_data(path);
                 else if (path.find_last_of('@') != std::string::npos && ar.is_attribute(path))
@@ -197,14 +207,12 @@ namespace alps {
             , std::vector<std::size_t> chunk = std::vector<std::size_t>()
             , std::vector<std::size_t> offset = std::vector<std::size_t>()
         ) {
-            if (ar.is_group(path))
-                ar.delete_group(path);
+            size.push_back(value.size());
+            chunk.push_back(value.size() ? 1 : 0);
+            offset.push_back(0);
             if (value.size() == 0)
-                ar.write(path, static_cast<bool const *>(NULL), std::vector<std::size_t>());
+                ar.write(path, static_cast<bool const *>(nullptr), size, chunk, offset);
             else {
-                size.push_back(value.size());
-                chunk.push_back(1);
-                offset.push_back(0);
                 for(typename std::vector<bool, A>::const_iterator it = value.begin(); it != value.end(); ++it) {
                     offset.back() = it - value.begin();
                     bool const elem = *it;
@@ -223,24 +231,23 @@ namespace alps {
             using alps::cast;
             if (ar.is_group(path)) {
                 std::vector<std::string> children = ar.list_children(path);
+                for (const auto &child : children) {
+                    const auto index = cast<std::size_t>(child);
+                    if (index >= children.size() || cast<std::string>(index) != child)
+                        throw invalid_path("invalid container index: " + child + ALPS_STACKTRACE);
+                }
                 value.resize(children.size());
                 for (typename std::vector<std::string>::const_iterator it = children.begin(); it != children.end(); ++it)
                    load(ar, ar.complete_path(path) + "/" + *it, value[cast<std::size_t>(*it)]);
             } else {
-                if (ar.is_complex(path) != has_complex_elements<T>::value)
-                    throw archive_error("no complex value in archive" + ALPS_STACKTRACE);
                 std::vector<std::size_t> size(ar.extent(path));
-                if (size.size() == 0)
+                if (size.size() <= chunk.size())
                     throw archive_error("invalid dimensions" + ALPS_STACKTRACE);
-                else if (size[0] == 0)
-                    value.resize(0);
-                else if (is_continuous<T>::value) {
+                else if constexpr (is_continuous<T>::value) {
                     set_extent(value, std::vector<std::size_t>(size.begin() + chunk.size(), size.end()));
-                    if (value.size()) {
-                        std::copy(size.begin() + chunk.size(), size.end(), std::back_inserter(chunk));
-                        std::fill_n(std::back_inserter(offset), size.size() - offset.size(), 0);
-                        ar.read(path, get_pointer(value), chunk, offset);
-                    }
+                    std::copy(size.begin() + chunk.size(), size.end(), std::back_inserter(chunk));
+                    std::fill_n(std::back_inserter(offset), size.size() - offset.size(), 0);
+                    ar.read(path, get_pointer(value), chunk, offset);
                 } else {
                     value.resize(*(size.begin() + chunk.size()));
                     chunk.push_back(1);
@@ -263,17 +270,16 @@ namespace alps {
             if (ar.is_group(path))
                 throw archive_error("invalid dimensions" + ALPS_STACKTRACE);
             else {
-                if (ar.is_complex(path))
-                    throw archive_error("no complex value in archive" + ALPS_STACKTRACE);
                 std::vector<std::size_t> size(ar.extent(path));
-                if (size.size() == 0)
+                if (size.size() <= chunk.size())
                     throw archive_error("invalid dimensions" + ALPS_STACKTRACE);
-                else if (size[0] == 0)
-                    value.resize(0);
                 else {
-                    value.resize(*(size.begin() + chunk.size()));
-                    chunk.push_back(1);
+                    const auto dimensions = chunk.size();
+                    set_extent(value, std::vector<std::size_t>(size.begin() + dimensions, size.end()));
+                    chunk.push_back(value.size() ? 1 : 0);
                     offset.push_back(0);
+                    if (value.empty())
+                        ar.read(path, static_cast<bool *>(nullptr), chunk, offset);
                     for(typename std::vector<bool, A>::iterator it = value.begin(); it != value.end(); ++it) {
                         offset.back() = it - value.begin();
                         bool elem;

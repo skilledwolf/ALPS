@@ -25,10 +25,7 @@ namespace alps {
     ) {
         return hdf5::detail::make_pvp_proxy<std::pair<T *, std::vector<std::size_t> > >(
               path
-            , std::make_pair(value, size > 0 
-                ? std::vector<std::size_t>(1, size)
-                : std::vector<std::size_t>()
-            )
+            , std::make_pair(value, std::vector<std::size_t>(1, size))
         );
     }
 

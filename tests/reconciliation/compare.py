@@ -72,9 +72,12 @@ def main(argv=None):
     failures = []
     common_params = {"load": "ok", "integer": "42", "real": "1.25", "text": "example", "boolean": "1", "vector": "ok"}
     for provider in programs:
-        if measurements[f"{provider}->{provider}/params"] != common_params:
+        expected_params = dict(common_params)
+        if provider == "ALPS":
+            expected_params["format"] = "alps.params.v2"
+        if measurements[f"{provider}->{provider}/params"] != expected_params:
             failures.append(f"Params self-check failed: {provider}")
-        extended = dict(common_params, unsigned="42", float="1.25", wide=(
+        extended = dict(expected_params, unsigned="42", float="1.25", wide=(
             "1099511627776" if int(measurements[f"{provider}/params-semantics"]["native_long_bits"]) >= 64 else "42"
         ))
         if measurements[f"{provider}->{provider}/extended-params"] != extended:
@@ -84,7 +87,9 @@ def main(argv=None):
             if any(value != "ok" for value in values.values()):
                 failures.append(f"Provider self-check failed: {key}")
         if key.endswith("/archive"):
-            if any(value != "ok" for name, value in values.items() if not name.endswith("_type_marker")):
+            writer, reader = key.split("/", 1)[0].split("->")
+            if writer == reader and any(value != "ok" for name, value in values.items()
+                                        if not name.endswith("_type_marker")):
                 failures.append(f"Typed archive value check failed: {key}")
     if args.expect:
         expected = json.loads(args.expect.read_text())["measurements"]

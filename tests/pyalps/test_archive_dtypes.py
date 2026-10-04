@@ -1,5 +1,6 @@
 """Check dtype-dependent user operations, not just equal numeric values."""
 
+import h5py
 import numpy as np
 import pytest
 
@@ -225,7 +226,7 @@ def test_boolean_mask_remains_a_mask_after_reload(tmp_path):
 
 
 @pytest.mark.parametrize("attribute", [False, True])
-def test_overwriting_same_storage_type_updates_dtype_marker(tmp_path, attribute):
+def test_overwriting_boolean_and_integer_replaces_storage_type(tmp_path, attribute):
     path = "/group/@value" if attribute else "/value"
     with hdf5.archive(str(tmp_path / "overwrite.h5"), "w") as archive:
         archive.create_group("/group")
@@ -234,10 +235,124 @@ def test_overwriting_same_storage_type_updates_dtype_marker(tmp_path, attribute)
             assert archive[path].dtype == dtype
 
 
-def test_unmarked_legacy_boolean_dataset(tmp_path):
-    with hdf5.archive(str(tmp_path / "legacy.h5"), "w") as archive:
-        archive["mask"] = np.array([True, False, True])
-        archive.delete_attribute("mask/@__alps_type__")
-        mask = archive["mask"]
-        assert mask.dtype == np.bool_
-        np.testing.assert_array_equal(np.arange(3)[mask], [0, 2])
+@pytest.mark.parametrize("attribute", [False, True])
+def test_unmarked_signed_byte_is_integer_even_for_zero_one_values(tmp_path, attribute):
+    filename = str(tmp_path / "signed-byte.h5")
+    path = "/@value" if attribute else "/value"
+    with h5py.File(filename, "w") as archive:
+        if attribute:
+            archive.attrs["value"] = np.array([0, 1, 0], dtype=np.int8)
+        else:
+            archive["value"] = np.array([0, 1, 0], dtype=np.int8)
+    with hdf5.archive(filename, "r") as archive:
+        actual = archive[path]
+    assert actual.dtype == np.int8
+    np.testing.assert_array_equal(actual + 2, [2, 3, 2])
+
+
+@pytest.mark.parametrize("dtype", [np.bool_, np.int8, np.complex64, np.complex128])
+@pytest.mark.parametrize("shape", [(), (3,), (2, 3), (0,), (2, 0)])
+@pytest.mark.parametrize("attribute", [False, True])
+def test_native_storage_uses_h5py_datatypes_without_private_markers(
+    tmp_path, dtype, shape, attribute
+):
+    size = int(np.prod(shape))
+    value = np.arange(size).reshape(shape).astype(dtype)
+    if np.issubdtype(dtype, np.complexfloating):
+        value.imag = -np.arange(size).reshape(shape)
+    filename = str(tmp_path / "standard-types.h5")
+    path = "/group/@value" if attribute else "/value"
+    with hdf5.archive(filename, "w") as archive:
+        archive.create_group("/group")
+        archive[path] = value
+        assert archive.extent(path) == list(shape)
+        assert archive.is_scalar(path) == (shape == ())
+        assert archive.is_complex(path) == np.issubdtype(dtype, np.complexfloating)
+    with h5py.File(filename, "r") as archive:
+        parent = archive["group"] if attribute else archive["value"]
+        actual = parent.attrs["value"] if attribute else parent[()]
+        datatype = parent.attrs.get_id("value").get_type() if attribute else parent.id.get_type()
+        try:
+            assert datatype.get_class() == (
+                h5py.h5t.ENUM if dtype == np.bool_
+                else h5py.h5t.COMPOUND if np.issubdtype(dtype, np.complexfloating)
+                else h5py.h5t.INTEGER
+            )
+            if dtype == np.bool_:
+                assert {datatype.get_member_name(i): datatype.get_member_value(i)
+                        for i in range(datatype.get_nmembers())} == {b"FALSE": 0, b"TRUE": 1}
+            elif np.issubdtype(dtype, np.complexfloating):
+                assert [datatype.get_member_name(i) for i in range(datatype.get_nmembers())] == [b"r", b"i"]
+        finally:
+            datatype.close()
+        assert np.asarray(actual).dtype == dtype
+        assert np.asarray(actual).shape == shape
+        np.testing.assert_array_equal(actual, value)
+        assert not any(name.startswith(("__complex__", "__alps_type__")) for name in parent.attrs)
+
+
+@pytest.mark.parametrize("dtype", [np.bool_, np.int8, np.complex64, np.complex128])
+@pytest.mark.parametrize("shape", [(), (3,), (2, 3), (0,), (2, 0)])
+@pytest.mark.parametrize("attribute", [False, True])
+def test_h5py_standard_types_load_without_alps_metadata(tmp_path, dtype, shape, attribute):
+    size = int(np.prod(shape))
+    value = np.arange(size).reshape(shape).astype(dtype)
+    if np.issubdtype(dtype, np.complexfloating):
+        value.imag = -np.arange(size).reshape(shape)
+    filename = str(tmp_path / "from-h5py.h5")
+    path = "/@value" if attribute else "/value"
+    with h5py.File(filename, "w") as archive:
+        if attribute:
+            archive.attrs["value"] = value
+        else:
+            archive["value"] = value
+    with hdf5.archive(filename, "r") as archive:
+        actual = archive[path]
+        assert archive.extent(path) == list(shape)
+        assert archive.is_scalar(path) == (shape == ())
+    if shape:
+        assert actual.dtype == dtype
+        assert actual.shape == shape
+    elif dtype == np.complex64:
+        assert np.asarray(actual).dtype == np.complex64
+    else:
+        assert type(actual) is {np.bool_: bool, np.int8: int, np.complex128: complex}[dtype]
+    np.testing.assert_array_equal(actual, value)
+
+
+@pytest.mark.parametrize("dtype", ["<c8", ">c8", "<c16", ">c16"])
+@pytest.mark.parametrize("attribute", [False, True])
+def test_h5py_complex_preserves_endian_precision_and_ieee_components(tmp_path, dtype, attribute):
+    value = np.empty(4, dtype=dtype)
+    value.real = [0.0, np.inf, np.nan, -4.5]
+    value.imag = [-0.0, -np.inf, 1.25, np.nan]
+    filename = str(tmp_path / "ieee-complex.h5")
+    path = "/@value" if attribute else "/value"
+    with h5py.File(filename, "w") as archive:
+        if attribute:
+            archive.attrs["value"] = value
+        else:
+            archive["value"] = value
+    with hdf5.archive(filename, "r") as archive:
+        actual = archive[path]
+    native = value.astype(value.dtype.newbyteorder("="))
+    assert actual.dtype == native.dtype
+    assert actual.real.tobytes() == native.real.tobytes()
+    assert actual.imag.tobytes() == native.imag.tobytes()
+
+
+@pytest.mark.parametrize("dtype", [np.bool_, np.int8, np.complex64, np.complex128])
+@pytest.mark.parametrize("attribute", [False, True])
+def test_null_dataspace_requires_explicit_shape_migration(tmp_path, dtype, attribute):
+    filename = str(tmp_path / "null.h5")
+    path = "/@value" if attribute else "/value"
+    with h5py.File(filename, "w") as archive:
+        if attribute:
+            archive.attrs["value"] = h5py.Empty(dtype)
+        else:
+            archive.create_dataset("value", data=h5py.Empty(dtype))
+    with hdf5.archive(filename, "r") as archive:
+        assert archive.is_null(path)
+        assert archive.extent(path) == []
+        with pytest.raises(hdf5.WrongType, match="NULL.*shape.*offline converter"):
+            archive[path]

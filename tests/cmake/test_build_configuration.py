@@ -136,7 +136,7 @@ def test_hdf5_runtime_paths_follow_imported_configurations(tmp_path):
     provider = build / "hdf5"
     (provider / "include").mkdir(parents=True)
     (provider / "hdf5-config.cmake").write_text('''
-set(HDF5_VERSION 1.14.6)
+set(HDF5_VERSION 2.2.0)
 set(HDF5_ENABLE_PARALLEL OFF)
 set(HDF5_INCLUDE_DIR "${CMAKE_CURRENT_LIST_DIR}/include")
 add_library(hdf5::hdf5-shared SHARED IMPORTED)
@@ -158,6 +158,17 @@ foreach(config IN ITEMS Debug Release)
   endif()
 endforeach()
 ''')
+    (provider / "hdf5-config-version.cmake").write_text('''
+set(PACKAGE_VERSION "2.2.0")
+if(PACKAGE_FIND_VERSION VERSION_GREATER PACKAGE_VERSION)
+  set(PACKAGE_VERSION_COMPATIBLE FALSE)
+else()
+  set(PACKAGE_VERSION_COMPATIBLE TRUE)
+endif()
+if(PACKAGE_FIND_VERSION VERSION_EQUAL PACKAGE_VERSION)
+  set(PACKAGE_VERSION_EXACT TRUE)
+endif()
+''')
     capture = tmp_path / "capture.cmake"
     capture.write_text(
         'file(GENERATE OUTPUT "${CMAKE_BINARY_DIR}/runtime-$<CONFIG>.txt"\n'
@@ -165,7 +176,10 @@ endforeach()
         '$<TARGET_RUNTIME_DLLS:alps_hdf5>" TARGET alps_hdf5)\n'
         'file(GENERATE OUTPUT "${CMAKE_BINARY_DIR}/program-runtime-$<CONFIG>.txt"\n'
         '  CONTENT "$<TARGET_GENEX_EVAL:dmrg,$<TARGET_PROPERTY:dmrg,INSTALL_RPATH>>"\n'
-        '  TARGET dmrg)\n')
+        '  TARGET dmrg)\n'
+        'file(GENERATE OUTPUT "${CMAKE_BINARY_DIR}/hdf5-system-$<CONFIG>.txt"\n'
+        '  CONTENT "$<TARGET_PROPERTY:HDF5::HDF5,SYSTEM>;'
+        '$<TARGET_PROPERTY:hdf5::hdf5-shared,SYSTEM>")\n')
     result = subprocess.run([
         "cmake", "-S", str(SOURCE), "-B", str(build),
         *json.loads(os.environ.get("ALPS_TEST_CMAKE_ARGS", "[]")),
@@ -180,6 +194,7 @@ endforeach()
     ], text=True, capture_output=True)
     assert result.returncode == 0, result.stdout + result.stderr
     for config, other in (("Debug", "Release"), ("Release", "Debug")):
+        assert (build / f"hdf5-system-{config}.txt").read_text() == "FALSE;FALSE"
         runtime = (build / f"runtime-{config}.txt").read_text().split(";")
         suffix = "/hdf5.dll" if os.name == "nt" else ""
         assert f"{provider.as_posix()}/{config}{suffix}" in runtime
@@ -188,6 +203,16 @@ endforeach()
             program_runtime = (build / f"program-runtime-{config}.txt").read_text().split(";")
             assert f"{provider.as_posix()}/{config}" in program_runtime
             assert f"{provider.as_posix()}/{other}" not in program_runtime
+
+
+@pytest.mark.parametrize("shared", ["ON", "OFF"])
+def test_highfive_is_only_required_to_build_the_sdk(tmp_path, shared):
+    result = configure(tmp_path, "-DALPS_BUILD_APPLICATIONS=OFF", f"-DBUILD_SHARED_LIBS={shared}")
+    assert result.returncode == 0, result.stdout + result.stderr
+    exported = next((tmp_path / "CMakeFiles/Export").rglob("ALPSTargets.cmake")).read_text()
+    config = (tmp_path / "cmake/ALPSConfig.cmake").read_text()
+    assert "highfive" not in exported.lower()
+    assert "highfive" not in config.lower()
 
 
 def test_tutorials_are_an_explicit_install_component(tmp_path):

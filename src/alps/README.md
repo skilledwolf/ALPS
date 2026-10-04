@@ -4,18 +4,18 @@ ALPS sources are grouped by responsibility to prepare MaxEnt, HDF5 and typed par
 
 The [separate-process probes](../../tests/reconciliation/README.md) record the pinned ALPSCore reference and reproduce measured archive/params compatibility checks.
 
-The HDF5 migration targets the ordinary HighFive datatype mappings, with legacy
-conversion isolated in the [standalone converter](../tools/hdf5/README.md).
-Preserving old physical encodings is not a requirement for the replacement
-runtime. Validate HDF5 2.x and the HighFive replacement separately, then delete
-the superseded archive machinery. The converter currently handles identifiable
-leaf encodings; scientific checkpoint schema migration and lost empty-array
-shapes require application-specific decisions. Establish the new schema and
-version for each checkpoint before claiming that conversion permits resuming it.
+The HDF5 backend uses HDF5 2.x and HighFive 3.3.0. Complex values use compound
+`r`/`i` members, Booleans use the `FALSE`/`TRUE` enum, scalars have rank zero, and
+empty arrays retain explicit zero-length dimensions. The old marker datatypes,
+trailing complex dimension and numeric/string cast engine are removed. Legacy
+conversion belongs to the [standalone converter](../tools/hdf5/README.md), which
+also upgrades explicitly versioned parameter checkpoints from v1 to v2. Generic
+NULL dataspaces have lost their array shape; converting those or an application's
+checkpoint layout still requires its scientific schema.
 
-Before replacing HDF5, agree on buffer ownership and lifetime, shapes/types, error
-behavior and implementation ownership with the new ALEA maintainer. Start one
-measurement-application pilot alongside params reconciliation. MaxEnt remains an
+Use these buffer ownership, shape/type and error contracts with the new ALEA
+maintainer. Start one measurement-application pilot alongside params
+reconciliation. MaxEnt remains an
 acceptance test for the foundations; it does not exercise ALEA migration.
 `src/alps/alea/` still contains the legacy `Observable`/`ObservableSet`
 implementation; this pass imports neither new ALEA nor a compatibility shim.
@@ -36,7 +36,7 @@ and [Python conversion contracts](../../tests/pyalps/test_conversion_contracts.p
 are acceptance tests for these choices.
 
 Schemas, defaults and provenance belong to `run_config`, rather than the
-dictionary. `alps.params.v1` is the canonical parameter checkpoint for this
+dictionary. `alps.params.v2` is the canonical parameter checkpoint for this
 branch; it deliberately rejects older ALPS/Core parameter encodings. Generic
 archive payload interchange is a separate contract. The reconciliation runner
 checks both providers' own extended checkpoints when both are supplied, and can
@@ -44,21 +44,22 @@ check the installed ALPS SDK alone. A same-provider report does not demonstrate
 Core interoperability, and the historical comparison is not the current baseline.
 
 Archive reads copy values into caller-owned storage and must release HDF5-allocated
-variable-length buffers on success and conversion failure. Partial selections
+variable-length buffers on success and assignment failure. Partial selections
 must use the matching memory extent for cleanup. Cleanup must preserve the
-original conversion exception. The existing `hdf5_valgrind` regression exercises
+original exception. The existing `hdf5_valgrind` regression exercises
 scalar/vector datasets and attributes, including partial selections.
-These reads share internal object ownership, datatype dispatch and buffer
-conversion; the public overloads only enter the locked implementation. The
+HighFive owns files, groups, datasets, datatypes, dataspaces and attributes; the
+public overloads enter one locked implementation. The
 `hdf5_read` contract also covers all native numeric source types, fixed-width
-strings, selections and rejected reads. This consolidation preserves the existing
-conversion rules and archive representations.
+strings, selections and rejected reads. HDF5 performs numeric conversions;
+cross-family string/numeric and Boolean/numeric conversions are rejected. Direct
+HighFive and h5py fixtures test interoperability independently of ALPS writers.
 
 Writes share object creation/replacement, layout selection and transfer code.
 Rank, bounds, extent products and nonempty buffer pointers are checked before
 replacing stored data. Attribute replacement respects datatype and shape, including
 scalar-to-array changes; partial attribute transfers are rejected. Internal HDF5
-handles have unique ownership. Object serializers restore their previous context
+handles have RAII ownership. Object serializers restore their previous context
 on both return and exception; archive copies share file ownership, while copy
 assignment is disabled because overwriting the context pointer bypasses that ownership.
 
@@ -129,9 +130,9 @@ All first-party public headers have explicit CMake `HEADERS` file sets. These de
 
 `ALPS::utilities` owns utility symbols and the NGS termination-signal queue. It links Boost.Filesystem and platform threads without the simulation runtime, HDF5 or BLAS/LAPACK.
 
-`ALPS::hdf5` owns archive symbols, exception exports and shared archive state. It links utilities, HDF5, Boost.Filesystem, Boost.Thread and platform threads. It installs no process signal handlers and performs no cleanup from fatal-signal handlers. A parallel HDF5 provider can bring its own MPI dependency.
+`ALPS::hdf5` owns archive symbols, exception exports and shared archive state. It uses HighFive headers privately and links utilities, HDF5 and platform threads. Boost.Filesystem is supplied by utilities. Installed consumers do not need HighFive headers or its CMake package. It installs no process signal handlers and performs no cleanup from fatal-signal handlers. A parallel HDF5 provider can bring its own MPI dependency.
 
-`ALPS::params` owns ALPSCore-derived dictionary/value storage and explicit `alps.params.v1` checkpoints. It links HDF5 and Boost.Serialization; MPI builds also use MPI and Boost.MPI. Python values are eagerly copied into native storage. The file constructor, XML reader, proxies and Python `paramvalue_source` interface are removed. The remaining `params/adapters/` function converts typed scalars to the older model/lattice `Parameters` API for live internal callers; it is compiled into `ALPS::alps`.
+`ALPS::params` owns ALPSCore-derived dictionary/value storage and explicit `alps.params.v2` checkpoints. It links HDF5 and Boost.Serialization; MPI builds also use MPI and Boost.MPI. Python values are eagerly copied into native storage. The file constructor, XML reader, proxies and Python `paramvalue_source` interface are removed. The remaining `params/adapters/` function converts typed scalars to the older model/lattice `Parameters` API for live internal callers; it is compiled into `ALPS::alps`.
 
 `ALPS::run_config` applies separate application TOML schemas, defaults, type/range checks, relative-path resolution and run provenance. It uses toml++ headers privately in one translation unit, including when the package manager provides a compiled toml++ library. Parsing and application orchestration do not belong to the dictionary.
 

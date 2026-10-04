@@ -26,6 +26,7 @@
 #include "extract_from_pyobject.hpp"
 #include "archive_savable.hpp"
 #include "numpy_compat.hpp"
+#include <algorithm>
 #include <array>
 #include <complex>
 #include <cstddef>
@@ -33,8 +34,10 @@
 #include <cstdlib>
 #include <cstring>
 #include <limits>
+#include <memory>
 #include <stdexcept>
 #include <string>
+#include <type_traits>
 #include <vector>
 namespace nb = nanobind;
 namespace alps {
@@ -164,10 +167,8 @@ namespace alps {
             }
             template <typename U>
             void operator()(U const * ptr, std::vector<std::size_t> const & sizes) const {
-                // NumPy uses rank zero for a 0-D array.  Passing an empty
-                // size vector to archive::write creates an HDF5 NULL
-                // dataspace, which silently turns the scalar into an empty
-                // array.  Store the pointed-to value as a scalar instead.
+                // NumPy uses rank zero for a 0-D array. Use the scalar
+                // overload to retain its HDF5 SCALAR dataspace.
                 if (sizes.empty()) {
                     ar[path] << *ptr;
                     return;
@@ -464,24 +465,6 @@ namespace alps {
         std::string python_hdf5_get_filename(alps::hdf5::archive & ar) {
             return ar.get_filename();
         }
-        // Run `save` with the archive's context moved to `path`, then restore
-        // it -- the calling convention every ALPS save() expects, since they
-        // write relative to the current context. Shared by the Python-object
-        // and declared-capability branches of python_hdf5_save below.
-        template <typename Save>
-        void save_in_path_context(alps::hdf5::archive & ar,
-                                  std::string const & path,
-                                  Save && save) {
-            std::string context = ar.get_context();
-            ar.set_context(ar.complete_path(path));
-            try {
-                save();
-            } catch (...) {
-                ar.set_context(context);
-                throw;
-            }
-            ar.set_context(context);
-        }
         // Can `data` save itself into an archive?
         //
         // Two ways to qualify. An object defined in Python is duck-typed on a
@@ -514,9 +497,8 @@ namespace alps {
                               nb::handle data) {
             std::string const path = ar.complete_path(relative_path);
             if (has_archive_save_method(data)) {
-                save_in_path_context(ar, path, [&] {
-                    nb::getattr(data, "save")(nb::cast(&ar, nb::rv_policy::reference));
-                });
+                alps::hdf5::detail::scoped_context context(ar, path);
+                nb::getattr(data, "save")(nb::cast(&ar, nb::rv_policy::reference));
                 return;
             }
             // A type that has a save() but did not declare it archive-shaped.
@@ -544,24 +526,32 @@ namespace alps {
         nb::object load_nd_array(alps::hdf5::archive & ar,
                                  std::string const & path,
                                  std::vector<std::size_t> const & shape) {
-            std::size_t total = 1;
-            for (auto s : shape) total *= s;
-            std::vector<T> flat(total);
-            // archive::read rejects a zero-sized chunk.  The HDF5 dataset
-            // already carries the complete extent, so for arrays such as
-            // (0, 2) and (2, 0) there is no payload to read: construct the
-            // correctly shaped NumPy array directly.
-            if (total == 0) {
-                return alps::python::make_numpy_array<T>(std::vector<T>(), shape);
-            } else if (shape.size() <= 1) {
-                // vector<T> overload works directly.
-                ar[path] >> flat;
+            std::size_t total = std::find(shape.begin(), shape.end(), 0) == shape.end() ? 1 : 0;
+            if (total)
+                for (auto size : shape) {
+                    if (total > std::numeric_limits<std::size_t>::max() / size)
+                        throw hdf5::archive_error("HDF5 array extent overflows");
+                    total *= size;
+                }
+            if constexpr (std::is_same_v<T, bool>) {
+                // vector<bool> has packed storage rather than a bool buffer.
+                // Give NumPy ownership of the ordinary contiguous array read
+                // by the archive, including a valid buffer for empty shapes.
+                auto values = std::make_unique<bool[]>(total ? total : 1);
+                if (total)
+                    ar.read(path, values.get(), shape);
+                nb::capsule owner(values.get(), [](void * pointer) noexcept {
+                    delete[] static_cast<bool *>(pointer);
+                });
+                return nb::cast(nb::ndarray<nb::numpy, bool>(
+                    values.release(), shape.size(), shape.data(), owner));
             } else {
-                // make_pvp with explicit size-vector to read a
-                // multi-dim dataset into a flat buffer.
-                ar >> alps::make_pvp(path, flat.data(), shape);
+                std::vector<T> flat(total);
+                // Zero extents carry shape but have no payload to read.
+                if (total)
+                    ar.read(path, flat.data(), shape);
+                return alps::python::make_numpy_array<T>(std::move(flat), shape);
             }
-            return alps::python::make_numpy_array<T>(std::move(flat), shape);
         }
         nb::object python_hdf5_load_impl(alps::hdf5::archive & ar,
                                          std::string const & path);
@@ -619,64 +609,25 @@ namespace alps {
                     return nb::object(std::move(result));
                 }
             }
-            // Complex values have a quirky HDF5 representation: a
-            // single complex is stored as rank-1 dims=[2] (real,imag)
-            // and a 2x2 array of complex as rank-3 dims=[2,2,2]. So
-            // is_scalar returns false for a scalar complex — branch
-            // on is_complex first and use the rank minus 1 (stripping
-            // the trailing complex-pair dim) to tell scalar from
-            // array.
-            if (ar.is_complex(path)) {
-                auto ext = ar.extent(path);
-                bool const single_value = ext.size() == 1;
-                // Preserve the component precision.  The legacy loader
-                // returned complex64 datasets as NumPy complex64 rather than
-                // widening them to complex128; only a complex128 scalar used
-                // the ordinary Python ``complex`` shortcut.
-                if (ar.is_datatype<float>(path)) {
-                    if (single_value) {
-                        std::complex<float> value;
-                        ar[path] >> value;
-                        return alps::python::make_numpy_array(
-                            &value, std::vector<std::size_t>());
-                    }
-                    std::vector<std::size_t> shape(ext.begin(), ext.end() - 1);
-                    return load_nd_array<std::complex<float>>(ar, path, shape);
-                }
-                if (single_value) {
-                    std::complex<double> v; ar[path] >> v; return nb::cast(v);
-                }
-                std::vector<std::size_t> shape(ext.begin(), ext.end() - 1);
-                return load_nd_array<std::complex<double>>(ar, path, shape);
-            }
+            if (ar.is_null(path))
+                throw hdf5::wrong_type(
+                    "NULL HDF5 value has no array shape; use the offline converter "
+                    "and an application schema to assign explicit empty dimensions");
             // Convenience macros for the scalar path: check each
             // candidate integer width in turn (numpy's default int is
             // platform-dependent — int64 on macOS/Linux, int32 on
             // Windows — so we can't rely on just `int` matching).
             #define TRY_SCALAR(T)                                                                \
                 if (ar.is_datatype<T>(path)) { T v; ar[path] >> v; return nb::cast(v); }
-            if (ar.is_datatype<std::int8_t>(path)) {
-                std::string marker = ar.complete_path(path);
-                auto at = marker.find_last_of('@');
-                marker = at == std::string::npos
-                    ? marker + "/@__alps_type__"
-                    : marker.substr(0, at) + "@__alps_type__:" + marker.substr(at + 1);
-                std::string kind;
-                if (ar.is_attribute(marker))
-                    ar[marker] >> kind;
-                // Unmarked legacy signed-byte data was read as bool by the
-                // Boost.Python loader. New native/Python writes distinguish
-                // int8 explicitly, including scalar and attribute values.
-                if (ar.is_scalar(path)) {
-                    if (kind == "int8") {
-                        std::int8_t value; ar[path] >> value; return nb::cast(value);
-                    }
-                    bool value; ar[path] >> value; return nb::cast(value);
-                }
-                auto array = load_nd_array<std::int8_t>(ar, path, ar.extent(path));
-                return kind == "int8" ? array : array.attr("astype")("bool");
-            }
             if (ar.is_scalar(path)) {
+                // Keep complex64 scalars at their NumPy precision rather
+                // than widening them through Python's complex128 scalar.
+                if (ar.is_datatype<std::complex<float>>(path)) {
+                    std::complex<float> value;
+                    ar[path] >> value;
+                    return alps::python::make_numpy_array(&value, {});
+                }
+                TRY_SCALAR(std::complex<double>)
                 TRY_SCALAR(std::string)
                 TRY_SCALAR(double)
                 TRY_SCALAR(float)
@@ -698,6 +649,9 @@ namespace alps {
                     std::vector<std::string> v; ar[path] >> v; return nb::cast(v);
                 }
                 auto shape = ar.extent(path);
+                if (ar.is_datatype<bool>(path))          return load_nd_array<bool>(ar, path, shape);
+                if (ar.is_datatype<std::complex<float>>(path)) return load_nd_array<std::complex<float>>(ar, path, shape);
+                if (ar.is_datatype<std::complex<double>>(path)) return load_nd_array<std::complex<double>>(ar, path, shape);
                 if (ar.is_datatype<double>(path))        return load_nd_array<double>(ar, path, shape);
                 if (ar.is_datatype<float>(path))         return load_nd_array<float>(ar, path, shape);
                 if (ar.is_datatype<std::int64_t>(path))  return load_nd_array<std::int64_t>(ar, path, shape);
@@ -717,12 +671,6 @@ namespace alps {
                                     std::string const & path) {
             nb::list result;
             std::vector<std::size_t> ext = ar.extent(path);
-            if (ar.is_complex(path)) {
-                if (ext.size() > 1)
-                    ext.pop_back();
-                else
-                    ext.back() = 1;
-            }
             for (auto const & s : ext)
                 result.append(s);
             return result;

@@ -19,9 +19,11 @@ void require(bool condition) {
 
 template <typename Exception, typename Read>
 void rejects(Read read) {
+    auto const objects_before = H5Fget_obj_count(H5F_OBJ_ALL, H5F_OBJ_ALL);
     try {
         read();
     } catch (Exception const &) {
+        require(H5Fget_obj_count(H5F_OBJ_ALL, H5F_OBJ_ALL) == objects_before);
         return;
     }
     throw std::runtime_error("HDF5 read did not reject invalid input");
@@ -36,8 +38,11 @@ void numeric_reads(alps::hdf5::archive & ar) {
         ar.read(path, number);
         require(number == 1);
         std::string text;
-        ar.read(path, text);
-        require(std::stod(text) == 1);
+        rejects<alps::hdf5::wrong_type>([&] { ar.read(path, text); });
+        require(text.empty());
+        bool flag = false;
+        rejects<alps::hdf5::wrong_type>([&] { ar.read(path, flag); });
+        require(!flag);
     }
     for (auto path : {"/array", "/group/@array", "/scalar/@array"}) {
         ar.write(path, values.data(), {2, 3});
@@ -45,15 +50,41 @@ void numeric_reads(alps::hdf5::archive & ar) {
         ar.read(path, numbers.data(), {2, 3});
         require(numbers == std::array<double, 6>{0, 1, 0, 1, 1, 0});
         std::array<std::string, 6> texts;
-        ar.read(path, texts.data(), {2, 3});
-        for (std::size_t i = 0; i < texts.size(); ++i)
-            require(std::stod(texts[i]) == numbers[i]);
+        rejects<alps::hdf5::wrong_type>([&] { ar.read(path, texts.data(), {2, 3}); });
+        require(texts == std::array<std::string, 6>{});
     }
     std::array<double, 2> selected;
     ar.read("/array", selected.data(), {2, 1}, {0, 1});
     require(selected == std::array<double, 2>{1, 1});
     ar.read("/array", selected.data(), {1, 2}, {1, 1});
     require(selected == std::array<double, 2>{1, 0});
+}
+
+void boolean_reads(alps::hdf5::archive & ar) {
+    std::array<bool, 6> const values{false, true, false, true, true, false};
+    for (auto path : {"/boolean", "/group/@boolean", "/array/@boolean"}) {
+        ar.write(path, true);
+        require(ar.is_datatype<bool>(path));
+        require(!ar.is_datatype<signed char>(path));
+        bool flag = false;
+        ar.read(path, flag);
+        require(flag);
+        double number = 42;
+        rejects<alps::hdf5::wrong_type>([&] { ar.read(path, number); });
+        require(number == 42);
+    }
+    for (auto path : {"/boolean_array", "/group/@boolean_array", "/boolean/@array"}) {
+        ar.write(path, values.data(), {2, 3});
+        std::array<bool, 6> actual{};
+        ar.read(path, actual.data(), {2, 3});
+        require(actual == values);
+        std::array<signed char, 6> bytes{};
+        rejects<alps::hdf5::wrong_type>([&] { ar.read(path, bytes.data(), {2, 3}); });
+        require(bytes == std::array<signed char, 6>{});
+    }
+    std::array<bool, 2> selected{};
+    ar.read("/boolean_array", selected.data(), {2, 1}, {0, 1});
+    require(selected == std::array<bool, 2>{true, true});
 }
 
 void fixed_strings(std::string const & filename) {
@@ -67,6 +98,12 @@ void fixed_strings(std::string const & filename) {
     require(data >= 0 && attr >= 0);
     require(H5Dwrite(data, type, H5S_ALL, H5S_ALL, H5P_DEFAULT, "1234") >= 0);
     require(H5Awrite(attr, type, "1234") >= 0);
+    require(H5Aclose(attr) >= 0 && H5Dclose(data) >= 0);
+    require(H5Sclose(space) >= 0);
+    space = H5Screate(H5S_NULL);
+    data = H5Dcreate2(file, "/null", H5T_NATIVE_INT, space, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+    attr = H5Acreate2(data, "null", H5T_NATIVE_INT, space, H5P_DEFAULT, H5P_DEFAULT);
+    require(data >= 0 && attr >= 0);
     require(H5Aclose(attr) >= 0 && H5Dclose(data) >= 0);
     hsize_t const extent = 2;
     require(H5Sclose(space) >= 0);
@@ -82,15 +119,26 @@ void fixed_strings(std::string const & filename) {
     alps::hdf5::archive ar(filename, "r");
     for (auto path : {"/fixed", "/fixed/@fixed"}) {
         int number = 0;
-        ar.read(path, number);
-        require(number == 1234);
+        rejects<alps::hdf5::wrong_type>([&] { ar.read(path, number); });
+        require(number == 0);
         std::string text;
         ar.read(path, text);
-        require(text == std::string("1234\0", 5));
+        require(text == "1234");
     }
     for (auto path : {"/fixed_array", "/fixed_array/@fixed"}) {
         std::array<std::string, 2> texts;
-        rejects<std::logic_error>([&] { ar.read(path, texts.data(), {2}); });
+        ar.read(path, texts.data(), {2});
+        require(texts == std::array<std::string, 2>{"1234", "5678"});
+    }
+    std::string selected;
+    ar.read("/fixed_array", &selected, {1}, {1});
+    require(selected == "5678");
+    for (auto path : {"/null", "/null/@null"}) {
+        require(ar.is_null(path) && ar.extent(path).empty());
+        int value = 42;
+        rejects<alps::hdf5::wrong_type>([&] { ar.read(path, value); });
+        rejects<alps::hdf5::wrong_type>([&] { ar.read(path, &value, {}); });
+        require(value == 42);
     }
 }
 }
@@ -119,7 +167,7 @@ int main() {
             numeric_reads<float>(ar);
             numeric_reads<double>(ar);
             numeric_reads<long double>(ar);
-            numeric_reads<bool>(ar);
+            boolean_reads(ar);
 
             int value = 42;
             std::array<int, 6> values{};
@@ -135,9 +183,11 @@ int main() {
             rejects<alps::hdf5::archive_error>([&] { ar.read("/array", values.data(), {1, 1}, {maximum, 0}); });
             rejects<alps::hdf5::archive_error>([&] { ar.read("/array", values.data(), {maximum, 1}, {1, 0}); });
             require(values == std::array<int, 6>{});
-            rejects<alps::hdf5::archive_error>([&] { ar.read("/array", values.data(), {0, 3}); });
+            ar.read("/array", values.data(), {0, 3});
+            require(values == std::array<int, 6>{});
             rejects<std::logic_error>([&] { ar.read("/group/@array", values.data(), {1, 3}); });
-            ar.write("/empty", static_cast<int const *>(nullptr), {});
+            ar.write("/empty", static_cast<int const *>(nullptr), {0});
+            require(!ar.is_null("/empty") && ar.extent("/empty") == std::vector<std::size_t>{0});
             ar.read("/empty", &value, {0}, {0});
             require(value == 42);
             ar.set_context("/group");

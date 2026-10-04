@@ -19,7 +19,7 @@ template <class F> void rejects(F f, const std::string &message = {}) {
     throw std::runtime_error("invalid checkpoint unexpectedly accepted");
 }
 int main() {
-    const char *file = "params-v1-contract.h5";
+    const char *file = "params-v2-contract.h5";
     {
         alps::hdf5::archive ar(file, "w");
         alps::params p;
@@ -34,11 +34,26 @@ int main() {
         p["empty int"] = std::vector<std::int64_t>{};
         p["empty real"] = std::vector<double>{};
         p["empty complex"] = std::vector<std::complex<double>>{};
+        p["empty strings"] = std::vector<std::string>{};
+        p["empty string"] = std::string{};
         p["strings/with.dots"] = std::vector<std::string>{"a,b", "c", ""};
         ar["/parameters"] << p;
         alps::params actual;
         ar["/parameters"] >> actual;
         require(actual == p);
+        std::string format;
+        ar["/parameters/format"] >> format;
+        require(format == "alps.params.v2");
+        for (const auto &index : ar.list_children("/parameters/entries")) {
+            const auto path = "/parameters/entries/" + index;
+            std::string type;
+            ar[path + "/type"] >> type;
+            const auto shape = ar.extent(path + "/value");
+            require(!ar.is_null(path + "/value"));
+            require(type.find("[]") == std::string::npos ? shape.empty() : shape.size() == 1);
+            require(!ar.is_attribute(path + "/value/@__complex__"));
+            require(!ar.is_attribute(path + "/value/@__alps_type__"));
+        }
         p.erase("wide");
         ar["/parameters"] << p;
         ar["/parameters"] >> actual;
@@ -74,6 +89,10 @@ int main() {
         actual["preserve"] = 23;
         rejects([&] { ar["/legacy"] >> actual; });
         require(actual["preserve"].as<int>() == 23);
+        ar["/bad"] << p;
+        ar["/bad/format"] << std::string("alps.params.v1");
+        rejects([&] { ar["/bad"] >> actual; }, "offline conversion");
+        require(actual.size() == 1);
         ar["/parameters/entries/1/type"] << std::string("unknown");
         rejects([&] { ar["/parameters"] >> actual; });
         require(actual.size() == 1);

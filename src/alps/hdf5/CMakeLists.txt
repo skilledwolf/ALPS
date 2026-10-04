@@ -1,4 +1,10 @@
 # Archive state has one runtime owner.
+# HighFive implements the archive backend; SDK users only need the ALPS API.
+# ALPS selects HDF5 once, so the header-only package must not discover it again.
+block(SCOPE_FOR VARIABLES)
+  set(HIGHFIVE_FIND_HDF5 OFF)
+  find_package(HighFive 3.3.0 EXACT CONFIG REQUIRED)
+endblock()
 add_library(alps_hdf5
   src/archive.cpp)
 add_library(ALPS::hdf5 ALIAS alps_hdf5)
@@ -8,7 +14,8 @@ set_target_properties(alps_hdf5 PROPERTIES
   SOVERSION ${PROJECT_VERSION_MAJOR}
   INSTALL_RPATH "${ALPS_LOADER_ORIGIN}")
 target_link_libraries(alps_hdf5 PUBLIC ALPS::configuration ALPS::containers ALPS::utilities
-  HDF5::HDF5 Boost::filesystem Boost::thread Threads::Threads)
+  HDF5::HDF5 Boost::headers Threads::Threads
+  PRIVATE "$<BUILD_INTERFACE:HighFive::Include>")
 # FindHDF5 may expose provider targets or absolute paths through its aggregate.
 get_target_property(hdf5_dependencies HDF5::HDF5 INTERFACE_LINK_LIBRARIES)
 alps_dependency_rpath(alps_hdf5 ${hdf5_dependencies})

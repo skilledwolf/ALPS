@@ -745,16 +745,7 @@ def test_archive_errors_use_the_typed_hierarchy(tmp_path):
 
 
 def test_complex_params_hdf5_roundtrip(tmp_path):
-    """Complex parameters must survive a checkpoint.
-
-    Two separate defects made this fail. archive::set_complex() did not
-    resolve its path against the current context, so the marker attribute for
-    a value written at the empty path landed on the root group; and
-    paramvalue::load() sent complex scalars into the vector branch, because a
-    complex scalar has is_scalar() == false (it is stored as a trailing
-    dimension of two reals). Rank distinguishes them: 1 for a scalar, 2 for a
-    vector of any length.
-    """
+    """Complex scalar and vector parameters retain distinct checkpoint shapes."""
     from pyalps import ngs
 
     cases = {"scalar": 1 + 2j, "vector": [1 + 2j, 3 + 4j], "one": [5 + 6j]}
@@ -1040,7 +1031,7 @@ def test_archive_setitem_saves_registered_alps_types():
             for key in cases:
                 assert archive.is_group("/" + key), key
                 assert archive.list_children("/" + key), key
-            assert archive["/parameters/format"] == "alps.params.v1"
+            assert archive["/parameters/format"] == "alps.params.v2"
             assert archive.list_children("/observables") == ["Magnetization"]
 
         restored = ngs.params()

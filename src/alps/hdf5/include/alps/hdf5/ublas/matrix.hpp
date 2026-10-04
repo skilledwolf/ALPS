@@ -27,10 +27,6 @@ namespace alps {
             typedef typename scalar_type<typename boost::remove_reference<typename boost::remove_cv<T>::type>::type>::type type;
         };
 
-        template <typename T, typename F, typename A> struct has_complex_elements<boost::numeric::ublas::matrix<T, F, A> >
-            : public has_complex_elements<typename alps::detail::remove_cvr<T>::type>
-        {};
-
         namespace detail {
 
             template<typename T, typename F, typename A> struct get_extent<boost::numeric::ublas::matrix<T, F, A> > {
@@ -58,6 +54,8 @@ namespace alps {
             template<typename T, typename F, typename A> struct set_extent<boost::numeric::ublas::matrix<T, F, A> > {
                 static void apply(boost::numeric::ublas::matrix<T, F, A> & value, std::vector<std::size_t> const & size) {
                     using alps::hdf5::set_extent;
+                    if ((is_continuous<T>::value && size.size() != 2) || size.size() < 2)
+                        throw archive_error("dimensions do not match" + ALPS_STACKTRACE);
                     value.resize(size[0], size[1], false);
                     if (!is_continuous<T>::value && size.size() != 2)
                         for (std::size_t i = 0; i < value.size1(); ++i)
@@ -70,7 +68,7 @@ namespace alps {
                 static bool apply(boost::numeric::ublas::matrix<T, F, A> const & value) {
                     using alps::hdf5::get_extent;
                     using alps::hdf5::is_vectorizable;
-                    if (!boost::is_scalar<typename boost::numeric::ublas::matrix<T, F, A>::value_type>::value) {
+                    if (value.size1() && value.size2() && !boost::is_scalar<typename boost::numeric::ublas::matrix<T, F, A>::value_type>::value) {
                         std::vector<std::size_t> size(get_extent(value(0, 0)));
                         for (std::size_t i = 0; i < value.size1(); ++i)
                             for (std::size_t j = 1; j < value.size2(); ++j)
@@ -84,14 +82,14 @@ namespace alps {
             template<typename T, typename F, typename A> struct get_pointer<boost::numeric::ublas::matrix<T, F, A> > {
                 static typename alps::hdf5::scalar_type<boost::numeric::ublas::matrix<T, F, A> >::type * apply(boost::numeric::ublas::matrix<T, F, A> & value) {
                     using alps::hdf5::get_pointer;
-                    return get_pointer(value(0, 0));
+                    return value.size1() && value.size2() ? get_pointer(value(0, 0)) : nullptr;
                 }
             };
 
             template<typename T, typename F, typename A> struct get_pointer<boost::numeric::ublas::matrix<T, F, A> const> {
                 static typename alps::hdf5::scalar_type<boost::numeric::ublas::matrix<T, F, A> >::type const * apply(boost::numeric::ublas::matrix<T, F, A> const & value) {
                     using alps::hdf5::get_pointer;
-                    return get_pointer(value(0, 0));
+                    return value.size1() && value.size2() ? get_pointer(value(0, 0)) : nullptr;
                 }
             };
 
@@ -105,7 +103,7 @@ namespace alps {
             , std::vector<std::size_t> chunk = std::vector<std::size_t>()
             , std::vector<std::size_t> offset = std::vector<std::size_t>()
         ) {
-            if (is_continuous<T>::value) {
+            if constexpr (is_continuous<T>::value) {
                 std::vector<std::size_t> extent(get_extent(value));
                 std::copy(extent.begin(), extent.end(), std::back_inserter(size));
                 std::copy(extent.begin(), extent.end(), std::back_inserter(chunk));
@@ -128,9 +126,9 @@ namespace alps {
             else {
                 std::vector<std::size_t> size(ar.extent(path));
                 set_extent(value, std::vector<std::size_t>(size.begin() + chunk.size(), size.end()));
-                if (is_continuous<T>::value) {
-                    std::copy(size.begin(), size.end(), std::back_inserter(chunk));
-                    std::fill_n(std::back_inserter(offset), size.size(), 0);
+                if constexpr (is_continuous<T>::value) {
+                    std::copy(size.begin() + chunk.size(), size.end(), std::back_inserter(chunk));
+                    std::fill_n(std::back_inserter(offset), size.size() - offset.size(), 0);
                     ar.read(path, get_pointer(value), chunk, offset);
                 } else
                     throw invalid_path("invalid type" + ALPS_STACKTRACE);

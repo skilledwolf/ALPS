@@ -29,10 +29,6 @@ namespace alps {
             typedef typename scalar_type<typename boost::numeric::ublas::vector<T, A>::value_type>::type type;
         };
 
-        template<typename T, typename A> struct has_complex_elements<boost::numeric::ublas::vector<T, A> > 
-            : public has_complex_elements<typename alps::detail::remove_cvr<typename boost::numeric::ublas::vector<T, A>::value_type>::type>
-        {};
-
         namespace detail {
 
             template<typename T, typename A> struct get_extent<boost::numeric::ublas::vector<T, A> > {
@@ -51,6 +47,9 @@ namespace alps {
                                     throw archive_error("no rectengual matrix" + ALPS_STACKTRACE);
                             }
                         std::copy(first.begin(), first.end(), std::back_inserter(result));
+                    } else if constexpr (is_continuous<T>::value) {
+                        const auto element = get_extent(T{});
+                        std::copy(element.begin(), element.end(), std::back_inserter(result));
                     }
                     return result;
                 }
@@ -59,6 +58,8 @@ namespace alps {
             template<typename T, typename A> struct set_extent<boost::numeric::ublas::vector<T, A> > {
                 static void apply(boost::numeric::ublas::vector<T, A> & value, std::vector<std::size_t> const & extent) {
                     using alps::hdf5::set_extent;
+                    if (extent.empty())
+                        throw archive_error("dimensions do not match" + ALPS_STACKTRACE);
                     value.resize(extent[0]);
                     if (extent.size() > 1)
                         for(typename boost::numeric::ublas::vector<T, A>::iterator it = value.begin(); it != value.end(); ++it)
@@ -95,14 +96,14 @@ namespace alps {
             template<typename T, typename A> struct get_pointer<boost::numeric::ublas::vector<T, A> > {
                 static typename alps::hdf5::scalar_type<boost::numeric::ublas::vector<T, A> >::type * apply(boost::numeric::ublas::vector<T, A> & value) {
                     using alps::hdf5::get_pointer;
-                    return get_pointer(value[0]);
+                    return value.size() ? get_pointer(value[0]) : nullptr;
                 }
             };
 
             template<typename T, typename A> struct get_pointer<boost::numeric::ublas::vector<T, A> const> {
                 static typename alps::hdf5::scalar_type<boost::numeric::ublas::vector<T, A> >::type const * apply(boost::numeric::ublas::vector<T, A> const & value) {
                     using alps::hdf5::get_pointer;
-                    return get_pointer(value[0]);
+                    return value.size() ? get_pointer(value[0]) : nullptr;
                 }
             };
         }
@@ -116,18 +117,21 @@ namespace alps {
             , std::vector<std::size_t> offset = std::vector<std::size_t>()
         ) {
             using alps::cast;
-            if (ar.is_group(path))
-                ar.delete_group(path);
-            if (is_continuous<T>::value && value.size() == 0)
-                ar.write(path, static_cast<typename scalar_type<boost::numeric::ublas::vector<T, A> >::type const *>(NULL), std::vector<std::size_t>());
-            else if (is_continuous<T>::value) {
+            if constexpr (is_continuous<T>::value) {
                 std::vector<std::size_t> extent(get_extent(value));
                 std::copy(extent.begin(), extent.end(), std::back_inserter(size));
                 std::copy(extent.begin(), extent.end(), std::back_inserter(chunk));
                 std::fill_n(std::back_inserter(offset), extent.size(), 0);
                 ar.write(path, get_pointer(value), size, chunk, offset);
-            } else if (value.size() == 0)
-                ar.write(path, static_cast<int const *>(NULL), std::vector<std::size_t>());
+            } else if (value.size() == 0) {
+                if (path.find_last_of('@') != std::string::npos)
+                    throw archive_error("attributes need a native datatype" + ALPS_STACKTRACE);
+                if (ar.is_group(path))
+                    ar.delete_group(path);
+                if (ar.is_data(path))
+                    ar.delete_data(path);
+                ar.create_group(path);
+            }
             else if (is_vectorizable(value)) {
                 size.push_back(value.size());
                 chunk.push_back(1);
@@ -137,8 +141,13 @@ namespace alps {
                     save(ar, path, *it, size, chunk, offset);
                 }
             } else {
+                if (path.find_last_of('@') != std::string::npos)
+                    throw archive_error("attributes need a native datatype" + ALPS_STACKTRACE);
+                if (ar.is_group(path))
+                    ar.delete_group(path);
                 if (ar.is_data(path))
                     ar.delete_data(path);
+                ar.create_group(path);
                 for(typename boost::numeric::ublas::vector<T, A>::const_iterator it = value.begin(); it != value.end(); ++it)
                     save(ar, ar.complete_path(path) + "/" + cast<std::string>(it - value.begin()), *it);
             }
@@ -154,18 +163,23 @@ namespace alps {
             using alps::cast;
             if (ar.is_group(path)) {
                 std::vector<std::string> children = ar.list_children(path);
+                for (const auto &child : children) {
+                    const auto index = cast<std::size_t>(child);
+                    if (index >= children.size() || cast<std::string>(index) != child)
+                        throw invalid_path("invalid container index: " + child + ALPS_STACKTRACE);
+                }
                 value.resize(children.size());
                 for (typename std::vector<std::string>::const_iterator it = children.begin(); it != children.end(); ++it)
                     load(ar, ar.complete_path(path) + "/" + *it, value[cast<std::size_t>(*it)]);
             } else {
                 std::vector<std::size_t> size(ar.extent(path));
-                if (is_continuous<T>::value) {
+                if (size.size() <= chunk.size())
+                    throw archive_error("dimensions do not match" + ALPS_STACKTRACE);
+                if constexpr (is_continuous<T>::value) {
                     set_extent(value, std::vector<std::size_t>(size.begin() + chunk.size(), size.end()));
-                    if (value.size()) {
-                        std::copy(size.begin() + chunk.size(), size.end(), std::back_inserter(chunk));
-                        std::fill_n(std::back_inserter(offset), size.size() - offset.size(), 0);
-                        ar.read(path, get_pointer(value), chunk, offset);
-                    }
+                    std::copy(size.begin() + chunk.size(), size.end(), std::back_inserter(chunk));
+                    std::fill_n(std::back_inserter(offset), size.size() - offset.size(), 0);
+                    ar.read(path, get_pointer(value), chunk, offset);
                 } else {
                     set_extent(value, std::vector<std::size_t>(1, *(size.begin() + chunk.size())));
                     chunk.push_back(1);

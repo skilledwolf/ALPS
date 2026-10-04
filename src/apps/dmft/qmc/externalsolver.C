@@ -74,7 +74,6 @@ green_function<T> read_green(alps::hdf5::archive& archive, const std::string& pa
   }
   // Validate extents before the Green-function reader writes into its fixed-size buffers.
   std::vector<std::size_t> shape{nt};
-  if constexpr(std::is_same_v<T,std::complex<double>>) shape.push_back(2);
   for(unsigned flavor=0;flavor<nf;++flavor) {
     const auto dataset=path+"/"+std::to_string(flavor)+"/mean/value";
     if(!archive.is_data(dataset) || archive.extent(dataset)!=shape ||

@@ -20,6 +20,7 @@
 foreach(
   name
   hdf5_complex
+  hdf5_highfive
   hdf5_copy
   hdf5_real_complex_vec
   hdf5_real_complex_matrix
@@ -46,6 +47,7 @@ foreach(
 endforeach()
 
 target_link_libraries(hdf5_real_complex_matrix PRIVATE ALPS::numeric_io)
+target_link_libraries(hdf5_highfive PRIVATE HighFive::Include)
 
 # Keep the reference archive with the test that reads it.
 target_compile_definitions(hdf5_fortran_string PRIVATE
@@ -146,17 +148,12 @@ if(ALPS_BUILD_EXTENSIVE_TESTS)
       "std::pair<userdefined_class<double> *, std::vector<std::size_t> >"
       "cast_type<int, long>"
       "cast_type<int, double>"
-      "cast_type<double, std::string>"
-      "cast_type<int, std::string>"
       "cast_type<float, double>"
       "cast_type<short, float>"
       "std::vector<cast_type<int, double> >"
       "std::vector<std::vector<cast_type<int, double> > >"
       "std::pair<cast_type<int, double> *, std::vector<std::size_t> >"
       "std::vector<std::valarray<cast_type<int, double> > >"
-      "std::vector<cast_type<double, std::string> >"
-      "std::vector<std::vector<cast_type<double, std::string> > >"
-      "std::pair<cast_type<double, std::string> *, std::vector<std::size_t> >"
       "boost::numeric::ublas::matrix<double, boost::numeric::ublas::column_major>"
       "boost::numeric::ublas::matrix<std::complex<double>, boost::numeric::ublas::column_major>"
       "int *"
@@ -171,7 +168,6 @@ if(ALPS_BUILD_EXTENSIVE_TESTS)
       "enum_vec_type *"
       "userdefined_class<double> *"
       "cast_type<int, double> *"
-      "cast_type<int, std::string> *"
       "boost::shared_array<int>"
       "boost::shared_array<short>"
       "boost::shared_array<long>"
@@ -184,7 +180,6 @@ if(ALPS_BUILD_EXTENSIVE_TESTS)
       "boost::shared_array<enum_vec_type>"
       "boost::shared_array<userdefined_class<double> >"
       "boost::shared_array<cast_type<int, double> >"
-      "boost::shared_array<cast_type<int, std::string> >"
       "cast_type<std::vector<int>, std::valarray<int> >"
       "cast_type<std::vector<int>, boost::numeric::ublas::vector<int> >"
       "cast_type<std::valarray<int>, std::vector<int> >"
@@ -199,9 +194,7 @@ if(ALPS_BUILD_EXTENSIVE_TESTS)
       "std::vector<cast_type<std::vector<int>, boost::numeric::ublas::vector<double> > >"
       "std::pair<double, int>"
       "std::pair<double, std::complex<double> >"
-      "std::pair<cast_type<int, std::string>, enum_type>"
       "std::pair<enum_type, cast_type<int, double> >"
-      "std::pair<std::vector<cast_type<int, std::string> >, std::pair<double, int> >"
       "std::pair<std::pair<std::vector<enum_type> *, std::vector<std::size_t> >, enum_type>"
       "alps::numeric::matrix<unsigned int>"
       alps::numeric::matrix<float>

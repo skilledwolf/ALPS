@@ -350,8 +350,6 @@ namespace alps {
 
         template<> struct is_continuous<enum_vec_type> : public boost::true_type {};
 
-        template<> struct has_complex_elements<enum_vec_type> : public boost::false_type {};
-
         namespace detail {
 
             template<> struct get_extent<enum_vec_type> {

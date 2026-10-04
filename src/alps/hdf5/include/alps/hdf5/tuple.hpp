@@ -38,8 +38,6 @@ namespace alps {
                 ) {
                     using boost::get;
                     save(ar, path, get<N>(value));
-                    if (has_complex_elements<typename alps::detail::remove_cvr<T>::type>::value)
-                        ar.set_complex(path);
                 }
             };
 

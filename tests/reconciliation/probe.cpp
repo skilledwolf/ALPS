@@ -157,6 +157,13 @@ void write_params(std::string const& filename, bool extended) {
 
 template<class P> void read_parameter_values(P& p, alps::hdf5::archive& ar, bool extended) {
     report("load", [&] { ar["/parameters"] >> p; return "ok"; });
+#ifndef PROBE_ALPSCORE
+    report("format", [&] {
+        std::string format;
+        ar["/parameters/format"] >> format;
+        return format;
+    });
+#endif
     report("integer", [&] { return get<int>(p, "integer"); });
     report("real", [&] { return get<double>(p, "real"); });
     report("text", [&] { return get<std::string>(p, "text"); });

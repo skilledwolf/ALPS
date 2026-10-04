@@ -52,7 +52,7 @@ the return value indicates whether a result was produced. Python callers use
 constructing the numerical solver.
 
 Results retain their spectrum datasets and add `/spectrum/widths`. Resolved
-parameters use the `alps.params.v1` checkpoint format at `/parameters`; the CLI
+parameters use the `alps.params.v2` checkpoint format at `/parameters`; the CLI
 also saves `/run_config` with input/output/execution settings and each value's
 origin (`input`, `default` or `derived`). Cancellation before calculation leaves
 existing results untouched. Text sidecars are opt-in and use the output file's

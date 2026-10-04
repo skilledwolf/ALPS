@@ -28,34 +28,33 @@
 #include <boost/type_traits/is_array.hpp>
 #include <boost/type_traits/remove_all_extents.hpp>
 
-#ifndef ALPS_NGS_SINGLE_THREAD
 
-#include <boost/thread.hpp>
-
-#endif
-
-#include <map>
+#include <complex>
+#include <memory>
 #include <vector>
 #include <string>
 #include <numeric>
 
-#define ALPS_NGS_FOREACH_NATIVE_HDF5_TYPE(CALLBACK)                                                                                            \
-    CALLBACK(char)                                                                                                                             \
-    CALLBACK(signed char)                                                                                                                      \
-    CALLBACK(unsigned char)                                                                                                                    \
-    CALLBACK(short)                                                                                                                            \
-    CALLBACK(unsigned short)                                                                                                                   \
-    CALLBACK(int)                                                                                                                              \
-    CALLBACK(unsigned)                                                                                                                         \
-    CALLBACK(long)                                                                                                                             \
-    CALLBACK(unsigned long)                                                                                                                    \
-    CALLBACK(long long)                                                                                                                        \
-    CALLBACK(unsigned long long)                                                                                                               \
-    CALLBACK(float)                                                                                                                            \
-    CALLBACK(double)                                                                                                                           \
-    CALLBACK(long double)                                                                                                                      \
-    CALLBACK(bool)                                                                                                                             \
-    CALLBACK(std::string)
+#define ALPS_NGS_FOREACH_NATIVE_HDF5_TYPE(CALLBACK) \
+    CALLBACK(char) \
+    CALLBACK(signed char) \
+    CALLBACK(unsigned char) \
+    CALLBACK(short) \
+    CALLBACK(unsigned short) \
+    CALLBACK(int) \
+    CALLBACK(unsigned) \
+    CALLBACK(long) \
+    CALLBACK(unsigned long) \
+    CALLBACK(long long) \
+    CALLBACK(unsigned long long) \
+    CALLBACK(float) \
+    CALLBACK(double) \
+    CALLBACK(long double) \
+    CALLBACK(bool) \
+    CALLBACK(std::string) \
+    CALLBACK(std::complex<float>) \
+    CALLBACK(std::complex<double>) \
+    CALLBACK(std::complex<long double>)
 
 namespace alps {
     namespace hdf5 {
@@ -71,11 +70,11 @@ namespace alps {
                 }
             };
 
-            #define ALPS_NGS_HDF5_IS_DATATYPE_CALLER(T)                                                                                                                \
-                template<typename A> struct is_datatype_caller<A, T > {                                                                                                \
-                    static bool apply(A const & ar, std::string path, T unused = alps::detail::type_wrapper<T>::type()) {                                              \
-                        return ar.is_datatype_impl(path, unused);                                                                                                      \
-                    }                                                                                                                                                  \
+            #define ALPS_NGS_HDF5_IS_DATATYPE_CALLER(T) \
+                template<typename A> struct is_datatype_caller<A, T > { \
+                    static bool apply(A const & ar, std::string path, T unused = alps::detail::type_wrapper<T>::type()) { \
+                        return ar.is_datatype_impl(path, unused); \
+                    } \
                 };
             ALPS_NGS_FOREACH_NATIVE_HDF5_TYPE(ALPS_NGS_HDF5_IS_DATATYPE_CALLER)
             #undef ALPS_NGS_HDF5_IS_DATATYPE_CALLER
@@ -141,12 +140,6 @@ namespace alps {
                 void delete_group(std::string path) const;
                 void delete_attribute(std::string path) const;
 
-                void set_complex(std::string path);
-
-/* TODO: implement
-                void move_data(std::string current_path, std::string new_path) const;
-                void move_attribute(std::string current_path, std::string new_path) const;
-*/
 
                 detail::archive_proxy<archive> operator[](std::string const & path);
 
@@ -169,54 +162,35 @@ namespace alps {
                     throw std::logic_error("Invalid type on path: " + path + ALPS_STACKTRACE);
                 }
 
-                #define ALPS_NGS_HDF5_DEFINE_API(T)                                                                                                                    \
-                    void read(std::string path, T & value) const;                                                                                                      \
-                    void read(                                                                                                                                         \
-                          std::string path                                                                                                                             \
-                        , T * value                                                                                                                                    \
-                        , std::vector<std::size_t> chunk                                                                                                               \
-                        , std::vector<std::size_t> offset = std::vector<std::size_t>()                                                                                 \
-                    ) const;                                                                                                                                           \
-                                                                                                                                                                       \
-                    void write(std::string path, T value) const;                                                                                                       \
-                    void write(                                                                                                                                        \
-                          std::string path                                                                                                                             \
-                        , T const * value, std::vector<std::size_t> size                                                                                               \
-                        , std::vector<std::size_t> chunk = std::vector<std::size_t>()                                                                                  \
-                        , std::vector<std::size_t> offset = std::vector<std::size_t>()                                                                                 \
+                #define ALPS_NGS_HDF5_DEFINE_API(T) \
+                    void read(std::string path, T & value) const; \
+                    void read( \
+                          std::string path \
+                        , T * value \
+                        , std::vector<std::size_t> chunk \
+                        , std::vector<std::size_t> offset = std::vector<std::size_t>() \
+                    ) const; \
+ \
+                    void write(std::string path, T value) const; \
+                    void write( \
+                          std::string path \
+                        , T const * value, std::vector<std::size_t> size \
+                        , std::vector<std::size_t> chunk = std::vector<std::size_t>() \
+                        , std::vector<std::size_t> offset = std::vector<std::size_t>() \
                     ) const;
                 ALPS_NGS_FOREACH_NATIVE_HDF5_TYPE(ALPS_NGS_HDF5_DEFINE_API)
                 #undef ALPS_NGS_HDF5_DEFINE_API
 
-                #define ALPS_NGS_HDF5_IS_DATATYPE_IMPL_DECL(T)                                                                                                         \
+                #define ALPS_NGS_HDF5_IS_DATATYPE_IMPL_DECL(T) \
                     bool is_datatype_impl(std::string path, T) const;
                 ALPS_NGS_FOREACH_NATIVE_HDF5_TYPE(ALPS_NGS_HDF5_IS_DATATYPE_IMPL_DECL)
                 #undef ALPS_NGS_HDF5_IS_DATATYPE_IMPL_DECL
 
             private:
 
-                typedef enum {
-                    READ = 0x00,
-                    WRITE = 0x01,
-                    REPLACE = 0x02,
-                    COMPRESS = 0x04,
-                    LARGE = 0x08,
-                    MEMORY = 0x10
-                } properties;
-
-
                 friend class detail::scoped_context;
-
-                void construct(std::string const & filename, std::size_t props = READ);
-                std::string file_key(std::string filename, bool large, bool memory) const;
-
-                std::string current_;
-                detail::archivecontext * context_;
-
-#ifndef ALPS_NGS_SINGLE_THREAD
-                static boost::recursive_mutex mutex_;
-#endif
-                static std::map<std::string, std::pair<detail::archivecontext *, std::size_t> > ref_cnt_;
+                std::string current_ = "/";
+                std::shared_ptr<detail::archivecontext> context_;
 
         };
 
@@ -228,10 +202,7 @@ namespace alps {
             : public is_continuous<T>
         {};
 
-        template<typename T> struct has_complex_elements
-            : public boost::false_type
-        {};
-        
+
         template<typename T> struct scalar_type {
             typedef T type;
         };
@@ -268,13 +239,13 @@ namespace alps {
             template<typename T> struct set_extent {
                  static void apply(T &, std::vector<std::size_t> const &) {}
             };
-            
-            #define ALPS_NGS_HDF5_DEFINE_SET_EXTENT(T)                                                                                                              \
-                template<> struct set_extent<T> {                                                                                                                   \
-                    static void apply(T &, std::vector<std::size_t> const & extent) {                                                                               \
-                        if (extent.size() > 0)                                                                                                                      \
-                            throw wrong_type("The extents do not match" + ALPS_STACKTRACE);                                                                         \
-                    }                                                                                                                                               \
+
+            #define ALPS_NGS_HDF5_DEFINE_SET_EXTENT(T) \
+                template<> struct set_extent<T> { \
+                    static void apply(T &, std::vector<std::size_t> const & extent) { \
+                        if (extent.size() > 0) \
+                            throw wrong_type("The extents do not match" + ALPS_STACKTRACE); \
+                    } \
                 };
             ALPS_NGS_FOREACH_NATIVE_HDF5_TYPE(ALPS_NGS_HDF5_DEFINE_SET_EXTENT)
             #undef ALPS_NGS_HDF5_DEFINE_SET_EXTENT
@@ -346,46 +317,46 @@ namespace alps {
             value.load(ar);
         }
 
-        #define ALPS_NGS_HDF5_DEFINE_FREE_FUNCTIONS(T)                                                                                                                 \
-            template<> struct is_continuous< T >                                                                                                                       \
-                : public boost::true_type                                                                                                                              \
-            {};                                                                                                                                                        \
-            template<> struct is_continuous< T const >                                                                                                                 \
-                : public boost::true_type                                                                                                                              \
-            {};                                                                                                                                                        \
-                                                                                                                                                                       \
-            namespace detail {                                                                                                                                         \
-                template<> struct ALPS_HDF5_DECL is_vectorizable< T > {                                                                                                     \
-                    static bool apply(T const & value);                                                                                                                \
-                };                                                                                                                                                     \
-                template<> struct ALPS_HDF5_DECL is_vectorizable< T const > {                                                                                               \
-                    static bool apply(T & value);                                                                                                                      \
-                };                                                                                                                                                     \
-                                                                                                                                                                       \
-                template<> struct ALPS_HDF5_DECL get_pointer< T > {                                                                                                         \
-                    static alps::hdf5::scalar_type< T >::type * apply( T & value);                                                                                     \
-                };                                                                                                                                                     \
-                                                                                                                                                                       \
-                template<> struct ALPS_HDF5_DECL get_pointer< T const > {                                                                                                   \
-                    static alps::hdf5::scalar_type< T >::type const * apply( T const & value);                                                                         \
-                };                                                                                                                                                     \
-            }                                                                                                                                                          \
-                                                                                                                                                                       \
-            ALPS_HDF5_DECL void save(                                                                                                                                       \
-                  archive & ar                                                                                                                                         \
-                , std::string const & path                                                                                                                             \
-                , T const & value                                                                                                                                      \
-                , std::vector<std::size_t> size = std::vector<std::size_t>()                                                                                           \
-                , std::vector<std::size_t> chunk = std::vector<std::size_t>()                                                                                          \
-                , std::vector<std::size_t> offset = std::vector<std::size_t>()                                                                                         \
-            );                                                                                                                                                         \
-                                                                                                                                                                       \
-            ALPS_HDF5_DECL void load(                                                                                                                                       \
-                  archive & ar                                                                                                                                         \
-                , std::string const & path                                                                                                                             \
-                , T & value                                                                                                                                            \
-                , std::vector<std::size_t> chunk = std::vector<std::size_t>()                                                                                          \
-                , std::vector<std::size_t> offset = std::vector<std::size_t>()                                                                                         \
+        #define ALPS_NGS_HDF5_DEFINE_FREE_FUNCTIONS(T) \
+            template<> struct is_continuous< T > \
+                : public boost::true_type \
+            {}; \
+            template<> struct is_continuous< T const > \
+                : public boost::true_type \
+            {}; \
+ \
+            namespace detail { \
+                template<> struct ALPS_HDF5_DECL is_vectorizable< T > { \
+                    static bool apply(T const & value); \
+                }; \
+                template<> struct ALPS_HDF5_DECL is_vectorizable< T const > { \
+                    static bool apply(T & value); \
+                }; \
+ \
+                template<> struct ALPS_HDF5_DECL get_pointer< T > { \
+                    static alps::hdf5::scalar_type< T >::type * apply( T & value); \
+                }; \
+ \
+                template<> struct ALPS_HDF5_DECL get_pointer< T const > { \
+                    static alps::hdf5::scalar_type< T >::type const * apply( T const & value); \
+                }; \
+            } \
+ \
+            ALPS_HDF5_DECL void save( \
+                  archive & ar \
+                , std::string const & path \
+                , T const & value \
+                , std::vector<std::size_t> size = std::vector<std::size_t>() \
+                , std::vector<std::size_t> chunk = std::vector<std::size_t>() \
+                , std::vector<std::size_t> offset = std::vector<std::size_t>() \
+            ); \
+ \
+            ALPS_HDF5_DECL void load( \
+                  archive & ar \
+                , std::string const & path \
+                , T & value \
+                , std::vector<std::size_t> chunk = std::vector<std::size_t>() \
+                , std::vector<std::size_t> offset = std::vector<std::size_t>() \
             );
         ALPS_NGS_FOREACH_NATIVE_HDF5_TYPE(ALPS_NGS_HDF5_DEFINE_FREE_FUNCTIONS)
         #undef ALPS_NGS_HDF5_DEFINE_FREE_FUNCTIONS
@@ -399,7 +370,7 @@ namespace alps {
                 {}
 
                 make_pvp_proxy(make_pvp_proxy<T> const & arg)
-                    : path_(arg.path_), value_(arg.value_) 
+                    : path_(arg.path_), value_(arg.value_)
                 {}
 
                 std::string path_;
@@ -408,19 +379,7 @@ namespace alps {
 
         }
 
-        template <typename T> typename boost::enable_if<
-              has_complex_elements<typename alps::detail::remove_cvr<T>::type>
-            , archive &
-        >::type operator<< (archive & ar, detail::make_pvp_proxy<T> const & proxy) {
-            save(ar, proxy.path_, proxy.value_);
-            ar.set_complex(proxy.path_);
-            return ar;
-        }
-
-        template <typename T> typename boost::disable_if<
-              has_complex_elements<typename alps::detail::remove_cvr<T>::type>
-            , archive &
-        >::type operator<< (archive & ar, detail::make_pvp_proxy<T> const & proxy) {
+        template <typename T> archive & operator<<(archive & ar, detail::make_pvp_proxy<T> const & proxy) {
             save(ar, proxy.path_, proxy.value_);
             return ar;
         }
@@ -461,7 +420,7 @@ namespace alps {
             template<typename A> template<typename T> archive_proxy<A> & archive_proxy<A>::operator<<(T const & value) {
                 return *this = value;
             }
-            
+
             template<typename A> template <typename T> archive_proxy<A> & archive_proxy<A>::operator>> (T & value) {
                 ar_ >> make_pvp(path_, value);
                 return *this;

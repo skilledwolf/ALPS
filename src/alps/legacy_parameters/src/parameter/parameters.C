@@ -147,9 +147,23 @@ void Parameters::load(hdf5::archive & ar) {
   std::vector<std::string> list = ar.list_children(ar.get_context());
 
   for (std::vector<std::string>::const_iterator it = list.begin(); it != list.end(); ++it) {
-    std::string v;
-    ar >> make_pvp(*it, v);
-    operator[](*it) = v;
+    // save() stores evaluated expressions as int/double and other values as
+    // strings. StringValue owns the conversion back to this API's text values.
+    if (ar.is_datatype<int>(*it)) {
+      int value;
+      ar >> make_pvp(*it, value);
+      operator[](*it) = value;
+    } else if (ar.is_datatype<double>(*it)) {
+      double value;
+      ar >> make_pvp(*it, value);
+      operator[](*it) = value;
+    } else if (ar.is_datatype<std::string>(*it)) {
+      std::string value;
+      ar >> make_pvp(*it, value);
+      operator[](*it) = value;
+    } else {
+      throw hdf5::wrong_type("unsupported legacy parameter datatype at " + ar.complete_path(*it));
+    }
   }
 }
 

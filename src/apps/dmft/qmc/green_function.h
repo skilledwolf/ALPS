@@ -265,7 +265,6 @@ template<typename T> void read_flavor_vectors(alps::hdf5::archive& ar, const std
   if (g.nsite() != 1) throw std::invalid_argument(prefix + ": flavor vectors require one site");
   constexpr bool complex = !std::is_same<T, double>::value;
   std::vector<std::size_t> shape{g.ntime()};
-  if (complex) shape.push_back(2);
   green_function<T> result(g.ntime(), 1, g.nflavor());
   for (unsigned int f=0; f<g.nflavor(); ++f) {
     const auto path = prefix + "_" + std::to_string(f);

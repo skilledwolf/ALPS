@@ -57,25 +57,19 @@ void dict_value::load(hdf5::archive &ar) {
     ar["type"] >> type;
     value_type loaded;
     bool matched = false;
-    // Decode the declared logical type, never guess from HDF5's physical type
-    // (bool/int8 and complex shape are otherwise ambiguous).
+    // The logical type and native HDF5 datatype must agree exactly.
     auto read = [&](auto exemplar) {
         using T = decltype(exemplar);
         if (type != logical_type<T>())
             return;
         auto validate = [&](auto element, bool array) {
             using E = decltype(element);
-            constexpr bool complex = std::is_same_v<E, std::complex<double>>;
-            using Physical = std::conditional_t<complex, double, E>;
-            if (!ar.is_data("value") || !ar.is_datatype<Physical>("value") ||
-                ar.is_complex("value") != complex)
+            if (!ar.is_data("value") || !ar.is_datatype<E>("value"))
                 throw exception::type_mismatch(name_,
                                                "checkpoint payload disagrees with declared type");
             const auto shape = ar.extent("value");
-            const bool valid =
-                array ? (ar.is_null("value") ||
-                         (shape.size() == (complex ? 2 : 1) && (!complex || shape.back() == 2)))
-                      : (complex ? shape == std::vector<std::size_t>{2} : ar.is_scalar("value"));
+            const bool valid = !ar.is_null("value") &&
+                               (array ? shape.size() == 1 : ar.is_scalar("value"));
             if (!valid)
                 throw exception::type_mismatch(name_, "invalid checkpoint shape");
         };
@@ -112,7 +106,7 @@ void dictionary::save(hdf5::archive &ar) const {
     if (ar.is_group("entries"))
         ar.delete_group("entries");
     ar.create_group("entries");
-    ar["format"] << std::string("alps.params.v1");
+    ar["format"] << std::string("alps.params.v2");
     std::size_t i = 0;
     for (const auto &entry : *this) {
         const auto path = "entries/" + std::to_string(i++);
@@ -124,7 +118,7 @@ void dictionary::load(hdf5::archive &ar) {
     std::string format;
     if (ar.is_data("format"))
         ar["format"] >> format;
-    if (format != "alps.params.v1")
+    if (format != "alps.params.v2")
         throw std::runtime_error(
             "Unsupported params checkpoint format; legacy checkpoints require offline conversion");
     dictionary loaded;

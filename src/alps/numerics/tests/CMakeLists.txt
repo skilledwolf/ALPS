@@ -23,7 +23,6 @@ foreach(
   matrix_column_view
   matrix_transpose_view
   matrix_hdf5
-  matrix_deprecated_hdf5_format_test
   matrix_ublas_sparse_functions
   accumulate_if
   vector_functions
@@ -39,13 +38,4 @@ foreach(
   set_property(TEST ${name} PROPERTY LABELS numeric)
 endforeach()
 
-# This test reads a reference .h5 file from the source tree. That path is a
-# property of this build, not of the installed library, so it is a private
-# definition on the one target that needs it rather than a macro in the
-# installed alps/version.h.
-target_compile_definitions(matrix_deprecated_hdf5_format_test
-                           PRIVATE ALPS_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
-
-foreach(target IN ITEMS matrix_hdf5 matrix_deprecated_hdf5_format_test)
-  target_link_libraries(${target} PRIVATE ALPS::numeric_io)
-endforeach()
+target_link_libraries(matrix_hdf5 PRIVATE ALPS::numeric_io)
