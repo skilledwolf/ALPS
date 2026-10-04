@@ -54,6 +54,13 @@ Custom reducers must implement `reduce(view<uint64_t>)`; rebuild downstream
 binaries after this interface change. The combined sample count must fit in
 `uint64_t`.
 
+Signed estimates use joint batches of the signed numerator and sign. Apply the
+existing binary transformer to their ratio, with linear covariance propagation
+or weighted jackknife propagation; separate scalar results lose the covariance
+needed for the error. The transformer defines its domain and should reject a
+zero denominator. Jackknife requires two occupied bins and skips empty slots.
+Its result is an analysis result, not an accumulator checkpoint.
+
 `pyalps.hdf5.save_checkpoint(filename, callback)` calls the existing native
 publication helper. The callback receives a `NativeArchive`; retained callback
 views close before publication, and a failed save preserves the previous file.

@@ -504,6 +504,176 @@ void covariance_transform(std::string const& filename) {
     require(transformed.size() == 1 && transformed.mean()(0) == 0., "non-square transform has incorrect orientation");
     require(std::abs(transformed.var()(0)) < 1e-20, "serialization discarded x-y covariance");
 }
+struct signed_batch_oracle {
+    aa::column<double> mean;
+    Eigen::MatrixXd covariance;
+    double count, count2;
+};
+signed_batch_oracle signed_oracle(aa::batch_data<double> const& data) {
+    signed_batch_oracle expected{aa::column<double>::Zero(data.size()),
+        Eigen::MatrixXd::Zero(data.size(), data.size()), 0., 0.};
+    for (size_t i=0; i<data.num_batches(); ++i) {
+        auto weight = double(data.count()(i));
+        expected.count += weight;
+        expected.count2 += weight*weight;
+        expected.mean += data.batch().col(i);
+    }
+    expected.mean /= expected.count;
+    for (size_t i=0; i<data.num_batches(); ++i) {
+        auto weight = double(data.count()(i));
+        if (!weight) continue;
+        aa::column<double> deviation = data.batch().col(i)/weight - expected.mean;
+        expected.covariance += weight * deviation * deviation.transpose();
+    }
+    expected.covariance /= expected.count - expected.count2/expected.count;
+    return expected;
+}
+void signed_statistics(std::string const& filename) {
+    // The observable and sign share every sample and every batch boundary.
+    aa::scalar_binary_transformer<double> ratio([](double numerator, double sign) {
+        if (sign == 0.) throw std::domain_error("undefined ratio: zero mean sign");
+        return numerator/sign;
+    });
+    auto sample = [](size_t i) {
+        auto sign = i%5 == 0 ? -1. : 1.;
+        return aa::column<double>{sign*(1. + .125*(i%7) + .0625*(i%3)), sign};
+    };
+    aa::batch_acc<double> uninterrupted(2,8,3), stopped(2,8,3), resumed(1,2,1);
+    for (size_t i=0; i<173; ++i) {
+        uninterrupted << sample(i);
+        if (i<71) stopped << sample(i);
+    }
+    {
+        alps::hdf5::archive ar(filename, "a");
+        aa::hdf5_serializer codec(ar, "/signed");
+        serialize(codec, "checkpoint", stopped);
+    }
+    {
+        alps::hdf5::archive ar(filename, "r");
+        aa::hdf5_serializer codec(ar, "/signed");
+        deserialize(codec, "checkpoint", resumed);
+    }
+    for (size_t i=71; i<173; ++i) resumed << sample(i);
+    require(uninterrupted.result() == resumed.result(), "signed joint restart changed batches");
+    require(uninterrupted.offset() == resumed.offset(), "signed joint restart changed batch ordering");
+    auto joint = roundtrip(filename, "signed-joint", resumed.result());
+    auto oracle = signed_oracle(joint.store());
+    Eigen::Vector2d gradient(1./oracle.mean(1), -oracle.mean(0)/(oracle.mean(1)*oracle.mean(1)));
+    auto variance = double((gradient.transpose()*oracle.covariance*gradient)(0,0));
+    auto error = std::sqrt(variance*oracle.count2/(oracle.count*oracle.count));
+    auto propagated = aa::transform(aa::linear_prop(), ratio, joint);
+    require(std::abs(propagated.mean()(0) - oracle.mean(0)/oracle.mean(1)) < 1e-14,
+            "signed ratio mean changed");
+    require(std::abs(propagated.var()(0) - variance) < 1e-8*variance,
+            "signed ratio discarded joint covariance");
+    require(std::abs(propagated.stderror()(0) - error) < 1e-8*error,
+            "signed ratio uncertainty disagrees with covariance oracle");
+    auto diagonal_only = gradient(0)*gradient(0)*oracle.covariance(0,0)
+                       + gradient(1)*gradient(1)*oracle.covariance(1,1);
+    require(diagonal_only > 2*variance, "fixture does not distinguish independent from joint errors");
+    roundtrip(filename, "signed-linear", propagated);
+
+    // Independent weighted delete-one-bin pseudovalues and uncertainty.
+    aa::batch_data<double> pseudovalues(1, joint.num_batches());
+    aa::column<double> total = joint.store().batch().rowwise().sum();
+    for (size_t i=0; i<joint.num_batches(); ++i) {
+        auto weight = double(joint.store().count()(i));
+        pseudovalues.count()(i) = joint.store().count()(i);
+        if (!weight) continue;
+        aa::column<double> leaveout = (total-joint.store().batch().col(i))/(oracle.count-weight);
+        pseudovalues.batch()(0,i) = oracle.count*(oracle.mean(0)/oracle.mean(1))
+            - (oracle.count-weight)*(leaveout(0)/leaveout(1));
+    }
+    auto jack_oracle = signed_oracle(pseudovalues);
+    auto jack = aa::transform(aa::jackknife_prop(), ratio, joint);
+    require(std::abs(jack.mean()(0) - jack_oracle.mean(0)) < 1e-12,
+            "signed jackknife mean disagrees with weighted oracle");
+    require(std::abs(jack.var()(0) - jack_oracle.covariance(0,0)) < 1e-10,
+            "signed jackknife variance disagrees with weighted oracle");
+    auto jack_error = std::sqrt(jack_oracle.covariance(0,0)*jack_oracle.count2
+                               /(jack_oracle.count*jack_oracle.count));
+    require(std::abs(jack.stderror()(0) - jack_error) < 1e-10,
+            "signed jackknife error disagrees with weighted oracle");
+    require(jack.store().count() == joint.store().count(), "jackknife changed bin weights");
+    roundtrip(filename, "signed-jackknife", jack);
+
+    // A fluctuating sign does not create uncertainty in an exactly constant ratio.
+    aa::batch_acc<double> constant_ratio(2,8,2), deterministic(2,8,1);
+    for (size_t i=0; i<193; ++i) {
+        auto sign = i%4 == 0 ? -1. : 1.;
+        constant_ratio << aa::column<double>{2*sign, sign};
+        deterministic << aa::column<double>{3.,1.};
+    }
+    auto constant_linear = aa::transform(aa::linear_prop(), ratio, constant_ratio.result());
+    auto constant_jack = aa::transform(aa::jackknife_prop(), ratio, constant_ratio.result());
+    require(std::isfinite(constant_linear.stderror()(0)) && constant_linear.stderror()(0) < 1e-7,
+            "correlated constant ratio acquired uncertainty");
+    require(constant_jack.mean()(0) == 2. && constant_jack.stderror()(0) == 0.,
+            "constant ratio jackknife lost exact cancellation");
+    auto exact = aa::transform(aa::linear_prop(), ratio, deterministic.result());
+    require(exact.mean()(0) == 3. && exact.stderror()(0) == 0.,
+            "zero input uncertainty produced a nonfinite derivative");
+
+    // Slight negative cancellation is corrected; genuinely invalid variance remains.
+    aa::cov_result<double> cancellation(aa::cov_data<double>(2));
+    cancellation.store().data() = aa::column<double>{.125,.1};
+    cancellation.store().data2() << 1.5625,1.25,1.25,1.;
+    cancellation.store().data2() *= .125;
+    cancellation.store().count() = 64;
+    cancellation.store().count2() = 64.;
+    auto cancelled = aa::transform(aa::linear_prop(), ratio, cancellation);
+    require(std::isfinite(cancelled.stderror()(0)) && cancelled.stderror()(0) < 1e-7,
+            "roundoff in cancelled covariance produced a NaN error");
+    cancellation.store().data2() = -Eigen::Matrix2d::Identity();
+    auto invalid = aa::transform(aa::linear_prop(), ratio, cancellation);
+    require(invalid.var()(0) < 0., "propagation silently zeroed genuinely invalid covariance");
+
+    // Nonzero signs have no arbitrary cutoff, even when their scale is tiny.
+    auto derivative = aa::jacobian(ratio, aa::column<double>{2.5e-12,1e-12}, 0.);
+    require(std::abs(derivative(0,0)/1e12 - 1.) < 1e-8
+         && std::abs(derivative(0,1)/-2.5e12 - 1.) < 1e-8,
+            "Jacobian step destroyed near-zero denominator accuracy");
+    rejects([&] { aa::linear_prop bad(-1.); });
+    rejects([&] { aa::linear_prop bad(std::numeric_limits<double>::quiet_NaN()); });
+    rejects([&] { aa::jacobian(ratio, aa::column<double>{1.}, 0.); });
+    aa::batch_acc<double> zero_sign(2,8,1), singular_leaveout(2,8,1), insufficient(2,8,3);
+    zero_sign << aa::column<double>{1.,1.} << aa::column<double>{1.,-1.};
+    rejects([&] { aa::transform(aa::linear_prop(), ratio, zero_sign.result()); });
+    rejects([&] { aa::transform(aa::jackknife_prop(), ratio, zero_sign.result()); });
+    singular_leaveout << aa::column<double>{1.,1.} << aa::column<double>{1.,-1.}
+                     << aa::column<double>{1.,1.};
+    rejects([&] { aa::transform(aa::jackknife_prop(), ratio, singular_leaveout.result()); });
+    rejects([&] { aa::transform(aa::jackknife_prop(), ratio, insufficient.result()); });
+    insufficient << aa::column<double>{1.,1.} << aa::column<double>{2.,1.};
+    rejects([&] { aa::transform(aa::jackknife_prop(), ratio, insufficient.result()); });
+
+    // UINT64 counts above PTRDIFF_MAX retain their positive interpretation.
+    aa::batch_data<double> huge(1,2);
+    huge.count()(0) = uint64_t(1)<<63;
+    huge.count()(1) = (uint64_t(1)<<63)-1;
+    for (size_t i=0; i<2; ++i) huge.batch()(0,i) = double(huge.count()(i));
+    aa::linear_transformer<double> identity(Eigen::Matrix<double,1,1>::Identity());
+    auto huge_pseudo = aa::jackknife(huge, identity);
+    require(huge_pseudo.count() == huge.count() && huge_pseudo.batch() == huge.batch(),
+            "jackknife interpreted uint64 count as negative or lost its small-bin term");
+    huge.count()(0) = (uint64_t(1)<<63)-2;
+    huge.count()(1) = 1;
+    huge.batch()(0,0) = double(huge.count()(0));
+    huge.batch()(0,1) = 2.;
+    huge_pseudo = aa::jackknife(huge, identity);
+    require(huge_pseudo.batch() == huge.batch(), "linear jackknife lost unequal small-bin data");
+    aa::batch_data<double> malformed(1,3);
+    malformed.count().resize(2);
+    malformed.count() << 1,1;
+    rejects([&] { aa::jackknife(malformed, identity); });
+    aa::batch_data<double> invalid_empty(1,3);
+    invalid_empty.count() << 1,1,0;
+    invalid_empty.batch() << 1.,2.,3.;
+    rejects([&] { aa::jackknife(invalid_empty, identity); });
+    huge.count()(0) = std::numeric_limits<uint64_t>::max();
+    huge.count()(1) = 1;
+    rejects([&] { aa::jackknife(huge, identity); });
+}
 void eigen_orientation(std::string const& filename) {
     Eigen::Matrix<double,2,3,Eigen::RowMajor> original;
     original << 1., 2., 3., 4., 5., 6.;
@@ -637,6 +807,7 @@ int main() {
         large_batch_weights();
         wrong_sized_append();
         covariance_transform(filename);
+        signed_statistics(filename);
         eigen_orientation(filename);
         failed_loads(filename);
         boost::filesystem::remove(filename);
