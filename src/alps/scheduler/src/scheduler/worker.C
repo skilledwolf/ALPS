@@ -234,20 +234,9 @@ void Worker::save_to_file(const boost::filesystem::path& fnpath, const boost::fi
   bool backup=boost::filesystem::exists(fnpath);
   
 #ifdef ALPS_HAVE_HDF5
-  boost::filesystem::path hdf5bakpath =  fnpath.parent_path()/(hdf5path.filename().string()+".bak");
-  backup =  backup || boost::filesystem::exists(fnpath);
-  {
-    boost::filesystem::path p = backup ? hdf5bakpath : hdf5path;
-    if (boost::filesystem::exists(p))
-      boost::filesystem::remove(p);
-    hdf5::archive worker_ar(p.string(), "a");
-    worker_ar["/"] << *this;
-  } // close file
-  if (backup) {
-    if (boost::filesystem::exists(hdf5path))
-      boost::filesystem::remove(hdf5path);
-    boost::filesystem::rename(hdf5bakpath,hdf5path);
-  }
+  hdf5::save_checkpoint(hdf5path, [this](hdf5::archive& ar) {
+    ar["/"] << *this;
+  });
 #endif
 
   {
@@ -366,4 +355,3 @@ ResultType Worker::get_summary() const
 }
 } // namespace scheduler
 } // namespace alps
-

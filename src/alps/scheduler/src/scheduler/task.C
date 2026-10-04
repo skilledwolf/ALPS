@@ -240,15 +240,13 @@ void Task::checkpoint(const boost::filesystem::path& fn, bool writeallxml) const
   std::string task_path = fn.string().substr(0, fn.string().find_last_of('.')) + ".h5";
   std::string task_backup = fn.string().substr(0, fn.string().find_last_of('.')) + ".h5.bak";
   bool task_exists = boost::filesystem::exists(task_path);
-  if (boost::filesystem::exists(task_backup))
-      boost::filesystem::remove(task_backup);
-
   make_backup = make_backup || task_exists; 
 
-  {
-    hdf5::archive ar(make_backup ? task_backup : task_path, "a");
+  // Keep the existing XML/HDF5 publication order. The HDF5 stage is complete
+  // and closed before XML serialization starts; the pair is not atomic.
+  hdf5::save_checkpoint(make_backup ? task_backup : task_path, [this](hdf5::archive& ar) {
     ar["/"] << *this;
-  } // close file
+  });
   
 #endif
 
@@ -270,8 +268,6 @@ void Task::checkpoint(const boost::filesystem::path& fn, bool writeallxml) const
     boost::filesystem::rename(filename,fn);
 #endif
 #ifdef ALPS_HAVE_HDF5
-    if (boost::filesystem::exists(task_path))
-      boost::filesystem::remove(task_path);
     boost::filesystem::rename(task_backup, task_path);
 #endif
   }
@@ -280,27 +276,10 @@ void Task::checkpoint(const boost::filesystem::path& fn, bool writeallxml) const
 void Task::checkpoint_hdf5(const boost::filesystem::path& fn) const
 {
 #ifdef ALPS_HAVE_HDF5
-  boost::filesystem::path dir=fn.parent_path();
-  bool make_backup = boost::filesystem::exists(fn);
-
   std::string task_path = fn.string().substr(0, fn.string().find_last_of('.')) + ".h5";
-  std::string task_backup = fn.string().substr(0, fn.string().find_last_of('.')) + ".h5.bak";
-  bool task_exists = boost::filesystem::exists(task_path);
-  if (boost::filesystem::exists(task_backup))
-      boost::filesystem::remove(task_backup);
-
-  make_backup = make_backup || task_exists; 
-
-  {
-    hdf5::archive ar(make_backup ? task_backup : task_path, "a");
+  hdf5::save_checkpoint(task_path, [this](hdf5::archive& ar) {
     ar["/"] << *this;
-  } // close file
-  
-  if(make_backup) {
-    if (boost::filesystem::exists(task_path))
-      boost::filesystem::remove(task_path);
-    boost::filesystem::rename(task_backup, task_path);
-  }
+  });
 #endif
 }
 
