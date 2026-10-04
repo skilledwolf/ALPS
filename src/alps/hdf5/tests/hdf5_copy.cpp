@@ -16,9 +16,9 @@
 #include <alps/hdf5/pair.hpp>
 #include <alps/hdf5/complex.hpp>
 #include <alps/hdf5/vector.hpp>
-#include <alps/hdf5/shared_array.hpp>
 
 #include <iostream>
+#include <memory>
 
 namespace detail {
     void copy_data(alps::hdf5::archive & tar, alps::hdf5::archive & sar, std::string const & segment) {
@@ -33,7 +33,7 @@ namespace detail {
             } else if (sar.is_datatype<T>(segment)) {                                                                                           \
                 std::vector<std::size_t> extent = sar.extent(segment);                                                                          \
                 std::size_t size = std::accumulate(extent.begin(), extent.end(), std::size_t(1), std::multiplies<std::size_t>());               \
-                boost::shared_array<T> array(new T[size]);                                                                                      \
+                std::unique_ptr<T[]> array(new T[size]);                                                                                       \
                 std::pair<T *, std::vector<std::size_t> > value(array.get(), extent);                                                           \
                 sar[segment] >> value;                                                                                                          \
                 tar[segment] = value;                                                                                                           \

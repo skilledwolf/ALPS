@@ -53,9 +53,10 @@ else()
   endif()
   foreach(removed_header IN ITEMS alps/ngs/accumulator.hpp alps/ngs/accumulator/accumulator.hpp
                                   alps/ngs/accumulator/wrappers.hpp alps/ngs/accumulator/feature/weight.hpp
-                                  alps/ngs/accumulator/feature/weight_holder.hpp)
+                                  alps/ngs/accumulator/feature/weight_holder.hpp
+                                  alps/hdf5/tuple.hpp alps/hdf5/shared_array.hpp)
     if(EXISTS "${expected_prefix}/include/${removed_header}")
-      message(FATAL_ERROR "The SDK still installs the removed experimental backend: ${removed_header}")
+      message(FATAL_ERROR "The SDK still installs an obsolete header: ${removed_header}")
     endif()
   endforeach()
   foreach(private_directory IN ITEMS alps/utilities alps/hdf5/include alps/hdf5/src

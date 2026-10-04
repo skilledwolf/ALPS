@@ -43,9 +43,7 @@ target_sources(alps_hdf5 PUBLIC
     include/alps/hdf5/multi_array.hpp
     include/alps/hdf5/pair.hpp
     include/alps/hdf5/pointer.hpp
-    include/alps/hdf5/shared_array.hpp
     include/alps/hdf5/stdarray.hpp
-    include/alps/hdf5/tuple.hpp
     include/alps/hdf5/ublas/matrix.hpp
     include/alps/hdf5/ublas/vector.hpp
     include/alps/hdf5/valarray.hpp

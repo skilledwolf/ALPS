@@ -165,18 +165,6 @@ if(ALPS_BUILD_EXTENSIVE_TESTS)
       "enum_vec_type *"
       "userdefined_class<double> *"
       "cast_type<int, double> *"
-      "boost::shared_array<int>"
-      "boost::shared_array<short>"
-      "boost::shared_array<long>"
-      "boost::shared_array<float>"
-      "boost::shared_array<double>"
-      "boost::shared_array<std::size_t>"
-      "boost::shared_array<std::string>"
-      "boost::shared_array<std::complex<double> >"
-      "boost::shared_array<enum_type>"
-      "boost::shared_array<enum_vec_type>"
-      "boost::shared_array<userdefined_class<double> >"
-      "boost::shared_array<cast_type<int, double> >"
       "cast_type<std::vector<int>, std::valarray<int> >"
       "cast_type<std::vector<int>, boost::numeric::ublas::vector<int> >"
       "cast_type<std::valarray<int>, std::vector<int> >"
@@ -262,8 +250,7 @@ if(ALPS_BUILD_EXTENSIVE_TESTS)
       "std::vector<boost::array<int, 4> >"
       "boost::array<std::vector<int>, 4>"
       "std::vector<boost::array<std::vector<int>, 4> >"
-      "boost::tuple<int, double, float, std::complex<double> >"
-      "std::vector<boost::tuple<char, bool, long long> >")
+      )
 
   # Compile each type once; dataset and attribute are runtime modes.
   # Numbered filenames keep deeply nested Windows paths short.

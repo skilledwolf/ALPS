@@ -24,7 +24,7 @@ bool is_attribute = false;
 
 template<typename base_type> struct test {
     static bool write(std::string const & filename, boost::true_type) {
-        std::vector<std::size_t> size_0;
+        std::vector<std::size_t> size_0(1, 0);
         base_type* write_0_value = NULL;
         std::size_t length = MATRIX_SIZE;
         std::vector<std::size_t> size_1(1, MATRIX_SIZE);
@@ -131,67 +131,6 @@ template<typename base_type> struct test {
     }
     template<typename unused> static bool overwrite(std::string const & filename, unused) {
         return overwrite_helper<int>(filename);
-        return overwrite_helper<base_type>(filename);
-        return overwrite_helper<std::complex<double> >(filename);
-        return overwrite_helper<base_type>(filename);
-        return overwrite_helper<double>(filename);
-        return overwrite_helper<base_type>(filename);
-        return overwrite_helper<std::vector<double> >(filename);
-        return overwrite_helper<base_type>(filename);
-        return overwrite_helper<std::string>(filename);
-        return overwrite_helper<base_type>(filename);
-    }
-};
-
-template<typename T> struct test<boost::shared_array<T> > {
-    static bool write(std::string const & filename, boost::mpl::false_) {
-        std::size_t length = MATRIX_SIZE;
-        std::vector<std::size_t> size_1(1, MATRIX_SIZE);
-        boost::shared_array<T> write_1_value(new T[MATRIX_SIZE]);
-        std::vector<std::size_t> size_2(2, MATRIX_SIZE);
-        boost::shared_array<T> write_2_value(new T[MATRIX_SIZE * MATRIX_SIZE]);
-        std::vector<std::size_t> size_3(3, MATRIX_SIZE);
-        boost::shared_array<T> write_3_value(new T[MATRIX_SIZE * MATRIX_SIZE * MATRIX_SIZE]);
-        for (std::size_t i = 0; i < MATRIX_SIZE; ++i) {
-            initialize(write_1_value[i]);
-            for (std::size_t j = 0; j < MATRIX_SIZE; ++j) {
-                initialize(write_2_value[i * MATRIX_SIZE + j]);
-                for (std::size_t k = 0; k < MATRIX_SIZE; ++k)
-                    initialize(write_3_value[(i * MATRIX_SIZE + j) * MATRIX_SIZE + k]);
-            }
-        }
-        {
-            alps::hdf5::archive oar(filename, "a");
-            if (is_attribute)
-                oar["/data"] << 0;
-            oar
-                << alps::make_pvp(std::string(is_attribute ? "/data/@" : "/") + "len", write_1_value, length)
-                << alps::make_pvp(std::string(is_attribute ? "/data/@" : "/") + "ptr_1", write_1_value, size_1)
-                << alps::make_pvp(std::string(is_attribute ? "/data/@" : "/") + "ptr_2", write_2_value, size_2)
-                << alps::make_pvp(std::string(is_attribute ? "/data/@" : "/") + "ptr_3", write_3_value, size_3)
-            ;
-        }
-        {
-            boost::shared_array<T> read_1_len_value(new T[MATRIX_SIZE]), read_1_value(new T[MATRIX_SIZE]);
-            boost::shared_array<T> read_2_value(new T[MATRIX_SIZE * MATRIX_SIZE]);
-            boost::shared_array<T> read_3_value(new T[MATRIX_SIZE * MATRIX_SIZE * MATRIX_SIZE]);
-            alps::hdf5::archive iar(filename);
-            iar
-                >> alps::make_pvp(std::string(is_attribute ? "/data/@" : "/") + "len", read_1_len_value, length)
-                >> alps::make_pvp(std::string(is_attribute ? "/data/@" : "/") + "ptr_1", read_1_value, size_1)
-                >> alps::make_pvp(std::string(is_attribute ? "/data/@" : "/") + "ptr_2", read_2_value, size_2)
-                >> alps::make_pvp(std::string(is_attribute ? "/data/@" : "/") + "ptr_3", read_3_value, size_3)
-            ;
-            return equal(write_1_value.get(), read_1_len_value.get(), length)
-                && equal(write_1_value.get(), read_1_value.get(), size_1[0])
-                && equal(write_2_value.get(), read_2_value.get(), size_2[0] * size_2[1])
-                && equal(write_3_value.get(), read_3_value.get(), size_3[0] * size_3[1] * size_3[2])
-            ;
-        }
-    }
-    static bool overwrite(std::string const & filename, boost::mpl::false_) {
-        // TODO: implement test for write type A and overwrite with type B
-        return true;
     }
 };
 
@@ -221,10 +160,6 @@ template<typename T, std::size_t N, typename A> struct skip_attribute<std::vecto
 template<typename T, std::size_t N, typename A> struct skip_attribute<boost::multi_array<T, N, A> * >: public boost::mpl::true_ {};
 template<typename T, std::size_t N, typename A> struct skip_attribute<alps::multi_array<T, N, A> * >: public boost::mpl::true_ {};
 
-template <
-    typename T0, typename T1, typename T2, typename T3, typename T4, typename T5, typename T6, typename T7, typename T8, typename T9
-> struct skip_attribute<std::vector<boost::tuple<T0, T1, T2, T3, T4, T5, T6, T7, T8, T9> > >: public boost::mpl::true_ {};
-
 template <typename T, typename M> struct skip_attribute<alps::numeric::matrix<T, M> > : public boost::mpl::true_ {};
 
 template<typename T> struct skip_attribute<T *>: public skip_attribute<T> {};
@@ -236,8 +171,6 @@ template<typename T> struct skip_attribute<std::pair<T *, std::vector<std::size_
 template<typename T> struct skip_attribute<std::pair<std::vector<T> *, std::vector<std::size_t> > >: public boost::mpl::true_ {};
 template<typename T, std::size_t N, typename A> struct skip_attribute<std::pair<boost::multi_array<T, N, A> *, std::vector<std::size_t> > >: public boost::mpl::true_ {};
 template<typename T, std::size_t N, typename A> struct skip_attribute<std::pair<alps::multi_array<T, N, A> *, std::vector<std::size_t> > >: public boost::mpl::true_ {};
-
-template<typename T> struct skip_attribute<boost::shared_array<T> >: public skip_attribute<T> {};
 
 int main(int argc, char * argv[]) {
     if (argc != 2) return EXIT_FAILURE;

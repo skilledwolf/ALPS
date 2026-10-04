@@ -6,6 +6,8 @@ User-facing changes and migration notes are recorded here, starting with the bui
 
 ### Changed
 
+- Remove unused Boost tuple/shared-array HDF5 adapters and their test machinery;
+  the archive-copy test uses a standard owning buffer.
 - Expose modern real/complex batch ALEA in Python and migrate the pure Python
   Ising tutorial to the shared native checkpoint codec and publication helper.
   Reject malformed RNG checkpoints without changing the stream. Fix squared
