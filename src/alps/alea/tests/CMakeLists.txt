@@ -19,6 +19,7 @@
 
 foreach(
   name
+  checkpoint_contracts
   complexobservable
   detailedbinning
   histogram

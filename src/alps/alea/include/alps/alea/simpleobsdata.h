@@ -87,7 +87,7 @@ public:
   SimpleObservableData(const AbstractSimpleObservable<value_type>& obs);
   SimpleObservableData(std::istream&, const XMLTag&, label_type& );
 
-  SimpleObservableData const& operator=(const SimpleObservableData& x);
+  SimpleObservableData const& operator=(SimpleObservableData x);
 
   void read_xml(std::istream&, const XMLTag&, label_type& label);
   void read_xml_scalar(std::istream&, const XMLTag&);
@@ -179,6 +179,9 @@ protected:
   template <class OP> void transform_linear(OP op);
 
 private:
+  void swap(SimpleObservableData&);
+  void load_state(hdf5::archive&);
+
   mutable uint64_t count_;
 
   mutable bool has_variance_;
@@ -214,6 +217,7 @@ SimpleObservableData<T>::SimpleObservableData()
  : count_(0),
    has_variance_(false),
    has_tau_(false),
+   can_set_thermal_(false),
    binsize_(0),
    max_bin_number_(0),
    discardedmeas_(0),
@@ -272,32 +276,37 @@ SimpleObservableData<T>::SimpleObservableData(const SimpleObservableData<U>& x, 
 
 template <class T>
 inline
-SimpleObservableData<T> const& SimpleObservableData<T>::operator=(const SimpleObservableData<T>& x)
- {
-   count_=x.count_;
-   has_variance_=x.has_variance_;
-   has_tau_=x.has_tau_;
-   can_set_thermal_=x.can_set_thermal_;
-   binsize_=x.binsize_;
-   max_bin_number_=x.max_bin_number_;
-   discardedmeas_=x.discardedmeas_;
-   discardedbins_=x.discardedbins_;
-   changed_=x.changed_;
-   valid_=x.valid_;
-   jack_valid_=x.jack_valid_;
-   nonlinear_operations_=x.nonlinear_operations_;
-   assign(mean_,x.mean_);
-   assign(error_,x.error_);
-   assign(variance_,x.variance_);
-   assign(tau_,x.tau_);
-   values_=x.values_;
-   values2_=x.values2_;
-   jack_=x.jack_;
-
-   assign(converged_errors_,x.converged_errors_);
-   assign(any_converged_errors_,x.any_converged_errors_);
-
+SimpleObservableData<T> const& SimpleObservableData<T>::operator=(SimpleObservableData x)
+{
+  swap(x);
   return *this;
+}
+
+template <class T>
+void SimpleObservableData<T>::swap(SimpleObservableData& x)
+{
+  std::swap(count_, x.count_);
+  std::swap(has_variance_, x.has_variance_);
+  std::swap(has_tau_, x.has_tau_);
+  std::swap(can_set_thermal_, x.can_set_thermal_);
+  std::swap(binsize_, x.binsize_);
+  std::swap(max_bin_number_, x.max_bin_number_);
+  std::swap(discardedmeas_, x.discardedmeas_);
+  std::swap(discardedbins_, x.discardedbins_);
+  std::swap(changed_, x.changed_);
+  std::swap(valid_, x.valid_);
+  std::swap(jack_valid_, x.jack_valid_);
+  std::swap(nonlinear_operations_, x.nonlinear_operations_);
+  std::swap(mean_, x.mean_);
+  std::swap(error_, x.error_);
+  std::swap(variance_, x.variance_);
+  std::swap(tau_, x.tau_);
+  std::swap(values_, x.values_);
+  std::swap(values2_, x.values2_);
+  std::swap(jack_, x.jack_);
+  std::swap(converged_errors_, x.converged_errors_);
+  std::swap(any_converged_errors_, x.any_converged_errors_);
+  std::swap(eval_method_, x.eval_method_);
 }
 
 
@@ -934,6 +943,14 @@ void SimpleObservableData<T>::load(IDump& dump)
 
 template <typename T> void SimpleObservableData<T>::save(hdf5::archive & ar) const {
     analyze();
+    const auto erase = [&](char const * path) {
+        if (ar.is_group(path)) ar.delete_group(path);
+        else ar.delete_data(path);
+    };
+    if (ar.is_attribute("@cannotrebin")) ar.delete_attribute("@cannotrebin");
+    if (!valid_ || !has_variance_) erase("variance/value");
+    if (!valid_ || !has_tau_) erase("tau/value");
+    if (!valid_ || !jack_valid_) erase("jacknife/data");
     ar
         << make_pvp("count", count_)
         << make_pvp("@changed", changed_)
@@ -956,12 +973,13 @@ template <typename T> void SimpleObservableData<T>::save(hdf5::archive & ar) con
         ar
             << make_pvp("timeseries/data", values_)
             << make_pvp("timeseries/data/@discard", discardedbins_)
+            << make_pvp("timeseries/data/@binsize", binsize_)
             << make_pvp("timeseries/data/@maxbinnum", max_bin_number_)
             << make_pvp("timeseries/data/@binningtype", "linear")
             
             << make_pvp("timeseries/data2", values2_)
             << make_pvp("timeseries/data2/@discard", discardedbins_)
-            << make_pvp("timeseries/data/@maxbinnum", max_bin_number_)
+            << make_pvp("timeseries/data2/@maxbinnum", max_bin_number_)
             << make_pvp("timeseries/data2/@binningtype", "linear")
         ;
         if (jack_valid_)
@@ -972,6 +990,15 @@ template <typename T> void SimpleObservableData<T>::save(hdf5::archive & ar) con
     }
 }
 template <typename T> void SimpleObservableData<T>::load(hdf5::archive & ar) {
+    SimpleObservableData loaded;
+    loaded.load_state(ar);
+    swap(loaded);
+}
+
+template <typename T> void SimpleObservableData<T>::load_state(hdf5::archive & ar) {
+    const auto has_field = [&](char const * path) {
+        return ar.is_data(path) || ar.is_group(path);
+    };
     can_set_thermal_ = false;
     discardedmeas_ = 0;
     ar
@@ -979,17 +1006,17 @@ template <typename T> void SimpleObservableData<T>::load(hdf5::archive & ar) {
         >> make_pvp("@changed", changed_)
         >> make_pvp("@nonlinearoperations", nonlinear_operations_)
     ;
-    if ((valid_ = ar.is_data("mean/value"))) {
+    if ((valid_ = has_field("mean/value"))) {
         ar
             >> make_pvp("mean/value", mean_)
             >> make_pvp("mean/error", error_)
             >> make_pvp("mean/error_convergence", converged_errors_)
         ;
-        if ((has_variance_ = ar.is_data("variance/value")))
+        if ((has_variance_ = has_field("variance/value")))
             ar
                 >> make_pvp("variance/value", variance_)
             ;
-        if ((has_tau_ = ar.is_data("tau/value")))
+        if ((has_tau_ = has_field("tau/value")))
             ar
                 >> make_pvp("tau/value", tau_)
             ;
@@ -999,11 +1026,35 @@ template <typename T> void SimpleObservableData<T>::load(hdf5::archive & ar) {
             >> make_pvp("timeseries/data/@maxbinnum", max_bin_number_)
             >> make_pvp("timeseries/data2", values2_)
         ;
-        if ((jack_valid_ = ar.is_data("jacknife/data")))
+        if ((jack_valid_ = has_field("jacknife/data")))
             ar
                 >> make_pvp("jacknife/data", jack_)
             ;
-    }
+        if (discardedbins_ > values_.size())
+            throw std::runtime_error("ALEA discarded bin count exceeds stored bins");
+        if (ar.is_attribute("timeseries/data/@binsize"))
+            ar >> make_pvp("timeseries/data/@binsize", binsize_);
+        else if (bin_number())
+            binsize_ = count_ / bin_number();
+        if (!values_.empty() && !binsize_)
+            throw std::runtime_error("nonempty ALEA bins require a positive bin size");
+        const auto shape = hdf5::get_extent(mean_);
+        const auto validate_shape = [&](auto const & value) {
+            if (hdf5::get_extent(value) != shape)
+                throw std::runtime_error("ALEA observable component shapes do not match");
+        };
+        validate_shape(error_);
+        validate_shape(converged_errors_);
+        any_converged_errors_ = converged_errors_;
+        if (has_variance_) validate_shape(variance_);
+        if (has_tau_) validate_shape(tau_);
+        for (auto const & value : values_) validate_shape(value);
+        for (auto const & value : values2_) validate_shape(value);
+        for (auto const & value : jack_) validate_shape(value);
+        if (!jack_.empty() && jack_.size() != bin_number() + 1)
+            throw std::runtime_error("ALEA jackknife and bin counts do not match");
+    } else if (count_)
+        throw std::runtime_error("nonempty ALEA observables require mean and error");
 }
 
 template <class T>

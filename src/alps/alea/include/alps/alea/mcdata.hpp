@@ -226,6 +226,8 @@ namespace alps {
                     , data_is_analyzed_(true)
                     , jacknife_bins_valid_(false)
                     , cannot_rebin_(false)
+                    , mean_()
+                    , error_()
                 {
                     using boost::numeric::operators::operator/;
                     if (count()) {
@@ -257,7 +259,7 @@ namespace alps {
                     std::swap(mean_, rhs.mean_);
                     std::swap(error_, rhs.error_);
                     std::swap(binsize_, rhs.binsize_);
-                    std::swap(rhs.max_bin_number_, rhs.max_bin_number_);
+                    std::swap(max_bin_number_, rhs.max_bin_number_);
                     std::swap(data_is_analyzed_, rhs.data_is_analyzed_);
                     std::swap(jacknife_bins_valid_, rhs.jacknife_bins_valid_);
                     std::swap(cannot_rebin_, rhs.cannot_rebin_);
@@ -441,7 +443,11 @@ namespace alps {
                 }
 
                 void save(hdf5::archive & ar) const {
-                    analyze();
+                    if (count_) analyze();
+                    const auto erase = [&](char const * path) {
+                        if (ar.is_group(path)) ar.delete_group(path);
+                        else ar.delete_data(path);
+                    };
                     ar
                         << make_pvp("count", count_)
                         << make_pvp("@cannotrebin", cannot_rebin_)
@@ -452,10 +458,12 @@ namespace alps {
                         ar
                             << make_pvp("variance/value", *variance_opt_)
                         ;
+                    else erase("variance/value");
                     if (tau_opt_)
                         ar
                             << make_pvp("tau/value", *tau_opt_)
                         ;
+                    else erase("tau/value");
                     ar
                         << make_pvp("timeseries/data", values_)
                         << make_pvp("timeseries/data/@binsize", binsize_)
@@ -467,63 +475,13 @@ namespace alps {
                             << make_pvp("jacknife/data", jack_)
                             << make_pvp("jacknife/data/@binningtype", "linear")
                         ;
+                    else erase("jacknife/data");
                 }
     
                 void load(hdf5::archive & ar) {
-                    using boost::numeric::operators::operator/;
-                    data_is_analyzed_ = true;
-                    ar >> make_pvp("count", count_);
-                    if (ar.is_data("mean/value"))
-                        ar >> make_pvp("mean/value", mean_);
-                    if (ar.is_data("mean/error"))
-                        ar >> make_pvp("mean/error", error_);
-                    // Observable checkpoints (SimpleObservableData and
-                    // binning classes) store bin sums; mcdata stores means.
-                    // These paths decode active scientific schemas, distinct
-                    // from the offline conversion of HDF5 primitive encodings.
-                    if (ar.is_attribute("@nonlinearoperations"))
-                        ar >> make_pvp("@nonlinearoperations", cannot_rebin_);
-                    else if (ar.is_attribute("@cannotrebin"))
-                        ar >> make_pvp("@cannotrebin", cannot_rebin_);
-                    else
-                        cannot_rebin_ = false;
-                    if (ar.is_data("variance/value")) {
-                        variance_opt_.reset(result_type());
-                        ar
-                            >> make_pvp("variance/value", *variance_opt_)
-                        ;
-                    }
-                    else
-                        variance_opt_ = boost::none;
-                    if (ar.is_data("tau/value")) {
-                        tau_opt_.reset(time_type());
-                        ar
-                            >> make_pvp("tau/value", *tau_opt_)
-                        ;
-                    }
-                    if (ar.is_data("timeseries/data")) {
-                      ar
-                          >> make_pvp("timeseries/data", values_)
-                          >> make_pvp("timeseries/data/@maxbinnum", max_bin_number_)
-                      ;
-                      if (ar.is_attribute("timeseries/data/@binsize")) {
-                          ar
-                              >> make_pvp("timeseries/data/@binsize", binsize_)
-                          ;
-                      } else {
-                        if (values_.size()) {
-                          binsize_ = count_ / values_.size();
-                        } else {
-                          binsize_ = 0;
-                        }
-                      }
-                      if (!ar.is_attribute("@cannotrebin") && values_.size())
-                          values_ = values_ / double(binsize_);
-                    }
-                    if ((jacknife_bins_valid_ = ar.is_data("jacknife/data")))
-                        ar
-                            >> make_pvp("jacknife/data", jack_)
-                        ;
+                    mcdata loaded;
+                    loaded.load_state(ar);
+                    swap(loaded);
                 }
 
                 void save(std::string const & filename, std::string const & path) const {
@@ -791,6 +749,91 @@ namespace alps {
                 {}
 
             private:
+
+                void load_state(hdf5::archive & ar) {
+                    using boost::numeric::operators::operator/;
+                    const auto has_field = [&](char const * path) {
+                        return ar.is_data(path) || ar.is_group(path);
+                    };
+                    ar >> make_pvp("count", count_);
+                    if (has_field("mean/value"))
+                        ar >> make_pvp("mean/value", mean_);
+                    if (has_field("mean/error"))
+                        ar >> make_pvp("mean/error", error_);
+                    // Observable checkpoints (SimpleObservableData and
+                    // binning classes) store bin sums; mcdata stores means.
+                    // These paths decode active scientific schemas, distinct
+                    // from the offline conversion of HDF5 primitive encodings.
+                    if (ar.is_attribute("@cannotrebin"))
+                        ar >> make_pvp("@cannotrebin", cannot_rebin_);
+                    else if (ar.is_attribute("@nonlinearoperations"))
+                        ar >> make_pvp("@nonlinearoperations", cannot_rebin_);
+                    else
+                        cannot_rebin_ = false;
+                    if (has_field("variance/value")) {
+                        variance_opt_.reset(result_type());
+                        ar
+                            >> make_pvp("variance/value", *variance_opt_)
+                        ;
+                    }
+                    if (has_field("tau/value")) {
+                        tau_opt_.reset(time_type());
+                        ar
+                            >> make_pvp("tau/value", *tau_opt_)
+                        ;
+                    }
+                    if (has_field("timeseries/data")) {
+                      ar
+                          >> make_pvp("timeseries/data", values_)
+                          >> make_pvp("timeseries/data/@maxbinnum", max_bin_number_)
+                      ;
+                      if (ar.is_attribute("timeseries/data/@binsize")) {
+                          ar
+                              >> make_pvp("timeseries/data/@binsize", binsize_)
+                          ;
+                      } else {
+                        if (values_.size()) {
+                          binsize_ = count_ / values_.size();
+                        } else {
+                          binsize_ = 0;
+                        }
+                      }
+                      if (!values_.empty() && !binsize_)
+                          throw std::runtime_error("nonempty ALEA bins require a positive bin size");
+                      if (!ar.is_attribute("@cannotrebin") && values_.size())
+                          values_ = values_ / double(binsize_);
+                    }
+                    if ((jacknife_bins_valid_ = has_field("jacknife/data")))
+                        ar
+                            >> make_pvp("jacknife/data", jack_)
+                        ;
+                    if (count_ && !has_field("mean/value"))
+                        throw std::runtime_error("nonempty ALEA results require a mean");
+                    if (count_ && !has_field("mean/error")) {
+                        // Raw observables omit an unavailable error for their first
+                        // sample. Match live observable-to-result decoding, which
+                        // reports infinite uncertainty, rather than a zero error.
+                        if (count_ != 1 || ar.is_attribute("@cannotrebin")
+                                || ar.is_attribute("@changed") || ar.is_attribute("@nonlinearoperations"))
+                            throw std::runtime_error("nonempty ALEA results require an error");
+                        using alps::numeric::operator+;
+                        resize_same_as(error_, mean_);
+                        set_zero(error_);
+                        error_ = error_ + typename hdf5::scalar_type<result_type>::type(alps::inf());
+                    }
+                    const auto shape = hdf5::get_extent(mean_);
+                    const auto validate_shape = [&](auto const & value) {
+                        if (hdf5::get_extent(value) != shape)
+                            throw std::runtime_error("ALEA result component shapes do not match");
+                    };
+                    validate_shape(error_);
+                    if (variance_opt_) validate_shape(*variance_opt_);
+                    if (tau_opt_) validate_shape(*tau_opt_);
+                    for (auto const & value : values_) validate_shape(value);
+                    for (auto const & value : jack_) validate_shape(value);
+                    if (!jack_.empty() && jack_.size() != values_.size() + 1)
+                        throw std::runtime_error("ALEA jackknife and bin counts do not match");
+                }
 
                 T const & replace_valarray_by_vector(T const & value) {
                     return value;
