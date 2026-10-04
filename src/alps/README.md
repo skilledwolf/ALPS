@@ -100,7 +100,7 @@ Each module uses `include/`, `src/` and `tests/` where applicable. Public includ
 | `numerics/` | Numerical helpers, array mathematics and matrix/vector interfaces | `ALPS::numerics` |
 | `numeric_io/` | HDF5 adapters for numerical matrices and vectors | `ALPS::numeric_io` |
 | `ietl/` | Iterative eigensolver headers under `include/ietl/` | `ALPS::headers` |
-| `hdf5/` | Archive API, container adapters and shared context registry | `ALPS::hdf5` |
+| `hdf5/` | Archive API, container adapters and explicit checkpoint publication | `ALPS::hdf5` |
 | `params/` | ALPSCore-derived owning values, checked lookup/conversion and versioned HDF5 checkpoints | `ALPS::params`; `adapters/` contributes to `ALPS::alps` |
 | `run_config/` | TOML run files, application schemas, defaults, validation and provenance | `ALPS::run_config` |
 | `osiris/` | Dump serialization, process/communication state and XDR implementation | `ALPS::osiris` |
@@ -130,9 +130,9 @@ All first-party public headers have explicit CMake `HEADERS` file sets. These de
 
 `ALPS::utilities` owns utility symbols and the NGS termination-signal queue. It links Boost.Filesystem and platform threads without the simulation runtime, HDF5 or BLAS/LAPACK.
 
-`ALPS::hdf5` owns archive symbols, exception exports and shared archive state. It uses HighFive headers privately and links utilities, HDF5 and platform threads. Boost.Filesystem is supplied by utilities. Installed consumers do not need HighFive headers or its CMake package. It installs no process signal handlers and performs no cleanup from fatal-signal handlers. A parallel HDF5 provider can bring its own MPI dependency.
+`ALPS::hdf5` owns archive symbols, exception exports and file ownership. It uses HighFive headers privately and links utilities, HDF5 and platform threads. Boost.Filesystem is supplied by utilities. Installed consumers do not need HighFive headers or its CMake package. Independent opens keep their own permissions; copies are views closed together by explicit `close()`. Modes are exactly `r`, `a` and `w`; `save_checkpoint` publishes a complete file only after serialization and checked close. Legacy formats belong to the standalone converter. Python ordinary IO uses h5py, temporarily transferring file ownership for native scientific serialization. A parallel HDF5 provider can bring its own MPI dependency.
 
-`ALPS::params` owns ALPSCore-derived dictionary/value storage and explicit `alps.params.v2` checkpoints. It links HDF5 and Boost.Serialization; MPI builds also use MPI and Boost.MPI. Python values are eagerly copied into native storage. The file constructor, XML reader, proxies and Python `paramvalue_source` interface are removed. The remaining `params/adapters/` function converts typed scalars to the older model/lattice `Parameters` API for live internal callers; it is compiled into `ALPS::alps`.
+`ALPS::params` owns ALPSCore-derived dictionary/value storage and explicit `alps.params.v2` checkpoints. Native datatype and scalar/vector rank identify values; indexed name/value entries preserve parameter names without duplicate type tags. It links HDF5 and Boost.Serialization; MPI builds also use MPI and Boost.MPI. Python values are eagerly copied into native storage. The file constructor, XML reader, proxies and Python `paramvalue_source` interface are removed. The remaining `params/adapters/` function converts typed scalars to the older model/lattice `Parameters` API for live internal callers; it is compiled into `ALPS::alps`.
 
 `ALPS::run_config` applies separate application TOML schemas, defaults, type/range checks, relative-path resolution and run provenance. It uses toml++ headers privately in one translation unit, including when the package manager provides a compiled toml++ library. Parsing and application orchestration do not belong to the dictionary.
 
