@@ -113,8 +113,9 @@ ising_sim::results_type ising_sim::collect_results(result_names_type const & nam
 }
 
 void ising_sim::save(boost::filesystem::path const & filename) const {
-    alps::hdf5::archive ar(filename, "w");
-    ar["/simulation/realizations/0/clones/0"] << *this;
+    alps::hdf5::save_checkpoint(filename, [this](alps::hdf5::archive& ar) {
+        ar["/simulation/realizations/0/clones/0"] << *this;
+    });
 }
 
 void ising_sim::load(boost::filesystem::path const & filename) {

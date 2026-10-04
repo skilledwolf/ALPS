@@ -3,27 +3,21 @@
 #include <alps/hdf5/archive.hpp>
 
 #include <highfive/highfive.hpp>
-#include <H5FDcore.h>
-#include <H5FDfamily.h>
 #include <boost/filesystem.hpp>
-
 #include <algorithm>
-#include <cstdio>
+#include <exception>
 #include <iostream>
 #include <limits>
-#include <map>
 #include <mutex>
-#include <optional>
 #include <type_traits>
 
 namespace alps::hdf5 {
 namespace detail {
 namespace hf = HighFive;
 
-// HighFive objects and non-threadsafe HDF5 providers require serialization.
-// The lock also protects the process's shared file ownership registry.
+// Serialize native operations for non-threadsafe HDF5 providers. A caller must
+// still serialize save/load transactions using the same archive's context.
 std::recursive_mutex mutex;
-std::map<std::string, std::weak_ptr<archivecontext>> contexts;
 
 struct native_type : hf::DataType {
     explicit native_type(hf::DataType const& stored)
@@ -45,64 +39,49 @@ bool complex_type(hf::DataType const& type) {
          matches<std::complex<long double>>(type));
 }
 
-struct archivecontext {
-    std::string filename, working;
-    bool writable, replace, compress, family, memory;
-    std::optional<hf::File> file;
+struct file_handle : hf::File {
+    using hf::File::File;
 
-    archivecontext(std::string name, std::string const& mode)
-        : filename(std::move(name)), writable(mode.find_first_of("aw") != std::string::npos),
-          replace(mode.find('w') != std::string::npos), compress(mode.find('c') != std::string::npos),
-          family(mode.find('l') != std::string::npos), memory(mode.find('m') != std::string::npos) {
-        if ((family && memory) || (family && replace))
-            throw archive_error("family archives cannot use memory or replacement mode");
-        if (family) {
-            // Accept exactly one integer conversion, without interpreting arbitrary printf formats.
-            auto percent = filename.find('%');
-            auto end = percent == std::string::npos ? percent : filename.find('d', percent);
-            if (end == std::string::npos || filename.find('%', percent + 1) != std::string::npos ||
-                filename.substr(percent + 1, end - percent - 1).find_first_not_of("0123456789") != std::string::npos)
-                throw archive_error("family archive filename requires one %d or %0Nd conversion");
-        }
-        replace = replace && !memory;
-        open();
-    }
-
-    void open() {
-        working = filename;
-        if (replace) {
-            working = boost::filesystem::unique_path(filename + ".tmp.%%%%-%%%%").string();
-            if (boost::filesystem::exists(filename)) boost::filesystem::copy_file(filename, working);
-        }
-        try {
-            hf::RawPropertyList<hf::PropertyType::FILE_ACCESS> access;
-            access.add(H5Pset_fclose_degree, H5F_CLOSE_SEMI);
-            if (family) access.add(H5Pset_fapl_family, hsize_t(1) << 30, H5P_DEFAULT);
-            if (memory) access.add(H5Pset_fapl_core, size_t(1) << 20, true);
-            file.emplace(working, writable ? hf::File::OpenOrCreate : hf::File::ReadOnly, access);
-        } catch (...) {
-            if (replace) { boost::system::error_code error; boost::filesystem::remove(working, error); }
-            throw;
-        }
-    }
-
-    void finish() {
-        if (file) { file->flush(); file.reset(); }
-        if (replace && working != filename) {
-            boost::filesystem::rename(working, filename);
-            working = filename;
-        }
-    }
-
-    ~archivecontext() {
-        try { finish(); }
-        catch (std::exception const& error) { std::cerr << "Closing HDF5 archive: " << error.what() << '\n'; }
+    // HighFive's destructor is a nonthrowing fallback. Explicit finalization
+    // must report close failures before a caller publishes a checkpoint.
+    void close() {
+        if (H5Fclose(_hid) < 0) throw archive_error("cannot close HDF5 file " + getName());
+        _hid = H5I_INVALID_HID;
     }
 };
 
+struct archivecontext {
+    std::string const filename;
+    bool const writable;
+    file_handle file;
+
+    archivecontext(std::string name, std::string const& mode)
+        : filename(std::move(name)), writable(mode != "r"),
+          file(filename, mode == "r" ? hf::File::ReadOnly :
+                         mode == "a" ? hf::File::OpenOrCreate : hf::File::Truncate) {}
+};
+
+// Called under mutex. Finalize every view of this file, even if flushing fails;
+// HighFive RAII remains the fallback if checked close itself cannot succeed.
+void finish(std::shared_ptr<archivecontext> const& context, bool flush) {
+    if (!context || !context->file.isValid()) return;
+    hf::SilenceHDF5 silence;
+    std::exception_ptr failure;
+    if (flush) {
+        try { context->file.flush(); }
+        catch (...) { failure = std::current_exception(); }
+    }
+    try { context->file.close(); }
+    catch (...) { if (!failure) failure = std::current_exception(); }
+    if (failure) {
+        try { std::rethrow_exception(failure); }
+        catch (hf::Exception const& error) { throw archive_error(error.what()); }
+    }
+}
+
 template<class F> decltype(auto) access(std::shared_ptr<archivecontext> const& context, F&& fn) {
     std::lock_guard<std::recursive_mutex> lock(mutex);
-    if (!context || !context->file) throw archive_closed("the archive is closed");
+    if (!context || !context->file.isValid()) throw archive_closed("the archive is closed");
     hf::SilenceHDF5 silence;
     try { return fn(*context); }
     catch (hf::Exception const& error) { throw archive_error(error.what()); }
@@ -125,7 +104,7 @@ struct location {
 };
 
 template<class F> decltype(auto) node(archivecontext& context, std::string const& path, F&& fn) {
-    auto& file = *context.file;
+    auto& file = context.file;
     if (!file.exist(path)) throw path_not_found("no object at " + path);
     if (file.getObjectType(path) == hf::ObjectType::Group) {
         auto group = file.getGroup(path);
@@ -146,10 +125,10 @@ template<class F> decltype(auto) stored(archivecontext& context, location const&
             auto attr = parent.getAttribute(path.attribute);
             return fn(attr);
         });
-    if (!context.file->exist(path.object)) throw path_not_found("no dataset at " + path.object);
-    if (context.file->getObjectType(path.object) != hf::ObjectType::Dataset)
+    if (!context.file.exist(path.object)) throw path_not_found("no dataset at " + path.object);
+    if (context.file.getObjectType(path.object) != hf::ObjectType::Dataset)
         throw wrong_type("expected dataset at " + path.object);
-    auto dataset = context.file->getDataSet(path.object);
+    auto dataset = context.file.getDataSet(path.object);
     return fn(dataset);
 }
 
@@ -252,21 +231,6 @@ void read(archivecontext& context, location const& path, T* values, bool scalar,
     });
 }
 
-hf::DataSetCreateProps layout(std::vector<size_t> size, size_t itemsize, bool compress) {
-    hf::DataSetCreateProps properties;
-    if (size.empty() || !product(size)) return properties;
-    // Bound chunks to 1 MiB to avoid allocating an entire large dataset per I/O.
-    if (compress || product(size, itemsize) > (size_t(1) << 20)) {
-        while (product(size, itemsize) > (size_t(1) << 20)) {
-            auto largest = std::max_element(size.begin(), size.end());
-            *largest = *largest / 2 + *largest % 2;
-        }
-        properties.add(hf::Chunking(std::vector<hsize_t>(size.begin(), size.end())));
-        if (compress) properties.add(hf::Deflate(4));
-    }
-    return properties;
-}
-
 template<class T>
 void write(archivecontext& context, location const& path, T const* values, bool scalar,
            std::vector<size_t> size = {}, std::vector<size_t> count = {}, std::vector<size_t> offset = {}) {
@@ -321,14 +285,14 @@ void write(archivecontext& context, location const& path, T const* values, bool 
             transfer(attr);
         });
     } else {
-        auto& file = *context.file;
+        auto& file = context.file;
         if (file.exist(path.object)) {
             bool same = file.getObjectType(path.object) == hf::ObjectType::Dataset &&
                 matches_target(file.getDataSet(path.object));
             if (!same) file.unlink(path.object);
         }
         auto dataset = file.exist(path.object) ? file.getDataSet(path.object) :
-            file.createDataSet(path.object, space, type, layout(size, sizeof(T), context.compress));
+            file.createDataSet(path.object, space, type);
         if (scalar) transfer(dataset);
         else if (n) { auto selected = dataset.select(offset, count); transfer(selected); }
     }
@@ -337,43 +301,74 @@ void write(archivecontext& context, location const& path, T const* values, bool 
 
 archive::archive(boost::filesystem::path const& filename, std::string mode) {
     std::lock_guard<std::recursive_mutex> lock(detail::mutex);
-    if (mode.find_first_not_of("rawclm") != std::string::npos ||
-        (mode.find('r') != std::string::npos && mode.find_first_of("aw") != std::string::npos))
+    if (mode != "r" && mode != "a" && mode != "w")
         throw archive_error("invalid HDF5 open mode: " + mode);
     auto name = boost::filesystem::absolute(filename).lexically_normal().string();
-    auto key = name + (mode.find('l') != std::string::npos ? "|family" : mode.find('m') != std::string::npos ? "|memory" : "|file");
-    for (auto it = detail::contexts.begin(); it != detail::contexts.end(); )
-        if (it->second.expired()) it = detail::contexts.erase(it); else ++it;
     detail::hf::SilenceHDF5 silence;
     try {
-        context_ = detail::contexts[key].lock();
-        if (!context_) {
-            context_ = std::make_shared<detail::archivecontext>(name, mode);
-            detail::contexts[key] = context_;
-        } else if (!context_->writable && mode.find_first_of("aw") != std::string::npos) {
-            // All archives share this object, so existing readers see promotion.
-            context_->finish();
-            context_->writable = true;
-            context_->replace = mode.find('w') != std::string::npos && !context_->memory;
-            context_->compress = mode.find('c') != std::string::npos;
-            context_->open();
-        }
+        context_ = std::make_shared<detail::archivecontext>(name, mode);
     } catch (detail::hf::Exception const& error) {
         throw archive_not_found(error.what());
     }
 }
 archive::archive(archive const& other) : current_(other.current_), context_(other.context_) {}
 archive::~archive() {
-    if (context_) try { close(); } catch (std::exception const& error) { std::cerr << "Closing archive: " << error.what() << '\n'; }
+    std::lock_guard<std::recursive_mutex> lock(detail::mutex);
+    if (context_.use_count() == 1) {
+        try { detail::finish(context_, true); }
+        catch (std::exception const& error) { std::cerr << "Closing archive: " << error.what() << '\n'; }
+    }
+    context_.reset();
 }
 void archive::close() {
-    detail::access(context_, [&](auto& context) {
-        context.file->flush();
-        if (context_.use_count() == 1) context.finish();
-        context_.reset();
-    });
+    std::lock_guard<std::recursive_mutex> lock(detail::mutex);
+    detail::finish(context_, true);
+    context_.reset();
 }
-bool archive::is_open() { return bool(context_ && context_->file); }
+bool archive::is_open() {
+    std::lock_guard<std::recursive_mutex> lock(detail::mutex);
+    return context_ && context_->file.isValid();
+}
+
+void save_checkpoint(boost::filesystem::path const& filename,
+                     std::function<void(archive&)> const& save) {
+    auto const target = boost::filesystem::absolute(filename).lexically_normal();
+    boost::filesystem::path temporary_directory;
+    // Reserving a private directory avoids truncating an existing temporary
+    // file, even if another save chooses the same random name concurrently.
+    do {
+        temporary_directory = target.parent_path() / boost::filesystem::unique_path(
+            target.filename().string() + ".tmp.%%%%-%%%%-%%%%-%%%%");
+    } while (!boost::filesystem::create_directory(temporary_directory));
+    try {
+        auto const temporary = temporary_directory / "checkpoint.h5";
+        {
+            archive ar(temporary, "w");
+            // Retain finalization ownership even if the callback closes its
+            // handle or keeps a copy. Escaped handles cannot defer publication.
+            auto context = ar.context_;
+            std::exception_ptr failure;
+            try { save(ar); }
+            catch (...) { failure = std::current_exception(); }
+            {
+                std::lock_guard<std::recursive_mutex> lock(detail::mutex);
+                try { detail::finish(context, !failure); }
+                catch (...) { if (!failure) failure = std::current_exception(); }
+                ar.context_.reset();
+                context.reset();
+            }
+            if (failure) std::rethrow_exception(failure);
+        }
+        boost::filesystem::rename(temporary, target);
+    } catch (...) {
+        boost::system::error_code cleanup_error;
+        boost::filesystem::remove_all(temporary_directory, cleanup_error);
+        throw;
+    }
+    boost::system::error_code cleanup_error;
+    boost::filesystem::remove(temporary_directory, cleanup_error);
+}
+
 std::string const& archive::get_filename() const {
     if (!context_) throw archive_closed("the archive is closed");
     return context_->filename;
@@ -415,16 +410,16 @@ std::string archive::decode_segment(std::string text) const {
 bool archive::is_data(std::string path) const {
     detail::location target(complete_path(path));
     if (target.is_attribute) throw invalid_path("not a dataset path: " + path);
-    return detail::access(context_, [&](auto& c) { return c.file->exist(target.object) && c.file->getObjectType(target.object) == detail::hf::ObjectType::Dataset; });
+    return detail::access(context_, [&](auto& c) { return c.file.exist(target.object) && c.file.getObjectType(target.object) == detail::hf::ObjectType::Dataset; });
 }
 bool archive::is_group(std::string path) const {
     detail::location target(complete_path(path));
-    return detail::access(context_, [&](auto& c) { return !target.is_attribute && c.file->exist(target.object) && c.file->getObjectType(target.object) == detail::hf::ObjectType::Group; });
+    return detail::access(context_, [&](auto& c) { return !target.is_attribute && c.file.exist(target.object) && c.file.getObjectType(target.object) == detail::hf::ObjectType::Group; });
 }
 bool archive::is_attribute(std::string path) const {
     detail::location target(complete_path(path));
     return detail::access(context_, [&](auto& c) {
-        return target.is_attribute && c.file->exist(target.object) && detail::node(c, target.object, [&](auto& object) { return object.hasAttribute(target.attribute); });
+        return target.is_attribute && c.file.exist(target.object) && detail::node(c, target.object, [&](auto& object) { return object.hasAttribute(target.attribute); });
     });
 }
 bool archive::is_scalar(std::string path) const {
@@ -442,7 +437,7 @@ std::vector<size_t> archive::extent(std::string path) const {
 }
 size_t archive::dimensions(std::string path) const { return extent(path).size(); }
 std::vector<std::string> archive::list_children(std::string path) const {
-    return detail::access(context_, [&](auto& c) { return c.file->getGroup(complete_path(path)).listObjectNames(); });
+    return detail::access(context_, [&](auto& c) { return c.file.getGroup(complete_path(path)).listObjectNames(); });
 }
 std::vector<std::string> archive::list_attributes(std::string path) const {
     detail::location target(complete_path(path));
@@ -454,20 +449,20 @@ void archive::create_group(std::string path) const {
     if (target.is_attribute) throw invalid_path("not a group path: " + path);
     detail::access(context_, [&](auto& c) {
         if (!c.writable) throw archive_error("the archive is not writable");
-        if (c.file->exist(target.object)) {
-            if (c.file->getObjectType(target.object) == detail::hf::ObjectType::Group) return;
-            c.file->unlink(target.object);
+        if (c.file.exist(target.object)) {
+            if (c.file.getObjectType(target.object) == detail::hf::ObjectType::Group) return;
+            c.file.unlink(target.object);
         }
-        c.file->createGroup(target.object);
+        c.file.createGroup(target.object);
     });
 }
 void archive::delete_data(std::string path) const {
     if (is_group(path)) throw invalid_path("dataset path contains a group");
-    detail::access(context_, [&](auto& c) { if (!c.writable) throw archive_error("the archive is not writable"); if (is_data(path)) c.file->unlink(complete_path(path)); });
+    detail::access(context_, [&](auto& c) { if (!c.writable) throw archive_error("the archive is not writable"); if (is_data(path)) c.file.unlink(complete_path(path)); });
 }
 void archive::delete_group(std::string path) const {
     if (is_data(path)) throw invalid_path("group path contains a dataset");
-    detail::access(context_, [&](auto& c) { if (!c.writable) throw archive_error("the archive is not writable"); if (is_group(path)) c.file->unlink(complete_path(path)); });
+    detail::access(context_, [&](auto& c) { if (!c.writable) throw archive_error("the archive is not writable"); if (is_group(path)) c.file.unlink(complete_path(path)); });
 }
 void archive::delete_attribute(std::string path) const {
     detail::location target(complete_path(path));

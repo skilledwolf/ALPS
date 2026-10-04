@@ -20,3 +20,10 @@ alps_register_module(NAME mc HEADER_SET mc_headers
   TARGETS alps
   DEPENDS accumulators alea cli hdf5 params random utilities
 )
+
+if(ALPS_BUILD_TESTING)
+  add_executable(mcbase_checkpoint tests/checkpoint.cpp)
+  target_link_libraries(mcbase_checkpoint PRIVATE ALPS::alps)
+  alps_add_test(mcbase_checkpoint)
+  set_property(TEST mcbase_checkpoint PROPERTY LABELS "mc;hdf5")
+endif()

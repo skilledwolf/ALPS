@@ -23,7 +23,7 @@
 #include <vector>
 
 static_assert(!std::is_copy_assignable<alps::hdf5::archive>::value,
-              "archive assignment would bypass registry ownership");
+              "archive assignment would replace file ownership and context");
 
 class my_class {
     public:

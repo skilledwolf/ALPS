@@ -48,6 +48,7 @@ int main() {
         alps::ObservableSet measurement;
         alps::hdf5::archive iar(filename, "r");
         iar["/test/0/result"] >> measurement;
+        iar.close();
         for (int i = 0; i < 10000; ++i) {
           measurement["Test"] << random();
           measurement["Sign"] << 1.0;
@@ -89,6 +90,7 @@ int main() {
   }
   catch (std::exception& e) {
     std::cerr << "Fatal error: " << e.what() << "\n"; 
+    return 1;
   }
   return 0;
 }

@@ -87,8 +87,9 @@ namespace alps {
             virtual double fraction_completed() const = 0;
         
             void save(boost::filesystem::path const & filename) const {
-                hdf5::archive ar(filename.string() + file_suffix(), "w");
-                ar["/checkpoint"] << *this;
+                hdf5::save_checkpoint(filename.string() + file_suffix(), [this](hdf5::archive& ar) {
+                    ar["/checkpoint"] << *this;
+                });
             }
 
             void load(boost::filesystem::path const & filename) {

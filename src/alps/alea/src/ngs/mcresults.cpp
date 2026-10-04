@@ -50,6 +50,13 @@ namespace alps {
     }
 
     void mcresults::save(hdf5::archive & ar) const {
+        ar.create_group(ar.get_context());
+        // Replace the owned children, including at root where the group itself
+        // cannot be unlinked. Attributes on the collection group are retained.
+        for (const auto & child : ar.list_children(ar.get_context())) {
+            if (ar.is_group(child)) ar.delete_group(child);
+            else ar.delete_data(child);
+        }
         for(std::map<std::string, mcresult>::const_iterator it = std::map<std::string, mcresult>::begin(); it != std::map<std::string, mcresult>::end(); ++it)
             if (it->second.count())
                 ar

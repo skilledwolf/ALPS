@@ -25,13 +25,22 @@ namespace alps {
     mcbase::~mcbase() = default;
 
     void mcbase::save(boost::filesystem::path const & filename) const {
-        alps::hdf5::archive ar(filename, "w");
-        ar["/simulation/realizations/0/clones/0"] << *this;
+        alps::hdf5::save_checkpoint(filename, [this](alps::hdf5::archive& ar) {
+            ar["/simulation/realizations/0/clones/0"] << *this;
+        });
     }
 
     void mcbase::load(boost::filesystem::path const & filename) {
         alps::hdf5::archive ar(filename);
-        ar["/simulation/realizations/0/clones/0"] >> *this;
+        try {
+            ar["/simulation/realizations/0/clones/0"] >> *this;
+        } catch (...) {
+            // Borrowed callback views must not keep the file open after this
+            // operation, including when a Python load hook raises.
+            try { ar.close(); } catch (...) {}
+            throw;
+        }
+        ar.close();
     }
 
     bool mcbase::run(boost::function<bool ()> const & stop_callback) {

@@ -30,6 +30,7 @@
 
 
 #include <complex>
+#include <functional>
 #include <memory>
 #include <vector>
 #include <string>
@@ -98,6 +99,9 @@ namespace alps {
 
             public:
 
+                // Each open owns an independent file handle. Exact modes are:
+                // r: read only; a: create or update; w: create or truncate.
+                // Copies are views of the same file with the same permissions.
                 archive(boost::filesystem::path const & filename, std::string mode = "r");
                 archive(archive const & arg);
                 archive & operator=(archive const &) = delete;
@@ -113,6 +117,8 @@ namespace alps {
                 void set_context(std::string const & context);
                 std::string complete_path(std::string path) const;
 
+                // Explicit close finalizes the file and invalidates every view.
+                // Destroying a view releases it; the last view closes the file.
                 void close();
                 bool is_open();
 
@@ -189,10 +195,19 @@ namespace alps {
             private:
 
                 friend class detail::scoped_context;
+                friend ALPS_HDF5_DECL void save_checkpoint(boost::filesystem::path const & filename,
+                                                         std::function<void(archive &)> const & save);
                 std::string current_ = "/";
                 std::shared_ptr<detail::archivecontext> context_;
 
         };
+
+        // Save a complete checkpoint into a private temporary file beside the
+        // destination. Publish only after the callback and checked close succeed.
+        // The archive and any copies are usable only during the callback;
+        // finalization closes their shared native file before publication.
+        ALPS_HDF5_DECL void save_checkpoint(boost::filesystem::path const & filename,
+                                          std::function<void(archive &)> const & save);
 
         template<typename T> struct is_continuous
             : public boost::false_type

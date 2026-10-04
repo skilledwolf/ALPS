@@ -60,6 +60,13 @@ namespace alps {
     }
 
     void mcobservables::save(hdf5::archive & ar) const {
+        ar.create_group(ar.get_context());
+        // The collection owns this group's children. Clear them individually
+        // so replacement works at the archive root without unlinking root.
+        for (const auto & child : ar.list_children(ar.get_context())) {
+            if (ar.is_group(child)) ar.delete_group(child);
+            else ar.delete_data(child);
+        }
         for(std::map<std::string, mcobservable>::const_iterator it = std::map<std::string, mcobservable>::begin(); it != std::map<std::string, mcobservable>::end(); ++it)
             ar
                 << make_pvp(ar.encode_segment(it->first), it->second)

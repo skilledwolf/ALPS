@@ -54,7 +54,8 @@ int main() {
 #endif
         writer["/values"] << expected;
         writer["/values/@description"] << std::string("complex vector");
-        // Multiple handles must share one archive context, including typed I/O.
+        // Independent opens can read data while a writer owns the file;
+        // the reader retains its own permissions and lifetime.
         alps::hdf5::archive reader(filename, "r");
         std::vector<std::complex<double>> actual;
         std::string description;

@@ -25,18 +25,15 @@ foreach(
   hdf5_real_complex_vec
   hdf5_real_complex_matrix
   hdf5_bool
-  hdf5_replace
+  hdf5_lifecycle
   hdf5_pair
-  hdf5_family
   hdf5_valgrind
   hdf5_read
   hdf5_write
   hdf5_multi_array
-  hdf5_memory
   hdf5_misc
   hdf5_vecveccplx
   hdf5_exceptions
-  hdf5_multiarchive
   hdf5_fortran_string
   hdf5_vecvecdbl)
   add_executable(${name} ${name}.cpp)
@@ -268,8 +265,8 @@ if(ALPS_BUILD_EXTENSIVE_TESTS)
       "boost::tuple<int, double, float, std::complex<double> >"
       "std::vector<boost::tuple<char, bool, long long> >")
 
-  # Compile each type once; dataset, attribute and compression are runtime
-  # modes. Numbered filenames keep deeply nested Windows paths short.
+  # Compile each type once; dataset and attribute are runtime modes.
+  # Numbered filenames keep deeply nested Windows paths short.
   set(type_index 0)
   foreach(HDF5_TEST_TYPE IN LISTS ALPS_HDF5_DATA_TYPES)
     math(EXPR type_index "${type_index} + 1")
@@ -278,7 +275,7 @@ if(ALPS_BUILD_EXTENSIVE_TESTS)
     add_executable(${target} "${CMAKE_CURRENT_BINARY_DIR}/${target}.cpp")
     target_include_directories(${target} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
     target_link_libraries(${target} PRIVATE ALPS::numeric_io)
-    foreach(mode IN ITEMS dataset attribute compressed)
+    foreach(mode IN ITEMS dataset attribute)
       add_test(NAME ${target}.${mode} COMMAND ${target} ${mode})
       set_tests_properties(${target}.${mode} PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 600 LABELS
                                                         "hdf5;extensive;${HDF5_TEST_TYPE}")
