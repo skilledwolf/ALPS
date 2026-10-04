@@ -213,6 +213,71 @@ template<class T> void independent_reductions() {
         bin_oracle<T>(bins).check_variance(autocorr.level(level));
     }
 }
+template<class T> void empty_autocorrelation_reduction() {
+    aa::autocorr_acc<T> populated(2), empty(2,9,3);
+    constexpr size_t samples = 8195;
+    for (size_t i=0; i<samples; ++i) populated << reduction_sample<T>(i/16,0);
+    auto original = populated.result();
+    auto selected = original.find_level(1024);
+    require(selected > 0 && original.tau_available(), "empty-run fixture needs coarse error estimates");
+    auto raw = [](size_t width) {
+        std::vector<bin<T>> bins;
+        for (size_t i=0; i<samples; ++i) {
+            if (bins.empty() || bins.back().count == width) bins.emplace_back();
+            ++bins.back().count;
+            auto value = reduction_sample<T>(i/16,0);
+            for (size_t j=0; j<2; ++j) bins.back().sum[j] += value[j];
+        }
+        return bin_oracle<T>(bins);
+    };
+    auto base = raw(1), coarse = raw(size_t(1)<<selected);
+    auto check = [&](aa::autocorr_result<T> const& result) {
+        require(result.count() == samples && result.nlevel() == original.nlevel()
+             && result.count2() == original.count2()
+             && result.observations() == original.observations(),
+                "empty run changed autocorrelation depth or effective sample count");
+        base.check_variance(result.level(0));
+        coarse.check_variance(result.level(selected));
+        for (size_t level=0; level<original.nlevel(); ++level)
+            require(result.level(level).count() == original.level(level).count()
+                 && result.level(level).count2() == original.level(level).count2(),
+                    "empty run changed autocorrelation level weights");
+        for (size_t j=0; j<2; ++j) {
+            auto variance = std::real(coarse.cov[j][j]);
+            auto error = std::sqrt(variance*coarse.count2/(double(samples)*samples));
+            auto tau = .5*(coarse.count2/samples)*variance/std::real(base.cov[j][j])-.5;
+            require(std::abs(result.mean()(j)-coarse.mean[j]) < 1e-11
+                 && std::abs(result.var()(j)-variance) < 1e-10
+                 && std::abs(result.stderror()(j)-error) < 1e-11
+                 && std::abs(result.tau()(j)-tau) < 1e-10,
+                    "empty-run autocorrelation statistics disagree with raw-bin oracle");
+        }
+    };
+    check(original);
+    auto maxima = dimensions(2);
+    maxima.insert(maxima.end(), {0,0,-int64_t(original.nlevel())});
+    maxima.insert(maxima.end(), 2*original.nlevel(), 0);
+    check(reduced(original, empty.result(), maxima));
+    check(reduced(empty.result(), original, maxima));
+    reduction_failure(original, empty.result(), maxima);
+
+    aa::autocorr_result<T> multiple_empty(3);
+    for (size_t i=0; i<multiple_empty.nlevel(); ++i)
+        multiple_empty.level(i) = aa::var_result<T>(aa::var_data<T>(2));
+    maxima = dimensions(2);
+    maxima.insert(maxima.end(), {0,0,std::numeric_limits<int64_t>::min(),0,0});
+    auto all_empty = reduced(empty.result(), multiple_empty, maxima);
+    require(all_empty.valid() && all_empty.size() == 2 && all_empty.count() == 0
+         && all_empty.nlevel() == 1 && all_empty.level(0).count2() == 0.,
+            "all-empty autocorrelation reduction invented samples or retained redundant levels");
+    multiple_empty.level(2).store().count2() = 1.;
+    maxima = dimensions(2); maxima.push_back(1);
+    test_reducer malformed({0,1,true},maxima);
+    rejects([&] { multiple_empty.reduce(malformed); });
+    require(malformed.field == 0 && multiple_empty.nlevel() == 3
+         && multiple_empty.level(2).count2() == 1.,
+            "discarded malformed empty level was hidden or changed");
+}
 void reduction_limits() {
     uint64_t a = uint64_t(1)<<62, b = a+1, total = a+b;
     aa::mean_data<double> ml(1), mr(1);
@@ -801,6 +866,8 @@ int main() {
         unequal_merge(filename);
         independent_reductions<double>();
         independent_reductions<std::complex<double>>();
+        empty_autocorrelation_reduction<double>();
+        empty_autocorrelation_reduction<std::complex<double>>();
         reduction_limits();
         elliptic_reduction();
         batch_reset_and_equality();

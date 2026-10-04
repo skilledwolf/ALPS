@@ -6,6 +6,9 @@ User-facing changes and migration notes are recorded here, starting with the bui
 
 ### Changed
 
+- Keep empty runs neutral during modern autocorrelation reduction, preserving
+  the depth and errors of contributing runs while rejecting malformed levels.
+
 - Preserve independent-run ALEA bins and partial-bin weights during reduction;
   retain only autocorrelation levels represented in every run. Stage reductions
   before publishing results and reject malformed shapes and weights collectively.

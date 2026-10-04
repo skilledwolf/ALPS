@@ -206,16 +206,20 @@ void autocorr_result<T>::reduce(const reducer &r)
     auto setup = internal::check_reduction(r, complete, complete ? size() : 0);
     bool malformed = false;
     for (auto const& level : level_)
-        malformed = malformed || level.size() != size() || level.count() != count();
+        malformed = malformed || level.size() != size() || level.count() != count()
+                    || !internal::valid_weight_count(level.count(), level.count2());
     if (r.get_max(malformed)) throw size_mismatch();
     if (r.get_max(nlevel() > size_t(std::numeric_limits<int64_t>::max())))
         throw size_mismatch();
-    auto shared_levels = -r.get_max(-static_cast<int64_t>(nlevel()));
-    if (shared_levels <= 0 || uint64_t(shared_levels) > nlevel()) throw size_mismatch();
+    // Empty runs impose no limit on the common depth. If every run is empty,
+    // retain one neutral level; otherwise every retained level has all samples.
+    auto depth = r.get_max(count() ? -static_cast<int64_t>(nlevel())
+                                  : std::numeric_limits<int64_t>::min());
+    auto shared_levels = depth == std::numeric_limits<int64_t>::min() ? 1 : -depth;
+    if (shared_levels <= 0 || (count() && uint64_t(shared_levels) > nlevel()))
+        throw size_mismatch();
     autocorr_result staged(*this);
-    staged.level_.resize(shared_levels);
-    // Do not invent empty coarse levels for shorter runs. Every retained level
-    // must include all samples from every independent run.
+    staged.level_.resize(shared_levels, level_result_type(var_data<T>(size())));
     for (auto &level : staged.level_) level.reduce(r, true, false);
     r.commit();
     for (auto &level : staged.level_) level.reduce(r, false, true);

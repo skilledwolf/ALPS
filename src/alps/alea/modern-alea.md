@@ -41,9 +41,9 @@ NumPy arrays own their data. Batch sums have `[slots, components]` axes.
 Independent-run result reduction retains every batch and its weight, including
 unfinished batches. Runs with different slot counts use disjoint blocks padded
 with empty slots; their bins are never summed together. Autocorrelation reduction
-retains only levels present in every run, so every retained level contains every
-run's samples. Failed reductions preserve the original result. Reduction does
-not create a resumable combined time series.
+retains only levels present in every nonempty run; empty runs are neutral. Every
+retained level contains all samples. Failed reductions preserve the original
+result. Reduction does not create a resumable combined time series.
 
 The optional `<alps/alea/mpi.hpp>` reducer takes a borrowed `MPI_Comm`; clients
 link `MPI::MPI_CXX` alongside `ALPS::statistics`. The statistics library itself

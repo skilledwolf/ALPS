@@ -26,6 +26,61 @@ template<class R> void rejects_weight_overflow(R result, aa::reducer const& redu
     rejects([&] { result.reduce(reducer); });
     require(result == original, "failed collective reduction changed the original result");
 }
+void empty_autocorrelation(int rank, aa::reducer const& reducer) {
+    constexpr size_t samples = 8195;
+    auto value = [](size_t i) { return double(int((i/16)%13)-6); };
+    aa::autocorr_acc<double> populated;
+    for (size_t i=0; i<samples; ++i) populated << value(i);
+    auto original = populated.result();
+    auto selected = original.find_level(1024);
+    require(selected > 0, "empty-rank fixture needs coarse autocorrelation estimates");
+    struct oracle { double mean=0., variance=0., count2=0.; };
+    auto raw = [&](size_t width) {
+        std::vector<double> sums, weights;
+        oracle result;
+        for (size_t i=0; i<samples; ++i) {
+            if (i%width == 0) { sums.push_back(0.); weights.push_back(0.); }
+            sums.back() += value(i); ++weights.back();
+            result.mean += value(i);
+        }
+        result.mean /= samples;
+        for (size_t i=0; i<sums.size(); ++i) {
+            result.count2 += weights[i]*weights[i];
+            auto deviation = sums[i]/weights[i]-result.mean;
+            result.variance += weights[i]*deviation*deviation;
+        }
+        result.variance /= samples-result.count2/samples;
+        return result;
+    };
+    auto base = raw(1), coarse = raw(size_t(1)<<selected);
+    auto error = std::sqrt(coarse.variance*coarse.count2/(double(samples)*samples));
+    auto tau = .5*(coarse.count2/samples)*coarse.variance/base.variance-.5;
+    for (int active : {0,1}) {
+        aa::autocorr_acc<double> empty(1,9,3);
+        auto result = rank == active ? original : empty.result();
+        result.reduce(reducer);
+        require(result.valid() == (rank == 1), "empty-rank result survived on wrong rank");
+        require(rank != 1 || (result.count() == samples && result.nlevel() == original.nlevel()
+                 && result.count2() == coarse.count2
+                 && std::abs(result.mean()(0)-coarse.mean) < 1e-11
+                 && std::abs(result.var()(0)-coarse.variance) < 1e-10
+                 && std::abs(result.stderror()(0)-error) < 1e-11
+                 && std::abs(result.tau()(0)-tau) < 1e-10),
+                "empty rank changed autocorrelation estimates from the raw-bin oracle");
+    }
+    aa::autocorr_acc<double> empty;
+    auto result = empty.result();
+    result.reduce(reducer);
+    require(result.valid() == (rank == 1), "all-empty result survived on wrong rank");
+    require(rank != 1 || (result.count() == 0 && result.nlevel() == 1
+                         && result.level(0).count2() == 0.),
+            "all-empty autocorrelation reduction invented samples");
+    result = empty.result();
+    if (!rank) result.level(0).store().count2() = 1.;
+    rejects([&] { result.reduce(reducer); });
+    require(result.valid() && result.count() == 0 && result.level(0).count2() == (rank ? 0. : 1.),
+            "malformed empty-rank rejection changed the original result");
+}
 void contract(int rank) {
     aa::mpi_reducer reducer(MPI_COMM_WORLD, 1);
     auto setup = reducer.get_setup();
@@ -108,6 +163,7 @@ void contract(int rank) {
     require(rank != 1 || (levels.count() == 10 && levels.mean()(0) == 5.5
                          && levels.nlevel() == size_t(common)),
             "unequal runs invented autocorrelation levels or lost samples");
+    empty_autocorrelation(rank, reducer);
 }
 }
 
