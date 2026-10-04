@@ -14,14 +14,17 @@
 #ifndef HYB_HPP
 #define HYB_HPP
 
-#include <alps/ngs.hpp>
-#include <alps/mcbase.hpp>
+#include <alps/alea/result.hpp>
+#include <alps/ngs/random01.hpp>
 #include <alps/run_config.hpp>
+#include <boost/cstdint.hpp>
+#include <functional>
+#include <map>
+#include <variant>
 #include "green_function.h"
 #include "hybsegment.hpp"
 #include "hyblocal.hpp"
 #include "hybconfig.hpp"
-#include "boost/chrono/chrono.hpp"
 
 #ifdef HYB_SIM_MAIN
 boost::uint64_t sweep_count;
@@ -33,11 +36,14 @@ extern std::vector<boost::uint64_t> nacc,nprop;
 extern std::vector<std::string> update_type;
 #endif
 
-class hybridization:public alps::mcbase
+class hybridization
 {
 public:
   //constructor
   hybridization(const alps::run_configuration &run, int crank);
+  using results_type = std::map<std::string, alps::alea::result>;
+  void run(std::function<bool()> const& stop_callback);
+  results_type collect_results(alps::alea::reducer const* reduction = nullptr) const;
   void show_info(const alps::run_configuration &run, int crank);
   //Monte Carlo update and measurements functions
   void measure();
@@ -46,17 +52,22 @@ public:
   double fraction_completed() const;
   friend std::ostream &operator<<(std::ostream &os, const hybridization &hyb);
 
-private:
+protected:
+  using paired_accumulator = alps::alea::var_acc<std::complex<double>, alps::alea::elliptic_var>;
+  struct measurement {
+    bool signed_value;
+    std::variant<alps::alea::batch_acc<double>, paired_accumulator> accumulator;
+  };
+  const bool verbose;
+  alps::random01 random;
+  std::map<std::string, measurement> measurements;
+  void record_measurement(std::string const&, std::vector<double> const&, double denominator = 0.);
+  void record_measurement(std::string const&, double, double denominator = 0.);
   int crank;
-  int csize;
   int output_period;
-  clock_t start_time;
-  clock_t end_time;
-  //boost::chrono::steady_clock::time_point lasttime;
-  //boost::chrono::steady_clock::duration delay;
 
   //initialize all measurements and measurement vectors (with 0)
-  void create_measurements();
+  void create_measurements(std::size_t bins);
   //measure_* functions perform the actual measurements
   void measure_order();
   void measure_G(std::vector<std::map<double,double> > &F_prefactor);
@@ -81,7 +92,6 @@ private:
   //Monte Carlo update routines
   void change_zero_order_state_update();
   void global_flip_update();
-  void shift_segment_update();
   void insert_remove_segment_update();
   void insert_remove_antisegment_update();
   void insert_remove_spin_flip_update();
@@ -108,7 +118,6 @@ private:
 
   //updates parameters
   std::size_t N_meas;
-  std::size_t NUM_BINS; // Number of bins for the measurments
   
   //measurement parameters
   std::size_t N_w;    //number of Matsubara frequency points

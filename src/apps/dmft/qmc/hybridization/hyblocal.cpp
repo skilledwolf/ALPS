@@ -584,7 +584,7 @@ void local_configuration::get_density_vectors(std::vector<std::vector<double> > 
 void local_configuration::measure_nnw(int i, std::vector<double> &nnw_re, double sign) const{
   int N_W=nnw_re.size();
   //wm=0 has to be treated separately
-  nnw_re[0]+= segment_density(i)*beta_;//length of segments
+  nnw_re[0]+= segment_density(i)*beta_*sign;//length of segments
   if(N_W == 1) return;
   for(segment_container_t::const_iterator it=segments_[i].begin();it!=segments_[i].end();++it){//same contribution for winding segments
     double wm=0;

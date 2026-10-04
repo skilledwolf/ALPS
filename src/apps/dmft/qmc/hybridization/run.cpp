@@ -16,31 +16,26 @@
 #include <alps/solvers.hpp>
 #include <alps/cthyb.hpp>
 #include <alps/ngs/signal.hpp>
+#include <alps/alea/hdf5.hpp>
 #include "hyb.hpp"
 #include "hybevaluate.hpp"
 #include <alps/utility/copyright.hpp>
-#include <boost/date_time/posix_time/posix_time_types.hpp>
+#include <chrono>
 #ifdef ALPS_HAVE_MPI
-#include <alps/mcmpiadapter.hpp>
-using sim_type = alps::mcmpiadapter<hybridization>;
-#else
-using sim_type = hybridization;
+#include <alps/alea/mpi.hpp>
+#include <alps/check_schedule.hpp>
+#include <climits>
 #endif
 
 
 int global_mpi_rank;
 
 namespace {
-bool stop_requested(boost::posix_time::ptime const & end_time) {
-  static alps::ngs::signal signal;
-  return !signal.empty() || (!end_time.is_not_a_date_time() && boost::posix_time::second_clock::local_time() > end_time);
-}
-void master_final_tasks(const alps::results_type<hybridization>::type &results,
-                        const alps::run_configuration &run){
+void master_final_tasks(hybridization::results_type const& results,
+                        alps::run_configuration const& run, alps::hdf5::archive& solver_output){
   //do some post processing: collect Green functions and write
   //them into hdf5 files; calls compute vertex at the very end
 
-  alps::hdf5::archive solver_output(run.output["results"].as<std::string>(), "a");
   const auto &parms=run.parameters;
 
   evaluate_basics(results,parms,run.output,solver_output);
@@ -60,15 +55,12 @@ void alps::solvers::cthyb(alps::run_configuration const& supplied) {
   alps::cthyb::prepare_run(run);
   const auto &parms=run.parameters;
   const auto output_file=run.output["results"].as<std::string>();
-#ifndef ALPS_HAVE_MPI
   global_mpi_rank=0;
-  sim_type s(run,global_mpi_rank);
-#else
-  boost::mpi::communicator c;
-  c.barrier();
-  global_mpi_rank=c.rank();
-  sim_type s(run, c, alps::check_schedule(), run.execution["bins"].as<std::size_t>());
+#ifdef ALPS_HAVE_MPI
+  MPI_Comm_rank(MPI_COMM_WORLD, &global_mpi_rank);
+  MPI_Barrier(MPI_COMM_WORLD);
 #endif
+  hybridization s(run,global_mpi_rank);
   if (global_mpi_rank==0) {
     alps::print_copyright(std::cout);
     std::cout << "****************************************************************"<<std::endl;
@@ -81,27 +73,61 @@ void alps::solvers::cthyb(alps::run_configuration const& supplied) {
     std::cout << "****************************************************************"<<std::endl;
   }
   //run the simulation
-  const auto time_limit=run.execution["time_limit"].as<int>();
-  const auto end=time_limit ? boost::posix_time::second_clock::local_time()+boost::posix_time::seconds(time_limit)
-                            : boost::posix_time::ptime(boost::posix_time::not_a_date_time);
-  s.run(boost::bind(&stop_requested,end));
+  const auto started=std::chrono::steady_clock::now();
+  const auto seconds=run.execution["time_limit"].as<int>();
+  alps::ngs::signal signal;
+  const auto stop=[&] {
+    return !signal.empty() || (seconds != 0 && std::chrono::steady_clock::now()-started >=
+                               std::chrono::seconds(seconds));
+  };
+#ifdef ALPS_HAVE_MPI
+  // SWEEPS is aggregate work across independent chains, as in the old driver.
+  alps::check_schedule check;
+  double fraction=0.;
+  do {
+    s.update();
+    s.measure();
+    if (check.pending()) {
+      fraction=stop() ? 1. : s.fraction_completed();
+      MPI_Allreduce(MPI_IN_PLACE, &fraction, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+      check.update(fraction);
+    }
+  } while (fraction < 1.);
+  alps::alea::mpi_reducer reducer(MPI_COMM_WORLD);
+#else
+  s.run(stop);
+#endif
 
   // Every rank participates in collection and receives any output error.
-  auto results=collect_results(s);
   std::string output_error;
-  if(global_mpi_rank==0){
-    try {
-      if(!results["Sign"].count())
+  try {
+#ifdef ALPS_HAVE_MPI
+    auto results=s.collect_results(&reducer);
+#else
+    auto results=s.collect_results();
+#endif
+    if(global_mpi_rank==0){
+      if(!results.at("Sign").count())
         throw std::runtime_error("CT-HYB stopped before any measurements; no results were written");
       const auto output_path=run.output["base_path"].as<std::string>()+"/simulation/results";
-      save_results(results,parms,output_file,output_path);
-      master_final_tasks(results,run);
-      alps::hdf5::archive output(output_file,"a");
-      output["/run_config"]<<run;
-    } catch(const std::exception& error) { output_error=error.what(); }
-  }
+      alps::hdf5::save_checkpoint(output_file, [&](alps::hdf5::archive& output) {
+        output["/parameters"]<<parms;
+        output.create_group(output_path);
+        alps::alea::hdf5_serializer serializer(output, output_path);
+        for (auto const& entry : results)
+          if (entry.second.count())
+            serialize(serializer, output.encode_segment(entry.first), entry.second);
+        master_final_tasks(results,run,output);
+        output["/run_config"]<<run;
+      });
+    }
+  } catch(const std::exception& error) { output_error=error.what(); }
 #ifdef ALPS_HAVE_MPI
-  boost::mpi::broadcast(c,output_error,0);
+  if (output_error.size()>INT_MAX) output_error="CT-HYB output error exceeds MPI message limit";
+  int length=static_cast<int>(output_error.size());
+  MPI_Bcast(&length, 1, MPI_INT, 0, MPI_COMM_WORLD);
+  output_error.resize(length);
+  MPI_Bcast(output_error.data(), length, MPI_CHAR, 0, MPI_COMM_WORLD);
 #endif
   if(!output_error.empty()) throw std::runtime_error(output_error);
 }

@@ -20,7 +20,7 @@
 #include"hyb.hpp"
 
 hybridization::hybridization(const alps::run_configuration &run, int crank_)
-: alps::mcbase(run.parameters, crank_),
+: verbose(run.parameters["VERBOSE"].as<bool>()),
 crank(crank_),
 local_config(run.parameters,run.input,crank),
 hyb_config(run.parameters,run.input)
@@ -56,8 +56,6 @@ hyb_config(run.parameters,run.input)
   //initializing updates parameters
   N_meas = parms["N_MEAS"];                                                        //number of updates per measurement
   N_hist_orders = parms.value_or("N_HISTOGRAM_ORDERS", 50);                                  //number of orders that are measured for the order histogram
-  NUM_BINS = parms.value_or("NUM_BINS", 0);
-  //std::cerr << "NUM_BINS = " << NUM_BINS << std::endl;
   //initializing measurement parameters
   spin_flip = parms.value_or("SPINFLIP", false);                                                //whether to perform local spin-flip updates
   global_flip = parms.value_or("GLOBALFLIP", false);                                                //whether to perform global spin-flip updates
@@ -79,7 +77,7 @@ hyb_config(run.parameters,run.input)
   N_w_aux = (N_w2+N_W>1 ? N_w2+N_W-1 : 0);                                         //number of Matsubara frequency points for the measurment of M(w1,w2)
   
   //create measurement objects
-  create_measurements();
+  create_measurements(run.execution["bins"].as<std::size_t>());
   
   if(crank==0){
     std::cout<<"Hybridization Expansion Simulation CT-HYB"<<std::endl;
@@ -87,22 +85,14 @@ hyb_config(run.parameters,run.input)
     std::cout<<"Refer to the documentation for more information."<<std::endl;
   }
   
-  start_time=clock();
-  end_time=run.execution["time_limit"].as<long>() ? start_time+ CLOCKS_PER_SEC*run.execution["time_limit"].as<long>() : 0;
+  std::cout<<"process " << crank << " starting simulation"<<std::endl;
+}
 
-  
-  //std::cout<<"process " << crank << " starting simulation"<<std::endl;
-  csize=1;
- //we don't have a nice way of getting the MPI size from ALPS, because we don't know about the communicator at this point.
- //here is a safe way of getting the pool size into csize.
-#ifdef ALPS_HAVE_MPI
-  int mpi_init;
-  MPI_Initialized(&mpi_init);
-  if(mpi_init){
-     MPI_Comm_size(MPI_COMM_WORLD, &csize);
+void hybridization::run(std::function<bool()> const& stop_callback) {
+  while (!stop_callback() && fraction_completed() < 1.) {
+    update();
+    measure();
   }
-#endif
-  std::cout<<"process " << crank << " of total: "<<csize<<" starting simulation"<<std::endl;
 }
 
 void hybridization::show_info(const alps::run_configuration &run, int crank){
@@ -147,9 +137,5 @@ std::ostream &operator<<(std::ostream &os, const segment &s){
 }
 double hybridization::fraction_completed()const{
   if(!is_thermalized()) return 0.;
-  double work_fraction= (sweeps-thermalization_sweeps)/(double)total_sweeps;
-  double time_fraction= end_time ? (clock()-start_time)/(double)(end_time-start_time) : 0.;
-  //return max of sweeps done and time used. Divide time used by the number of processes in pool (all work done will be added up)
-  return std::max(work_fraction, time_fraction/csize);
-  //return work_fraction;
+  return (sweeps-thermalization_sweeps)/(double)total_sweeps;
 }

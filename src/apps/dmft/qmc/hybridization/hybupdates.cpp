@@ -37,8 +37,6 @@ void hybridization::update(){
       global_flip_update();
     } else if (update_type<0.1) {
       change_zero_order_state_update();
-//    } else if (update_type < 0) {
-//      shift_segment_update();
     } else if (update_type < rates[0]) {
       insert_remove_segment_update();
     } else if (update_type < rates[1]) {
@@ -57,7 +55,7 @@ void hybridization::update(){
 
   }//N_meas
 
-  if(crank==0 && sweeps%output_period==0 && parameters["VERBOSE"].as<bool>()) {
+  if(crank==0 && sweeps%output_period==0 && verbose) {
     int tot_acc=0,cur_prec = std::cout.precision();
     for (int i=0;i<nacc.size();i++) tot_acc += nacc[i];
     std::cout << std::endl << "|------ Simulation details (master only) after " << sweeps << " sweeps ------|" << std::endl;
@@ -106,87 +104,6 @@ void hybridization::change_zero_order_state_update(){
     }
   }
 }
-
-//// Perform a complete swap of segments between two orbitals
-//// THIS IS TOTALLY EXPERIMENTAL
-//// A bare-bone structure for testing
-//void hybridization::global_flip_update()
-//{
-//  int orbital1=0;
-//  int orbital2=1;
-//
-//  // These are the actual orders for each of the orbitals
-//  int k1 = local_config.order(orbital1),k2=local_config.order(orbital2);
-//  // At present we do nothing if one is empty (can be relaxed, I think)
-//  if (k1==0 || k2==0) return;
-//  std::cerr << "On entry:" << std::endl;
-//  hyb_config.dump();
-//  std::vector<segment> seg1(k1),seg2(k2);
-//  double total_hyb_weight_change = 1.0,d_e=0.0;
-//  for (int k=0;k<k1;k++) {
-//    seg1[k] = local_config.get_segment(k,orbital1);
-//    d_e -= local_config.local_energy(seg1[k],orbital1);//,true);
-//  }
-//  for (int k=0;k<k2;k++) {
-//    seg2[k] = local_config.get_segment(k,orbital2);
-//    d_e -= local_config.local_energy(seg2[k],orbital2);//,true);
-//  }
-//  
-//  for (int k=0;k<k1;k++) {
-//    total_hyb_weight_change /= hyb_config.hyb_weight_change_remove(seg1[k],orbital1);
-//    hyb_config.remove_segment(seg1[k],orbital1);
-//    local_config.remove_segment(seg1[k],orbital1);
-//  }
-//  for (int k=0;k<k2;k++) {
-//    total_hyb_weight_change *= hyb_config.hyb_weight_change_insert(seg2[k],orbital1);
-//    hyb_config.insert_segment(seg2[k],orbital1);
-//    local_config.remove_segment(seg2[k],orbital2);
-//  }
-//  for (int k=0;k<k2;k++) {
-//    total_hyb_weight_change /= hyb_config.hyb_weight_change_remove(seg2[k],orbital2);
-//    hyb_config.remove_segment(seg2[k],orbital2);
-//    local_config.insert_segment(seg2[k],orbital1);
-//  }
-//  for (int k=0;k<k1;k++) {
-//    total_hyb_weight_change *= hyb_config.hyb_weight_change_insert(seg1[k],orbital2);
-//    hyb_config.insert_segment(seg1[k],orbital2);
-//    local_config.insert_segment(seg1[k],orbital2);
-//  }
-//  for (int k=0;k<k2;k++) d_e += local_config.local_energy(seg2[k],orbital1);
-//  for (int k=0;k<k1;k++) d_e += local_config.local_energy(seg1[k],orbital2);
-//
-//  // This is the total weight change due to the swap. If all orbitals are
-//  // equivalent this should be one.
-//  double weight_change = exp(d_e)*total_hyb_weight_change;
-//  // Since the total expansion order does not change, there should be no
-//  // permutation factor appearing here
-//  std::cerr << "In between: de = " << d_e << ", total hyb weight change = "<< total_hyb_weight_change << std::endl;
-//  // This is the proposed weight. Should be the numbers as before, but for the orbitals exchanged
-//  hyb_config.dump();
-////  hyb_config.rebuild();
-//
-//  // Assume it was rejected. We have to restore the old configuration
-//  for (int k=0;k<k2;k++) {
-//    hyb_config.remove_segment(seg2[k],orbital1);
-//  }
-//  for (int k=0;k<k1;k++) {
-//    hyb_config.remove_segment(seg1[k],orbital2);
-//  }
-//  for (int k=0;k<k1;k++) {
-//    hyb_config.insert_segment(seg1[k],orbital1);
-//  }
-//  for (int k=0;k<k2;k++) {
-//    hyb_config.insert_segment(seg2[k],orbital2);
-//  }
-////  hyb_config.rebuild();
-//  std::cerr << "On exit:" << std::endl;
-//  // This should be again the initial configuration
-//  hyb_config.dump();
-//  exit(-1);
-//// Done.
-//}
-//
-
 
 // Perform a complete swap of segments between two orbitals
 // THIS IS TOTALLY EXPERIMENTAL
@@ -301,9 +218,6 @@ void hybridization::global_flip_update()
 }
 
 
-void hybridization::shift_segment_update(){
-  ///TODO: implement this update!
-}
 void hybridization::insert_remove_segment_update(){
   //choose the orbital in which we do the update
   int orbital=(int)(random()*n_orbitals);

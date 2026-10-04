@@ -15,21 +15,120 @@
 
 #include"hyb.hpp"
 #include"alps/numeric/vector_functions.hpp"
+#include <alps/alea/transform.hpp>
+#include <exception>
 
 using namespace alps::numeric;
 
-  #define NUM_BINS_CONSTRUCTOR_ARG NUM_BINS
+namespace {
+struct signed_ratio final : alps::alea::transformer<double> {
+  explicit signed_ratio(std::size_t components) : components(components) {}
+  std::size_t in_size() const override { return components+1; }
+  std::size_t out_size() const override { return components; }
+  alps::alea::column<double> operator()(alps::alea::column<double> const& value) const override {
+    if (value(components) == 0.)
+      throw std::domain_error("CT-HYB signed estimate has zero average sign");
+    return value.head(components)/value(components);
+  }
+  std::size_t components;
+};
+}
 
-typedef alps::accumulator::RealVectorObservable vec_obs_t;
-typedef alps::accumulator::RealObservable obs_t;
+void hybridization::record_measurement(std::string const& name, std::vector<double> const& value, double denominator) {
+  auto& entry = measurements.at(name);
+  if (auto* batch = std::get_if<alps::alea::batch_acc<double>>(&entry.accumulator)) {
+    alps::alea::column<double> sample(value.size()+entry.signed_value);
+    if (sample.size() != batch->size()) throw alps::alea::size_mismatch();
+    for (std::size_t i=0; i<value.size(); ++i) sample(i)=value[i];
+    if (entry.signed_value) sample(value.size())=denominator;
+    *batch << sample;
+  } else {
+    auto& paired = std::get<paired_accumulator>(entry.accumulator);
+    if (value.size() != paired.size()) throw alps::alea::size_mismatch();
+    alps::alea::column<std::complex<double>> sample(value.size());
+    for (std::size_t i=0; i<value.size(); ++i) sample(i)={value[i], denominator};
+    paired << sample;
+  }
+}
 
-void hybridization::create_measurements(){//called once in the constructor
+void hybridization::record_measurement(std::string const& name, double value, double denominator) {
+  record_measurement(name, std::vector<double>{value}, denominator);
+}
 
-  //basic measurements for all orbitals
-  //  std::cerr << "NUM_BINS = " << NUM_BINS << std::endl;
-  measurements<< vec_obs_t("order_histogram_total",NUM_BINS_CONSTRUCTOR_ARG);
-  measurements<< vec_obs_t("sector_statistics",NUM_BINS_CONSTRUCTOR_ARG);
-  measurements<< obs_t("Sign",NUM_BINS_CONSTRUCTOR_ARG);
+hybridization::results_type hybridization::collect_results(alps::alea::reducer const* reduction) const {
+  if (reduction) {
+    auto agree = [&](std::int64_t value) {
+      const auto maximum=reduction->get_max(value), minimum=-reduction->get_max(-value);
+      if (maximum != minimum)
+        throw std::runtime_error("CT-HYB measurement registries differ between replicas");
+    };
+    agree(measurements.size());
+    for (auto const& entry : measurements) {
+      agree(entry.first.size());
+      for (unsigned char byte : entry.first) agree(byte);
+      agree(entry.second.signed_value);
+      agree(entry.second.accumulator.index());
+    }
+  }
+  using paired_result = alps::alea::var_result<std::complex<double>, alps::alea::elliptic_var>;
+  using raw_result = std::variant<alps::alea::batch_result<double>, paired_result>;
+  std::map<std::string, raw_result> raw;
+  // Complete every raw transfer before recipient-only ratio/domain analysis.
+  for (auto const& entry : measurements) {
+    std::visit([&](auto const& accumulator) {
+      auto snapshot=accumulator.result();
+      if (reduction) snapshot.reduce(*reduction);
+      if (snapshot.valid()) raw.emplace(entry.first, std::move(snapshot));
+    }, entry.second.accumulator);
+  }
+  results_type results;
+  std::exception_ptr failure;
+  try {
+    for (auto const& entry : raw) {
+      if (auto const* paired=std::get_if<paired_result>(&entry.second)) {
+        results.emplace(entry.first, alps::alea::ratio_real_imag(*paired));
+        continue;
+      }
+      auto const& joint=std::get<alps::alea::batch_result<double>>(entry.second);
+      if (!measurements.at(entry.first).signed_value) {
+        results.emplace(entry.first, joint);
+        continue;
+      }
+      signed_ratio ratio(joint.size()-1);
+      if ((joint.store().count().array()!=0).count()>1) {
+        results.emplace(entry.first, alps::alea::transform(alps::alea::jackknife_prop{}, ratio, joint));
+      } else {
+        alps::alea::batch_data<double> values(ratio.out_size(), joint.num_batches());
+        values.count()=joint.store().count();
+        if (joint.count()) {
+          const auto mean=ratio(joint.mean());
+          for (std::size_t i=0; i<joint.num_batches(); ++i)
+            if (values.count()(i)) values.batch().col(i)=values.count()(i)*mean;
+        }
+        results.emplace(entry.first, alps::alea::batch_result<double>(values));
+      }
+    }
+  } catch (...) { failure=std::current_exception(); }
+  if (reduction && reduction->get_max(bool(failure))) {
+    if (failure) std::rethrow_exception(failure);
+    throw std::runtime_error("CT-HYB result analysis failed on the recipient");
+  }
+  if (failure) std::rethrow_exception(failure);
+  return results;
+}
+
+void hybridization::create_measurements(std::size_t bins){//called once in the constructor
+  auto add = [&](std::string const& name, std::size_t components,
+                 bool signed_value = true, bool large = false) {
+    if (large)
+      measurements.emplace(name, measurement{signed_value, paired_accumulator(components)});
+    else
+      measurements.emplace(name, measurement{signed_value,
+        alps::alea::batch_acc<double>(components + signed_value, bins, 1)});
+  };
+  add("order_histogram_total", N_hist_orders, false);
+  if (MEASURE_sector_statistics) add("sector_statistics", std::size_t(1)<<n_orbitals);
+  add("Sign", 1, false);
   
   g2wr_names.resize(n_orbitals); g2wi_names.resize(n_orbitals);
   h2wr_names.resize(n_orbitals); h2wi_names.resize(n_orbitals);
@@ -87,56 +186,53 @@ void hybridization::create_measurements(){//called once in the constructor
     if(MEASURE_g2w || MEASURE_h2w) G2w[i].resize(N_w_aux*N_w_aux);
     if(MEASURE_h2w) F2w[i].resize(N_w_aux*N_w_aux);
 
-    //initialize measurements for observable names
-    measurements << vec_obs_t(g_name.str(),NUM_BINS_CONSTRUCTOR_ARG);
-    measurements << vec_obs_t(f_name.str(),NUM_BINS_CONSTRUCTOR_ARG);
-    measurements << obs_t(density_name.str(),NUM_BINS_CONSTRUCTOR_ARG);
-
-    measurements << vec_obs_t(order_histogram_name.str(),NUM_BINS_CONSTRUCTOR_ARG);
-    measurements << obs_t(order_name.str(),NUM_BINS_CONSTRUCTOR_ARG);
-
-    measurements << vec_obs_t(gwr_name.str(),NUM_BINS_CONSTRUCTOR_ARG);
-    measurements << vec_obs_t(gwi_name.str(),NUM_BINS_CONSTRUCTOR_ARG);
-    measurements << vec_obs_t(fwr_name.str(),NUM_BINS_CONSTRUCTOR_ARG);
-    measurements << vec_obs_t(fwi_name.str(),NUM_BINS_CONSTRUCTOR_ARG);
-
-    measurements << vec_obs_t(gl_name.str(),NUM_BINS_CONSTRUCTOR_ARG);
-    measurements << vec_obs_t(fl_name.str(),NUM_BINS_CONSTRUCTOR_ARG);
+    if (MEASURE_time) {
+      add(g_name.str(), N_t+1);
+      add(f_name.str(), N_t+1);
+    }
+    add(density_name.str(), 1);
+    add(order_histogram_name.str(), N_hist_orders, false);
+    add(order_name.str(), 1, false);
+    if (MEASURE_freq) {
+      add(gwr_name.str(), N_w); add(gwi_name.str(), N_w);
+      add(fwr_name.str(), N_w); add(fwi_name.str(), N_w);
+    }
+    if (MEASURE_legendre) {
+      add(gl_name.str(), N_l); add(fl_name.str(), N_l);
+    }
 
     if(MEASURE_nn){
       for(std::size_t j=0;j<i;++j){//j<i not j<=i
         std::stringstream nn_name; nn_name<<"nn_"<<i<<"_"<<j; nn_names[i].push_back(nn_name.str());
         nn[i][j]=0.;
-        measurements << obs_t(nn_name.str(),NUM_BINS_CONSTRUCTOR_ARG);
+        add(nn_name.str(), 1);
       }
     }
     for(std::size_t j=0;j<=i;++j){//two-particle quantities
       if(MEASURE_nnt){
         std::stringstream nnt_name; nnt_name<<"nnt_"<<i<<"_"<<j; nnt_names[i].push_back(nnt_name.str());
         nnt[i][j].resize(N_nn+1, 0.);
-        measurements << vec_obs_t(nnt_name.str(),NUM_BINS_CONSTRUCTOR_ARG);
+        add(nnt_name.str(), N_nn+1);
       }
       if(MEASURE_nnw){
         std::stringstream nnw_re_name; nnw_re_name<<"nnw_re_"<<i<<"_"<<j; nnw_re_names[i].push_back(nnw_re_name.str());
         nnw_re[i][j].resize(N_W, 0.);
-        measurements << vec_obs_t(nnw_re_name.str(),NUM_BINS_CONSTRUCTOR_ARG);
+        add(nnw_re_name.str(), N_W);
       }
-      if(MEASURE_g2w){    //the two-particle Green's function is large and error is usually not needed -> declare as simple observable
+      if(MEASURE_g2w){ // Per-component numerator/sign covariance keeps O(D) storage.
         std::stringstream g2wr_name; g2wr_name<<"g2w_re_"<<i<<"_"<<j; g2wr_names[i].push_back(g2wr_name.str());
         std::stringstream g2wi_name; g2wi_name<<"g2w_im_"<<i<<"_"<<j; g2wi_names[i].push_back(g2wi_name.str());
-        measurements << alps::ngs::SimpleRealVectorObservable(g2wr_name.str());
-        measurements << alps::ngs::SimpleRealVectorObservable(g2wi_name.str());
+        add(g2wr_name.str(), N_w2*N_w2*N_W, true, true);
+        add(g2wi_name.str(), N_w2*N_w2*N_W, true, true);
       }
       if(MEASURE_h2w){
         std::stringstream h2wr_name; h2wr_name<<"h2w_re_"<<i<<"_"<<j; h2wr_names[i].push_back(h2wr_name.str());
         std::stringstream h2wi_name; h2wi_name<<"h2w_im_"<<i<<"_"<<j; h2wi_names[i].push_back(h2wi_name.str());
-        measurements << alps::ngs::SimpleRealVectorObservable(h2wr_name.str());
-        measurements << alps::ngs::SimpleRealVectorObservable(h2wi_name.str());
+        add(h2wr_name.str(), N_w2*N_w2*N_W, true, true);
+        add(h2wi_name.str(), N_w2*N_w2*N_W, true, true);
       }
     }
   }
-  measurements.reset(true);
-
   //initialize measurement vectors
   sgn=0.;
   order_histogram.resize(n_orbitals, std::vector<double> (N_hist_orders, 0.));
@@ -169,9 +265,8 @@ void hybridization::create_measurements(){//called once in the constructor
 void hybridization::measure(){
   if(!is_thermalized()) return;
 
-  accumulate_order();
-
   accumulate_G();
+  accumulate_order();
 
   if(!MEASURE_time && (MEASURE_freq || MEASURE_legendre || MEASURE_h2w))//F_prefactor is computed in update() if time measurement is turned on
     local_config.get_F_prefactor(F_prefactor);//compute segment overlaps in local config
@@ -215,13 +310,14 @@ void hybridization::measure_order(){
 }
 
 void hybridization::accumulate_order(){
-  measurements["order_histogram_total"]<<(order_histogram_total/N_meas);
+  const double block_sign = sgn/N_meas;
+  record_measurement("order_histogram_total", order_histogram_total/N_meas);
   memset(&(order_histogram_total[0]), 0, sizeof(double)*order_histogram_total.size());
-  measurements["Sign"]<<(sgn/N_meas); sgn=0.;
+  record_measurement("Sign", block_sign); sgn=0.;
   for(std::size_t i=0;i<n_orbitals;++i){
-    measurements[order_names[i]]<<(orders[i]/N_meas);
-    measurements[density_names[i]]<<(densities[i]/N_meas);
-    measurements[order_histogram_names[i]]<<(order_histogram[i]/N_meas);
+    record_measurement(order_names[i], orders[i]/N_meas);
+    record_measurement(density_names[i], densities[i]/N_meas, block_sign);
+    record_measurement(order_histogram_names[i], order_histogram[i]/N_meas);
     orders[i]=0.;
     densities[i]=0;
     memset(&(order_histogram[i][0]), 0, sizeof(double)*order_histogram[i].size());
@@ -237,9 +333,16 @@ void hybridization::measure_G(std::vector<std::map<double,double> > &F_prefactor
 
 void hybridization::accumulate_G(){
   if(!MEASURE_time) return;
+  const double block_sign = sgn/N_meas;
   for(std::size_t i=0;i<n_orbitals;++i){
-    measurements[g_names[i]]<<(N_t*G[i]/(beta*beta*N_meas));
-    measurements[f_names[i]]<<(N_t*F[i]/(beta*beta*N_meas));
+    auto g = N_t*G[i]/(beta*beta*N_meas);
+    auto f = N_t*F[i]/(beta*beta*N_meas);
+    // Apply endpoint conventions to each raw block, including its covariance.
+    g.front() = -block_sign + densities[i]/N_meas;
+    g.back() = -densities[i]/N_meas;
+    f.front() *= 2.; f.back() *= 2.;
+    record_measurement(g_names[i], g, block_sign);
+    record_measurement(f_names[i], f, block_sign);
     memset(&(G[i][0]), 0, sizeof(double)*G[i].size());
     memset(&(F[i][0]), 0, sizeof(double)*F[i].size());
   }
@@ -252,7 +355,7 @@ void hybridization::measure_sector_statistics(){
 
 void hybridization::accumulate_sector_statistics(){
   if(!MEASURE_sector_statistics) return;
-  measurements["sector_statistics"]<<sector_statistics;
+  record_measurement("sector_statistics", sector_statistics, sign);
   memset(&(sector_statistics[0]),0, sector_statistics.size()*sizeof(double));
 }
 
@@ -268,7 +371,7 @@ void hybridization::accumulate_nn(){
   if(!MEASURE_nn) return;
   for(std::size_t i=0;i<n_orbitals;++i)
     for(std::size_t j=0;j<i;++j){//i==j would simply yield the density, which we measure separately
-      measurements[nn_names[i][j]]<<nn[i][j];
+      record_measurement(nn_names[i][j], nn[i][j], sign);
       nn[i][j]=0;
     }
 }
@@ -291,7 +394,7 @@ void hybridization::accumulate_nnt(){
   if(!MEASURE_nnt) return;
   for(std::size_t i=0;i<n_orbitals;++i){
     for(std::size_t j=0;j<=i;++j){
-      measurements[nnt_names[i][j]]<<nnt[i][j];
+      record_measurement(nnt_names[i][j], nnt[i][j], sign);
       memset(&(nnt[i][j][0]),0, nnt[i][j].size()*sizeof(double));
     }
   }
@@ -312,7 +415,7 @@ void hybridization::accumulate_nnw(){
   if(!MEASURE_nnw) return;
   for(std::size_t i=0;i<n_orbitals;++i){
     for(std::size_t j=0;j<=i;++j){
-      measurements[nnw_re_names[i][j]]<<nnw_re[i][j];
+      record_measurement(nnw_re_names[i][j], nnw_re[i][j], sign);
       memset(&(nnw_re[i][j][0]),0, nnw_re[i][j].size()*sizeof(double));
     }
   }
@@ -328,10 +431,10 @@ void hybridization::measure_Gw(std::vector<std::map<double,double> > &F_prefacto
 void hybridization::accumulate_Gw(){
   if(!MEASURE_freq) return;
     for(std::size_t i=0;i<n_orbitals;++i){
-      measurements[gwr_names[i]]<<Gwr[i];
-      measurements[gwi_names[i]]<<Gwi[i];
-      measurements[fwr_names[i]]<<Fwr[i];
-      measurements[fwi_names[i]]<<Fwi[i];
+      record_measurement(gwr_names[i], Gwr[i], sign);
+      record_measurement(gwi_names[i], Gwi[i], sign);
+      record_measurement(fwr_names[i], Fwr[i], sign);
+      record_measurement(fwi_names[i], Fwi[i], sign);
       memset(&(Gwr[i][0]),0, Gwr[i].size()*sizeof(double));
       memset(&(Gwi[i][0]),0, Gwr[i].size()*sizeof(double));
       memset(&(Fwr[i][0]),0, Gwr[i].size()*sizeof(double));
@@ -348,8 +451,8 @@ void hybridization::measure_Gl(std::vector<std::map<double,double> > &F_prefacto
 void hybridization::accumulate_Gl(){
   if(!MEASURE_legendre) return;
     for(std::size_t i=0;i<n_orbitals;++i){
-      measurements[gl_names[i]]<<Gl[i];
-      measurements[fl_names[i]]<<Fl[i];
+      record_measurement(gl_names[i], Gl[i], sign);
+      record_measurement(fl_names[i], Fl[i], sign);
       memset(&(Gl[i][0]),0, Gl[i].size()*sizeof(double));
       memset(&(Fl[i][0]),0, Fl[i].size()*sizeof(double));
     }
@@ -391,39 +494,17 @@ void hybridization::measure_G2w(std::vector<std::map<double,double> > &F_prefact
             }
           }//Wn
       if(MEASURE_g2w){
-        measurements[g2wr_names[i][j]]<<g2wr;
-        measurements[g2wi_names[i][j]]<<g2wi;
+        record_measurement(g2wr_names[i][j], g2wr, sign);
+        record_measurement(g2wi_names[i][j], g2wi, sign);
         memset(&(g2wr[0]),0, g2wr.size()*sizeof(double));
         memset(&(g2wi[0]),0, g2wi.size()*sizeof(double));
       }
       if(MEASURE_h2w){
-        measurements[h2wr_names[i][j]]<<h2wr;
-        measurements[h2wi_names[i][j]]<<h2wi;
+        record_measurement(h2wr_names[i][j], h2wr, sign);
+        record_measurement(h2wi_names[i][j], h2wi, sign);
         memset(&(h2wr[0]),0, h2wr.size()*sizeof(double));
         memset(&(h2wi[0]),0, h2wi.size()*sizeof(double));
       }
     }//j
   }//i
 }
-
-/*
-void hybridization::accumulate_G2w(){
-  for(std::size_t i=0;i<n_orbitals;++i){
-    for(std::size_t j=0;j<=i;++j){//we measure only for j<=i since results for ij and ji are exactly the same (no gain through averaging)
-      if(MEASURE_g2w){
-        measurements[g2wr_names[i][j]]<<g2wr[i][j];
-        measurements[g2wi_names[i][j]]<<g2wi[i][j];
-        memset(&(g2wr[i][j][0]),0, g2wr[i][j].size()*sizeof(double));
-        memset(&(g2wi[i][j][0]),0, g2wi[i][j].size()*sizeof(double));
-      }
-      if(MEASURE_h2w){
-        measurements[h2wr_names[i][j]]<<h2wr[i][j];
-        measurements[h2wi_names[i][j]]<<h2wi[i][j];
-        memset(&(h2wr[i][j][0]),0, h2wr[i][j].size()*sizeof(double));
-        memset(&(h2wi[i][j][0]),0, h2wi[i][j].size()*sizeof(double));
-      }
-    }
-  }
-}
-*/
-

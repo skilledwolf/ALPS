@@ -16,6 +16,7 @@
 #include <alps/alea/mcdata.hpp>
 #include <alps/alea/value_with_error.hpp>
 #include <alps/alea/checkpoint.hpp>
+#include <alps/alea/variance.hpp>
 #include <alps/alea/hdf5.hpp>
 #include <alps/hdf5.hpp>
 #include <alps/numeric/vector_functions.hpp>
@@ -203,23 +204,34 @@ template<class T> void bind_statistics_io(nb::class_<T>& cls) {
     pyalps::mark_archive_savable(cls);
 }
 
+template<class R> void bind_estimate(nb::class_<R>& result) {
+    result.def_prop_ro("count", &R::count)
+        .def_prop_ro("mean", [](R const& value) { return value.mean().eval(); })
+        .def_prop_ro("error", [](R const& value) { return value.stderror().eval(); })
+        .def_prop_ro("count2", &R::count2)
+        .def_prop_ro("observations", &R::observations)
+        .def("__repr__", &stream_repr<R>);
+    bind_statistics_io(result);
+}
+
+template<class T> void bind_variance_result(nb::module_& module, char const* name) {
+    using R = alps::alea::var_result<T>;
+    nb::class_<R> result(module, name);
+    bind_estimate(result);
+    result.def_prop_ro("variance", [](R const& value) { return value.var().eval(); });
+}
+
 template<class T> void bind_batches(nb::module_& module, char const* accumulator_name, char const* result_name) {
     using A = alps::alea::batch_acc<T>;
     using R = alps::alea::batch_result<T>;
     nb::class_<R> result(module, result_name);
     // Results are constructed by result() or read(), so Python never receives
     // the Core default result with an absent store.
-    result.def_prop_ro("count", &R::count)
-        .def_prop_ro("mean", [](R const& value) { return value.mean().eval(); })
-        .def_prop_ro("error", [](R const& value) { return value.stderror().eval(); })
-        .def_prop_ro("variance", [](R const& value) { return value.template var<>().eval(); })
+    bind_estimate(result);
+    result.def_prop_ro("variance", [](R const& value) { return value.template var<>().eval(); })
         .def_prop_ro("covariance", [](R const& value) { return value.template cov<>(); })
         .def_prop_ro("batch_sums", [](R const& value) { return value.store().batch().transpose().eval(); })
-        .def_prop_ro("batch_counts", [](R const& value) { return value.store().count(); })
-        .def_prop_ro("count2", &R::count2)
-        .def_prop_ro("observations", &R::observations)
-        .def("__repr__", &stream_repr<R>);
-    bind_statistics_io(result);
+        .def_prop_ro("batch_counts", [](R const& value) { return value.store().count(); });
     nb::class_<A> accumulator(module, accumulator_name);
     accumulator.def("__init__", [](A* self, size_t size, size_t batches, uint64_t base_size) {
             if (!size) throw std::invalid_argument("ALEA requires at least one component");
@@ -248,6 +260,8 @@ NB_MODULE(pyalea_c, m) {
     m.doc() = "ALPS alea bindings (nanobind)";
     bind_batches<double>(m, "BatchAccumulator", "BatchResult");
     bind_batches<std::complex<double>>(m, "ComplexBatchAccumulator", "ComplexBatchResult");
+    bind_variance_result<double>(m, "VarianceResult");
+    bind_variance_result<std::complex<double>>(m, "ComplexVarianceResult");
     // ─── scalar-valarray observables ─────────────────────────────────
     using RealVecObs = alps::alea::WrappedValarrayObservable<alps::RealVectorObservable>;
     using RealVecTsObs = alps::alea::WrappedValarrayObservable<alps::RealVectorTimeSeriesObservable>;

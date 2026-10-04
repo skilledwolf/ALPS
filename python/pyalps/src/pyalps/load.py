@@ -418,10 +418,12 @@ class Hdf5Loader:
                         size = len(obs)
                         x = np.arange(xmin,xmin+xstep*size,xstep)
                     elif self.h5f.is_attribute(respath+'/'+m+'/@kind'):
-                        if self.h5f[respath+'/'+m+'/@kind'] != 5:
-                            raise ValueError("Expected a modern ALEA batch result")
-                        result_type = (pa.ComplexBatchResult if self.h5f.is_complex(respath+'/'+m+'/batch/sum')
-                                       else pa.BatchResult)
+                        kind = self.h5f[respath+'/'+m+'/@kind']
+                        types = {2: (pa.VarianceResult, pa.ComplexVarianceResult),
+                                 5: (pa.BatchResult, pa.ComplexBatchResult)}
+                        if kind not in types:
+                            raise ValueError("Expected a modern ALEA variance or batch result")
+                        result_type = types[kind][self.h5f.is_complex(respath+'/'+m+'/mean/value')]
                         result = result_type.read(self.h5f, respath+'/'+m)
                         size = len(result.mean)
                         obs = (np.array([FloatWithError(value, error)

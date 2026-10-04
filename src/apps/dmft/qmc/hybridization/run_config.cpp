@@ -45,6 +45,9 @@ params prepare_parameters(const params& supplied) {
 void prepare_run(run_configuration& run) {
   run=resolve_run_configuration(run,schema(),std::filesystem::current_path());
   run.parameters=prepare_parameters(run.parameters);
+  const auto bins=run.execution["bins"].as<std::uint64_t>();
+  if(bins<2 || bins%2)
+    throw std::invalid_argument("CT-HYB execution.bins must be even and at least two");
   const auto orbitals=run.parameters["N_ORBITALS"].as<std::size_t>();
   if(!run.input.exists("interaction_matrix")) {
     if(!run.parameters.exists("U")) throw std::invalid_argument("Specify parameters.U or input.interaction_matrix");

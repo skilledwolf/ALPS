@@ -16,7 +16,7 @@
 #define HYB_INT_HPP
 #include <vector>
 #include <fstream>
-#include <alps/ngs.hpp>
+#include <alps/params.hpp>
 #include "../green_function.h"
 #include "input.hpp"
 

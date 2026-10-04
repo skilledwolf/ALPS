@@ -6,6 +6,15 @@ User-facing changes and migration notes are recorded here, starting with the bui
 
 ### Changed
 
+- Migrate CT-HYB to native ALEA batches and MPI collection. Normalize physical
+  measurements with the sign from their own measurement cadence, pool raw
+  replicas before analysis, and retain G2/H2 component errors in linear memory.
+  Publish native kind-5/kind-2 results, derived Green functions and provenance
+  together; Python analysis reads both families. Form time endpoints before
+  accumulation so means, errors and covariance agree, correct F covariance
+  selection and the missing sign in the zero-frequency density correlator.
+  Replace `NUM_BINS` with even `execution.bins` and remove `ACCURATE_COVARIANCE`.
+  Result files remain analysis outputs without a solver restart interface.
 - Add componentwise real/imaginary ratio propagation for native elliptic ALEA
   results, retaining numerator/denominator covariance with linear storage.
   Expose squared weights and ordinary standard errors through the existing

@@ -33,7 +33,27 @@ finite `SWEEPS` still terminate the run. Positive limits are in seconds.
 Text results require `output.text = true`; `output.text_directory` selects an
 existing destination directory. `output.base_path` selects an HDF5 group for
 scientific results. The archive also saves typed scientific parameters and the
-resolved four-section configuration, including provenance.
+resolved four-section configuration, including provenance. HDF5 publication
+is atomic: a failed save preserves the previous archive. Explicit text files
+are separate outputs and do not participate in that transaction.
+
+`execution.bins` selects an even number of native ALEA batch slots, at least
+two (default 128). It replaces the scientific `NUM_BINS` parameter.
+Sign-weighted time measurements use the sign averaged over `N_MEAS` updates;
+frequency, Legendre and other final-configuration measurements use that
+configuration's sign. Independent MPI chains pool raw measurements before
+normalization, preserving partial batches. `SWEEPS` remains aggregate work
+across MPI ranks; each rank uses its own seeded stream.
+
+Sign-weighted bounded measurements retain joint numerator/sign batches and
+weighted jackknife errors. Sign and order diagnostics use ordinary batches.
+Large G2/H2 tensors retain componentwise numerator/sign
+covariance in linear memory; their errors assume independent samples and do
+not include autocorrelation. Results under `simulation/results` use the
+canonical ALEA batch (kind 5) or variance (kind 2) codec, readable by
+`pyalps.loadMeasurements`. G/F time endpoints, errors and covariance follow
+one convention; covariance is always that of the mean and the redundant
+`ACCURATE_COVARIANCE` selector is removed.
 
 Text Delta input has `N_TAU + 1` rows, with a coordinate and one nonpositive value
 per orbital. Coordinates are consecutive indices starting at zero by default.

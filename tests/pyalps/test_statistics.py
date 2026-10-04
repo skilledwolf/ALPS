@@ -124,6 +124,63 @@ def test_ctint_publishes_native_statistics_for_python_analysis(tmp_path, monkeyp
     assert {path.name for path in tmp_path.iterdir()} == {"ctint-results.h5"}
 
 
+def test_cthyb_publishes_batched_and_component_results_for_python_analysis(tmp_path, monkeypatch):
+    from pyalps import cthyb
+
+    monkeypatch.chdir(tmp_path)
+    delta = tmp_path / "delta.dat"
+    delta.write_text("".join(f"{i} -0.5 -0.5\n" for i in range(9)))
+    filename = str(tmp_path / "cthyb-results.h5")
+    run = cthyb.prepare(
+        {"BETA": 2., "U": 0., "MU": 0., "N_ORBITALS": 2, "N_TAU": 8,
+         "N_MEAS": 3, "THERMALIZATION": 0, "SWEEPS": 37,
+         "N_MATSUBARA": 4, "N_LEGENDRE": 4, "N_nn": 4, "N_w2": 2, "N_W": 1,
+         "MEASURE_freq": True, "MEASURE_legendre": True, "MEASURE_nn": True,
+         "MEASURE_nnt": True, "MEASURE_nnw": True, "MEASURE_g2w": True,
+         "MEASURE_h2w": True, "MEASURE_sector_statistics": True},
+        input={"delta": str(delta)}, output={"results": filename, "base_path": "/pilot"},
+        execution={"bins": 8})
+    cthyb.solve(run)
+    measured = {entry.props["observable"]: entry for entry in
+                pyalps.loadMeasurements([filename], respath="/pilot/simulation/results")[0]}
+    kinds = set()
+    with hdf5.archive(filename) as archive:
+        assert archive["/run_config/application"] == "cthyb"
+        for name, entry in measured.items():
+            path = "/pilot/simulation/results/" + pyalps.hdf5_name_encode(name)
+            kind = archive[path + "/@kind"]
+            kinds.add(kind)
+            assert archive[path + "/@version"] == 1
+            result_type = alea.VarianceResult if kind == 2 else alea.BatchResult
+            result = result_type.read(archive, path)
+            assert result.count == 37
+            np.testing.assert_array_equal([value.mean for value in entry.y], result.mean)
+            np.testing.assert_array_equal([value.error for value in entry.y], result.error)
+            assert np.isfinite(result.mean).all() and np.isfinite(result.error).all()
+            if name.startswith(("g2w_", "h2w_")):
+                assert kind == 2 and not archive.is_group(path + "/batch")
+                assert result.variance.shape == result.mean.shape
+                assert result.count2 == result.count
+        for orbital in range(2):
+            g = archive[f"/pilot/G_tau/{orbital}/mean/value"]
+            np.testing.assert_allclose(g[0] + g[-1], -1., atol=1e-14)
+            for observable in ("G_tau", "F_tau"):
+                path = f"/pilot/{observable}/{orbital}/mean/"
+                error = archive[path + "error"]
+                covariance = archive[path + "covariance"].reshape(9, 9)
+                np.testing.assert_allclose(covariance.diagonal(), error**2, atol=1e-14)
+                if observable == "G_tau":
+                    np.testing.assert_allclose(covariance[0], -covariance[-1], atol=1e-14)
+                else:
+                    # U=0 makes F identically zero; copying G's covariance is incorrect.
+                    np.testing.assert_array_equal(archive[path + "value"], np.zeros(9))
+                    np.testing.assert_array_equal(covariance, np.zeros((9, 9)))
+    assert kinds == {2, 5}
+    assert measured["Sign"].y[0].mean == 1.
+    assert measured["Sign"].y[0].error == 0.
+    assert {path.name for path in tmp_path.iterdir()} == {"delta.dat", "cthyb-results.h5"}
+
+
 def test_batch_rejected_sample_and_failed_load_preserve_state(tmp_path):
     accumulator = alea.BatchAccumulator(2, num_batches=8)
     for i in range(8):

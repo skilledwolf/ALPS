@@ -5,7 +5,7 @@ ALPSCore revision `7146b9e1f017938a94e5dae35d88467cc5ba7969`. The source and
 small `common::ndview` / serialization support headers retain their original
 ALPS Collaboration copyright notices and MIT licensing. Core's MPI and stream
 codec plugins and package build system are not imported. Existing legacy
-ALEA APIs remain with `ALPS::alps` during the measurement pilot.
+ALEA APIs remain with `ALPS::alps` while active clients migrate.
 
 Use `<alps/alea.hpp>` for estimators and `<alps/alea/hdf5.hpp>` for the thin
 serializer bridge to the canonical native HDF5 mappings; users of that adapter
@@ -37,6 +37,9 @@ arrays; means and errors are always vectors, including one-component results.
 and replace complete state; `BatchAccumulator.read(archive, path)` and
 `BatchResult.read(archive, path)` construct only after a successful read. Returned
 NumPy arrays own their data. Batch sums have `[slots, components]` axes.
+`VarianceResult` and `ComplexVarianceResult` read ordinary componentwise
+variance results through the same native codec; they expose means, errors,
+variance, counts and squared weights without introducing another accumulator API.
 
 Independent-run result reduction retains every batch and its weight, including
 unfinished batches. Runs with different slot counts use disjoint blocks padded
@@ -80,6 +83,17 @@ use ordinary batches. Its published analysis results use the same kind-5 codec;
 The CT-INT driver publishes the result, Green functions and run configuration
 together through the existing checked HDF5 publication helper. These files are
 analysis outputs; CT-INT does not expose a solver restart interface.
+
+CT-HYB uses the same native collection and publication path. Time measurements
+pair their averaged numerators with the sign averaged over `N_MEAS` updates;
+final-configuration measurements use that configuration's sign. Sign-weighted
+bounded measurements use joint batches and weighted jackknife; Sign and order
+diagnostics use ordinary batches. G2/H2 tensors use the componentwise ratio
+above. They publish kind-5 and kind-2 results, respectively,
+and `pyalps.loadMeasurements` retains both families' means and errors. Physical
+G/F endpoints are formed before accumulation, so derived means, errors and
+covariance share the same convention. These outputs do not contain the segment
+configuration needed to restart CT-HYB.
 
 `pyalps.hdf5.save_checkpoint(filename, callback)` calls the existing native
 publication helper. The callback receives a `NativeArchive`; retained callback

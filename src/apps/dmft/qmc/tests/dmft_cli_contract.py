@@ -29,7 +29,7 @@ class DMFTCLIContract(unittest.TestCase):
         if text:
             (self.directory / "text").mkdir(exist_ok=True)
         specific, sweeps, thermalization = {
-            "hybridization": ("N_MEAS=4\nMEASURE_freq=true\nMEASURE_time=true\nACCURATE_COVARIANCE=false\n",
+            "hybridization": ("N_MEAS=4\nMEASURE_freq=true\nMEASURE_time=true\n",
                               3000, 100),
             "Hirsch-Fye": ("", 200, 20),
         }.get(solver, ("ALPHA=-0.01\nMEASUREMENT_PERIOD=1\n", 32, 4))
