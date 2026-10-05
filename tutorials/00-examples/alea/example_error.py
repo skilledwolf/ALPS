@@ -16,13 +16,10 @@ import numpy
 
 # This is an example of how to estimate the error of the mean of data stored in a hdf5 file
 
-filename = "testfile.h5"
-
-# create the correct MCData object to load the data.
-obs = pyalps.alea.MCScalarData()
-
-# load the variable m saved in the file testfile.h5 into the mcdata object.
-obs.load(filename, "simulation/results/" + pyalps.hdf5_name_encode("m"))
+# Run generate_samples.py first. These are raw observations, not bin means.
+filename = "timeseries.h5"
+with pyalps.hdf5.archive(filename) as archive:
+    obs = archive["/samples/m"]
 
 # calculate the autocorrelation until it has reached 20% of its start value
 auto_corr = pyalps.alea.autocorrelation(obs, _limit = 0.2)
@@ -51,8 +48,5 @@ print("with binning: " + str(error_binning))
 print("with correlation time: " + str(error_corrtime))
 
 # we can also write one of the errors back to the file
-ar = pyalps.hdf5.archive(filename, 1)
-ar.write("simulation/results/" + pyalps.hdf5_name_encode("m") + "/mean/error", error_corrtime)
-
-
-
+with pyalps.hdf5.archive(filename, "a") as archive:
+    archive["/analysis/error"] = error_corrtime

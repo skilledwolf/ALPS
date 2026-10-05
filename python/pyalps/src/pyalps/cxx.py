@@ -39,7 +39,7 @@ for _name in _EXTENSIONS:
     _module = importlib.import_module("." + _name, __package__ + "._ext")
     globals()[_name] = _module
     # Register under pyalps.cxx.<name> as well. This is not decoration: the
-    # package's own modules (alea, alea_detail, hdf5, pytools, ngs) import
+    # package's own modules (alea, hdf5, pytools, ngs) import
     # through `from .cxx.<name> import ...`, which is submodule syntax and
     # needs a sys.modules entry, as does any downstream code that spells it
     # the same way. Attribute access alone would not serve either.

@@ -13,19 +13,6 @@ from pyalps import alea
 
 
 
-@pytest.mark.parametrize("vector", [False, True])
-def test_timeseries_from_mcdata(tmp_path, vector, legacy_alea_file):
-    data_type = alea.MCVectorData if vector else alea.MCScalarData
-    series_type = alea.MCVectorTimeseries if vector else alea.MCScalarTimeseries
-    samples = np.arange(32, dtype=float)
-    if vector:
-        samples = np.column_stack((samples, 2*samples))
-    filename = legacy_alea_file(samples, path='/simulation/results/samples')
-    data = data_type()
-    data.load(filename, "/simulation/results/samples")
-    np.testing.assert_array_equal(series_type(data).timeseries(), data.bins)
-
-
 @pytest.mark.parametrize("layout", ["readonly", "strided", "fortran"])
 def test_array_consumers_do_not_require_writable_samples(layout):
     values = np.arange(24.0).reshape(4, 6)
@@ -35,8 +22,8 @@ def test_array_consumers_do_not_require_writable_samples(layout):
         values = values[:, ::2]
     else:
         values = np.asfortranarray(values)
-    np.testing.assert_array_equal(alea.MCScalarTimeseries(values[0]).timeseries(), values[0])
-    np.testing.assert_array_equal(alea.MCVectorTimeseries(values).timeseries(), values)
+    np.testing.assert_allclose(alea.mean(values[0]), values[0].mean())
+    np.testing.assert_allclose(alea.mean(values), values.mean(axis=0))
     native = alea.BatchAccumulator(values.shape[1])
     for row in values:
         native << row

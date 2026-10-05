@@ -196,6 +196,37 @@ averaged/compressed bins as individual chronological observations. Released
 legacy observable files remain inputs to the offline converter; new producers
 write native results and no longer emit legacy statistical schemas.
 
+## Time-series analysis migration
+
+`alea.mean`, `variance`, `error`, `autocorrelation`, the running means, cuts and
+`make_dataset` now take real NumPy arrays with shape `(time,)` or
+`(time, component)`. The `MCScalarTimeseries`, `MCVectorTimeseries` and view
+classes are removed; cuts return NumPy slices. They accept read-only and strided
+arrays. `ValueWithError` is also removed; use native results for statistical
+estimates, or `pyalps.FloatWithError` for independent-error scalar arithmetic.
+
+Autocorrelation returns an array of positive lags, starting at lag 1. It retains
+sample-variance normalization: the denominator at lag k is `(N-k)*variance`,
+with `variance` using `ddof=1`. Constant components have undefined correlation
+and raise `ValueError`. Exponential fits return an ordinary `(amplitude, exponent)`
+tuple instead of `StdPairDouble`. Fits use correct least squares in log space,
+fixing the old regression's off-by-one sample count. Inclusive `from/to` bounds
+refer to absolute one-based lags; negative bounds add the correlation length.
+Threshold fits exclude the lower crossing. Invalid requests now raise exceptions
+instead of printing usage or silently discarding nonpositive fit samples.
+
+`integrated_autocorrelation_time` retains the positive-lag sum convention,
+without adding 1/2. With a fit, it adds the continuum tail integral starting at
+`N+1/2`; the variance inflation factor is `1+2*tau`. Binning errors use the native
+ALEA level-selection policy. Inspect `AutocorrelationAccumulator` results for
+level statistics and convergence; a returned error alone is not proof of convergence.
+
+The Python examples in `tutorials/00-examples/alea` use `generate_samples.py`
+to produce `timeseries.h5` with chronological AR(1) observations. The bundled
+legacy `testfile.h5` contains compressed bins, not recoverable raw observations;
+it remains only for the C++ examples awaiting migration. Offline conversion
+preserves stored information but cannot reconstruct observations lost to binning.
+
 ## HDF5 IO
 
 `pyalps.hdf5.archive` owns an h5py file. Primitive datasets and attributes follow

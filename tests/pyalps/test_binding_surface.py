@@ -88,7 +88,7 @@ def test_cross_module_parameter_archive_and_rng_roundtrip():
 
 
 def test_alea_numpy_and_mcdata_operators():
-    from pyalps.cxx.pyalea_c import MCScalarTimeseries, BatchAccumulator, mean, size
+    from pyalps.alea import BatchAccumulator, mean, size
     from pyalps.cxx.pymcdata_c import MCScalarData
 
     observable = BatchAccumulator()
@@ -98,10 +98,10 @@ def test_alea_numpy_and_mcdata_operators():
     assert abs(observable.result().mean[0] - 1.0) < 1e-12
     assert observable.result().error[0] >= 0
 
-    series = MCScalarTimeseries(np.asarray([1.0, 2.0, 3.0]))
+    series = np.asarray([1.0, 2.0, 3.0])
     assert size(series) == 3
     assert mean(series) == 2.0
-    np.testing.assert_allclose(series.timeseries(), [1.0, 2.0, 3.0])
+    np.testing.assert_allclose(series, [1.0, 2.0, 3.0])
 
     first = MCScalarData(1.0, 0.1)
     second = MCScalarData(2.0, 0.2)
@@ -126,14 +126,6 @@ def test_params_from_parameter_file():
 
 def test_alea_mcanalyze_surface():
     from pyalps import alea
-    from pyalps.cxx.pyalea_c import (
-        MCScalarTimeseries,
-        MCScalarTimeseriesView,
-        MCVectorTimeseries,
-        StdPairDouble,
-        integrated_autocorrelation_time,
-        size,
-    )
     from pyalps.cxx.pytools_c import rng
 
     generator = rng(42)
@@ -142,41 +134,38 @@ def test_alea_mcanalyze_surface():
     for _ in range(512):
         state = 0.9 * state + 0.1 * (2 * generator() - 1)
         samples.append(state)
-    series = MCScalarTimeseries(np.asarray(samples))
+    series = np.asarray(samples)
 
     correlation = alea.autocorrelation(series, _distance=16)
-    assert isinstance(correlation, MCScalarTimeseries)
-    assert size(correlation) == 16
+    assert isinstance(correlation, np.ndarray)
+    assert len(correlation) == 16
     limited = alea.autocorrelation(series, _limit=0.2)
-    assert size(limited) >= 1
+    assert len(limited) >= 1
 
     head = alea.cut_head(series, _distance=100)
     tail = alea.cut_tail(series, _distance=100)
-    assert isinstance(head, MCScalarTimeseriesView)
-    assert size(head) == 412
-    assert size(tail) == 412
-    assert size(alea.cut_head(correlation, _limit=0.5)) < 16
+    assert np.shares_memory(head, series)
+    assert len(head) == 412
+    assert len(tail) == 412
+    assert len(alea.cut_head(correlation, _limit=0.5)) < 16
 
     fit = alea.exponential_autocorrelation_time(correlation, _from=1, _to=8)
-    assert isinstance(fit, StdPairDouble)
-    assert fit.second < 0  # decaying autocorrelation
+    assert isinstance(fit, tuple)
+    assert fit[1] < 0  # decaying autocorrelation
     ranged = alea.exponential_autocorrelation_time(correlation, _max=0.8, _min=0.2)
-    assert isinstance(ranged, StdPairDouble)
+    assert isinstance(ranged, tuple)
 
-    tau_from_pair = integrated_autocorrelation_time(correlation, fit)
-    tau_from_tuple = integrated_autocorrelation_time(correlation, (fit.first, fit.second))
-    assert tau_from_pair == tau_from_tuple
-    assert tau_from_pair > 0
+    assert alea.integrated_autocorrelation_time(correlation, fit) > 0
 
     assert alea.error(series) > 0
     assert alea.error(series, "binning") > 0
 
-    vector_series = MCVectorTimeseries(np.asarray([[float(i + j) for j in range(3)] for i in range(64)]))
+    vector_series = np.asarray([[float(i + j) for j in range(3)] for i in range(64)])
     vector_error = alea.error(vector_series)
     assert vector_error.shape == (3,)
     assert np.all(vector_error > 0)
     vector_correlation = alea.autocorrelation(vector_series, _distance=4)
-    assert vector_correlation.timeseries().shape == (4, 3)
+    assert vector_correlation.shape == (4, 3)
 
 
 def test_packaged_xml_stylesheets():

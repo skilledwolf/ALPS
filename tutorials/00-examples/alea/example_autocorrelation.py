@@ -15,13 +15,10 @@ import pyalps
 
 # This is an example of how to easily calculate and fit the autocorrelation as well as estimate the integrated autocorrelation time of data stored in a hdf5 file.
 
-filename = "testfile.h5"
-
-# create the correct MCData object to load the data.
-obs = pyalps.alea.MCScalarData()
-
-# load the variable m saved in the file testfile.h5 into the mcdata object.
-obs.load(filename, "simulation/results/" + pyalps.hdf5_name_encode("m"))
+# Run generate_samples.py first. These are raw observations, not bin means.
+filename = "timeseries.h5"
+with pyalps.hdf5.archive(filename) as archive:
+    obs = archive["/samples/m"]
 
 # calculate the full autocorrelation (with size - 1 lags)
 auto_corr = pyalps.alea.autocorrelation(obs, _distance = (pyalps.alea.size(obs)-1))
@@ -36,7 +33,7 @@ int_autocorr_time = pyalps.alea.integrated_autocorrelation_time(pyalps.alea.cut_
 
 # print the result
 print("The autocorrelation of m is: " + str(auto_corr))
-print("The exponential fit is: " + str(fit.first) + " * e^( " + str(fit.second) + " * t)")
+print("The exponential fit is: " + str(fit[0]) + " * e^( " + str(fit[1]) + " * t)")
 print("The estimated integrated autocorrelation time is: " + str(int_autocorr_time))
 
 
