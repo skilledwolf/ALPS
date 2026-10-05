@@ -319,6 +319,15 @@ oracles.
 | `exchange` | Classical and quantum workers; serial replica ladders, MPI-distributed replicas, and nested MPI replica/spatial decomposition. Temperature-ladder optimization and exchange diagnostics also belong to this interface. |
 | `wanglandau` | Classical Ising **energy** density-of-states learning, fixed-weight microcanonical measurements, and reweighting over temperature, including entropy/reference normalization. The native quantum QWL expansion-order workflow is not an equivalent implementation. |
 
+The spatial Ising worker's acceptance weight and energy sign have been corrected
+against the ring Hamiltonian, and its halo transfers use `sendrecv`. It rejects
+inconsistent model inputs collectively before communication. Direct worker tests
+at one, two and three MPI ranks cover odd and uneven partitions, canonical
+ferromagnetic/antiferromagnetic moments, physical bounds, exact restart and
+invalid-input consensus, with synchronous sends to expose buffering-dependent
+deadlocks. Its native ALEA port and the legacy MPI scheduler remain separate
+validation tasks; the historical golden files are not scientific references.
+
 The authoritative registrations are each directory's `.C` files; the behavior
 is in the worker headers and `alps/parapack/{temperature_scan,exchange,exchange_multi,wanglandau}.h`.
 The former `temperature_scan_adaptor` retains the worker's physical state

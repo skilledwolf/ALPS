@@ -15,7 +15,9 @@
 #define PARAPACK_EXAMPLE_MULTIPLE_ISING_H
 
 #include <alps/parapack/worker.h>
+#include <cmath>
 #include <functional>
+#include <limits>
 
 namespace mpi = boost::mpi;
 
@@ -55,18 +57,37 @@ private:
 
 public:
   parallel_ising_worker(mpi::communicator const& comm, alps::Parameters const& params)
-    : super_type(params), comm_(comm), mcs_(params) {
-    // temperature
-    if (params.defined("T")) beta_ = 1 / evaluate("T", params);
-    coupling_ = (params.defined("J")) ? evaluate("J", params) : 1.0;
+    : super_type(params), comm_(comm), beta_(std::numeric_limits<double>::quiet_NaN()),
+      coupling_(1), length_(0), loclen_(0), mcs_(params), energy_(0) {
+    // Exchange workers assign beta after construction. Invalid local input must
+    // be rejected on every rank before any rank enters a halo exchange.
+    bool valid = true;
+    try {
+      if (params.defined("T")) {
+        const double temperature = evaluate("T", params);
+        beta_ = 1 / temperature;
+        valid = temperature > 0 && std::isfinite(temperature) && std::isfinite(beta_);
+      }
+      coupling_ = params.defined("J") ? evaluate("J", params) : 1.0;
+      const double length = evaluate("L", params);
+      valid = valid && std::isfinite(coupling_) && std::isfinite(length) &&
+        length >= 2.0 * comm_.size() && length <= std::numeric_limits<int>::max() &&
+        length == std::floor(length);
+      if (valid) length_ = static_cast<int>(length);
+    } catch (std::exception const&) {
+      valid = false;
+    }
+    double model[]{double(length_), coupling_, std::isnan(beta_) ? -1 : beta_};
+    mpi::broadcast(comm_, model, 3, 0);
+    valid = valid && model[0] == length_ && model[1] == coupling_ &&
+      model[2] == (std::isnan(beta_) ? -1 : beta_);
+    if (!mpi::all_reduce(comm_, valid, std::logical_and<bool>()))
+      throw std::invalid_argument("Spatial Ising requires matching model inputs, finite J, positive finite T when specified, and integer L >= 2 * ranks");
     // system size and local system size
-    length_ = static_cast<int>(evaluate("L", params));
     if (comm_.rank() == 0)
       loclen_ = length_ - (comm_.size() - 1) * (length_ / comm_.size());
     else
       loclen_ = length_ / comm_.size();
-    if (loclen_ < 2)
-      boost::throw_exception(std::runtime_error("too small system size"));
 
     // configuration
     spins_.resize(loclen_);
@@ -92,10 +113,16 @@ public:
   double progress() const { return mcs_.progress(); }
 
   void run(alps::ObservableSet& obs) {
+    const double minimum_beta = mpi::all_reduce(comm_, std::isfinite(beta_) && beta_ >= 0 ? beta_ : -1., mpi::minimum<double>());
+    if (minimum_beta < 0)
+      throw std::invalid_argument("Set a finite nonnegative inverse temperature before updating spatial Ising");
+    if (minimum_beta != mpi::all_reduce(comm_, beta_, mpi::maximum<double>()))
+      throw std::invalid_argument("Spatial Ising requires the same inverse temperature on every rank");
     ++mcs_;
 
     for (int i = 0; i < loclen_; ++i) {
-      double diff = coupling_ * (4 * (spins_[i-1] ^ spins_[i] + spins_[i] ^ spins_[i+1]) - 4);
+      // H = -J sum(s_i s_{i+1}), with s_i = 2 * spins_[i] - 1.
+      double diff = coupling_ * (4 - 4 * ((spins_[i-1] ^ spins_[i]) + (spins_[i] ^ spins_[i+1])));
       if (uniform_01() < 0.5 * (1 + std::tanh(-0.5 * beta_ * diff))) spins_[i] ^= 1;
       if (i == 0) copy2left();
       if (i == loclen_ - 1) copy2right();
@@ -105,7 +132,7 @@ public:
     energy_ = 0;
     double mag = 0;
     for (int i = 0; i < loclen_; ++i) {
-      energy_ -= coupling_ * (2 * (spins_[i] ^ spins_[i+1]) - 1);
+      energy_ += coupling_ * (2 * (spins_[i] ^ spins_[i+1]) - 1);
       mag += (2 * spins_[i] - 1);
     }
     if (comm_.rank() == 0) {
@@ -133,7 +160,7 @@ public:
 
   // for exchange Monte Carlo
   typedef double weight_parameter_type;
-  void set_beta(double beta) { beta_ = beta; }
+  void set_beta(double beta) { beta_ = beta; } // Validation is collective at the next update.
   weight_parameter_type weight_parameter() const { return energy_; }
   static double log_weight(weight_parameter_type gw, double beta) { return - beta * gw; }
 
@@ -145,8 +172,8 @@ protected:
     if (comm_.size() == 1) {
       spins_[-1] = spins_[loclen_-1];
     } else {
-      comm_.send((comm_.rank() + 1) % comm_.size(), 0, spins_[loclen_-1]);
-      comm_.recv((comm_.rank() + comm_.size() - 1) % comm_.size(), 0, spins_[-1]);
+      comm_.sendrecv((comm_.rank() + 1) % comm_.size(), 0, spins_[loclen_-1],
+                    (comm_.rank() + comm_.size() - 1) % comm_.size(), 0, spins_[-1]);
     }
   }
 
@@ -154,8 +181,8 @@ protected:
     if (comm_.size() == 1) {
       spins_[loclen_] = spins_[0];
     } else {
-      comm_.send((comm_.rank() + comm_.size() - 1) % comm_.size(), 0, spins_[0]);
-      comm_.recv((comm_.rank() + 1) % comm_.size(), 0, spins_[loclen_]);
+      comm_.sendrecv((comm_.rank() + comm_.size() - 1) % comm_.size(), 0, spins_[0],
+                    (comm_.rank() + 1) % comm_.size(), 0, spins_[loclen_]);
     }
   }
 

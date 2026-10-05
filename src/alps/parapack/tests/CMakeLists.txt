@@ -42,6 +42,16 @@ foreach(
 endforeach()
 
 if(ALPS_ENABLE_MPI)
+  add_executable(spatial_ising_mpi spatial_ising_mpi.C)
+  target_link_libraries(spatial_ising_mpi PRIVATE ALPS::alps)
+  foreach(ranks RANGE 1 3)
+    add_test(NAME spatial_ising_mpi_${ranks}
+      COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} ${ranks}
+        ${MPIEXEC_PREFLAGS} $<TARGET_FILE:spatial_ising_mpi> ${MPIEXEC_POSTFLAGS})
+    set_tests_properties(spatial_ising_mpi_${ranks} PROPERTIES
+      LABELS "parapack;mpi" PROCESSORS ${ranks} TIMEOUT 120)
+  endforeach()
+
   foreach(name collect_mpi comm_mpi filelock_mpi halt_mpi info_test_mpi process_mpi)
     add_executable(${name} ${name}.C)
 
