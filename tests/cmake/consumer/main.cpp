@@ -8,6 +8,7 @@
 #include <alps/params.hpp>
 #include <alps/utility/encode.hpp>
 #include <alps/mc/driver.hpp>
+#include <alps/mc/replica_exchange.hpp>
 #include <alps/parser/xslt_path.h>
 #include <alps/osiris/xdrdump.h>
 #include <alps/numeric/functional.hpp>
@@ -47,6 +48,13 @@ int main(int argc, char** argv) {
     auto chains=alps::mc::prepare_chains<simulation>(run,
         [](alps::params&,alps::run_configuration const&){},alps::mc::parallel{});
     if (chains.size()!=2) return 1;
+    alps::params replicas;
+    replicas["INVERSE_TEMPERATURE_SET"]=std::vector<double>{.5,1.};
+    replicas["SWEEPS"]=3; replicas["THERMALIZATION"]=0;
+    alps::mc::replica_exchange<double> exchange(replicas,0,0.);
+    exchange.step([](size_t,size_t,double,bool){},[]{return std::vector<double>{-1.,1.};},
+                  [](double energy,double beta){return -beta*energy;},[](size_t,char const*,double){});
+    if (exchange.production_sweeps()!=1) return 1;
     const std::string archive_name = "a/path with spaces";
     if (alps::hdf5_name_decode(alps::hdf5_name_encode(archive_name)) != archive_name)
         return 1;
