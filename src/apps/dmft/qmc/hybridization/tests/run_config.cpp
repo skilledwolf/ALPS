@@ -13,9 +13,6 @@
 #include <iostream>
 #include <iterator>
 #include <limits>
-#ifdef ALPS_HAVE_MPI
-#include <boost/mpi/environment.hpp>
-#endif
 
 namespace {
 void check(bool ok,const char* message) { if(!ok) throw std::runtime_error(message); }
@@ -158,10 +155,7 @@ void measurement_contract(alps::run_configuration run, std::filesystem::path con
   check(nnw[0]==-2. && nnw[1]==0.,"Zero-frequency density correlator omitted its sign");
 }
 }
-int main(int argc,char** argv) {
-#ifdef ALPS_HAVE_MPI
-  boost::mpi::environment environment(argc,argv);
-#endif
+int main() {
   const auto directory=std::filesystem::temp_directory_path()/
     ("alps-cthyb-config-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
   std::filesystem::create_directory(directory);

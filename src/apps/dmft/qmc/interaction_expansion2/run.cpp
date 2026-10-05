@@ -16,13 +16,12 @@
 #include <alps/alea/hdf5.hpp>
 #include "interaction_expansion.hpp"
 #include "run_config.hpp"
+#include "../parallel.hpp"
 #include <alps/utility/copyright.hpp>
 #include <chrono>
 #include <optional>
 #ifdef ALPS_HAVE_MPI
-#include <alps/alea/mpi.hpp>
 #include <alps/check_schedule.hpp>
-#include <climits>
 #endif
 
 void compute_greens_functions(InteractionExpansion::results_type const&,
@@ -30,31 +29,13 @@ void compute_greens_functions(InteractionExpansion::results_type const&,
                              alps::hdf5::archive&);
 
 void alps::ctint::agree_failure(std::string const& failure) {
-#ifdef ALPS_HAVE_MPI
-  int rank, size;
-  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-  MPI_Comm_size(MPI_COMM_WORLD, &size);
-  int origin = failure.empty() ? size : rank;
-  MPI_Allreduce(MPI_IN_PLACE, &origin, 1, MPI_INT, MPI_MIN, MPI_COMM_WORLD);
-  if (origin == size) return;
-  auto message = rank == origin ? failure : std::string{};
-  if (message.size() > INT_MAX) message = "CT-INT error exceeds MPI message limit";
-  int length = static_cast<int>(message.size());
-  MPI_Bcast(&length, 1, MPI_INT, origin, MPI_COMM_WORLD);
-  message.resize(length);
-  MPI_Bcast(message.data(), length, MPI_CHAR, origin, MPI_COMM_WORLD);
-  throw std::runtime_error(message);
-#else
-  if (!failure.empty()) throw std::runtime_error(failure);
-#endif
+  alps::solvers::parallel{}.agree(failure);
 }
 
 void alps::solvers::ctint(const run_configuration &supplied) {
   auto run = supplied;
-  int rank=0;
-#ifdef ALPS_HAVE_MPI
-  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-#endif
+  parallel group;
+  const int rank=group.rank;
   std::string failure;
   std::optional<InteractionExpansion> owned;
   try {
@@ -82,9 +63,7 @@ void alps::solvers::ctint(const run_configuration &supplied) {
   };
 
 #ifdef ALPS_HAVE_MPI
-  int processes=1;
-  MPI_Comm_size(MPI_COMM_WORLD, &processes);
-  if (processes==1) { s.run(stop); }
+  if (group.size==1) { s.run(stop); }
   else {
   // SWEEPS is aggregate work across independent chains, as in the old driver.
   const auto interval = run.execution["check_interval"].as<double>();
@@ -101,17 +80,12 @@ void alps::solvers::ctint(const run_configuration &supplied) {
     }
   } while (fraction < 1.);
   }
-  alps::alea::mpi_reducer reducer(MPI_COMM_WORLD);
 #else
   s.run(stop);
 #endif
   // All MPI ranks participate in collection; only root writes results.
   try {
-#ifdef ALPS_HAVE_MPI
-    auto results = s.collect_results(&reducer);
-#else
-    auto results = s.collect_results();
-#endif
+    auto results = group.collect(s);
     if (rank==0) {
       const auto output_file = run.output["results"].as<std::string>();
       alps::hdf5::save_checkpoint(output_file, [&](alps::hdf5::archive& archive) {

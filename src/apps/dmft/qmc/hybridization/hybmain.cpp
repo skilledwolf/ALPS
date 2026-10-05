@@ -3,6 +3,7 @@
 #include <alps/cthyb.hpp>
 #include <alps/solvers.hpp>
 #include <iostream>
+#include "../parallel.hpp"
 #ifdef ALPS_HAVE_MPI
 #include <boost/mpi/environment.hpp>
 #endif
@@ -25,12 +26,16 @@ int main(int argc, char** argv) {
       else throw std::invalid_argument("Expected one TOML run file");
     }
     if(filename.empty()) throw std::invalid_argument("No TOML run file specified");
-    auto run=alps::load_run_configuration(filename,alps::cthyb::schema());
-    alps::cthyb::prepare_run(run);
-    if(validate){std::cout<<"Valid CT-HYB configuration: "<<filename<<'\n'; return 0;}
 #ifdef ALPS_HAVE_MPI
-    boost::mpi::environment env(argc, argv);
+    boost::mpi::environment env(argc, argv, false);
 #endif
+    alps::solvers::parallel group;
+    alps::run_configuration run;
+    group.checked([&] {
+      run=alps::load_run_configuration(filename,alps::cthyb::schema());
+      alps::cthyb::prepare_run(run);
+    });
+    if(validate){if (!group.rank) std::cout<<"Valid CT-HYB configuration: "<<filename<<'\n'; return 0;}
     alps::solvers::cthyb(run);
     return 0;
   } catch(const std::exception& error) {

@@ -10,9 +10,6 @@
 #include <limits>
 #include <array>
 #include <cmath>
-#ifdef ALPS_HAVE_MPI
-#include <boost/mpi/environment.hpp>
-#endif
 
 void require(bool value, const char *message) {
     if (!value) throw std::runtime_error(message);
@@ -242,10 +239,7 @@ void multiband_input_contract() {
     std::filesystem::remove(matrix);
 }
 
-int main(int argc, char **argv) {
-#ifdef ALPS_HAVE_MPI
-    boost::mpi::environment environment(argc, argv);
-#endif
+int main() {
     auto run = configuration();
     alps::ctint::prepare_run(run);
     atomic_moment_contract(run);

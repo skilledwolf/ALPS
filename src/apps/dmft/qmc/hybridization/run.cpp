@@ -21,10 +21,10 @@
 #include "hybevaluate.hpp"
 #include <alps/utility/copyright.hpp>
 #include <chrono>
+#include <optional>
+#include "../parallel.hpp"
 #ifdef ALPS_HAVE_MPI
-#include <alps/alea/mpi.hpp>
 #include <alps/check_schedule.hpp>
-#include <climits>
 #endif
 
 
@@ -52,15 +52,13 @@ void master_final_tasks(hybridization::results_type const& results,
 
 void alps::solvers::cthyb(alps::run_configuration const& supplied) {
   auto run=supplied;
-  alps::cthyb::prepare_run(run);
+  parallel group;
+  std::optional<hybridization> owned;
+  global_mpi_rank=group.rank;
+  group.checked([&] { alps::cthyb::prepare_run(run); owned.emplace(run,group.rank); });
   const auto &parms=run.parameters;
   const auto output_file=run.output["results"].as<std::string>();
-  global_mpi_rank=0;
-#ifdef ALPS_HAVE_MPI
-  MPI_Comm_rank(MPI_COMM_WORLD, &global_mpi_rank);
-  MPI_Barrier(MPI_COMM_WORLD);
-#endif
-  hybridization s(run,global_mpi_rank);
+  auto& s=*owned;
   if (global_mpi_rank==0) {
     alps::print_copyright(std::cout);
     std::cout << "****************************************************************"<<std::endl;
@@ -81,24 +79,23 @@ void alps::solvers::cthyb(alps::run_configuration const& supplied) {
                                std::chrono::seconds(seconds));
   };
 #ifdef ALPS_HAVE_MPI
-  int processes=1;
-  MPI_Comm_size(MPI_COMM_WORLD, &processes);
-  if (processes==1) { s.run(stop); }
+  if (group.size==1) { s.run(stop); }
   else {
   // SWEEPS is aggregate work across independent chains, as in the old driver.
   alps::check_schedule check;
   double fraction=0.;
+  std::string failure;
   do {
-    s.update();
-    s.measure();
-    if (check.pending()) {
+    try { s.update(); s.measure(); }
+    catch (std::exception const& error) { failure=error.what(); }
+    if (!failure.empty() || check.pending()) {
+      group.agree(failure);
       fraction=stop() ? 1. : s.fraction_completed();
       MPI_Allreduce(MPI_IN_PLACE, &fraction, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
       check.update(fraction);
     }
   } while (fraction < 1.);
   }
-  alps::alea::mpi_reducer reducer(MPI_COMM_WORLD);
 #else
   s.run(stop);
 #endif
@@ -106,11 +103,7 @@ void alps::solvers::cthyb(alps::run_configuration const& supplied) {
   // Every rank participates in collection and receives any output error.
   std::string output_error;
   try {
-#ifdef ALPS_HAVE_MPI
-    auto results=s.collect_results(&reducer);
-#else
-    auto results=s.collect_results();
-#endif
+    auto results=group.collect(s);
     if(global_mpi_rank==0){
       if(!results.at("Sign").count())
         throw std::runtime_error("CT-HYB stopped before any measurements; no results were written");
@@ -127,12 +120,5 @@ void alps::solvers::cthyb(alps::run_configuration const& supplied) {
       });
     }
   } catch(const std::exception& error) { output_error=error.what(); }
-#ifdef ALPS_HAVE_MPI
-  if (output_error.size()>INT_MAX) output_error="CT-HYB output error exceeds MPI message limit";
-  int length=static_cast<int>(output_error.size());
-  MPI_Bcast(&length, 1, MPI_INT, 0, MPI_COMM_WORLD);
-  output_error.resize(length);
-  MPI_Bcast(output_error.data(), length, MPI_CHAR, 0, MPI_COMM_WORLD);
-#endif
-  if(!output_error.empty()) throw std::runtime_error(output_error);
+  group.agree(output_error);
 }
