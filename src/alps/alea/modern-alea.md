@@ -220,10 +220,18 @@ The imported `sampling_prop` and `bootstrap_prop` were declarations marked
 unimplemented, with no transform implementation. They have been removed from the
 API and capability table; this removes no working propagation algorithm.
 
-Four production measurement clients still use legacy ALEA: `loop`, `qwl`,
+Three production measurement clients still use legacy ALEA: `loop`,
 `dirloop_sse`, and `worm`. Their estimators and checkpoint state must be migrated
 and validated before removing legacy ALEA. `mcbase`, CT-INT, CT-HYB, Hirsch-Fye,
-`simplemc`, and `spinmc` use native estimators. The impurity solver analysis files
+`simplemc`, `spinmc`, and `qwl` use native estimators. The impurity solver analysis files
 still lack complete physical solver state and do not provide restart. These
 boundaries are explicit; consolidation is not complete until the remaining
 clients and released application-checkpoint conversion are handled.
+
+QWL uses mean estimators for its coefficient/histogram snapshots and native
+batch/autocorrelation estimators for traversal times. It shares the native
+runner's serial/MPI chains, RNGs, publication and restart. Exact checkpoints
+retain refinement and multicanonical state; completed production can be extended.
+Thermodynamic evaluation uses each chain's final corrected coefficients before
+averaging curves. See [QWL](../../apps/qmc/qwl/README.md) for window normalization
+and the released per-run result converter.

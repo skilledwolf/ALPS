@@ -6,6 +6,14 @@ User-facing changes and migration notes are recorded here, starting with the bui
 
 ### Changed
 
+- Port `qwl` to native ALEA and typed TOML runs using the shared Monte Carlo
+  runner. Preserve refinement modes, magnetic measurements, intermediate
+  coefficients, serial/MPI chains and both RNGs; add exact operator/histogram
+  restart and production extension. Correct expansion-window initialization,
+  combinatorial coefficient normalization and independent-chain evaluation.
+  Migrate the evaluator and tutorials; provide offline conversion of released
+  per-run final estimates with `alps-hdf5-convert --qwl-sites`.
+
 - Port `spinmc` to typed TOML runs and native ALEA for Ising, XY, Heisenberg,
   O(4) and Potts models, preserving local and legal cluster updates, matrix
   couplings, onsite interactions and fields. Retain exact spin/RNG/progress and
@@ -15,7 +23,7 @@ User-facing changes and migration notes are recorded here, starting with the bui
   asymmetric-bond and self-loop local deltas, onsite constants and staggered
   cluster projections. Remove the old scheduler/factory/matrix kernels and
   separate evaluator; migrate classical tutorials and notebooks. Chains run
-  serially with `mt19937`; legacy XML runs and multi-process launches reject.
+  in serial or MPI with `mt19937` or `lagged_fibonacci607`; legacy XML runs reject.
 - Share private native Monte Carlo run orchestration and vector-aware raw-chain
   pooling across applications. Keep exact restart and output validation in one
   path. Omit optional thermodynamic estimates when moment subtraction cannot
@@ -32,8 +40,8 @@ User-facing changes and migration notes are recorded here, starting with the bui
   partial-bin restart state, validate all tasks before execution, and emit VTK
   snapshots directly. Correct self-loop update weights and zero-warmup sampling.
   Remove the duplicate Parapack workers and evaluators; update the snapshot
-  tutorial. Independent chains now run serially with `mt19937`; legacy XML
-  inputs, alternate RNGs and multi-process launches are explicitly rejected.
+  tutorial. Independent chains run in serial or MPI with `mt19937` or
+  `lagged_fibonacci607`; legacy XML inputs are rejected.
 - Validate native ALEA checkpoints by replaying the shared batch merge algorithm.
   Reject inconsistent cursors, counts, offsets and nonzero empty bins before
   replacement; remove manual modular cursor reconstruction and duplicate

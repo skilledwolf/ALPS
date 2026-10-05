@@ -12,6 +12,7 @@
 # ****************************************************************************
 
 import pyalps
+from pyalps.run_io import execute, write_run_files
 import matplotlib.pyplot as plt
 import pyalps.plot
 
@@ -26,11 +27,12 @@ parms = [{
         }]
 
 #write the input file and run the simulation
-input_file = pyalps.writeInputFiles('parm6b',parms)
-res = pyalps.runApplication('qwl',input_file)
+runs = [{"parameters": p, "execution": {"seed": 42 + i},
+         "output": {"results": f"parm6b.task{i + 1}.out.h5"}} for i, p in enumerate(parms)]
+files = execute("qwl", write_run_files("parm6b", runs, overwrite=True))
 
 #run the evaluation and load all the plots
-data = pyalps.evaluateQWL(pyalps.getResultFiles(prefix='parm6b'),DELTA_T=0.1, T_MIN=0.1, T_MAX=10.0)
+data = pyalps.evaluateQWL(files,DELTA_T=0.1, T_MIN=0.1, T_MAX=10.0)
 
 #make plot
 for s in pyalps.flatten(data):

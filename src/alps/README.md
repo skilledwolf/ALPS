@@ -23,7 +23,7 @@ replicas before signed analysis and publishing canonical results atomically.
 CT-INT includes general multiband density interactions and their full density
 moments; DMFT uses only external solver processes. Other legacy measurement
 producers still need migration before their statistical interfaces can be deleted:
-`loop`, `qwl`, `dirloop_sse` and `worm`.
+`loop`, `dirloop_sse` and `worm`.
 The NGS `mcbase` framework and its MPI adapter support all native estimator
 families and real/complex strategies with the same checkpoint and result codecs.
 Python measurement maps share native accumulator
@@ -39,6 +39,11 @@ complete checkpoints. Aligned raw chains feed native joint jackknife estimates;
 direct moments and improved cluster estimators remain distinct. Its legacy
 scheduler front end, separate evaluator and hand-written matrix kernels are
 removed. See the [spinmc guide](../apps/mc/spins/README.md).
+`qwl` also uses this runner and native ALEA, preserving Wang–Landau and
+multicanonical refinement, independent chains and exact operator-string
+checkpoints. Its evaluator averages thermodynamic curves from individual chains;
+released final results have an offline conversion profile. See the
+[QWL guide](../apps/qmc/qwl/README.md).
 Historical reconciliation probes disabled ALEA; they do not validate this import.
 
 ## Consolidation acceptance contracts

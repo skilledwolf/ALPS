@@ -1,0 +1,12 @@
+[parameters]
+LATTICE = "chain lattice"
+MODEL = "spin"
+local_S = 0.5
+L = 40
+J = 1.0
+CUTOFF = 500
+[execution]
+seed = 42
+[output]
+results = "parm6b.out.h5"
+checkpoint = "parm6b.checkpoint.h5"

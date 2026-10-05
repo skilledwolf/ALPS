@@ -1,0 +1,12 @@
+[parameters]
+LATTICE = "simple cubic lattice"
+MODEL = "spin"
+local_S = 0.5
+L = 4
+J = 1.0
+CUTOFF = 500
+[execution]
+seed = 42
+[output]
+results = "mc06c.out.h5"
+checkpoint = "mc06c.checkpoint.h5"
