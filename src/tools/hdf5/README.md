@@ -26,7 +26,7 @@ The destination filesystem must support hard links for atomic publication.
 | Signed bytes marked `__alps_type__ = "int8"` | Ordinary signed bytes |
 | Explicitly selected ALPS 3.0.0 flat parameter groups | Indexed `alps.params.v2` names and native values |
 | Explicitly selected ALPS 3.0.0 ALEA observable/result groups | Native Boolean flags and schema-established empty array extents |
-| Explicitly selected ALPS 3.0.0 complete linear bin histories | Native ALEA batch analysis results with original sums/counts and recomputed uncertainty |
+| Explicitly selected ALPS 3.0.0 complete linear bins or equal-weight jackknife histories | Native ALEA batch analysis results; source statistical fields retained as provenance |
 | Explicitly selected ALPSCore 2.3.3 ALEA result groups | Canonical primitives and versioned modern ALEA result metadata |
 | Other datasets and attributes | Their existing datatypes and values |
 
@@ -138,10 +138,27 @@ released `DetailedBinning`, untransformed `SimpleObservableData` and `MCData`.
 It accounts for their distinct sum/mean conventions and retains the actual
 partial-bin weight. Vector bins preserve cross-component covariance. Native
 kind-5 means and errors are recalculated from these weighted bins; the uncertainty
-can differ from a published legacy estimate. Summary-only, nonlinear, discarded,
-missing or inconsistent histories are rejected, as are aliases to replaced
-statistical fields. Unrelated metadata remains intact. Separate scalar summaries
-cannot supply missing joint covariance.
+can differ from a published legacy estimate.
+
+For transformed `MCData`/`SimpleObservableData` with a complete equal-weight
+jackknife history, the same option constructs pseudovalues
+`p_i = N*j_0 - (N-1)*j_i`, where `j_0` is the full transformed estimate and
+`j_i` are the N leave-one-out estimates. Their native weighted mean and error
+reproduce the released bias-corrected mean and jackknife error, and vector
+histories retain cross-component covariance. The evaluator writer omitted bin
+size; for its transformed results, its `count = N*bin_size` contract supplies
+the common weight. Partial or discarded nonlinear histories cannot establish
+those weights and are rejected.
+
+Every converted batch result keeps the original statistical leaves (including
+reported mean/error, raw variance, tau, bins and jackknife estimates) and domain
+flags under `GROUP/legacy`. This is archival provenance accessible with h5py,
+not another runtime format reader. Native result operations use only the new
+batch state. The original file is also left unchanged. The reserved `legacy`
+name must be absent on input; collisions fail rather than overwrite user data.
+Summary-only results, missing or inconsistent histories, and aliases to moved
+statistical fields are rejected. Unrelated metadata remains intact. Separate
+scalar summaries cannot supply missing joint covariance.
 
 The output is an analysis result. It cannot supply the merge cursor, RNG or
 simulation configuration needed to resume an old NGS checkpoint. New NGS

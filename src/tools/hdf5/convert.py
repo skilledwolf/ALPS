@@ -570,8 +570,8 @@ def _core_alea(group, family):
 
 
 def _alea_batches(group):
-    """Recover released linear bin sums/counts, never an accumulator cursor."""
-    if "version" in group.attrs or "kind" in group.attrs or "batch" in group:
+    """Recover linear bins or jackknife pseudovalues, never an accumulator cursor."""
+    if "version" in group.attrs or "kind" in group.attrs or "batch" in group or "legacy" in group:
         raise ValueError(f"{group.name}: expected a released ALPS 3.0.0 ALEA group")
 
     def integer(value, where):
@@ -588,9 +588,8 @@ def _alea_batches(group):
     evaluator = "changed" in group.attrs and "nonlinearoperations" in group.attrs
     if sum((raw, mcdata, evaluator)) != 1:
         raise ValueError(f"{group.name}: ambiguous or summary-only ALEA bin semantics")
-    if any(bool(group.attrs.get(flag, False))
-           for flag in ("cannotrebin", "changed", "nonlinearoperations")):
-        raise ValueError(f"{group.name}: nonlinear/transformed ALEA bins cannot be recovered")
+    transformed = any(bool(group.attrs.get(flag, False))
+                      for flag in ("cannotrebin", "changed", "nonlinearoperations"))
     if "timeseries/data" not in group:
         raise ValueError(f"{group.name}: missing linear bin history")
     data = group["timeseries/data"]
@@ -601,11 +600,16 @@ def _alea_batches(group):
     size = data.shape[1] if len(data.shape) == 2 else 1
     if not size:
         raise ValueError(f"{group.name}: zero-component bins are unsupported")
-    binsize = integer(data.attrs.get("binsize", -1), data.name + "@binsize")
+    full = data.shape[0]
+    binsize = data.attrs.get("binsize", -1)
+    # The released evaluator omits binsize, but its nonlinear analyze() records
+    # count = binsize * number_of_bins before writing the equal-weight jackknife.
+    if "binsize" not in data.attrs and evaluator and transformed and full and count % full == 0:
+        binsize = count // full
+    binsize = integer(binsize, data.name + "@binsize")
     discarded = integer(data.attrs.get("discard", 0), data.name + "@discard")
     if discarded:
         raise ValueError(f"{data.name}: discarded bins cannot reconstruct the full sample count")
-    full = data.shape[0]
     partial, remainder = None, 0
     if raw and "timeseries/partialbin" in group:
         partial = group["timeseries/partialbin"]
@@ -619,6 +623,14 @@ def _alea_batches(group):
         0 < last <= binsize if full else count == 0)
     if not complete or (count or full) and not binsize or remainder > binsize:
         raise ValueError(f"{group.name}: incomplete/inconsistent bin counts; missing samples cannot be invented")
+
+    jack = None
+    if transformed:
+        if "jacknife/data" not in group or full < 2 or count != full * binsize:
+            raise ValueError(f"{group.name}: transformed bins require a complete equal-weight jackknife history")
+        jack = group["jacknife/data"]
+        if jack.shape != (full + 1,) + data.shape[1:] or jack.dtype.kind not in "fc":
+            raise ValueError(f"{jack.name}: expected the full estimate followed by one leave-one-out estimate per bin")
 
     # Owned legacy leaves change shape or disappear. Reject aliases to those
     # objects so conversion cannot silently break a hard-link graph.
@@ -639,7 +651,7 @@ def _alea_batches(group):
                 raise ValueError(f"{current.name}: ALEA state has hard-link aliases")
 
     batches = max(2, full + bool(remainder))
-    dtype = np.dtype("c16" if data.dtype.kind == "c" else "f8")
+    dtype = np.dtype("c16" if (jack if transformed else data).dtype.kind == "c" else "f8")
     counts = group.create_dataset("batch/count", shape=(batches,), dtype="u8")
     sums = group.create_dataset("batch/sum", shape=(batches, size), dtype=dtype)
     counts[:full] = binsize
@@ -649,9 +661,17 @@ def _alea_batches(group):
         counts[full] = remainder
     # Tile both dimensions; this also bounds memory for unusually wide vectors.
     for selection in _blocks(data.shape, dtype.itemsize):
-        values = data[selection].astype(dtype)
-        if mcdata:
-            values *= binsize
+        if transformed:
+            rows = selection[0]
+            full_estimate = np.asarray(jack[(0,) + selection[1:]], dtype=dtype)
+            leave_one_out = np.asarray(jack[(slice(rows.start + 1, rows.stop + 1),) + selection[1:]], dtype=dtype)
+            # Equal-weight pseudovalues preserve the released bias-corrected
+            # estimate and its jackknife uncertainty, including cross components.
+            values = (full * full_estimate - (full - 1) * leave_one_out) * binsize
+        else:
+            values = data[selection].astype(dtype)
+            if mcdata:
+                values *= binsize
         if not np.isfinite(values).all():
             raise ValueError(f"{data.name}: bin sums must be finite")
         target = selection if len(selection) == 2 else selection + (slice(0, 1),)
@@ -695,9 +715,16 @@ def _alea_batches(group):
         else:
             uncertainty = np.sqrt(variance * count2 / (count * (count**2 - count2)))
         mean[components], error[components] = average, uncertainty
+    # The reported error, raw variance, tau and transformed bin values need not
+    # be recoverable from the native result. Retain them as provenance, not as
+    # an alternative runtime estimator or restart state.
+    legacy = group.create_group("legacy")
+    legacy.attrs["format"] = "ALPS 3.0.0 ALEA"
     for path in leaves:
         if path in group:
-            del group[path]
+            if "/" in path:
+                legacy.require_group(posixpath.dirname(path))
+            group.move(path, "legacy/" + path)
     for name in ("variance", "tau", "jacknife", "timeseries", "mean"):
         if name in group and not len(group[name]) and not len(group[name].attrs):
             del group[name]
@@ -706,6 +733,7 @@ def _alea_batches(group):
     group.move("batch/error", "mean/error")
     for flag in ("cannotrebin", "changed", "nonlinearoperations"):
         if flag in group.attrs:
+            legacy.attrs[flag] = group.attrs[flag]
             del group.attrs[flag]
     group.attrs["size"], group.attrs["num_batches"] = np.uint64(size), np.uint64(batches)
     _core_alea(group, "batch")
@@ -805,7 +833,7 @@ def _copy(source, target, boolean_datasets, boolean_attributes, pair_groups, mat
             _parameters(obj, target)
         elif kind == "alea-batches":
             _alea_batches(obj)
-            report.append(f"{path}: ALPS 3.0.0 linear bins -> native ALEA batch result; error recomputed")
+            report.append(f"{path}: ALPS 3.0.0 bins/jackknife -> native ALEA batch result; error recomputed, source statistics retained in legacy/")
         elif kind.startswith("core-alea:"):
             _core_alea(obj, kind.split(":", 1)[1])
             report.append(f"{path}: ALPSCore 2.3.3 ALEA result -> versioned native result")
@@ -1038,7 +1066,7 @@ def main(argv=None):
     parser.add_argument("--alea", action="append", default=[], metavar="GROUP",
                         help="normalize one ALPS 3.0.0 ALEA observable/result (repeatable)")
     parser.add_argument("--alea-batches", action="append", default=[], metavar="GROUP",
-                        help="recover complete ALPS 3.0.0 linear bins as a native ALEA analysis result; "
+                        help="recover ALPS 3.0.0 linear bins or equal-weight jackknife histories as native ALEA results; "
                              "recompute uncertainty, never invent restart state (repeatable)")
     parser.add_argument("--core-alea", action="append", nargs=2, default=[],
                         metavar=("KIND", "GROUP"),

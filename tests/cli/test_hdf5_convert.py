@@ -1162,6 +1162,9 @@ def test_released_linear_bins_recover_native_joint_analysis(converter, tmp_path,
         assert group.attrs["size"] == components
         assert "timeseries" not in group and "count" not in group
         assert group["user-note"].asstr()[()] == "preserve me"
+        np.testing.assert_array_equal(group["legacy/timeseries/data"], values)
+        assert group["legacy/count"][()] == int(counts.sum())
+        assert np.all(group["legacy/mean/error"][()] == 1)
         np.testing.assert_array_equal(group["batch/count"], counts)
         np.testing.assert_array_equal(group["batch/sum"], sums)
         np.testing.assert_allclose(group["mean/value"], average)
@@ -1439,3 +1442,76 @@ def test_spin_state_cli_accepts_released_numeric_text(tmp_path):
     assert 'native restart conversion remains pending' in run.stdout
     with h5py.File(output, 'r') as ar:
         np.testing.assert_array_equal(ar['migration/spinmc/spins'], [[0.], [2.]])
+
+
+@pytest.mark.parametrize('family', ['mcdata', 'evaluator'])
+@pytest.mark.parametrize('components', [1, 2])
+def test_nonlinear_jackknife_conversion_preserves_estimate_and_evidence(converter, tmp_path, monkeypatch, family, components):
+    # Reconstruct the v3.0.0 writer contract, not a compiled-release fixture.
+    # Both mcdata::analyze and SimpleObservableData::jackknife store [f(mean),
+    # f(leave-one-out mean)...]; the evaluator omits the binsize attribute.
+    source, output = tmp_path/'source.h5', tmp_path/'native.h5'
+    bins = np.arange(1., 10.)
+    if components == 2:
+        bins = np.column_stack((bins, 2*bins + 1))
+    n, weight = len(bins), 4
+    jack = np.concatenate((np.asarray([bins.mean(axis=0)]),
+                           (bins.sum(axis=0) - bins)/(n-1)))**2
+    pseudo = n*jack[0] - (n-1)*jack[1:]
+    expected_mean = n*jack[0] - (n-1)*jack[1:].mean(axis=0)
+    expected_error = np.sqrt((n-1)/n * ((jack[1:]-jack[1:].mean(axis=0))**2).sum(axis=0))
+    with h5py.File(source, 'w') as ar:
+        group = released_bins(ar, family, bins**2, binsize=weight)
+        group.attrs['cannotrebin' if family == 'mcdata' else 'nonlinearoperations'] = np.int8(1)
+        if family == 'evaluator':
+            group.attrs['changed'] = np.int8(1)
+            del group['timeseries/data'].attrs['binsize']
+        group['jacknife/data'] = jack
+        group['mean/value'][...] = expected_mean
+        group['mean/error'][...] = expected_error
+        group['variance/value'] = np.ones(bins.shape[1:])*17
+        group['tau/value'] = np.ones(bins.shape[1:])*3
+    before = source.read_bytes()
+    monkeypatch.setattr(converter, 'BUFFER_BYTES', 32)
+    converter.convert(source, output, alea_batch_groups=['/observable'])
+    assert source.read_bytes() == before
+    with h5py.File(output) as ar:
+        group = ar['observable']
+        np.testing.assert_allclose(group['batch/sum'], weight*pseudo.reshape(n, components))
+        np.testing.assert_array_equal(group['batch/count'], np.full(n, weight))
+        np.testing.assert_allclose(group['mean/value'], np.atleast_1d(expected_mean))
+        np.testing.assert_allclose(group['mean/error'], np.atleast_1d(expected_error))
+        np.testing.assert_array_equal(group['legacy/jacknife/data'], jack)
+        np.testing.assert_array_equal(group['legacy/timeseries/data'], bins**2)
+        np.testing.assert_array_equal(group['legacy/mean/value'], expected_mean)
+        np.testing.assert_array_equal(group['legacy/mean/error'], expected_error)
+        assert group['legacy/count'][()] == n*weight
+        assert np.all(group['legacy/variance/value'][()] == 17)
+        assert np.all(group['legacy/tau/value'][()] == 3)
+        assert group['legacy'].attrs['cannotrebin' if family == 'mcdata' else 'nonlinearoperations']
+    if os.environ.get('ALPS_DIR'):
+        from pyalps import alea, hdf5
+        with hdf5.archive(output) as ar:
+            result = alea.BatchResult.read(ar, '/observable')
+        np.testing.assert_allclose(result.mean, np.atleast_1d(expected_mean))
+        np.testing.assert_allclose(result.error, np.atleast_1d(expected_error))
+        assert result.count == n*weight
+        np.testing.assert_allclose(result.covariance, np.atleast_2d(np.cov(pseudo, rowvar=False)))
+
+
+@pytest.mark.parametrize('fault', ['missing', 'short', 'nonfinite', 'partial', 'legacy-collision'])
+def test_nonlinear_jackknife_rejects_missing_or_ambiguous_evidence(converter, tmp_path, fault):
+    source, output = tmp_path/'source.h5', tmp_path/'native.h5'
+    with h5py.File(source, 'w') as ar:
+        group = released_bins(ar, 'mcdata', [1., 2., 3.])
+        group.attrs['cannotrebin'] = np.int8(1)
+        if fault != 'missing':
+            group['jacknife/data'] = [4., 6.25, 4., 2.25] if fault != 'short' else [4., 6.25, 4.]
+        if fault == 'nonfinite': group['jacknife/data'][1] = np.inf
+        if fault == 'partial': group['count'][()] = np.uint64(8)
+        if fault == 'legacy-collision': group['legacy/user'] = 17
+    before = source.read_bytes()
+    with pytest.raises(ValueError):
+        converter.convert(source, output, alea_batch_groups=['/observable'])
+    assert source.read_bytes() == before
+    assert set(tmp_path.iterdir()) == {source}
