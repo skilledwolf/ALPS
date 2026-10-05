@@ -190,3 +190,37 @@ def test_mcbase_preserves_heterogeneous_native_estimators(tmp_path):
     assert resumed.collectResults()["Batch"].count == 47
     with hdf5.archive(str(tmp_path / "results.h5"), "w") as ar:
         ngs.saveResults(expected, uninterrupted.parameters, ar, "/simulation/results")
+
+
+@pytest.mark.parametrize('complex_values', [False, True])
+def test_error_convergence_preserves_rising_error_evidence(tmp_path, complex_values):
+    cls = alea.ComplexAutocorrelationAccumulator if complex_values else alea.AutocorrelationAccumulator
+    acc = cls(3)
+    for i in range(8192):
+        acc << np.full(3, (-1.)**i, dtype=complex if complex_values else float)
+    filename = tmp_path/'plateau.h5'
+    with hdf5.archive(filename, 'w') as ar:
+        acc.result().save(ar, '/result')
+    # Construct valid moment summaries with prescribed errors. All four
+    # compared levels have >=1024 batches. A later plateau must not erase the
+    # earlier uncertain/not-converged evidence in components 1 and 2.
+    errors = [np.array([1., .85, .7]), np.ones(3), np.ones(3), np.ones(3)]
+    with h5py.File(filename, 'a') as ar:
+        for level, error in enumerate(errors):
+            ar[f'result/level/{level}/var'][...] = error**2 * (8192 // 2**level)
+    with hdf5.archive(filename) as ar:
+        result = alea.read_result(ar, '/result')
+    assert result.converged_errors.dtype.kind == 'i'
+    np.testing.assert_array_equal(result.converged_errors, [0, 1, 2])
+
+
+def test_error_convergence_requires_four_populated_levels():
+    acc = alea.AutocorrelationAccumulator(2)
+    np.testing.assert_array_equal(acc.result().converged_errors, [1, 1])
+    for i in range(8191):
+        acc << [1., -1. if i < 4096 else 1.]
+    np.testing.assert_array_equal(acc.result().converged_errors, [1, 1])
+    acc << [1., 1.]
+    np.testing.assert_array_equal(acc.result().converged_errors, [0, 2])
+    acc << [np.nan, 1.]
+    assert acc.result().converged_errors[0] == 1

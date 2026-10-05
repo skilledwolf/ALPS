@@ -186,6 +186,11 @@ public:
     /** Is sample size sufficient to estimate integrated auto-correlation time? */
     bool tau_available() const { return find_level(DEFAULT_MIN_SAMPLES) > 0; }
 
+    /** Error plateau heuristic per component: 0=converged, 1=undetermined,
+     * 2=not converged. Compares the last four sufficiently populated levels;
+     * this is not a test of equilibration or ergodicity. */
+    column<int> converged_errors() const;
+
     /** Collect measurements from different instances using sum-reducer */
     void reduce(const reducer &r);
 

@@ -14,30 +14,16 @@ from pyalps import alea
 
 
 @pytest.mark.parametrize("vector", [False, True])
-def test_timeseries_from_mcdata(tmp_path, vector):
-    observable_type = alea.RealVectorTimeSeriesObservable if vector else alea.RealTimeSeriesObservable
+def test_timeseries_from_mcdata(tmp_path, vector, legacy_alea_file):
     data_type = alea.MCVectorData if vector else alea.MCScalarData
     series_type = alea.MCVectorTimeseries if vector else alea.MCScalarTimeseries
-    observable = observable_type("samples")
-    for i in range(32):
-        observable << (np.array([float(i), 2.0 * i]) if vector else float(i))
-    filename = str(tmp_path / "samples.h5")
-    observable.save(filename)
+    samples = np.arange(32, dtype=float)
+    if vector:
+        samples = np.column_stack((samples, 2*samples))
+    filename = legacy_alea_file(samples, path='/simulation/results/samples')
     data = data_type()
     data.load(filename, "/simulation/results/samples")
     np.testing.assert_array_equal(series_type(data).timeseries(), data.bins)
-
-
-@pytest.mark.parametrize("observable_type", [alea.RealVectorObservable, alea.RealVectorTimeSeriesObservable])
-def test_vector_convergence_is_an_integer_array(observable_type):
-    observable = observable_type("samples")
-    for i in range(128):
-        observable << np.array([float(i), 2.0 * i])
-    convergence = observable.converged_errors
-    assert isinstance(convergence, np.ndarray)
-    assert convergence.shape == (2,)
-    assert convergence.dtype.kind == "i"
-    assert np.isin(convergence, [0, 1, 2]).all()
 
 
 @pytest.mark.parametrize("layout", ["readonly", "strided", "fortran"])
@@ -51,12 +37,9 @@ def test_array_consumers_do_not_require_writable_samples(layout):
         values = np.asfortranarray(values)
     np.testing.assert_array_equal(alea.MCScalarTimeseries(values[0]).timeseries(), values[0])
     np.testing.assert_array_equal(alea.MCVectorTimeseries(values).timeseries(), values)
-    observable = alea.RealVectorObservable("samples")
     native = alea.BatchAccumulator(values.shape[1])
     for row in values:
-        observable << row
         native << row
-    np.testing.assert_allclose(observable.mean, values.mean(axis=0))
     np.testing.assert_allclose(native.result().mean, values.mean(axis=0))
 
 
@@ -85,3 +68,28 @@ def test_mcvector_constructor_sizes_errors_before_indexing():
         env={**os.environ, "MallocScribble": "1"},
     )
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+@pytest.mark.parametrize('vector', [False, True])
+def test_full_timeseries_uses_numpy_storage_and_native_statistics(tmp_path, vector):
+    from pyalps import hdf5
+    samples = np.arange(257, dtype=float) % 19 - 9
+    if vector:
+        samples = np.column_stack((samples, samples*2+1))
+    statistics = alea.BatchAccumulator(2 if vector else 1, num_batches=8)
+    diagnostics = alea.AutocorrelationAccumulator(2 if vector else 1)
+    for sample in samples:
+        statistics << sample
+        diagnostics << sample
+    filename = tmp_path/'samples.h5'
+    def save(ar):
+        ar['/samples'] = samples
+        statistics.result().save(ar, '/result')
+        diagnostics.result().save(ar, '/diagnostics')
+    hdf5.save_checkpoint(filename, save)
+    with hdf5.archive(filename) as ar:
+        np.testing.assert_array_equal(ar['/samples'], samples)
+        result = alea.read_result(ar, '/result')
+        analysis = alea.read_result(ar, '/diagnostics')
+    np.testing.assert_allclose(result.mean, np.atleast_1d(samples.mean(axis=0)))
+    assert result.count == analysis.count == len(samples)

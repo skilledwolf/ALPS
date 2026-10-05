@@ -150,6 +150,52 @@ removed. Released bins can be converted to native analysis results with the
 [offline converter](../../src/tools/hdf5/README.md); analysis results do not supply
 the sampling state needed for restart.
 
+## Observable migration
+
+The legacy `RealObservable`, `RealVectorObservable`, `RealTimeSeriesObservable`
+and `RealVectorTimeSeriesObservable` producers are removed. Use native
+`BatchAccumulator(size, num_batches)` for bounded weighted histories and
+`AutocorrelationAccumulator(size)` for error-versus-batch-size diagnostics.
+Use `size=1` for scalars. Snapshot an accumulator with `result()` before reading
+its `mean`, `error`, `variance` or `tau`, and save through
+`result.save(archive, path)`; the archive path now supplies the observable name.
+`BatchResult.variance` describes batch observations, whereas
+`AutocorrelationResult.level(0).variance` describes the original observations
+when the accumulator uses its default `batch_size=1`.
+
+`AutocorrelationResult.converged_errors` is an integer vector: 0 means a plateau,
+1 means undetermined, and 2 means rising errors. It compares the last four
+levels with at least 1024 batches each. Earlier errors below 90% of the final
+error give status 1; below 82.4% give status 2. The strongest failed comparison
+wins, correcting the old heuristic's ability to erase a failure when a later
+comparison passes. Nonfinite errors or insufficient levels are undetermined.
+This heuristic does not establish equilibration or ergodicity; constant data can
+have a flat zero-error curve without exploring the state space. The complete
+level hierarchy remains available, and `tau_available` reports sample sufficiency
+rather than convergence.
+
+Full chronological history uses ordinary NumPy arrays and HDF5 datasets, avoiding
+a second observable implementation:
+
+```python
+import numpy as np
+from pyalps import alea, hdf5
+
+samples = np.asarray(samples, dtype=np.float64)  # (time,) or (time, component)
+accumulator = alea.BatchAccumulator(1 if samples.ndim == 1 else samples.shape[1])
+for sample in samples:
+    accumulator << sample
+with hdf5.archive("measurements.h5", "w") as archive:
+    archive["/samples"] = samples
+    accumulator.result().save(archive, "/simulation/results/Energy")
+```
+
+Accumulate those same samples into the native estimator while generating them.
+For histories too large for memory, use an extendible h5py dataset. Never treat
+averaged/compressed bins as individual chronological observations. Released
+legacy observable files remain inputs to the offline converter; new producers
+write native results and no longer emit legacy statistical schemas.
+
 ## HDF5 IO
 
 `pyalps.hdf5.archive` owns an h5py file. Primitive datasets and attributes follow

@@ -11,9 +11,8 @@
 #include <nanobind/stl/pair.h>
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/vector.h>
-#include <alps/alea/detailedbinning.h>
-#include <alps/alea/mcanalyze.hpp>
 #include <alps/alea/mcdata.hpp>
+#include <alps/alea/mcanalyze.hpp>
 #include <alps/alea/value_with_error.hpp>
 #include <alps/alea/checkpoint.hpp>
 #include <alps/alea.hpp>
@@ -23,76 +22,15 @@
 #include <alps/hdf5.hpp>
 #include <alps/numeric/vector_functions.hpp>
 #include "numpy_compat.hpp"
-#include "save_observable_to_hdf5.hpp"
 #include "archive_savable.hpp"
-#include <alps/random.h>
 #include <cstddef>
 #include <sstream>
 #include <stdexcept>
 #include <string>
 #include <type_traits>
 #include <utility>
-#include <valarray>
 #include <vector>
 namespace nb = nanobind;
-namespace alps {
-    namespace alea {
-        // Wraps a scalar-valarray observable (RealVectorObservable /
-        // RealVectorTimeSeriesObservable) so Python sees numpy arrays
-        // in / out instead of std::valarray<double>.
-        template<typename T>
-        class WrappedValarrayObservable {
-            using element_type = typename T::value_type::value_type;
-          public:
-            WrappedValarrayObservable(std::string const & name, int s = 0)
-                : obs(name, s)
-            {}
-            // Copy the ndarray into a valarray and feed it to the observable.
-            void push(nb::handle arr) {
-                auto view = alps::python::as_contiguous<double>(arr);
-                if (view.ndim() != 1)
-                    throw std::invalid_argument(
-                        "RealVectorObservable.push: expected 1-D array");
-                std::size_t n = static_cast<std::size_t>(view.shape(0));
-                std::valarray<element_type> v(n);
-                double const * data = view.data();
-                for (std::size_t i = 0; i < n; ++i)
-                    v[i] = static_cast<element_type>(data[i]);
-                obs << v;
-            }
-            std::string representation() const { return obs.representation(); }
-            // Turn an alps::numeric std::valarray-like view into a
-            // 1-D numpy.ndarray (dtype=float64) by copying through
-            // numpy.empty + buffer protocol.
-            template <typename U>
-            static nb::object _to_numpy(U const & v) {
-                std::size_t n = static_cast<std::size_t>(v.size());
-                std::vector<double> tmp(n);
-                for (std::size_t i = 0; i < n; ++i)
-                    tmp[i] = static_cast<double>(v[i]);
-                return alps::python::make_numpy_array<double>(std::move(tmp), {n});
-            }
-            nb::object mean()     const { return _to_numpy(obs.mean());     }
-            nb::object error()    const { return _to_numpy(obs.error());    }
-            nb::object tau()      const { return _to_numpy(obs.tau());      }
-            nb::object variance() const { return _to_numpy(obs.variance()); }
-            void save(std::string const & filename) const {
-                alps::hdf5::archive ar(filename, "a");
-                ar["/simulation/results/" + obs.representation()] << obs;
-            }
-            typename T::count_type       count()            const { return obs.count(); }
-            nb::object converged_errors() const {
-                auto const values = obs.converged_errors();
-                std::vector<std::int32_t> result(values.size());
-                for (std::size_t i = 0; i < values.size(); ++i)
-                    result[i] = values[i];
-                return alps::python::make_numpy_array(std::move(result));
-            }
-          private:
-            T obs;
-        };
-    } // namespace alea
-} // namespace alps
 namespace {
 // Build a 1-D numpy.ndarray (dtype=float64) from any sequence-like
 // alps container (std::vector<double>, std::valarray<double>).
@@ -266,6 +204,7 @@ template<class R> void bind_estimate(nb::class_<R>& result, nb::module_& module)
     if constexpr (aa::traits<R>::HAVE_TAU) {
         result.def_prop_ro("tau", [](R const& value) { return value.tau().eval(); })
             .def_prop_ro("tau_available", &R::tau_available)
+            .def_prop_ro("converged_errors", &R::converged_errors)
             .def_prop_ro("levels", &R::nlevel)
             .def("level", [](R const& value, size_t i) {
                 if (i>=value.nlevel()) throw nb::index_error();
@@ -362,59 +301,6 @@ NB_MODULE(pyalea_c, m) {
         .def_prop_ro("pvalue_lower", &aa::t2_result::pvalue_lower)
         .def_prop_ro("pvalue_upper", &aa::t2_result::pvalue_upper)
         .def_prop_ro("has_plower", &aa::t2_result::has_plower);
-    // ─── scalar-valarray observables ─────────────────────────────────
-    using RealVecObs = alps::alea::WrappedValarrayObservable<alps::RealVectorObservable>;
-    using RealVecTsObs = alps::alea::WrappedValarrayObservable<alps::RealVectorTimeSeriesObservable>;
-    #define ALPS_PY_EXPORT_VECTOROBSERVABLE(Wrapper, PyName)                              \
-        nb::class_<Wrapper>(m, PyName)                                                    \
-            .def("__init__",                                                              \
-                 [](Wrapper * self, std::string name, int bins) {                         \
-                     new (self) Wrapper(name, bins);                                      \
-                 },                                                                       \
-                 nb::arg("name"), nb::arg("bins") = 0)                                    \
-            .def("__repr__",     &Wrapper::representation)                                \
-            .def("__deepcopy__",                                                          \
-                 [](Wrapper const & self, nb::handle /*memo*/) {                          \
-                     return Wrapper(self);                                                \
-                 })                                                                       \
-            .def("__lshift__",   &Wrapper::push, nb::arg("array"))                        \
-            .def("save",         &Wrapper::save, nb::arg("filename"))                     \
-            .def_prop_ro("mean",     &Wrapper::mean)                                      \
-            .def_prop_ro("error",    &Wrapper::error)                                     \
-            .def_prop_ro("tau",      &Wrapper::tau)                                       \
-            .def_prop_ro("variance", &Wrapper::variance)                                  \
-            .def_prop_ro("count",    &Wrapper::count)                                     \
-            .def_prop_ro("converged_errors", &Wrapper::converged_errors)
-    ALPS_PY_EXPORT_VECTOROBSERVABLE(RealVecObs,   "RealVectorObservable");
-    ALPS_PY_EXPORT_VECTOROBSERVABLE(RealVecTsObs, "RealVectorTimeSeriesObservable");
-    #undef ALPS_PY_EXPORT_VECTOROBSERVABLE
-    // ─── scalar simple observables ───────────────────────────────────
-    #define ALPS_PY_EXPORT_SIMPLEOBSERVABLE(AlpsClass, PyName)                            \
-        nb::class_<alps::AlpsClass>(m, PyName)                                            \
-            .def("__init__",                                                              \
-                 [](alps::AlpsClass * self, std::string name, int bins) {                 \
-                     new (self) alps::AlpsClass(name, bins);                              \
-                 },                                                                       \
-                 nb::arg("name"), nb::arg("bins") = 0)                                    \
-            .def("__deepcopy__",                                                          \
-                 [](alps::AlpsClass const & self, nb::handle /*memo*/) {                  \
-                     return alps::AlpsClass(self);                                        \
-                 })                                                                       \
-            .def("__repr__",   &alps::AlpsClass::representation)                          \
-            .def("__lshift__", &alps::AlpsClass::operator<<)                              \
-            .def("save",       &alps::python::save_observable_to_hdf5<alps::AlpsClass>,   \
-                 nb::arg("filename"))                                                     \
-            .def_prop_ro("mean", &alps::AlpsClass::mean)                                  \
-            .def_prop_ro("error",                                                         \
-                static_cast<alps::AlpsClass::result_type (alps::AlpsClass::*)() const>(   \
-                    &alps::AlpsClass::error))                                             \
-            .def_prop_ro("tau",      &alps::AlpsClass::tau)                               \
-            .def_prop_ro("variance", &alps::AlpsClass::variance)                          \
-            .def_prop_ro("count",    &alps::AlpsClass::count)                             \
-            .def_prop_ro("converged_errors", &alps::AlpsClass::converged_errors)
-    ALPS_PY_EXPORT_SIMPLEOBSERVABLE(RealObservable,           "RealObservable");
-    ALPS_PY_EXPORT_SIMPLEOBSERVABLE(RealTimeSeriesObservable, "RealTimeSeriesObservable");
-    #undef ALPS_PY_EXPORT_SIMPLEOBSERVABLE
     // ─── value_with_error ────────────────────────────────────────────
     nb::class_<alps::alea::value_with_error<double>>(m, "ValueWithError")
         .def(nb::init<double, double>(),

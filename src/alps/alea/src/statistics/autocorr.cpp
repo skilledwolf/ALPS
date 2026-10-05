@@ -206,6 +206,31 @@ column<typename autocorr_result<T>::var_type> autocorr_result<T>::tau() const
 }
 
 template <typename T>
+column<int> autocorr_result<T>::converged_errors() const
+{
+    internal::check_valid(*this);
+    column<int> result = column<int>::Ones(size());
+    const size_t last = find_level(DEFAULT_MIN_SAMPLES);
+    if (last < 3) return result;
+    auto reference = level_[last].stderror();
+    auto previous = {level_[last-3].stderror(), level_[last-2].stderror(), level_[last-1].stderror()};
+    for (size_t component = 0; component < size(); ++component) {
+        int status = 0;
+        if (!std::isfinite(reference(component))) continue;
+        for (auto const& estimate : previous) {
+            auto error = estimate(component);
+            if (!std::isfinite(error)) { status = 1; break; }
+            // Retain the strongest evidence of a rising error: a subsequent
+            // plateau must not erase an earlier failed comparison.
+            status = std::max(status, error < 0.824 * reference(component) ? 2 :
+                                      error < 0.9 * reference(component) ? 1 : 0);
+        }
+        result(component) = status;
+    }
+    return result;
+}
+
+template <typename T>
 void autocorr_result<T>::reduce(const reducer &r)
 {
     bool complete = valid();

@@ -7,15 +7,11 @@ import pytest
 from pyalps import alea, hdf5
 
 
-def _full_result(tmp_path, vector):
+def _full_result(tmp_path, vector, legacy_alea_file):
     samples = np.arange(256) % 17 - 8.0
     if vector:
         samples = np.column_stack((samples, 2.0 * samples + 3.0))
-    observable = (alea.RealVectorObservable if vector else alea.RealObservable)("energy")
-    for sample in samples:
-        observable << sample
-    filename = str(tmp_path / "alea.h5")
-    observable.save(filename)
+    filename = legacy_alea_file(samples)
     value = (alea.MCVectorData if vector else alea.MCScalarData)()
     value.load(filename, "/simulation/results/energy")
     np.testing.assert_allclose(value.mean, samples.mean(axis=0), rtol=1e-12)
@@ -27,8 +23,8 @@ def _full_result(tmp_path, vector):
 
 
 @pytest.mark.parametrize("vector", [False, True])
-def test_direct_alea_save_replaces_optional_leaves_only(tmp_path, vector):
-    filename, value = _full_result(tmp_path, vector)
+def test_direct_alea_save_replaces_optional_leaves_only(tmp_path, vector, legacy_alea_file):
+    filename, value = _full_result(tmp_path, vector, legacy_alea_file)
     with h5py.File(filename, "a") as archive:
         for parent in ("variance", "tau", "jacknife"):
             archive[f"result/{parent}/application"] = 19
@@ -58,8 +54,8 @@ def test_direct_alea_save_replaces_optional_leaves_only(tmp_path, vector):
 
 
 @pytest.mark.parametrize("vector", [False, True])
-def test_direct_alea_load_replaces_absent_statistics_and_history(tmp_path, vector):
-    filename, value = _full_result(tmp_path, vector)
+def test_direct_alea_load_replaces_absent_statistics_and_history(tmp_path, vector, legacy_alea_file):
+    filename, value = _full_result(tmp_path, vector, legacy_alea_file)
     mean = np.array([41.0, 42.0]) if vector else 41.0
     error = np.array([0.5, 0.75]) if vector else 0.5
     with h5py.File(filename, "a") as archive:
@@ -85,8 +81,8 @@ def test_direct_alea_load_replaces_absent_statistics_and_history(tmp_path, vecto
 
 
 @pytest.mark.parametrize("vector", [False, True])
-def test_direct_alea_empty_checkpoint_replaces_populated_state(tmp_path, vector):
-    filename, value = _full_result(tmp_path, vector)
+def test_direct_alea_empty_checkpoint_replaces_populated_state(tmp_path, vector, legacy_alea_file):
+    filename, value = _full_result(tmp_path, vector, legacy_alea_file)
     empty = (alea.MCVectorData if vector else alea.MCScalarData)()
     empty.discard_bins(0)
     empty.save(filename, "/result")
@@ -102,13 +98,11 @@ def test_direct_alea_empty_checkpoint_replaces_populated_state(tmp_path, vector)
 
 
 @pytest.mark.parametrize("vector", [False, True])
-def test_direct_alea_single_raw_observable_has_unavailable_error(tmp_path, vector):
-    filename, value = _full_result(tmp_path, vector)
+def test_direct_alea_single_raw_observable_has_unavailable_error(tmp_path, vector, legacy_alea_file):
+    filename, value = _full_result(tmp_path, vector, legacy_alea_file)
     sample = np.array([0.0, -2.0]) if vector else -2.0
-    observable = (alea.RealVectorObservable if vector else alea.RealObservable)("single")
-    observable << sample
-    observable.save(filename)
     path = "/simulation/results/single"
+    legacy_alea_file(np.asarray([sample]), path=path, raw=True)
     with h5py.File(filename, "r") as archive:
         assert archive[f"{path}/count"][()] == 1
         assert f"{path}/mean/error" not in archive
@@ -133,8 +127,8 @@ def test_direct_alea_single_raw_observable_has_unavailable_error(tmp_path, vecto
 @pytest.mark.parametrize("vector", [False, True])
 @pytest.mark.parametrize("corruption", ["late_type", "missing_error", "zero_binsize",
                                          "jack_count", "component_shape", "malformed_group"])
-def test_direct_alea_malformed_load_preserves_complete_state(tmp_path, vector, corruption):
-    filename, value = _full_result(tmp_path, vector)
+def test_direct_alea_malformed_load_preserves_complete_state(tmp_path, vector, corruption, legacy_alea_file):
+    filename, value = _full_result(tmp_path, vector, legacy_alea_file)
     fields = ("mean", "error", "variance", "tau", "bins", "jackknife")
     before = {field: np.array(getattr(value, field), copy=True) for field in fields}
     before_count = value.count

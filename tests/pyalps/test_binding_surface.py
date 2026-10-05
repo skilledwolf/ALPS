@@ -88,15 +88,15 @@ def test_cross_module_parameter_archive_and_rng_roundtrip():
 
 
 def test_alea_numpy_and_mcdata_operators():
-    from pyalps.cxx.pyalea_c import MCScalarTimeseries, RealObservable, mean, size
+    from pyalps.cxx.pyalea_c import MCScalarTimeseries, BatchAccumulator, mean, size
     from pyalps.cxx.pymcdata_c import MCScalarData
 
-    observable = RealObservable("energy")
+    observable = BatchAccumulator()
     for sample in (0.9, 1.0, 1.1, 1.0):
         observable << sample
     assert observable.count == 4
-    assert abs(observable.mean - 1.0) < 1e-12
-    assert observable.error >= 0
+    assert abs(observable.result().mean[0] - 1.0) < 1e-12
+    assert observable.result().error[0] >= 0
 
     series = MCScalarTimeseries(np.asarray([1.0, 2.0, 3.0]))
     assert size(series) == 3
