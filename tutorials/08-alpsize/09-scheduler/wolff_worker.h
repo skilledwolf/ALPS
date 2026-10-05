@@ -28,84 +28,75 @@
 *
 *****************************************************************************/
 
-#include <alps/parapack/worker.h>
-#include <stack>
-#include <vector>
+#pragma once
+#include "../wolff.hpp"
+#include <alps/mc/driver.hpp>
+#include <alps/lattice.h>
+#include <alps/ngs/make_deprecated_parameters.hpp>
 
-class wolff_worker : public alps::parapack::lattice_mc_worker<> {
-private:
-  typedef alps::parapack::lattice_mc_worker<> super_type;
-
+class wolff_worker : public alps::mcbase {
 public:
-  wolff_worker(alps::Parameters const& params) : super_type(params) {
-    T = params.value_or_default("T", 2.2);
-    mcs = 0;
-    MCSTEP = params.value_or_default("SWEEPS", 1 << 15);
-    MCTHRM = params.value_or_default("THERMALIZATION", MCSTEP >> 3);
-    N = num_sites(); // number of lattice sites
-    spin.resize(N, 1); // spin configuration
-    sz = N;
-    pc = 1 - std::exp(-2./T); // connecting probability
-  }
-  virtual ~wolff_worker() {}
-
-  void init_observables(alps::Parameters const&, alps::ObservableSet& obs) {
-    obs << alps::RealObservable("Magnetization")
-        << alps::RealObservable("Magnetization^2")
-        << alps::RealObservable("Magnetization^4");
-  }
-
-  bool is_thermalized() const { return mcs >= MCTHRM; }
-  double progress() const { return 1.0 * mcs / (MCTHRM + MCSTEP); }
-
-  void run(alps::ObservableSet& obs) {
-    ++mcs;
-    int s = static_cast<int>(random_01() * N);
-    int so = spin[s];
-    spin[s] = -so;
-    stck.push(s);
-    int cs = 0;
-    while (!stck.empty()) {
-      ++cs;
-      int sc = stck.top();
-      stck.pop();
-      BOOST_FOREACH(alps::graph_helper<>::site_descriptor const& sn, neighbors(sc)) {
-        if (spin[sn] == so && random_01() < pc) {
-          stck.push(sn);
-          spin[sn] = -so;
-        }
-      }
+    wolff_worker(alps::params const& p, size_t bins, size_t chain)
+        : mcbase(p, chain), chain_id_(chain), bins_(bins),
+          warmup_(p["THERMALIZATION"].as<uint64_t>()), production_(p["SWEEPS"].as<uint64_t>()),
+          state_(neighbors(p), p["T"].as<double>()) {
+        if (!(p["T"].as<double>()>0) || production_>UINT64_MAX-warmup_)
+            throw std::invalid_argument("Positive T and a representable sweep count are required");
+        measurements.emplace("Moments", std::make_shared<alps::alea::batch_acc<double>>(3,bins));
+        for (auto const& name : wolff_names)
+            measurements.emplace(name, std::make_shared<alps::alea::autocorr_acc<double>>());
     }
-    sz -= 2 * so * cs;
-    double dsz = sz / static_cast<double>(N);
-    obs["Magnetization"] << dsz;
-    obs["Magnetization^2"] << dsz * dsz;
-    obs["Magnetization^4"] << dsz * dsz * dsz * dsz;
-  }
-
-  void save(alps::ODump& dp) const { dp << mcs << spin << sz; }
-  void load(alps::IDump& dp) { dp >> mcs >> spin >> sz; }
-
+    static alps::params checkpoint_parameters(alps::params p) { p.erase("SWEEPS"); return p; }
+    uint64_t completed_sweeps() const { return sweeps_; }
+    uint64_t measurement_count() const { return measurement("Moments")->count(); }
+    double fraction_completed() const override {
+        return sweeps_<=warmup_ ? 0. : double(sweeps_-warmup_)/production_;
+    }
+    void update() override {
+        if (sweeps_>=warmup_+production_ || measurement_count()!=(sweeps_>warmup_ ? sweeps_-warmup_ : 0))
+            throw std::logic_error("Complete each update/measure pair before advancing");
+        state_.step(random); ++sweeps_;
+    }
+    void measure() override {
+        if (sweeps_<=warmup_) return;
+        if (measurement_count()!=sweeps_-warmup_-1) throw std::logic_error("Measure each update once");
+        const auto values = state_.sample();
+        *measurement("Moments") << alps::alea::make_adapter(values);
+        for (size_t i=0; i<3; ++i)
+            *measurement<alps::alea::autocorr_acc<double>>(wolff_names[i]) << alps::alea::make_adapter(values[i]);
+    }
+    alps::mc::batch_results collect_results() const { return {{"Moments",measurement("Moments")->result()}}; }
+    void save(alps::hdf5::archive& ar) const override {
+        if (measurement_count()!=(sweeps_>warmup_ ? sweeps_-warmup_ : 0))
+            throw std::logic_error("Measure before checkpointing");
+        mcbase::save(ar); state_.save(ar);
+        ar["checkpoint/sweeps"] << sweeps_;
+        ar["checkpoint/chain_id"] << uint64_t(chain_id_);
+    }
+    void load(alps::hdf5::archive& ar) override {
+        alps::params saved;
+        uint64_t sweeps, chain;
+        ar["/parameters"] >> saved;
+        ar["checkpoint/sweeps"] >> sweeps; ar["checkpoint/chain_id"] >> chain;
+        if (checkpoint_parameters(saved)!=checkpoint_parameters(parameters) || chain!=chain_id_
+                || sweeps>warmup_+production_) throw std::invalid_argument("Checkpoint does not match this run");
+        auto state = state_; state.load(ar);
+        alps::mc::validate_measurements(measurements, ar, sweeps>warmup_ ? sweeps-warmup_ : 0, bins_);
+        auto invocation = parameters;
+        mcbase::load(ar); parameters=std::move(invocation);
+        state_=std::move(state); sweeps_=sweeps;
+    }
 private:
-  double T;
-  int mcs;
-  int MCSTEP;
-  int MCTHRM;
-  int N; // number of lattice sites
-  std::vector<int> spin; // spin configuration
-  int sz;
-  std::stack<int> stck; // stack for uninspected sites
-  double pc; // connecting probability
-};
-
-class wolff_evaluator : public alps::parapack::simple_evaluator {
-public:
-  wolff_evaluator(alps::Parameters const&) {}
-  void evaluate(alps::ObservableSet& obs) const {
-    alps::RealObsevaluator m2 = obs["Magnetization^2"];
-    alps::RealObsevaluator m4 = obs["Magnetization^4"];
-    alps::RealObsevaluator binder("Binder Ratio of Magnetization");
-    binder = m2 * m2 / m4;
-    obs.addObservable(binder);
-  }
+    static std::vector<std::vector<int>> neighbors(alps::params const& p) {
+        alps::graph_helper<> graph(alps::make_deprecated_parameters(p));
+        if (!graph.num_sites() || graph.num_sites()>size_t(INT_MAX/2))
+            throw std::invalid_argument("Lattice site count is outside the supported range");
+        std::vector<std::vector<int>> result(graph.num_sites());
+        for (size_t i=0; i<result.size(); ++i)
+            for (auto [it,end]=graph.neighbors(i); it!=end; ++it) result[i].push_back(*it);
+        return result;
+    }
+    size_t chain_id_, bins_;
+    uint64_t warmup_, production_, sweeps_=0;
+    wolff_chain state_;
 };

@@ -1,0 +1,32 @@
+
+[parameters.LATTICE]
+type = "string"
+[parameters.GRAPH]
+type = "string"
+[input.lattice_library]
+type = "path"
+[input.checkpoint]
+type = "path"
+[output.checkpoint]
+type = "path"
+[execution.rng]
+type = "string"
+default = "mt19937"
+choices = ["mt19937", "lagged_fibonacci607"]
+[execution.chains]
+type = "int64"
+default = 1
+min = 1
+max = 2147483647
+[execution.time_limit]
+type = "float64"
+default = 0.0
+min = 0.0
+[execution.checkpoint_interval]
+type = "float64"
+default = 3600.0
+min = 0.0
+[execution.max_sweeps]
+type = "int64"
+default = 0
+min = 0

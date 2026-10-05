@@ -1,7 +1,0 @@
-ALGORITHM = "wolff"
-LATTICE = "square lattice"
-L = 32
-NUM_CLONES = 16
-{ T = 2.2 }
-{ T = 2.4 }
-{ T = 2.6 }

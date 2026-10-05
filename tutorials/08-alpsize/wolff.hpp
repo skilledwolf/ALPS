@@ -33,6 +33,8 @@
 #include <alps/alea.hpp>
 #include <alps/alea/hdf5.hpp>
 #include <alps/run_config.hpp>
+#include <alps/hdf5/vector.hpp>
+#include <numeric>
 #include <boost/random.hpp>
 #include <array>
 #include <chrono>
@@ -46,12 +48,11 @@
 // Keeping a joint sample is essential for the Binder ratio's uncertainty.
 class wolff_chain {
 public:
-    wolff_chain(std::vector<std::vector<int>> neighbors, double temperature, int seed)
+    wolff_chain(std::vector<std::vector<int>> neighbors, double temperature)
         : neighbors_(std::move(neighbors)), spins_(neighbors_.size(), 1),
-          magnetization_(spins_.size()), probability_(-std::expm1(-2/temperature)),
-          random_(boost::mt19937(seed), boost::uniform_real<>()) {}
-    std::vector<double> step() {
-        const int first = int(random_()*spins_.size()), old = spins_[first];
+          magnetization_(spins_.size()), probability_(-std::expm1(-2/temperature)) {}
+    template<class Random> std::vector<double> step(Random& random) {
+        const int first = int(random()*spins_.size()), old = spins_[first];
         spins_[first] = -old;
         std::stack<int> pending;
         pending.push(first);
@@ -61,21 +62,46 @@ public:
             const int site = pending.top();
             pending.pop();
             for (int neighbor : neighbors_[site])
-                if (spins_[neighbor] == old && random_() < probability_) {
+                if (spins_[neighbor] == old && random() < probability_) {
                     pending.push(neighbor);
                     spins_[neighbor] = -old;
                 }
         }
         magnetization_ -= 2*old*size;
+        return sample();
+    }
+    std::vector<double> sample() const {
         const double m = magnetization_/double(spins_.size());
         return {m, m*m, m*m*m*m};
     }
+    void save(alps::hdf5::archive& ar) const {
+        ar["checkpoint/spins"] << spins_;
+        ar["checkpoint/neighbors"] << topology();
+    }
+    void load(alps::hdf5::archive& ar) {
+        std::vector<int> spins;
+        std::vector<uint64_t> neighbors;
+        ar["checkpoint/spins"] >> spins;
+        ar["checkpoint/neighbors"] >> neighbors;
+        if (spins.size()!=spins_.size() || neighbors!=topology()
+                || !std::all_of(spins.begin(), spins.end(), [](int s) { return s==1 || s==-1; }))
+            throw std::invalid_argument("Checkpoint spins or lattice differ from this run");
+        spins_ = std::move(spins);
+        magnetization_ = std::accumulate(spins_.begin(), spins_.end(), 0);
+    }
 private:
+    std::vector<uint64_t> topology() const {
+        std::vector<uint64_t> data;
+        for (auto const& neighbors : neighbors_) {
+            data.push_back(neighbors.size());
+            data.insert(data.end(), neighbors.begin(), neighbors.end());
+        }
+        return data;
+    }
     std::vector<std::vector<int>> neighbors_;
     std::vector<int> spins_;
     int magnetization_;
     double probability_;
-    boost::variate_generator<boost::mt19937, boost::uniform_real<>> random_;
 };
 
 struct binder_ratio : alps::alea::transformer<double> {
@@ -86,6 +112,35 @@ struct binder_ratio : alps::alea::transformer<double> {
         return alps::alea::column<double>{x(1)*x(1)/x(2)};
     }
 };
+
+inline const std::array<std::string,3> wolff_names{"Magnetization", "Magnetization^2", "Magnetization^4"};
+inline void write_wolff_results(alps::hdf5::archive& archive, alps::alea::batch_result<double> const& joint) {
+    auto const& names = wolff_names;
+    alps::alea::hdf5_serializer raw(archive, "/simulation"), results(archive, "/simulation/results");
+    serialize(raw, "joint", joint);
+    if (!(joint.observations()>1)) {
+        archive.create_group("/simulation/results");
+        archive["/simulation/unavailable/Statistics"] << std::string("At least two effective batches are required");
+        return;
+    }
+    for (size_t j=0; j<3; ++j) {
+        Eigen::Matrix<double,1,3> select = Eigen::Matrix<double,1,3>::Zero(); select(j)=1;
+        auto result = alps::alea::transform(alps::alea::jackknife_prop(),
+            alps::alea::linear_transformer<double>(select), joint);
+        const auto key = archive.encode_segment(names[j]);
+        serialize(results, key, result);
+        std::cout << names[j] << ": " << result.mean()(0) << " +/- " << result.stderror()(0);
+        std::cout << '\n';
+    }
+    const std::string name = "Binder Ratio of Magnetization";
+    try {
+        auto result = alps::alea::transform(alps::alea::jackknife_prop(), binder_ratio(), joint);
+        serialize(results, name, result);
+        std::cout << name << ": " << result.mean()(0) << " +/- " << result.stderror()(0) << '\n';
+    } catch (std::domain_error const& error) {
+        archive["/simulation/unavailable/"+name] << std::string(error.what());
+    }
+}
 
 template<class Lattice>
 int wolff_main(int argc, char** argv, Lattice lattice, bool model_parameters=false) {
@@ -117,13 +172,14 @@ int wolff_main(int argc, char** argv, Lattice lattice, bool model_parameters=fal
             throw std::invalid_argument("Lattice site count is outside the supported range");
         if (validate) { std::cout << "Valid Wolff configuration\n"; return 0; }
         const auto started = std::chrono::steady_clock::now();
-        wolff_chain chain(std::move(neighbors), temperature, run.execution["seed"].template as<int>());
+        wolff_chain chain(std::move(neighbors), temperature);
+        boost::variate_generator<boost::mt19937, boost::uniform_real<>> random(
+            boost::mt19937(run.execution["seed"].template as<int>()), boost::uniform_real<>());
         alps::alea::batch_acc<double> samples(3, bins);
         std::array<alps::alea::autocorr_acc<double>,3> diagnostics;
-        const std::array<std::string,3> names{"Magnetization", "Magnetization^2", "Magnetization^4"};
-        for (int64_t i=0; i<run.parameters["THERMALIZATION"].template as<int64_t>(); ++i) chain.step();
+        for (int64_t i=0; i<run.parameters["THERMALIZATION"].template as<int64_t>(); ++i) chain.step(random);
         for (int64_t i=0; i<run.parameters["SWEEPS"].template as<int64_t>(); ++i) {
-            auto values = chain.step();
+            auto values = chain.step(random);
             samples << alps::alea::make_adapter(values);
             for (size_t j=0; j<3; ++j) diagnostics[j] << alps::alea::make_adapter(values[j]);
         }
@@ -131,27 +187,12 @@ int wolff_main(int argc, char** argv, Lattice lattice, bool model_parameters=fal
         alps::hdf5::save_checkpoint(run.output["results"].template as<std::string>(), [&](auto& archive) {
             archive["/parameters"] << run.parameters;
             archive["/run_config"] << run;
-            alps::alea::hdf5_serializer raw(archive, "/simulation"), results(archive, "/simulation/results"),
-                analysis(archive, "/simulation/realizations/0/clones/0/autocorrelation");
-            serialize(raw, "joint", joint);
+            write_wolff_results(archive, joint);
+            alps::alea::hdf5_serializer analysis(archive, "/simulation/realizations/0/clones/0/autocorrelation");
             for (size_t j=0; j<3; ++j) {
-                Eigen::Matrix<double,1,3> select = Eigen::Matrix<double,1,3>::Zero(); select(j)=1;
-                auto result = alps::alea::transform(alps::alea::jackknife_prop(),
-                    alps::alea::linear_transformer<double>(select), joint);
-                auto diagnostic = diagnostics[j].result();
-                const auto key = archive.encode_segment(names[j]);
-                serialize(results, key, result); serialize(analysis, key, diagnostic);
-                std::cout << names[j] << ": " << result.mean()(0) << " +/- " << result.stderror()(0);
-                if (diagnostic.tau_available()) std::cout << "; tau = " << diagnostic.tau()(0);
-                std::cout << '\n';
-            }
-            const std::string name = "Binder Ratio of Magnetization";
-            try {
-                auto result = alps::alea::transform(alps::alea::jackknife_prop(), binder_ratio(), joint);
-                serialize(results, name, result);
-                std::cout << name << ": " << result.mean()(0) << " +/- " << result.stderror()(0) << '\n';
-            } catch (std::domain_error const& error) {
-                archive["/simulation/unavailable/"+name] << std::string(error.what());
+                const auto result = diagnostics[j].result();
+                serialize(analysis, archive.encode_segment(wolff_names[j]), result);
+                if (result.tau_available()) std::cout << wolff_names[j] << " tau: " << result.tau()(0) << '\n';
             }
         });
         std::cerr << "Elapsed time = " << std::chrono::duration<double>(std::chrono::steady_clock::now()-started).count() << " sec\n";

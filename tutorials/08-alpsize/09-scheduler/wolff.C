@@ -28,6 +28,27 @@
 *
 *****************************************************************************/
 
-#include <alps/parapack/parapack.h>
+#include "wolff_worker.h"
 
-int main(int argc, char** argv) { return alps::parapack::start(argc, argv); }
+int main(int argc, char** argv) {
+    auto prepare = [](alps::params& p, alps::run_configuration const&) {
+        if (!p.exists("THERMALIZATION")) p["THERMALIZATION"] = p["SWEEPS"].as<uint64_t>()/8;
+    };
+    auto publish = [](alps::run_configuration const& run, auto const& chains, alps::params const& p) {
+        std::vector<alps::mc::batch_results> results;
+        for (auto const& chain : chains) results.push_back(chain->collect_results());
+        const auto joint = alps::mc::pool(results).at("Moments");
+        alps::hdf5::save_checkpoint(run.output["results"].as<std::string>(), [&](auto& ar) {
+            ar["/parameters"] << p; ar["/run_config"] << run;
+            write_wolff_results(ar, joint);
+            for (size_t id=0; id<chains.size(); ++id) {
+                const auto path = "/simulation/realizations/0/clones/"+std::to_string(id);
+                ar[path+"/completed_sweeps"] << chains[id]->completed_sweeps();
+                alps::alea::hdf5_serializer codec(ar, path+"/autocorrelation");
+                for (auto const& name : wolff_names)
+                    serialize(codec, ar.encode_segment(name), chains[id]->template measurement<alps::alea::autocorr_acc<double>>(name)->result());
+            }
+        });
+    };
+    return alps::mc::main<wolff_worker>(argc, argv, "wolff", wolff_schema, {}, prepare, publish);
+}

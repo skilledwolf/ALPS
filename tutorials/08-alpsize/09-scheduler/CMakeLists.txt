@@ -8,5 +8,9 @@ add_executable(hello hello.C hello_worker.C)
 target_link_libraries(hello PRIVATE ALPS::alps)
 
 # rule for generating wolff program
-add_executable(wolff wolff.C wolff_worker.C)
+add_executable(wolff wolff.C)
 target_link_libraries(wolff PRIVATE ALPS::alps)
+
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/execution.toml" WOLFF_LATTICE_SCHEMA)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/execution.toml")
+include("${CMAKE_CURRENT_SOURCE_DIR}/../Wolff.cmake")

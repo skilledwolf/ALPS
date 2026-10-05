@@ -1,0 +1,11 @@
+[parameters]
+LATTICE = "square lattice"
+L = 32
+T = 2.2
+THERMALIZATION = 4096
+SWEEPS = 32768
+[execution]
+chains = 16
+[output]
+results = "wolff.h5"
+checkpoint = "wolff.checkpoint.h5"
