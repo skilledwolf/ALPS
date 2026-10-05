@@ -42,3 +42,8 @@ the per-observable diagnostic curves; `pyalps.alea.read_result` reads
 the joint result and diagnostics without losing their statistical evidence.
 Saving uses atomic publication. These files are analysis output, not physical
 restart checkpoints; this introductory lesson has no resume operation.
+
+Each random-site Metropolis proposal keeps or flips the spin with equal
+probability before applying the acceptance test. This ensures that an even
+number of proposals between measurements does not trap the sampled states in
+one spin-parity sector when every flip is accepted, including at `BETA=0`.

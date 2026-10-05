@@ -20,7 +20,8 @@ class Simulation(NativeSimulation):
     # Implement only the physics; parameters, RNG, statistics and output are
     # shared with the solution so the exercise uses the same native interfaces.
     def step(self):
-        # Attempt L*L random-site Metropolis flips with periodic neighbors.
+        # Attempt L*L random-site Metropolis proposals with periodic neighbors.
+        # Propose keeping or flipping the spin with equal probability.
         raise NotImplementedError('Implement the Metropolis sweep')
 
     def observables(self):

@@ -67,6 +67,8 @@ class Simulation:
     def step(self):
         for _ in range(self.L*self.L):
             i, j = self.randint(self.L), self.randint(self.L)
+            if self.rng() < .5:  # Symmetric no-change proposal prevents parity trapping.
+                continue
             neighbors = (self.spins[(i-1)%self.L][j] + self.spins[(i+1)%self.L][j]
                          + self.spins[i][(j-1)%self.L] + self.spins[i][(j+1)%self.L])
             e = -self.spins[i][j]*neighbors

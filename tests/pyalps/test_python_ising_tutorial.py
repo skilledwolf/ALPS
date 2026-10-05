@@ -120,3 +120,10 @@ def test_cli_output_loads_and_collision_is_rejected(tmp_path, script):
     rejected = subprocess.run(executable + [str(run), str(run)], capture_output=True, text=True, timeout=30)
     assert rejected.returncode != 0 and 'distinct' in rejected.stderr
     assert run.read_bytes() == before
+
+
+def test_infinite_temperature_samples_all_parities():
+    sim = ising.Simulation(0., 2, seed=823, bins=64)
+    sim.run(0, 30000)
+    # All sixteen spin configurations must contribute, not one parity sector.
+    np.testing.assert_allclose(sim.samples.result().mean, [0., 0., .375, .25, .15625], atol=.02)

@@ -22,7 +22,8 @@
 #include <alps/hdf5/vector.hpp>
 #include <cmath>
 
-// One random-site Metropolis sweep makes N proposals, with replacement.
+// One sweep makes N random-site Metropolis proposals, with replacement.
+// A symmetric proposal can keep the spin, so measurement strides remain ergodic.
 class IsingSimulation : public alps::mcbase {
 public:
     IsingSimulation(alps::params const& p, size_t bins, size_t chain)
@@ -58,6 +59,7 @@ public:
             throw std::logic_error("Complete each update/measure pair before advancing");
         for (size_t j=0; j<spins_.size(); ++j) {
             const size_t i = size_t(random()*spins_.size());
+            if (random()<.5) continue; // propose the current spin with probability 1/2
             double delta = 0;
             for (auto neighbor : neighbors_[i])
                 if (neighbor!=i) delta += 2.*spins_[i]*spins_[neighbor];

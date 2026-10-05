@@ -17,6 +17,10 @@ the lattice library: specify exactly one `parameters.LATTICE` or
 `parameters.GRAPH`, with optional `input.lattice_library`. Couplings are one,
 spins are ±1, and the Hamiltonian is `-sum_b s_i*s_j`. Disordered lattices remain
 unsupported. One sweep makes N random-site Metropolis proposals, with replacement.
+Each proposal keeps or flips the selected spin with equal probability before
+the Metropolis acceptance test. Allowing the current spin prevents an even
+measurement stride from trapping the simulation in a parity sector when every
+flip would be accepted (the infinite-temperature limit).
 
 The original measurements are retained: energy and magnetization per site in
 all variants; the chain variants also measure second and fourth magnetization

@@ -17,6 +17,7 @@
 void Simulation::step() {
     for (size_t s=0; s<size_t(L)*L; ++s) {
         const int i = randint(L), j = randint(L);
+        if (random()<.5) continue; // symmetric no-change proposal prevents parity trapping
         const int neighbors = spins[(i+L-1)%L][j] + spins[(i+1)%L][j]
                             + spins[i][(j+L-1)%L] + spins[i][(j+1)%L];
         const int e = -spins[i][j]*neighbors;

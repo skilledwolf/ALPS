@@ -99,3 +99,11 @@ def test_original_no_argument_scan(executable, tmp_path):
             assert data.props['L'] == 16 and data.native_result.count == 5000
             assert np.isfinite(data.native_result.mean).all()
             assert np.isfinite(data.native_result.error).all()
+
+
+def test_infinite_temperature_samples_all_parities(executable, tmp_path):
+    path = run_file(tmp_path, 'BETA=0.0')
+    subprocess.run([executable, str(path)], check=True, capture_output=True)
+    with hdf5.archive(str(tmp_path/'result.h5')) as archive:
+        joint = alea.read_result(archive, '/simulation/joint')
+    np.testing.assert_allclose(joint.mean, [0., 0., .375, .25, .15625], atol=.02)

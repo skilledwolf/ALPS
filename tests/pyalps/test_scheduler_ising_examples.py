@@ -157,3 +157,21 @@ def test_native_binder_analysis(executable, tmp_path, command, factor):
     write_run_file(path, input={'results': str(empty)}, output={'results': str(output)}, overwrite=True)
     assert subprocess.run([str(evaluator), str(path)], capture_output=True).returncode != 0
     assert output.read_bytes() == before
+
+
+def test_hot_two_site_chain_is_ergodic(executable, tmp_path):
+    # At this temperature exp(-delta/T) rounds to one. Exactly two forced
+    # flips per recorded sweep would preserve spin parity and freeze energy.
+    path = tmp_path/'hot.toml'
+    parameters = dict(L=2, T=1.e308, SWEEPS=20000, THERMALIZATION=0)
+    if executable.name == 'ising2':
+        parameters['LATTICE'] = 'chain lattice'
+    write_run_file(path, parameters=parameters, execution=dict(seed=19, chains=1, bins=32),
+                   output=dict(results='hot.h5'))
+    process = subprocess.run([str(executable), str(path)], capture_output=True)
+    assert process.returncode == 0, process.stderr
+    data = {d.props['observable']: d.native_result for d in pyalps.loadMeasurements([str(tmp_path/'hot.h5')])[0]}
+    np.testing.assert_allclose(data['Energy'].mean, [0.], atol=.025)
+    if executable.name != 'ising2':
+        np.testing.assert_allclose(data['Magnetization^2'].mean, [.5], atol=.025)
+        np.testing.assert_allclose(data['Magnetization^4'].mean, [.5], atol=.025)

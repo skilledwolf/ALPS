@@ -17,7 +17,8 @@
 // Implement the physics here. The solution uses the same parameters, RNG,
 // native ALEA statistics and HDF5 output defined in simulation.hpp.
 void Simulation::step() {
-    // Attempt L*L random-site Metropolis flips with periodic neighbors.
+    // Attempt L*L random-site Metropolis proposals with periodic neighbors.
+    // Propose keeping or flipping the spin with equal probability.
     ...
 }
 

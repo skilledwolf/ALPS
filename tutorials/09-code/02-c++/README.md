@@ -52,3 +52,8 @@ error plateau. These files contain analysis results, not resumable spin states.
 Released tutorial files can be migrated offline with `alps-hdf5-convert`
 (`--alea-batches`, `--alea-summary`, or `--alea-autocorr` per observable,
 depending on the retained evidence); see the converter documentation.
+
+Each random-site Metropolis proposal keeps or flips the spin with equal
+probability before applying the acceptance test. This ensures that an even
+number of proposals between measurements does not trap the sampled states in
+one spin-parity sector when every flip is accepted, including at `BETA=0`.
