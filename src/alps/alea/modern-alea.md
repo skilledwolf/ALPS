@@ -28,10 +28,18 @@ from the sample count to validate every count, offset and cursor together;
 empty bins must have zero sums. Samples are unit observations; result bins retain
 their accumulated sample weights. Merging unrelated time series into a
 resumable batch accumulator is unsupported; variance and covariance estimators
-retain weighted result merging. Other accumulator types have no
-checkpoint overload: saving a result is not a resumable checkpoint. Autocorrelation
-results retain their reduction API; inserting a result into a live autocorrelation
-accumulator is unsupported because it cannot reconstruct the partial hierarchy.
+retain weighted result merging.
+
+The same header supplies resumable codecs for mean (kind 7), variance (8),
+covariance (9), and autocorrelation (10), including real, circular complex and
+elliptic complex moments. Moment checkpoints store centered sums without a
+round trip through normalized results and retain the unfinished batch. Counts
+include partial samples. Autocorrelation checkpoints retain each level's partial
+state and validate the hierarchy against the total sample count, base batch
+size and granularity. Restart therefore reproduces uninterrupted statistics.
+Loading stages the complete state before replacement. Inserting an independent
+result into a live autocorrelation accumulator remains unsupported: a result
+cannot reconstruct a missing partial hierarchy.
 
 Python exposes `pyalps.alea.BatchAccumulator` and `ComplexBatchAccumulator` with
 the same native estimators and checkpoint codecs. Samples are scalar or 1D numeric

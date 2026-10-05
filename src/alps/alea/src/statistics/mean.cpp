@@ -62,6 +62,7 @@ template <typename T>
 void mean_acc<T>::add(const computed<T> &source, uint64_t count)
 {
     internal::check_valid(*this);
+    if (source.size() != size()) throw size_mismatch();
     source.add_to(view<T>(store_->data().data(), size()));
     store_->count() += count;
 }

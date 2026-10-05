@@ -77,7 +77,8 @@ deserialize(deserializer &ser, const std::string &key,
 }}
 
 namespace alps::alea::internal {
-enum class result_kind : uint32_t { mean=1, variance=2, covariance=3, autocorrelation=4, batch=5, batch_accumulator=6 };
+enum class result_kind : uint32_t { mean=1, variance=2, covariance=3, autocorrelation=4, batch=5, batch_accumulator=6,
+    mean_accumulator=7, variance_accumulator=8, covariance_accumulator=9, autocorr_accumulator=10 };
 struct result_sentry : serializer_sentry {
     result_sentry(serializer& s, std::string const& key, result_kind kind)
         : serializer_sentry(s, key) {

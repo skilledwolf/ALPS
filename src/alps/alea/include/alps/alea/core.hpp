@@ -63,6 +63,7 @@ using serializer = alps::serialization::serializer;
 using deserializer = alps::serialization::deserializer;
 
 namespace internal {
+    struct accumulator_checkpoint;
     using serializer_sentry = alps::serialization::serializer_sentry;
     using deserializer_sentry = alps::serialization::deserializer_sentry;
 }

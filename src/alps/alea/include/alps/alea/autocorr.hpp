@@ -103,6 +103,10 @@ public:
     /** Frees data associated with accumulator and return result */
     autocorr_result<T> finalize();
 
+    size_t batch_size() const { return batch_size_; }
+
+    size_t granularity() const { return granularity_; }
+
     size_t nlevel() const { return level_.size(); }
 
     const level_acc_type &level(size_t i) const { return level_[i]; }
@@ -115,6 +119,7 @@ protected:
     void finalize_to(autocorr_result<T> &result);
 
 private:
+    friend struct internal::accumulator_checkpoint;
     size_t size_, batch_size_, count_, nextlevel_, granularity_;
     std::vector<level_acc_type> level_;
 

@@ -154,7 +154,7 @@ public:
     cov_acc &operator<<(const cov_result<T,Strategy> &result);
 
     /** Returns sample size, i.e., number of accumulated data points */
-    uint64_t count() const { return store_->count(); }
+    uint64_t count() const { return store_->count() + current_.count(); }
 
     /** Returns result corresponding to current state of accumulator */
     cov_result<T,Strategy> result() const;
@@ -175,6 +175,7 @@ protected:
     void finalize_to(cov_result<T,Strategy> &result);
 
 private:
+    friend struct internal::accumulator_checkpoint;
     std::unique_ptr<cov_data<T,Strategy> > store_;
     bundle<value_type> current_;
 

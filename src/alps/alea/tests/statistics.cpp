@@ -529,6 +529,63 @@ template<class T> std::vector<T> sample(size_t i, size_t size) {
     }
     return value;
 }
+template<class A> void resume_estimator(std::string const& filename, A uninterrupted, size_t boundary) {
+    using T = typename A::value_type;
+    for (size_t i=0;i<boundary;++i) uninterrupted << sample<T>(i,uninterrupted.size());
+    require(uninterrupted.count()==boundary, "accumulator count omitted partial samples");
+    {
+        alps::hdf5::archive ar(filename,"w");
+        aa::hdf5_serializer codec(ar,"/"); serialize(codec,"state",uninterrupted);
+    }
+    A restored;
+    {
+        alps::hdf5::archive ar(filename,"r");
+        aa::hdf5_serializer codec(ar,"/"); deserialize(codec,"state",restored);
+    }
+    for (size_t i=boundary;i<281;++i) {
+        auto x=sample<T>(i,uninterrupted.size()); uninterrupted << x; restored << x;
+    }
+    require(restored.result()==uninterrupted.result(), "estimator restart changed subsequent statistics");
+    auto before=restored.result();
+    {
+        alps::hdf5::archive ar(filename,"a");
+        ar["/state/@version"] << uint64_t(99);
+        aa::hdf5_serializer codec(ar,"/");
+        rejects([&] { deserialize(codec,"state",restored); });
+    }
+    require(before==restored.result(), "failed estimator checkpoint load changed live state");
+}
+template<class T> void resume_estimators(std::string const& filename, size_t boundary) {
+    resume_estimator(filename,aa::mean_acc<T>(2),boundary);
+    resume_estimator(filename,aa::var_acc<T>(2,3),boundary);
+    resume_estimator(filename,aa::cov_acc<T>(2,3),boundary);
+    resume_estimator(filename,aa::autocorr_acc<T>(2,3,3),boundary);
+}
+void bad_moment_checkpoints(std::string const& filename) {
+    aa::var_acc<double> acc(2,3);
+    for (int i=0;i<7;++i) acc << sample<double>(i,2);
+    auto original=acc.result();
+    for (auto key : {"count", "count2", "partial_count", "batch_size"}) {
+        alps::hdf5::archive ar(filename,"w"); aa::hdf5_serializer codec(ar,"/");
+        serialize(codec,"state",acc);
+        if (std::string(key)=="count2") ar["/state/count2"] << -1.;
+        else ar[std::string("/state/")+key] << uint64_t(std::string(key)=="partial_count" ? 3 : 0);
+        rejects([&] { deserialize(codec,"state",acc); });
+        require(acc.result()==original,"invalid partial-bin checkpoint changed accumulator");
+    }
+    aa::autocorr_acc<double> a(2,3,3);
+    for (int i=0;i<37;++i) a << sample<double>(i,2);
+    auto previous=a.result();
+    {
+        alps::hdf5::archive ar(filename,"w"); aa::hdf5_serializer codec(ar,"/");
+        serialize(codec,"state",a); ar["/state/levels/1/partial_count"] << uint64_t(1);
+        rejects([&] { deserialize(codec,"state",a); });
+    }
+    require(a.result()==previous,"invalid hierarchy changed accumulator");
+    rejects([] { aa::var_acc<double> a(1,0); });
+    rejects([] { aa::cov_acc<double> a(0); });
+    rejects([] { aa::autocorr_acc<double> a(1,1,1); });
+}
 template<class T> void resume(std::string const& filename, size_t components, size_t boundary, uint64_t base) {
     aa::batch_acc<T> uninterrupted(components, 8, base);
     for (size_t i=0; i<boundary; ++i) uninterrupted << sample<T>(i, components);
@@ -1311,12 +1368,17 @@ int main() {
     try {
         for (auto split : {size_t(0), size_t(1), size_t(3), size_t(8), size_t(23), size_t(24),
                            size_t(25), size_t(64), size_t(137)}) {
+            resume_estimators<double>(filename,split);
+            resume_estimators<std::complex<double>>(filename,split);
+            resume_estimator(filename,aa::var_acc<std::complex<double>,aa::elliptic_var>(2,3),split);
+            resume_estimator(filename,aa::cov_acc<std::complex<double>,aa::elliptic_var>(2,3),split);
             for (uint64_t base : {uint64_t(1), uint64_t(3)}) {
                 resume<double>(filename,1,split,base);
                 resume<double>(filename,3,split,base);
                 resume<std::complex<double>>(filename,2,split,base);
             }
         }
+        bad_moment_checkpoints(filename);
         results(filename);
         mean_tests();
         unequal_merge(filename);

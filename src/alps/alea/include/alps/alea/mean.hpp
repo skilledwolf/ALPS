@@ -143,6 +143,7 @@ protected:
     void finalize_to(mean_result<T> &result);
 
 private:
+    friend struct internal::accumulator_checkpoint;
     std::unique_ptr< mean_data<T> > store_;
     size_t size_;
 };

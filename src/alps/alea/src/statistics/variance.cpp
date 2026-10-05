@@ -115,7 +115,7 @@ void var_acc<T,Str>::set_size(size_t size)
 template <typename T, typename Str>
 void var_acc<T,Str>::set_batch_size(uint64_t batch_size)
 {
-    // TODO: allow resizing with reset
+    if (!batch_size) throw std::invalid_argument("ALEA batch size must be positive");
     current_.target() = batch_size;
     current_.reset();
 }

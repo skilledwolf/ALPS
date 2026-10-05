@@ -21,6 +21,7 @@ autocorr_acc<T>::autocorr_acc(size_t size, uint64_t batch_size, size_t granulari
     , granularity_(granularity)
     , level_()
 {
+    if (granularity < 2) throw std::invalid_argument("ALEA autocorrelation granularity must be at least two");
     level_.push_back(var_acc<T>(size, batch_size));
 }
 
@@ -44,6 +45,7 @@ template <typename T>
 void autocorr_acc<T>::set_batch_size(uint64_t batch_size)
 {
     // TODO: handle the case where we just discard levels more gracefully
+    if (!batch_size) throw std::invalid_argument("ALEA batch size must be positive");
     batch_size_ = batch_size;
     reset();
 }
@@ -52,6 +54,7 @@ template <typename T>
 void autocorr_acc<T>::set_granularity(size_t granularity)
 {
     // TODO: handle the case where we just discard levels more gracefully
+    if (granularity < 2) throw std::invalid_argument("ALEA autocorrelation granularity must be at least two");
     granularity_ = granularity;
     reset();
 }
@@ -60,8 +63,11 @@ template <typename T>
 void autocorr_acc<T>::add_level()
 {
     // add a new level on top and push back the nextlevel
-    nextlevel_ *= granularity_;
-    level_.push_back(var_acc<T>(size(), nextlevel_));
+    if (nextlevel_ > std::numeric_limits<size_t>::max()/granularity_)
+        throw std::overflow_error("ALEA autocorrelation hierarchy size overflows");
+    auto next = nextlevel_ * granularity_;
+    level_.push_back(var_acc<T>(size(), next));
+    nextlevel_ = next;
 }
 
 template <typename T>
@@ -72,9 +78,10 @@ void autocorr_acc<T>::add(const computed<T> &source, uint64_t count)
     if (source.size() != size()) throw size_mismatch();
 
     // if we require next level, then do it!
+    if (count > std::numeric_limits<size_t>::max()-count_)
+        throw std::overflow_error("ALEA sample count overflows");
+    if (count_ + count >= nextlevel_) add_level();
     count_ += count;
-    if(count_ >= nextlevel_)
-        add_level();
 
     // now add current element at the bottom and watch it propagate
     level_[0].add(source, count, level_.data() + 1);
