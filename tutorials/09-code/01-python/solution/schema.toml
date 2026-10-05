@@ -1,0 +1,31 @@
+application = "python-ising"
+schema_version = 1
+[parameters.L]
+type = "int64"
+default = 4
+min = 2
+[parameters.BETA]
+type = "float64"
+default = 0.4
+min = 0.0
+[parameters.THERMALIZATION]
+type = "int64"
+default = 2500
+min = 0
+[parameters.SWEEPS]
+type = "int64"
+default = 5000
+min = 2
+[input]
+[output.results]
+type = "path"
+required = true
+[execution.seed]
+type = "int64"
+default = 42
+min = 0
+max = 2147483647
+[execution.bins]
+type = "int64"
+default = 64
+min = 2

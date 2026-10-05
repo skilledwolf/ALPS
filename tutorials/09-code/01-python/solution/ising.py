@@ -13,103 +13,153 @@
 # 
 # ****************************************************************************
 
+import argparse
 import math
+import operator
+from pathlib import Path
+
+import numpy as np
 import pyalps
-import pyalps.alea as alpsalea
-import pyalps.pytools as alpstools
+from pyalps import alea, hdf5, run_config
+from pyalps.ngs import params, random01
+
+SCHEMA = Path(__file__).with_name('schema.toml').read_text()
+NAMES = ('E', 'm', '|m|', 'm^2', 'm^4')
+
 
 class Simulation:
-    # Seed random number generator: self.rng() will give a random float from the interval [0,1)
-    rng = alpstools.rng(42)
-    
-    def __init__(self,beta,L):
-        self.L = L
-        self.beta = beta
-        
-        # Init exponential map
-        self.exp_table = dict()
-        for E in range(-4,5,2): 
-          self.exp_table[E] = math.exp(2*beta*E)
-        
-        # Init random spin configuration
-        self.spins = [ [2*self.randint(2)-1 for j in range(L)] for i in range(L) ]
-        
-        # Init observables
-        self.energy = alpsalea.RealObservable('E')
-        self.magnetization = alpsalea.RealObservable('m')
-        self.abs_magnetization = alpsalea.RealObservable('|m|')
-    
-    def save(self, filename):
-        pyalps.save_parameters(filename, {'L':self.L, 'BETA':self.beta, 'SWEEPS':self.n, 'THERMALIZATION':self.ntherm})
-        self.abs_magnetization.save(filename)
-        self.energy.save(filename)
-        self.magnetization.save(filename)
-        
-        
-    def run(self,ntherm,n):
-        # Thermalize for ntherm steps
-        self.n = n
-        self.ntherm = ntherm
-        while ntherm > 0:
+    def __init__(self, beta, L, seed=42, bins=64):
+        run = run_config.resolve(SCHEMA, parameters={'BETA': beta, 'L': L},
+                                 execution={'seed': seed, 'bins': bins},
+                                 output={'results': 'unused.h5'})
+        self.parameters = params(dict(run.parameters))
+        self.L, self.beta = self.parameters['L'], self.parameters['BETA']
+        self.rng = random01(run.execution['seed'])
+        # Only uphill moves need an exponential: avoid overflow at large beta.
+        self.exp_table = {e: math.exp(2*self.beta*e) for e in (-4, -2, 0)}
+        self.spins = [[2*self.randint(2)-1 for _ in range(self.L)] for _ in range(self.L)]
+        # Joint samples retain correlations needed by nonlinear observables.
+        self.samples = alea.BatchAccumulator(len(NAMES), num_batches=run.execution['bins'])
+        self.diagnostics = {name: alea.AutocorrelationAccumulator() for name in NAMES}
+        self.execution = run.execution
+        self.started = False
+
+    def run(self, ntherm, n):
+        ntherm, n = operator.index(ntherm), operator.index(n)
+        if self.started or ntherm < 0 or n < 2:
+            raise ValueError('Use a fresh simulation, nonnegative warmup and at least two production sweeps')
+        self.started = True
+        self.parameters['THERMALIZATION'], self.parameters['SWEEPS'] = ntherm, n
+        for _ in range(ntherm):
             self.step()
-            ntherm = ntherm-1
-        
-        # Run n steps
-        while n > 0:
+        for _ in range(n):
             self.step()
-            self.measure()
-            n = n-1
-        
-        # Print observables
-        print('|m|:\t', self.abs_magnetization.mean, '+-', self.abs_magnetization.error, ',\t tau =', self.abs_magnetization.tau)
-        print('E:\t', self.energy.mean, '+-', self.energy.error, ',\t tau =', self.energy.tau)
-        print('m:\t', self.magnetization.mean, '+-', self.magnetization.error, ',\t tau =', self.magnetization.tau)
-    
+            sample = self.observables()
+            self.samples << sample
+            for name, value in zip(NAMES, sample):
+                self.diagnostics[name] << value
+        result = self.samples.result()
+        for i, name in enumerate(NAMES[:3]):
+            diagnostics = self.diagnostics[name].result()
+            tau = diagnostics.tau[0] if diagnostics.tau_available else 'unavailable (insufficient bins)'
+            print(f'{name}: {result.mean[i]} +/- {result.error[i]}, tau = {tau}')
+
     def step(self):
-        for s in range(self.L*self.L):
-            # Pick random site k=(i,j)
-            i = self.randint(self.L)
-            j = self.randint(self.L)
-            
-            # Measure local energy e = -s_k * sum_{l nn k} s_l
-            e = self.spins[(i-1+self.L)%self.L][j] + self.spins[(i+1)%self.L][j] + self.spins[i][(j-1+self.L)%self.L] + self.spins[i][(j+1)%self.L]
-            e *= -self.spins[i][j]
-            
-            # Flip s_k with probability exp(2 beta e)
+        for _ in range(self.L*self.L):
+            i, j = self.randint(self.L), self.randint(self.L)
+            neighbors = (self.spins[(i-1)%self.L][j] + self.spins[(i+1)%self.L][j]
+                         + self.spins[i][(j-1)%self.L] + self.spins[i][(j+1)%self.L])
+            e = -self.spins[i][j]*neighbors
             if e > 0 or self.rng() < self.exp_table[e]:
                 self.spins[i][j] = -self.spins[i][j]
-                
-    def measure(self):
-        E = 0.    # energy
-        M = 0.    # magnetization
+
+    def observables(self):
+        energy = magnetization = 0.
         for i in range(self.L):
             for j in range(self.L):
-                E -= self.spins[i][j] * (self.spins[(i+1)%self.L][j] + self.spins[i][(j+1)%self.L])
-                M += self.spins[i][j]
-            
-        # Add sample to observables
-        self.energy << E/(self.L*self.L)
-        self.magnetization << M/(self.L*self.L)
-        self.abs_magnetization << abs(M)/(self.L*self.L)
-        
-    # Random int from the interval [0,max)
-    def randint(self,max):
-        return int(max*self.rng())
+                energy -= self.spins[i][j]*(self.spins[(i+1)%self.L][j] + self.spins[i][(j+1)%self.L])
+                magnetization += self.spins[i][j]
+        e, m = energy/self.L**2, magnetization/self.L**2
+        return np.array([e, m, abs(m), m*m, m**4])
 
-if __name__ == '__main__': 
-    L = 4    # Linear lattice size
-    N = 5000    # of simulation steps
+    def randint(self, maximum):
+        return int(maximum*self.rng())
 
-    print('# L:', L, 'N:', N)
+    def results(self):
+        joint = self.samples.result()
+        results = {name: joint.transform(lambda x, i=i: x[i:i+1]) for i, name in enumerate(NAMES)}
+        def ratio(x):
+            if x[3] <= 0:
+                raise ValueError('Binder ratio requires positive <m^2> in every jackknife sample')
+            return np.array([x[4]/x[3]**2])
+        unavailable = {}
+        try:
+            results['Binder Ratio'] = joint.transform(ratio)
+        except ValueError as error:
+            unavailable['Binder Ratio'] = str(error)
+        return results, unavailable
 
-    # Scan beta range [0,1] in steps of 0.1
-    for beta in [0.,.1,.2,.3,.4,.5,.6,.7,.8,.9,1.]:
-        print('-----------')
-        print('beta =', beta)
-        sim = Simulation(beta,L)
-        sim.run(N/2,N)
-        sim.save('ising.L_'+str(L)+'beta_'+str(beta)+'.h5')
-        
+    def save(self, filename):
+        if not self.started or self.samples.count != self.parameters['SWEEPS']:
+            raise ValueError('Complete the run before saving its analysis results')
+        results, unavailable = self.results()
+        run = run_config.resolve(SCHEMA, parameters=dict(self.parameters),
+                                 execution=dict(self.execution), output={'results': str(filename)})
+        def write(ar):
+            ar['/parameters'] = self.parameters
+            ar['/run_config'] = run
+            for name, result in results.items():
+                result.save(ar, '/simulation/results/' + pyalps.hdf5_name_encode(name))
+            for name, reason in unavailable.items():
+                ar['/simulation/unavailable/' + pyalps.hdf5_name_encode(name)] = reason
+            self.samples.result().save(ar, '/simulation/joint')
+            for name, accumulator in self.diagnostics.items():
+                accumulator.result().save(ar, '/simulation/realizations/0/clones/0/autocorrelation/'
+                                          + pyalps.hdf5_name_encode(name))
+        hdf5.save_checkpoint(str(filename), write)
 
 
+def main(simulation=Simulation, sizes=(4,), plot=False):
+    parser = argparse.ArgumentParser(description='Square-lattice Ising Monte Carlo with native ALEA')
+    parser.add_argument('--schema', action='store_true')
+    parser.add_argument('--validate', action='store_true')
+    parser.add_argument('runs', nargs='*', help='TOML run files; no arguments runs the tutorial scan')
+    args = parser.parse_args()
+    if args.schema:
+        print(SCHEMA)
+        return
+    if args.validate and not args.runs:
+        parser.error('--validate requires a TOML run file')
+    try:
+        runs = [run_config.load(path, SCHEMA) for path in args.runs] if args.runs else [
+            run_config.resolve(SCHEMA, parameters={'BETA': beta/10, 'L': length},
+                               output={'results': f'ising.L_{length}beta_{beta/10}.h5'})
+            for beta in range(11) for length in sizes]
+        inputs = {Path(path).resolve() for path in args.runs}
+        outputs = [Path(run.output['results']).resolve() for run in runs]
+        if len(set(outputs)) != len(outputs) or inputs.intersection(outputs):
+            raise ValueError('Output paths must be distinct and must not replace run files')
+        simulations = [simulation(run.parameters['BETA'], run.parameters['L'],
+                                  run.execution['seed'], run.execution['bins']) for run in runs]
+        for run, output, sim in zip(runs, outputs, simulations):
+            if args.validate:
+                print(f'Valid Ising configuration: {output}')
+                continue
+            sim.run(run.parameters['THERMALIZATION'], run.parameters['SWEEPS'])
+            sim.save(output)
+        if plot and not args.validate:
+            import matplotlib.pyplot as plt
+            import pyalps.plot
+            data = pyalps.loadMeasurements([str(path) for path in outputs], ['Binder Ratio'])
+            pyalps.plot.plot(pyalps.collectXY(data, x='BETA', y='Binder Ratio', foreach=['L']))
+            plt.xlabel(r'Inverse Temperature $\beta$')
+            plt.ylabel(r'Binder ratio $\langle m^4\rangle/\langle m^2\rangle^2$')
+            plt.title('2D Ising model')
+            plt.legend()
+            plt.show()
+    except (ValueError, RuntimeError, OSError) as error:
+        parser.exit(1, f'{parser.prog}: {error}\n')
 
+
+if __name__ == '__main__':
+    main()

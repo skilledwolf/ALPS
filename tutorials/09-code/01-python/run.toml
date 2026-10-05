@@ -1,0 +1,10 @@
+[parameters]
+L = 4
+BETA = 0.4
+THERMALIZATION = 128
+SWEEPS = 1024
+[output]
+results = "ising.h5"
+[execution]
+seed = 42
+bins = 64

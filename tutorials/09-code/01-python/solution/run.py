@@ -13,16 +13,7 @@
 # 
 # ****************************************************************************
 
-import ising
+from ising import main
 
-L = 4       # Linear lattice size
-N = 5000    # of simulation steps
-
-print('# L:', L, 'N:', N)
-
-# Scan beta range [0,1] in steps of 0.1
-for beta in [0.,.1,.2,.3,.4,.5,.6,.7,.8,.9,1.]:
-    print('-----------')
-    print('beta =', beta)
-    sim = ising.Simulation(beta,L)
-    sim.run(N/2,N)
+if __name__ == '__main__':
+    main()
