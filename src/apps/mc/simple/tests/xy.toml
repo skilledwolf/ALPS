@@ -1,0 +1,14 @@
+[parameters]
+ALGORITHM = "xy"
+LATTICE = "square lattice"
+L = 3
+T = 1.6
+H = 0.2
+SWEEPS = 37
+THERMALIZATION = 3
+[output]
+results = "xy.h5"
+[execution]
+seed = 2873
+chains = 2
+bins = 8

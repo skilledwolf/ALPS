@@ -1,0 +1,78 @@
+# Copyright (C) 2026 ALPS Collaboration. SPDX-License-Identifier: MIT
+application = "simplemc"
+schema_version = 1
+[parameters.ALGORITHM]
+type = "string"
+required = true
+choices = ["ising", "xy", "heisenberg"]
+[parameters.LATTICE]
+type = "string"
+[parameters.GRAPH]
+type = "string"
+[parameters.T]
+type = "float64"
+min = 0.0
+[parameters.J]
+type = "float64"
+default = 1.0
+[parameters.H]
+type = "float64"
+default = 0.0
+[parameters.SWEEPS]
+type = "int64"
+default = 65536
+min = 1
+[parameters.THERMALIZATION]
+type = "int64"
+min = 0
+[input.lattice_library]
+type = "path"
+[input.checkpoint]
+type = "path"
+[output.results]
+type = "path"
+required = true
+[output.checkpoint]
+type = "path"
+[output.snapshot_prefix]
+type = "path"
+[execution.seed]
+type = "int64"
+default = 42
+min = 0
+max = 2147483647
+[execution.rng]
+type = "string"
+default = "mt19937"
+[execution.disorder_seed]
+type = "int64"
+min = 0
+max = 4294967295
+[execution.chains]
+type = "int64"
+default = 1
+min = 1
+max = 2147483647
+[execution.bins]
+type = "int64"
+default = 128
+min = 2
+max = 2147483647
+[execution.time_limit]
+type = "float64"
+default = 0.0
+min = 0.0
+[execution.checkpoint_interval]
+type = "float64"
+default = 3600.0
+min = 0.0
+# Per-chain sweep budget for this invocation, including thermalization.
+# Zero runs to completion; input.checkpoint resumes with a fresh budget.
+[execution.max_sweeps]
+type = "int64"
+default = 0
+min = 0
+[execution.snapshot_interval]
+type = "int64"
+default = 0
+min = 0

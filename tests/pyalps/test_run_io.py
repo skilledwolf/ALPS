@@ -45,6 +45,18 @@ max = 4294967295
 '''
 
 
+@pytest.mark.parametrize("section,key", [("output", "results"), ("input", "data")])
+def test_snapshot_namespace_cannot_replace_another_run_file(tmp_path, section, key):
+    schema = SCHEMA + '\n[output.snapshot_prefix]\ntype="path"\n'
+    runs = [{"parameters": {"SWEEPS": 2},
+             "output": {"results": "first.h5", "snapshot_prefix": "snap"}},
+            {"parameters": {"SWEEPS": 3}, "output": {"results": "second.h5"}}]
+    runs[1].setdefault(section, {})[key] = "snap.clone1.8.vtk"
+    with pytest.raises(ValueError, match="snapshot_prefix"):
+        write_run_files(tmp_path / "batch", runs, schema)
+    assert not list(tmp_path.iterdir())
+
+
 def test_round_trip_types_quoted_keys_paths_and_defaults(tmp_path):
     key = 'MEASURE_AVERAGE[spin "quoted"]'
     values = {

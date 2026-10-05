@@ -17,22 +17,32 @@
 #   FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 #   DEALINGS IN THE SOFTWARE.
 
-add_executable(simplemc main.C evaluator.C ising.C xy.C heisenberg.C)
-target_link_libraries(simplemc PRIVATE ALPS::alps)
+find_package(tomlplusplus 3.4 CONFIG REQUIRED)
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/schema.toml" SIMPLEMC_SCHEMA)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/schema.toml")
+configure_file(schema.hpp.in schema.hpp @ONLY)
+add_executable(simplemc main.C)
+target_include_directories(simplemc PRIVATE "${CMAKE_CURRENT_BINARY_DIR}"
+  "$<TARGET_PROPERTY:tomlplusplus::tomlplusplus,INTERFACE_INCLUDE_DIRECTORIES>")
+target_compile_definitions(simplemc PRIVATE TOML_HEADER_ONLY=1)
+target_link_libraries(simplemc PRIVATE ALPS::alps ALPS::run_config ALPS::statistics)
 alps_install_applications(simplemc)
+install(FILES schema.toml DESTINATION ${CMAKE_INSTALL_DATADIR}/alps/schemas RENAME simplemc.toml COMPONENT applications)
 
-alps_add_test(
-  simplemc_ising
-  TARGET simplemc
-  INPUT ising
-  OUTPUT ising)
-alps_add_test(
-  simplemc_xy
-  TARGET simplemc
-  INPUT xy
-  OUTPUT xy)
-alps_add_test(
-  simplemc_heisenberg
-  TARGET simplemc
-  INPUT heisenberg
-  OUTPUT heisenberg)
+if(ALPS_BUILD_TESTING)
+  add_executable(simplemc_native_contract tests/simulation.cpp)
+  target_link_libraries(simplemc_native_contract PRIVATE ALPS::alps ALPS::statistics)
+  alps_add_test(simplemc_native_contract)
+  set_tests_properties(simplemc_native_contract PROPERTIES LABELS "simplemc;statistics;checkpoint" TIMEOUT 60)
+  find_package(Python 3.11 REQUIRED COMPONENTS Interpreter)
+  add_test(NAME simplemc_cli_contract
+    COMMAND "${Python_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/cli_contract.py" "$<TARGET_FILE:simplemc>")
+  set_tests_properties(simplemc_cli_contract PROPERTIES LABELS "simplemc;cli;run_config" TIMEOUT 60
+    ENVIRONMENT_MODIFICATION "ALPS_XML_PATH=set:${PROJECT_SOURCE_DIR}/src/alps/resources")
+  if(WIN32)
+    foreach(directory IN LISTS ALPS_RUNTIME_LIBRARY_DIRS)
+      set_property(TEST simplemc_cli_contract APPEND PROPERTY ENVIRONMENT_MODIFICATION
+        "PATH=path_list_prepend:${directory}")
+    endforeach()
+  endif()
+endif()

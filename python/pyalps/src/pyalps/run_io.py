@@ -95,6 +95,18 @@ def _check_output_paths(runs, targets):
             if other_owner != owner and destination.is_relative_to(directory):
                 raise ValueError(f"{other_key} lies inside another run's "
                                  f"output.text_directory: {destination}")
+    # Native snapshots own a clone/sweep filename namespace, even before the
+    # first snapshot exists. Check it across separately executed job tasks.
+    for prefix, key, _ in paths:
+        if key != "output.snapshot_prefix":
+            continue
+        namespace = str(prefix) + ".clone"
+        for destination in protected:
+            if str(destination).startswith(namespace):
+                raise ValueError(f"output.snapshot_prefix would overwrite {protected[destination]}")
+        for destination, other_key, _ in paths:
+            if str(destination).startswith(namespace):
+                raise ValueError(f"output.snapshot_prefix overlaps {other_key}: {destination}")
 
 
 def _publish(documents, overwrite):

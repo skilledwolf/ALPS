@@ -22,11 +22,16 @@ Standalone CT-INT, CT-HYB and Hirsch-Fye use modern ALEA, pooling raw independen
 replicas before signed analysis and publishing canonical results atomically.
 CT-INT includes general multiband density interactions and their full density
 moments; DMFT uses only external solver processes. Other legacy measurement
-producers still need migration before their statistical interfaces can be deleted.
+producers still need migration before their statistical interfaces can be deleted:
+`spinmc`, `loop`, `qwl`, `dirloop_sse` and `worm`.
 The NGS `mcbase` framework and its MPI adapter use the same native batches,
 checkpoints and result codec. Python measurement maps share native accumulator
 handles; collected result dictionaries own snapshots. The old NGS measurement
 facade, feature-stack API and unused scheduler prototypes are removed.
+`simplemc` shares one local-update engine for Ising, XY and Heisenberg models on
+this framework, with typed runs, raw-chain pooling, exact checkpoints and direct
+VTK snapshots; its duplicate Parapack workers are removed. See the
+[application guide](../apps/mc/simple/README.md).
 Historical reconciliation probes disabled ALEA; they do not validate this import.
 
 ## Consolidation acceptance contracts

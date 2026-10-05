@@ -6,6 +6,15 @@ User-facing changes and migration notes are recorded here, starting with the bui
 
 ### Changed
 
+- Port `simplemc` to typed TOML runs and native ALEA batches, sharing one local
+  update engine for Ising, XY and Heisenberg models. Preserve custom lattices,
+  graphs, bond couplings and magnetic fields; exclude thermalization and pool
+  independent raw chains before nonlinear analysis. Retain exact RNG, spin and
+  partial-bin restart state, validate all tasks before execution, and emit VTK
+  snapshots directly. Correct self-loop update weights and zero-warmup sampling.
+  Remove the duplicate Parapack workers and evaluators; update the snapshot
+  tutorial. Independent chains now run serially with `mt19937`; legacy XML
+  inputs, alternate RNGs and multi-process launches are explicitly rejected.
 - Validate native ALEA checkpoints by replaying the shared batch merge algorithm.
   Reject inconsistent cursors, counts, offsets and nonzero empty bins before
   replacement; remove manual modular cursor reconstruction and duplicate
