@@ -1,5 +1,6 @@
 // Copyright (C) 2026 ALPS Collaboration. SPDX-License-Identifier: MIT
 #include "../simulation.h"
+#include "../../native_driver.hpp"
 #include <boost/math/special_functions/bessel.hpp>
 #include <iostream>
 
@@ -180,7 +181,7 @@ int main() {
     step(first, 1); require(first.measurement_count() == 1, "zero warm-up lost the first sample");
     step(first, 28); step(second, 17);
     auto a = first.collect_results(), b = second.collect_results();
-    auto merged = simplemc::simulation::merge({a, b});
+    auto merged = native_mc::pool({a, b});
     for (auto const& entry : merged) {
         auto const& data = entry.second;
         require(data.count() == 46 && data.num_batches() == 16, "merge discarded independent chain evidence");
@@ -197,6 +198,14 @@ int main() {
     frozen["T"] = 1e-200; frozen["H"] = 1.; frozen["J0"] = 0.;
     simplemc::simulation cold(frozen, 8); step(cold, 29);
     auto cold_results = simplemc::simulation::derive(cold.collect_results(), frozen);
-    require(cold_results.at("Specific Heat").mean().allFinite(), "zero heat capacity overflowed at finite inverse temperature");
+    require(!cold_results.count("Specific Heat"), "unresolved nonzero energy variance published a heat capacity");
+    frozen["H"] = 0.; frozen["J0"] = .7;
+    simplemc::simulation nonbinary(frozen, 8); step(nonbinary, 29);
+    require(!simplemc::simulation::derive(nonbinary.collect_results(), frozen).count("Specific Heat"),
+            "nonbinary frozen energy published a cancellation-dominated heat capacity");
+    frozen["J0"] = 0.;
+    simplemc::simulation zero(frozen, 8); step(zero, 29);
+    require(simplemc::simulation::derive(zero.collect_results(), frozen).at("Specific Heat").mean()(0) == 0.,
+            "exact zero energy heat capacity overflowed at finite inverse temperature");
     std::cout << "simplemc native physics, restart, covariance and chain contracts passed\n";
 }

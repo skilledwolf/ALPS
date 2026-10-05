@@ -6,6 +6,11 @@ User-facing changes and migration notes are recorded here, starting with the bui
 
 ### Changed
 
+- Share private native Monte Carlo run orchestration and vector-aware raw-chain
+  pooling across applications. Keep exact restart and output validation in one
+  path. Omit optional thermodynamic estimates when moment subtraction cannot
+  resolve their fluctuations, including every jackknife estimate; preserve raw
+  evidence instead of amplifying roundoff at very low temperatures.
 - Center native ALEA batch sums before calculating variance and covariance.
   Constant measurements and small fluctuations around large means now retain
   finite uncertainties without subtracting nearly equal raw second moments.

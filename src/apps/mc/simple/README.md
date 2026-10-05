@@ -54,7 +54,10 @@ Raw native batches are concatenated across chains before computing specific
 heat or Binder ratios, preserving sample weights and moment covariance. Errors
 use native weighted jackknife transformations of aligned batches. A single
 occupied batch has no independent error estimate; nonlinear derived observables
-are omitted until there are enough batches and a valid denominator. The Binder
+are omitted until there are enough batches and a valid denominator. Specific
+heat is also omitted if its moment difference is below a conservative roundoff
+bound in the full estimate or any leave-one-out estimate; raw moments remain
+available. Zero inverse temperature gives an exact zero thermal prefactor. The Binder
 ratio is `<m²>² / <m⁴>`, including the X/Z projected variants for continuous
 spins. Results retain native batch sums and counts for later analysis.
 

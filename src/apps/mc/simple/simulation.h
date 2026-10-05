@@ -1,6 +1,7 @@
 // Copyright (C) 1997–2015 Synge Todo; 2026 ALPS Collaboration.
 // SPDX-License-Identifier: MIT
 #pragma once
+#include "../moment_difference.hpp"
 
 #include <alps/mcbase.hpp>
 #include <alps/lattice.h>
@@ -62,6 +63,7 @@ public:
     simulation& operator=(simulation const&) = delete;
     using mcbase::save;
     using mcbase::load;
+    static alps::params const& checkpoint_parameters(alps::params const& p) { return p; }
 
     void update() override {
         if (sweeps_ == thermalization_ + production_)
@@ -169,57 +171,24 @@ public:
         sweeps_ = sweeps;
     }
 
-    // Concatenate independent-chain evidence. Adding equal-index bins would
-    // artificially turn several independent observations into one observation.
-    static results_type merge(std::vector<results_type> const& chains) {
-        if (chains.empty()) return {};
-        results_type merged;
-        std::size_t slots = 0;
-        uint64_t samples = 0;
-        for (auto const& chain : chains) {
-            if (chain.size() != chains.front().size() || chain.empty())
-                throw std::invalid_argument("inconsistent simplemc chain results");
-            auto const& reference = chain.begin()->second;
-            if (!reference.valid() || slots > std::size_t(std::numeric_limits<Eigen::Index>::max()) - reference.num_batches()
-                    || samples > UINT64_MAX - reference.count())
-                throw std::overflow_error("simplemc chain result size overflows");
-            slots += reference.num_batches(); samples += reference.count();
-            for (auto const& entry : chains.front()) {
-                auto const& result = chain.at(entry.first);
-                if (!result.valid() || result.size() != 1 || result.num_batches() != reference.num_batches()
-                        || result.store().count() != reference.store().count() || !result.store().batch().allFinite())
-                    throw std::invalid_argument("simplemc chain moments are not aligned");
-            }
-        }
-        for (auto const& entry : chains.front()) {
-            alps::alea::batch_data<double> data(1, slots);
-            std::size_t offset = 0;
-            for (auto const& chain : chains) {
-                auto const& result = chain.at(entry.first);
-                data.batch().middleCols(offset, result.num_batches()) = result.store().batch();
-                data.count().segment(offset, result.num_batches()) = result.store().count();
-                offset += result.num_batches();
-            }
-            merged.emplace(entry.first, alps::alea::batch_result<double>(std::move(data)));
-        }
-        return merged;
-    }
-
     static results_type derive(results_type const& raw, alps::params const& p) {
         auto results = raw;
         for (auto const& entry : raw) validate_result(entry.second);
         if (raw.empty() || (raw.at("Energy").store().count().array() > 0).count() < 2) return results;
         double beta = inverse_temperature(p), n = raw.at("Number of Sites").mean()(0);
+        auto difference = native_mc::moment_difference(raw.at("Energy").count(), raw.at("Energy").num_batches());
         auto transform = [&](std::string const& name, std::string const& first, std::string const& second,
                              std::function<double(double, double)> function) {
             auto inputs = alps::alea::join(raw.at(first), raw.at(second));
             auto result = alps::alea::transform(alps::alea::jackknife_prop{},
                 alps::alea::make_transformer<double>(std::move(function)), inputs);
-            validate_result(result);
-            results.emplace(name, std::move(result));
+            if (result.store().batch().allFinite()) {
+                validate_result(result);
+                results.emplace(name, std::move(result));
+            }
         };
         transform("Specific Heat", "Energy", "Energy^2",
-                  [=](double e, double e2) { return beta * (beta * (e2 - e * e)) / n; });
+                  [=](double e, double e2) { return beta == 0 ? 0. : beta * (beta * difference(e2, e * e)) / n; });
         for (auto const& suffix : {"", " X", " Z"}) {
             auto first = std::string("Magnetization Density") + suffix + "^2", second = first.substr(0, first.size()-1) + "4";
             auto it = raw.find(second);

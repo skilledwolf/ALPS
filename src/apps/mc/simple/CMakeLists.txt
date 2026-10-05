@@ -31,7 +31,10 @@ install(FILES schema.toml DESTINATION ${CMAKE_INSTALL_DATADIR}/alps/schemas RENA
 
 if(ALPS_BUILD_TESTING)
   add_executable(simplemc_native_contract tests/simulation.cpp)
-  target_link_libraries(simplemc_native_contract PRIVATE ALPS::alps ALPS::statistics)
+  target_include_directories(simplemc_native_contract PRIVATE
+    "$<TARGET_PROPERTY:tomlplusplus::tomlplusplus,INTERFACE_INCLUDE_DIRECTORIES>")
+  target_compile_definitions(simplemc_native_contract PRIVATE TOML_HEADER_ONLY=1)
+  target_link_libraries(simplemc_native_contract PRIVATE ALPS::alps ALPS::statistics ALPS::run_config)
   alps_add_test(simplemc_native_contract)
   set_tests_properties(simplemc_native_contract PROPERTIES LABELS "simplemc;statistics;checkpoint" TIMEOUT 60)
   find_package(Python 3.11 REQUIRED COMPONENTS Interpreter)
