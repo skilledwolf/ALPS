@@ -300,3 +300,47 @@ Two older source directories require separate decisions before deletion:
 The remaining migration work includes live Parapack/Monte Carlo scheduler
 consumers and released physical-checkpoint continuation. Removing dead wrappers
 or unused includes does not establish completion of those migrations.
+
+### Parapack example migration requirements
+
+The remaining `tutorials/00-examples/parapack` targets are not all redundant
+copies of the native solvers. Inspection of their registered workers and
+adapters establishes the following requirements. These are outstanding work,
+not a claim that the old implementations have been scientifically validated.
+
+| Command | Functionality to preserve or establish an equivalent for |
+| --- | --- |
+| `ising_single` | Graph-colored sublattice heat-bath updates, optional OpenMP within a lattice, extensive energy/magnetization moments and heat capacity; sequential warm-start temperature scans. |
+| `ising_multiple` | MPI spatial decomposition of **one** chain, ghost spins and reductions, with a serial worker fallback. Independent chains distributed across ranks do not replace this execution mode. |
+| `ising` | Lattice-library heat-bath simulation with bond-type `J`, `J0`, … couplings, normalized magnetization, extensive energy, Binder/heat-capacity analysis, and replica exchange. |
+| `heisenberg` | Unit-vector Metropolis updates with bond-type couplings; both vector-magnitude and z-component second/fourth moments and Binder ratios; replica exchange. |
+| `loop_single` | Continuous-time quantum loop example with energy, staggered magnetization and uniform/staggered susceptibility estimators. Compare its model, normalization and disorder inputs against native `loop` before consolidating. |
+| `exchange` | Classical and quantum workers; serial replica ladders, MPI-distributed replicas, and nested MPI replica/spatial decomposition. Temperature-ladder optimization and exchange diagnostics also belong to this interface. |
+| `wanglandau` | Classical Ising **energy** density-of-states learning, fixed-weight microcanonical measurements, and reweighting over temperature, including entropy/reference normalization. The native quantum QWL expansion-order workflow is not an equivalent implementation. |
+
+The authoritative registrations are each directory's `.C` files; the behavior
+is in the worker headers and `alps/parapack/{temperature_scan,exchange,exchange_multi,wanglandau}.h`.
+In particular, `temperature_scan_adaptor` retains the worker's physical state
+between temperatures, resets measurements after thermalization, and checkpoints
+the stage and counters. Independent TOML jobs alone do not preserve this
+warm-start workflow. The native replacement must retain stage state and
+statistics per temperature, including the separate initial thermalization.
+
+Exchange includes explicit temperature/inverse-temperature sets, regular grids,
+exchange intervals and randomized ordering, plus rate and population ladder
+optimization. Native `src/apps/qmc/looper/temperature_grid.hpp` already implements
+both optimization methods; `application.hpp` owns the ladder and restart state.
+Use this existing implementation as the starting point for consolidation after
+checking its worker assumptions. Do not introduce a second temperature-grid
+optimizer or restore the legacy observable framework to reuse the old adapters.
+The generic `alps::mc` runner supplies execution and transport; an application
+still has to implement its ensemble's physical state and measurements.
+
+Port and validate these behaviors before deleting their workers or the legacy
+Parapack MC framework. Validation must distinguish independent-chain MPI,
+spatial MPI, replica exchange, and nested decomposition, and must cover physical
+results as well as exact native continuation. Old formulas and golden output
+are evidence to inspect, not automatic correctness oracles. The scheduler
+Ising migration, for example, exposed an even-sweep parity trap when all flips
+were accepted; symmetric proposals that may keep the current spin now avoid
+that trap, with a two-site high-temperature regression.
