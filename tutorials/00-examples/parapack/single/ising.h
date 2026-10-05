@@ -11,142 +11,46 @@
 *
 *****************************************************************************/
 
-#ifndef PARAPACK_EXAMPLE_SINGLE_ISING_H
-#define PARAPACK_EXAMPLE_SINGLE_ISING_H
-
+#pragma once
 #include <alps/parapack/worker.h>
-#include <boost/graph/sequential_vertex_coloring.hpp>
+#include "kernel.hpp"
 
+// Temporary adapter for the remaining legacy exchange and spatial-MPI callers.
 class single_ising_worker : public alps::parapack::lattice_mc_worker<> {
-private:
-  typedef alps::parapack::lattice_mc_worker<> super_type;
-
+    using super_type=alps::parapack::lattice_mc_worker<>;
 public:
-  single_ising_worker(alps::Parameters const& params) : super_type(params), mcs_(params) {
-    // temperature
-    if (params.defined("T")) beta_ = 1 / evaluate("T", params);
-    // coupling constant
-    coupling_ = (params.defined("J")) ? evaluate("J", params) : 1.0;
-    // lattice
-    std::vector<std::size_t> color(num_sites());
-    typedef boost::property_map<graph_type, alps::site_index_t>::const_type vertex_index_map;
-    int nc = boost::sequential_vertex_coloring(graph(),
-      boost::iterator_property_map<std::size_t*, vertex_index_map>(&color.front(),
-          get(boost::vertex_index, graph())));
-    sublat_.clear();
-    sublat_.resize(nc);
-    for (std::size_t s = 0; s < num_sites(); ++s) sublat_[color[s]].push_back(s);
-    // configuration
-    spins_.resize(num_sites());
-    #ifdef ALPS_ENABLE_OPENMP
-    #pragma omp parallel
-    #endif 
-    {
-      #ifdef ALPS_ENABLE_OPENMP
-      int r = alps::thread_id();
-      #pragma omp for
-      #else
-      int r = 0;
-      #endif 
-      for (int s = 0; s < num_sites(); ++s) spins_[s] = (uniform_01(r) < 0.5 ? 1 : -1);
+    single_ising_worker(alps::Parameters const& p) : super_type(p),
+        beta_(p.defined("T") ? 1/evaluate("T",p) : 0), mcs_(p),
+        state_(static_cast<alps::graph_helper<> const&>(*this),p.defined("J") ? evaluate("J",p) : 1.,[&]{return uniform_01();}) {}
+    void init_observables(alps::Parameters const&,alps::ObservableSet& obs) {
+        obs<<alps::SimpleRealObservable("Temperature")<<alps::SimpleRealObservable("Inverse Temperature")
+           <<alps::SimpleRealObservable("Number of Sites")<<alps::RealObservable("Energy")
+           <<alps::RealObservable("Energy^2")<<alps::RealObservable("Magnetization")
+           <<alps::RealObservable("Magnetization^2")<<alps::RealObservable("Magnetization^4");
     }
-    double ene = 0;
-    #ifdef ALPS_ENABLE_OPENMP
-    #pragma omp parallel for reduction(+: ene)
-    #endif 
-    for (int b = 0; b < num_bonds(); ++b) {
-      bond_descriptor bd = bond(b);
-      ene -= coupling_ * spins_[source(bd)] * spins_[target(bd)];
+    bool is_thermalized() const {return mcs_.is_thermalized();}
+    double progress() const {return mcs_.progress();}
+    void run(alps::ObservableSet& obs) {
+        ++mcs_; state_.step(beta_,[&]{return uniform_01();});
+        const auto x=state_.sample();
+        add_constant(obs["Temperature"],1/beta_); add_constant(obs["Inverse Temperature"],beta_);
+        add_constant(obs["Number of Sites"],x[0]);
+        const char* names[]={"Energy","Energy^2","Magnetization","Magnetization^2","Magnetization^4"};
+        for (size_t i=0;i<5;++i) obs[names[i]]<<x[i+1];
     }
-    energy_ = ene;
-  }
-  virtual ~single_ising_worker() {}
-
-  void init_observables(alps::Parameters const&, alps::ObservableSet& obs) {
-    obs << alps::SimpleRealObservable("Temperature")
-        << alps::SimpleRealObservable("Inverse Temperature")
-        << alps::SimpleRealObservable("Number of Sites")
-        << alps::RealObservable("Energy")
-        << alps::RealObservable("Energy^2")
-        << alps::RealObservable("Magnetization")
-        << alps::RealObservable("Magnetization^2")
-        << alps::RealObservable("Magnetization^4");
-  }
-
-  bool is_thermalized() const { return mcs_.is_thermalized(); }
-  double progress() const { return mcs_.progress(); }
-
-  void run(alps::ObservableSet& obs) {
-    ++mcs_;
-
-    for (std::size_t t = 0; t < sublat_.size(); ++t) {
-      #ifdef ALPS_ENABLE_OPENMP
-      #pragma omp parallel
-      #endif 
-      {
-        #ifdef ALPS_ENABLE_OPENMP
-        int r = alps::thread_id();
-        #pragma omp for
-        #else
-        int r = 0;
-        #endif
-        for (int k = 0; k < sublat_[t].size(); ++k) {
-          int s = sublat_[t][k];
-          double diff = 0;
-          neighbor_iterator itr, itr_end;
-          for (boost::tie(itr, itr_end) = neighbors(s); itr != itr_end; ++itr)
-            diff += 2 * coupling_ * spins_[s] * spins_[*itr];
-          if (uniform_01(r) < 0.5 * (1 + std::tanh(-0.5 * beta_ * diff))) {
-            spins_[s] = -spins_[s];
-          }
-        } // end omp for
-      } // end omp parallel
+    using weight_parameter_type=double;
+    void set_beta(double beta) {beta_=beta;}
+    double weight_parameter() const {return -state_.energy();}
+    static double log_weight(double weight,double beta) {return beta*weight;}
+    void save(alps::ODump& out) const {out<<mcs_<<state_.spins()<<state_.energy();}
+    void load(alps::IDump& in) {
+        std::vector<int> spins; double energy;
+        in>>mcs_>>spins>>energy; state_.restore(std::move(spins));
     }
-
-    // measurements
-    double mag = 0;
-    #ifdef ALPS_ENABLE_OPENMP
-    #pragma omp parallel for reduction(+: mag)
-    #endif 
-    for (int s = 0; s < num_sites(); ++s) mag += spins_[s];
-    double ene = 0;
-    #ifdef ALPS_ENABLE_OPENMP
-    #pragma omp parallel for reduction(+: ene)
-    #endif 
-    for (int b = 0; b < num_bonds(); ++b) {
-      bond_descriptor bd = bond(b);
-      ene -= coupling_ * spins_[source(bd)] * spins_[target(bd)];
-    }
-    energy_ = ene;
-    add_constant(obs["Temperature"], 1/beta_);
-    add_constant(obs["Inverse Temperature"], beta_);
-    add_constant(obs["Number of Sites"], (double)num_sites());
-    obs["Energy"] << energy_;
-    obs["Energy^2"] << energy_ * energy_;
-    obs["Magnetization"] << mag;
-    obs["Magnetization^2"] << mag * mag;
-    obs["Magnetization^4"] << mag * mag * mag * mag;
-  }
-
-  // for exchange Monte Carlo
-  typedef double weight_parameter_type;
-  void set_beta(double beta) { beta_ = beta; }
-  weight_parameter_type weight_parameter() const { return -energy_; }
-  static double log_weight(weight_parameter_type gw, double beta) { return beta * gw; }
-
-  void save(alps::ODump& dp) const { dp << mcs_ << spins_ << energy_; }
-  void load(alps::IDump& dp) { dp >> mcs_ >> spins_ >> energy_; }
-
 private:
-  // parameteters
-  double beta_;
-  double coupling_;
-  std::vector<std::vector<int> > sublat_;
-
-  // configuration (need checkpointing)
-  alps::mc_steps mcs_;
-  std::vector<int> spins_;
-  double energy_;
+    double beta_;
+    alps::mc_steps mcs_;
+    ising_kernel state_;
 };
 
 class ising_evaluator : public alps::parapack::simple_evaluator {
@@ -180,5 +84,3 @@ public:
     if (obs.has("Temperature")) obs.erase("Temperature");
   }
 };
-
-#endif // PARAPACK_EXAMPLE_SINGLE_ISING_H

@@ -303,14 +303,15 @@ or unused includes does not establish completion of those migrations.
 
 ### Parapack example migration requirements
 
-The remaining `tutorials/00-examples/parapack` targets are not all redundant
-copies of the native solvers. Inspection of their registered workers and
-adapters establishes the following requirements. These are outstanding work,
-not a claim that the old implementations have been scientifically validated.
+The `tutorials/00-examples/parapack` targets are not all redundant copies of
+the native solvers. Inspection of their workers and adapters establishes the
+following requirements. Except for the completed `ising_single` port described
+below, these remain outstanding work; old implementations are not correctness
+oracles.
 
 | Command | Functionality to preserve or establish an equivalent for |
 | --- | --- |
-| `ising_single` | Graph-colored sublattice heat-bath updates, optional OpenMP within a lattice, extensive energy/magnetization moments and heat capacity; sequential warm-start temperature scans. |
+| `ising_single` | Native port completed: graph-colored heat-bath updates, deterministic OpenMP within a lattice, extensive moments and centered heat capacity, and resumable warm-start temperature scans. Its shared kernel still supplies the temporary legacy adapter used by exchange/spatial-MPI callers. |
 | `ising_multiple` | MPI spatial decomposition of **one** chain, ghost spins and reductions, with a serial worker fallback. Independent chains distributed across ranks do not replace this execution mode. |
 | `ising` | Lattice-library heat-bath simulation with bond-type `J`, `J0`, … couplings, normalized magnetization, extensive energy, Binder/heat-capacity analysis, and replica exchange. |
 | `heisenberg` | Unit-vector Metropolis updates with bond-type couplings; both vector-magnitude and z-component second/fourth moments and Binder ratios; replica exchange. |
@@ -320,11 +321,14 @@ not a claim that the old implementations have been scientifically validated.
 
 The authoritative registrations are each directory's `.C` files; the behavior
 is in the worker headers and `alps/parapack/{temperature_scan,exchange,exchange_multi,wanglandau}.h`.
-In particular, `temperature_scan_adaptor` retains the worker's physical state
+The former `temperature_scan_adaptor` retains the worker's physical state
 between temperatures, resets measurements after thermalization, and checkpoints
 the stage and counters. Independent TOML jobs alone do not preserve this
-warm-start workflow. The native replacement must retain stage state and
-statistics per temperature, including the separate initial thermalization.
+warm-start workflow. The native `single_ising` implementation retains the spin/RNG state and
+statistics per temperature, including separate initial thermalization. Stage
+position is derived from its completed-sweep count and immutable stage lengths.
+It uses the existing native ensemble archive layout and Python loader; it does
+not introduce another scan scheduler or another result format.
 
 Exchange includes explicit temperature/inverse-temperature sets, regular grids,
 exchange intervals and randomized ordering, plus rate and population ladder

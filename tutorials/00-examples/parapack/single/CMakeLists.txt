@@ -17,10 +17,13 @@
 #   FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 #   DEALINGS IN THE SOFTWARE.
 
-add_executable(ising_single main.C ising.C)
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/schema.toml" ISING_SCHEMA)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/schema.toml")
+configure_file(ising_schema.hpp.in ising_schema.hpp @ONLY)
+add_executable(ising_single main.C)
+target_include_directories(ising_single PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
 target_link_libraries(ising_single PRIVATE ALPS::alps)
-
-alps_add_test(
-  ising_single
-  INPUT ising
-  OUTPUT ising)
+if(ALPS_ENABLE_OPENMP)
+  find_package(OpenMP REQUIRED COMPONENTS CXX)
+  target_link_libraries(ising_single PRIVATE OpenMP::OpenMP_CXX)
+endif()

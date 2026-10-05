@@ -1,0 +1,15 @@
+[parameters]
+ALGORITHM = "ising; temperature scan"
+LATTICE = "chain lattice"
+L = 16
+NUM_TEMPERATURES = 3
+INITIAL_TEMPERATURE = 2.0
+DIFF_TEMPERATURE = -0.2
+SWEEPS = 4096
+THERMALIZATION = 512
+INITIAL_THERMALIZATION = 1024
+[execution]
+seed = 2873
+[output]
+results = "scan.h5"
+checkpoint = "scan.checkpoint.h5"
