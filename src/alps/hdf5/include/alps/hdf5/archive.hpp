@@ -197,6 +197,9 @@ namespace alps {
                 friend class detail::scoped_context;
                 friend ALPS_HDF5_DECL void save_checkpoint(boost::filesystem::path const & filename,
                                                          std::function<void(archive &)> const & save);
+                friend ALPS_HDF5_DECL void update_archive(boost::filesystem::path const&,
+                                                          std::function<void(archive&)> const&);
+                static void publish(boost::filesystem::path const&, std::function<void(archive&)> const&, bool);
                 std::string current_ = "/";
                 std::shared_ptr<detail::archivecontext> context_;
 
@@ -208,6 +211,11 @@ namespace alps {
         // finalization closes their shared native file before publication.
         ALPS_HDF5_DECL void save_checkpoint(boost::filesystem::path const & filename,
                                           std::function<void(archive &)> const & save);
+
+        // Atomically update an existing archive, retaining all unmodified objects.
+        // A failed callback or checked close leaves the original file untouched.
+        ALPS_HDF5_DECL void update_archive(boost::filesystem::path const& filename,
+                                          std::function<void(archive&)> const& update);
 
         template<typename T> struct is_continuous
             : public boost::false_type

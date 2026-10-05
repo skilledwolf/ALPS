@@ -332,6 +332,14 @@ bool archive::is_open() {
 
 void save_checkpoint(boost::filesystem::path const& filename,
                      std::function<void(archive&)> const& save) {
+    archive::publish(filename,save,false);
+}
+void update_archive(boost::filesystem::path const& filename,
+                    std::function<void(archive&)> const& update) {
+    archive::publish(filename,update,true);
+}
+void archive::publish(boost::filesystem::path const& filename,
+                      std::function<void(archive&)> const& save,bool preserve) {
     auto const target = boost::filesystem::absolute(filename).lexically_normal();
     boost::filesystem::path temporary_directory;
     // Reserving a private directory avoids truncating an existing temporary
@@ -343,7 +351,8 @@ void save_checkpoint(boost::filesystem::path const& filename,
     try {
         auto const temporary = temporary_directory / "checkpoint.h5";
         {
-            archive ar(temporary, "w");
+            if (preserve) boost::filesystem::copy_file(target,temporary);
+            archive ar(temporary, preserve ? "a" : "w");
             // Retain finalization ownership even if the callback closes its
             // handle or keeps a copy. Escaped handles cannot defer publication.
             auto context = ar.context_;

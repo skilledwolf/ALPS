@@ -141,6 +141,21 @@ int main() {
         independent_opens(filename);
         copies(filename);
         checkpoint_copies(filename);
+        alps::hdf5::update_archive(filename,[](auto& ar){ ar.write("/derived",8); });
+        bool failed=false;
+        try {
+            alps::hdf5::update_archive(filename,[](auto& ar){
+                ar.write("/checkpoint",99); throw std::runtime_error("evaluation failed");
+            });
+        } catch (std::runtime_error const& error) {
+            failed=std::string(error.what())=="evaluation failed";
+        }
+        require(failed,"archive update lost the original exception");
+        {
+            alps::hdf5::archive ar(filename);
+            require(value(ar,"/checkpoint")==6 && value(ar,"/derived")==8,
+                    "archive update lost existing data or published a failed update");
+        }
         require(H5Fget_obj_count(H5F_OBJ_ALL, H5F_OBJ_ALL) == objects_before, "file handles leaked");
         std::filesystem::remove(filename);
         return 0;
