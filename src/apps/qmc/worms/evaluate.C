@@ -20,7 +20,7 @@ int main(int argc,char** argv) {
         for (auto const* name:{"Centered Density Moments","Winding number histogram"})
           if (ar.is_group("/simulation/results/"+ar.encode_segment(name)))
             alps::alea::deserialize(codec,ar.encode_segment(name),results[name]);
-        native_mc::unavailable_results unavailable;
+        alps::mc::unavailable_results unavailable;
         native_qmc::derive(results,parameters,sites,unavailable);
         for (auto const* name:{"Compressibility","Superfluid stiffness (1D estimator)"}) {
           if (auto found=results.find(name);found!=results.end()) {

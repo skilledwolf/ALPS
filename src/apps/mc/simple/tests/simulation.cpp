@@ -1,6 +1,6 @@
 // Copyright (C) 2026 ALPS Collaboration. SPDX-License-Identifier: MIT
 #include "../simulation.h"
-#include "../../native_driver.hpp"
+#include <alps/mc/driver.hpp>
 #include <boost/math/special_functions/bessel.hpp>
 #include <iostream>
 
@@ -28,11 +28,11 @@ void equal(simplemc::simulation const& expected, simplemc::simulation const& act
 }
 // Compare retained physical bins and nonlinear analysis with a two-pass oracle.
 void physical_moment_oracle(std::filesystem::path const& directory) {
-    native_mc::moment_results bins;
+    alps::mc::moment_results bins;
     std::vector<std::vector<long double>> evidence;
     for (int length:{137,91}) {
         alps::alea::batch_acc<double> layout(1,8);
-        native_mc::physical_moments moments(1,8);
+        alps::mc::physical_moments moments(1,8);
         std::vector<long double> samples;
         for (int i=0;i<length;++i) {
             double value=1e9+((7*i)%17-8)*.125;
@@ -54,7 +54,7 @@ void physical_moment_oracle(std::filesystem::path const& directory) {
         }
         auto path=(directory/"moments.h5").string();
         { alps::hdf5::archive ar(path,"w"); moments.save(ar,"/moments"); }
-        native_mc::physical_moments restored(1,8);
+        alps::mc::physical_moments restored(1,8);
         { alps::hdf5::archive ar(path); restored.load(ar,"/moments",layout); }
         require(restored.results()==results,"physical moments changed on checkpoint round trip");
         bins.insert(bins.end(),results.begin(),results.end());
@@ -72,7 +72,7 @@ void physical_moment_oracle(std::filesystem::path const& directory) {
     for (size_t b=0;b<evidence.size();++b)
         expected+=(count*full-(count-evidence[b].size())*variance(b))/count;
     simplemc::simulation::results_type estimates;
-    native_mc::estimate(estimates,nullptr,"variance",native_mc::centered_batches(bins).first,
+    alps::mc::estimate(estimates,nullptr,"variance",alps::mc::centered_batches(bins).first,
                        [](auto const& x){return x(1)-x(0)*x(0);});
     require(std::abs(estimates.at("variance").mean()(0)-expected)<2e-7L,
             "weighted physical jackknife disagrees with independent large-offset oracle");
@@ -235,7 +235,7 @@ int main() {
     step(first, 1); require(first.measurement_count() == 1, "zero warm-up lost the first sample");
     step(first, 28); step(second, 17);
     auto a = first.collect_results(), b = second.collect_results();
-    auto merged = native_mc::pool({a, b});
+    auto merged = alps::mc::pool({a, b});
     for (auto const& entry : merged) {
         auto const& data = entry.second;
         require(data.count() == 46 && data.num_batches() == 16, "merge discarded independent chain evidence");

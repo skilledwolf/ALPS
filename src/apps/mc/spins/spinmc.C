@@ -1,11 +1,11 @@
 // Copyright (C) 2026 ALPS Collaboration. SPDX-License-Identifier: MIT
 #include "spinsim.h"
 #include "schema.hpp"
-#include "../native_driver.hpp"
+#include <alps/mc/driver.hpp>
 
 int main(int argc, char** argv) {
-    return native_mc::main<spinmc::simulation>(argc, argv, "spinmc", spinmc_schema,
-        [](std::string const& key, toml::node const&) -> char const* {
+    return alps::mc::main<spinmc::simulation>(argc, argv, "spinmc", spinmc_schema,
+        [](std::string const& key) -> char const* {
             if (key == "J'" || key == "D'")
                 throw std::invalid_argument("Use J/D or numbered J<bond>/D<site> matrix arrays");
             if (key.size() > 1 && key.find_first_not_of("0123456789", 1) == std::string::npos) {
@@ -31,5 +31,5 @@ int main(int argc, char** argv) {
                 p["ERROR_VARIABLE"] = e["error_variable"]; p["ERROR_LIMIT"] = e["error_limit"];
             }
             p["PRINT_SWEEPS"] = e["print_sweeps"];
-        }, native_mc::spin_output(spinmc::derive));
+        }, alps::mc::spin_output(spinmc::derive));
 }

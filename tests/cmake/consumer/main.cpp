@@ -7,7 +7,7 @@
 #include <alps/hdf5/vector.hpp>
 #include <alps/params.hpp>
 #include <alps/utility/encode.hpp>
-#include <alps/mcbase.hpp>
+#include <alps/mc/driver.hpp>
 #include <alps/parser/xslt_path.h>
 #include <alps/osiris/xdrdump.h>
 #include <alps/numeric/functional.hpp>
@@ -16,11 +16,12 @@
 
 class simulation : public alps::mcbase {
 public:
-    simulation() : alps::mcbase(alps::params{}) {
-        measurements.emplace("samples", std::make_shared<alps::alea::batch_acc<double>>(1, 8));
+    simulation(alps::params const& p={},size_t bins=8,size_t chain=0) : alps::mcbase(p,chain) {
+        alps::mc::add_measurement(*this,"samples",1,bins);
     }
+    static alps::params checkpoint_parameters(alps::params p) { return p; }
     void update() override { ++steps; }
-    void measure() override { *measurement("samples") << double(steps); }
+    void measure() override { alps::mc::record(*this,"samples",double(steps)); }
     double fraction_completed() const override { return double(steps)/3; }
 private:
     int steps = 0;
@@ -35,6 +36,17 @@ int main(int argc, char** argv) {
         }
         return 0;
     }
+    // The installed driver must compile without exposing toml++ or private
+    // application headers, and its dynamic schema helper must link transitively.
+    const auto schema=alps::mc::schema({},"[parameters.SWEEPS]\ntype='int64'\n",{});
+    if (schema.find("SWEEPS")==std::string::npos) return 1;
+    // Generic MC clients (including Fortran) need no XML graph/model library.
+    alps::run_configuration run;
+    run.execution["chains"]=2; run.execution["seed"]=42;
+    run.execution["bins"]=8; run.execution["rng"]="mt19937";
+    auto chains=alps::mc::prepare_chains<simulation>(run,
+        [](alps::params&,alps::run_configuration const&){},alps::mc::parallel{});
+    if (chains.size()!=2) return 1;
     const std::string archive_name = "a/path with spaces";
     if (alps::hdf5_name_decode(alps::hdf5_name_encode(archive_name)) != archive_name)
         return 1;

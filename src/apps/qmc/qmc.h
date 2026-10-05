@@ -45,7 +45,7 @@ public :
   void load(alps::hdf5::archive& ar) override {
     double reference;
     ar["checkpoint/density_reference"] >> reference;
-    native_mc::batch density;
+    alps::mc::batch density;
     if (is_charge_model_) {
       alps::alea::hdf5_serializer codec(ar,"measurements");
       alps::alea::deserialize(codec,"Centered Density Moments",density);
@@ -64,7 +64,7 @@ public :
       double density=sample[0]*sign;
       if (std::isnan(density_reference_)) density_reference_=density;
       double delta=density-density_reference_;
-      native_mc::record(*this,"Centered Density Moments",alps::alea::column<double>{delta*sign,delta*delta*sign,sign});
+      alps::mc::record(*this,"Centered Density Moments",alps::alea::column<double>{delta*sign,delta*delta*sign,sign});
     }
     native_qmc::simulation::record(name,value,sign);
   }

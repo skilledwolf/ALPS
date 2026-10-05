@@ -1,8 +1,8 @@
 // Copyright (C) 1997–2015 Synge Todo; 2026 ALPS Collaboration.
 // SPDX-License-Identifier: MIT
 #pragma once
-#include "../physical_moments.hpp"
-#include "../measurements.hpp"
+#include <alps/mc/physical_moments.hpp>
+#include <alps/mc/measurements.hpp>
 
 #include <alps/mcbase.hpp>
 #include <alps/lattice.h>
@@ -30,7 +30,7 @@ class simulation : public alps::mcbase, private alps::graph_helper<> {
 public:
     using results_type = std::map<std::string,alps::alea::batch_result<double>>;
     results_type collect_results(result_names_type const& names={}) const {
-        return collect_results_as<alps::alea::batch_result<double>>(names.empty() ? native_mc::batch_names(measurements) : names);
+        return collect_results_as<alps::alea::batch_result<double>>(names.empty() ? alps::mc::batch_names(measurements) : names);
     }
     simulation(alps::params const& p, std::size_t bins = 128, std::size_t chain = 0)
         : mcbase(p, chain), graph_helper<>(graph_parameters(p)), bins_(bins), chain_(chain), moments_(1,bins),
@@ -128,7 +128,7 @@ public:
     uint64_t measurement_count() const { return measurement("Energy")->count(); }
     std::size_t chain_id() const { return chain_; }
 
-    native_mc::physical_moments const& moments() const { return moments_; }
+    alps::mc::physical_moments const& moments() const { return moments_; }
 
     void save(alps::hdf5::archive& ar) const override {
         if (measurement_count() != (sweeps_ > thermalization_ ? sweeps_ - thermalization_ : 0))
@@ -164,7 +164,7 @@ public:
                     || (dimensions_ < 3 && s[2] != 0.) || (dimensions_ == 1 && s[1] != 0.))
                 throw std::invalid_argument("invalid simplemc checkpoint spin");
         }
-        auto layout=native_mc::validate_measurements(measurements,ar,sweeps>thermalization_ ? sweeps-thermalization_ : 0,bins_);
+        auto layout=alps::mc::validate_measurements(measurements,ar,sweeps>thermalization_ ? sweeps-thermalization_ : 0,bins_);
         auto moments=moments_;
         moments.load(ar,"checkpoint/physical_moments",layout);
         auto current_parameters = parameters;
@@ -176,19 +176,19 @@ public:
     }
 
     static results_type derive(results_type const& raw, alps::params const& p,
-                               native_mc::moment_results const& moments,
-                               native_mc::unavailable_results* unavailable=nullptr) {
+                               alps::mc::moment_results const& moments,
+                               alps::mc::unavailable_results* unavailable=nullptr) {
         auto results = raw;
         for (auto const& entry : raw) validate_result(entry.second);
         if (raw.empty()) return results;
         double beta = inverse_temperature(p), n = raw.at("Number of Sites").count() ? raw.at("Number of Sites").mean()(0) : 1.;
-        auto centered=native_mc::centered_batches(moments).first;
-        native_mc::estimate(results,unavailable,"Specific Heat",centered,
+        auto centered=alps::mc::centered_batches(moments).first;
+        alps::mc::estimate(results,unavailable,"Specific Heat",centered,
             [=](auto const& x){return beta==0 ? 0. : beta*(beta*(x(1)-x(0)*x(0)))/n;});
         for (auto const& suffix : {"", " X", " Z"}) {
             auto first = std::string("Magnetization Density") + suffix + "^2", second = first.substr(0, first.size()-1) + "4";
             if (raw.count(second))
-                native_mc::estimate(results,unavailable,std::string("Binder Ratio of Magnetization")+suffix,
+                alps::mc::estimate(results,unavailable,std::string("Binder Ratio of Magnetization")+suffix,
                     alps::alea::join(raw.at(first),raw.at(second)),[](auto const& x){return x(0)*x(0)/x(1);});
         }
         return results;
@@ -269,10 +269,10 @@ private:
         return {radius * std::cos(angle), radius * std::sin(angle), z};
     }
     void add_measurement(std::string const& name) {
-        native_mc::add_measurement(*this,name,1,bins_);
+        alps::mc::add_measurement(*this,name,1,bins_);
     }
     void record(std::string const& name, double value) {
-        native_mc::record(*this,name,value);
+        alps::mc::record(*this,name,value);
     }
     std::vector<std::array<uint64_t, 3>> topology() const {
         std::vector<std::array<uint64_t, 3>> result;
@@ -286,7 +286,7 @@ private:
         return result;
     }
     std::size_t bins_, chain_;
-    native_mc::physical_moments moments_;
+    alps::mc::physical_moments moments_;
     std::string model_;
     int dimensions_;
     double beta_, field_;

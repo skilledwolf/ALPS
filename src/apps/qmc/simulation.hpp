@@ -1,6 +1,6 @@
 // Copyright (C) 2026 ALPS Collaboration. SPDX-License-Identifier: MIT
 #pragma once
-#include "../mc/measurements.hpp"
+#include <alps/mc/measurements.hpp>
 #include <set>
 #include <valarray>
 
@@ -17,7 +17,7 @@ public:
   auto const& signed_measurements() const { return signed_names_; }
   void add_measurement(std::string const& name,size_t size=1,bool sign=true) {
     if (is_signed_ && sign) signed_names_.insert(name);
-    native_mc::add_measurement(*this,name,size+signed_names_.count(name),bins_);
+    alps::mc::add_measurement(*this,name,size+signed_names_.count(name),bins_);
   }
   void add_measurement(std::string const& name,std::vector<std::string> const& labels,bool sign=true) {
     if (labels.empty()) throw std::invalid_argument("Empty QMC measurement labels: "+name);
@@ -31,7 +31,7 @@ public:
     sample.setZero();
     adapter.add_to(alps::alea::view<double>(sample.data(),adapter.size()));
     if (signed_names_.count(name)) sample[sample.size()-1]=sign;
-    native_mc::record(*this,name,sample);
+    alps::mc::record(*this,name,sample);
   }
   void record(std::string const& name,std::valarray<double> const& value,double sign) {
     record(name,std::vector<double>(std::begin(value),std::end(value)),sign);
@@ -41,12 +41,12 @@ public:
       throw std::invalid_argument("Unexpected QMC checkpoint measurements");
     alps::alea::hdf5_serializer codec(ar,"measurements");
     for (auto const& [name,handle]:measurements) {
-      if (!std::holds_alternative<std::shared_ptr<native_mc::batch>>(handle)) continue;
-      native_mc::batch batch;
-      native_mc::autocorr diagnostic;
+      if (!std::holds_alternative<std::shared_ptr<alps::mc::batch>>(handle)) continue;
+      alps::mc::batch batch;
+      alps::mc::autocorr diagnostic;
       alps::alea::deserialize(codec,ar.encode_segment(name),batch);
-      alps::alea::deserialize(codec,ar.encode_segment(native_mc::diagnostic(name)),diagnostic);
-      if (batch.size()!=std::get<std::shared_ptr<native_mc::batch>>(handle)->size() ||
+      alps::alea::deserialize(codec,ar.encode_segment(alps::mc::diagnostic(name)),diagnostic);
+      if (batch.size()!=std::get<std::shared_ptr<alps::mc::batch>>(handle)->size() ||
           batch.num_batches()!=bins_ || batch.current_batch_size()!=batch.cursor().factor() ||
           batch.count()>samples || !batch.store().batch().allFinite() ||
           diagnostic.size()!=batch.size() || diagnostic.count()!=batch.count() ||

@@ -12,7 +12,7 @@
 #include <boost/serialization/vector.hpp>
 #endif
 
-namespace native_mc {
+namespace alps::mc {
 // Independent chains retain global IDs and seeds regardless of process count.
 struct parallel {
 #ifdef ALPS_HAVE_MPI

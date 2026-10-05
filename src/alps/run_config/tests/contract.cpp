@@ -306,5 +306,20 @@ seed={type="int64"}
         bad.input["bad"] = std::vector<std::complex<double>>{{nonfinite, 0.}};
         rejects([&] { alps::format_run_configuration(bad); }, "finite");
     }
+    {
+        std::ofstream out(file);
+        out << "[parameters]\ncount=2\nfield=0.75\nenabled=true\nlabel='spin'\nJ7=[1.0,2.0]\n";
+    }
+    rejects([&] { alps::extend_run_schema(file,schema); }, "explicit schema type");
+    auto extended=alps::extend_run_schema(file,schema,[](std::string const& key)->char const* {
+        require(key!="count"); // declared constraints must not be overridden
+        return key=="J7" ? "float64[]" : nullptr;
+    });
+    auto dynamic=alps::load_run_configuration(file,extended);
+    require(dynamic.parameters["field"].as<double>()==.75);
+    require(dynamic.parameters["enabled"].as<bool>());
+    require(dynamic.parameters["label"].as<std::string>()=="spin");
+    require(dynamic.parameters["J7"].as<std::vector<double>>()==std::vector<double>({1.,2.}));
+    rejects([&] { alps::extend_run_schema({},"application='test'"); }, "parameter table");
     std::filesystem::remove(file);
 }

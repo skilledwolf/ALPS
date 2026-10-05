@@ -304,6 +304,29 @@ run_configuration resolve_run_configuration(const run_configuration &supplied,
                                            const std::filesystem::path &base_directory) {
     return resolve_run(supplied, toml::parse(schema_text), base_directory);
 }
+std::string extend_run_schema(const std::filesystem::path &file, std::string_view base,
+                             const std::function<char const*(std::string const&)> &type) {
+    auto definitions = toml::parse(base);
+    auto* parameters = definitions["parameters"].as_table();
+    if (!parameters) fail("parameters", "schema must contain a parameter table");
+    if (!file.empty()) {
+        const auto document = toml::parse_file(file.string());
+        if (const auto* supplied = document["parameters"].as_table())
+            for (auto const& [name, node] : *supplied) {
+                const auto key = std::string(name.str());
+                if (parameters->contains(key)) continue;
+                const char* value_type = type ? type(key) : nullptr;
+                if (!value_type) value_type = node.is_integer() ? "int64" : node.is_floating_point() ?
+                    "float64" : node.is_string() ? "string" : node.is_boolean() ? "bool" : nullptr;
+                if (!value_type) fail(key, "model parameter must be a scalar or have an explicit schema type");
+                parameters->insert(key, toml::table{{"type", value_type}});
+            }
+    }
+    std::ostringstream output;
+    output << definitions;
+    return output.str();
+}
+
 params resolve_parameters(const params &supplied, std::string_view schema_text,
                           const std::string &section) {
     const auto schema = toml::parse(schema_text);

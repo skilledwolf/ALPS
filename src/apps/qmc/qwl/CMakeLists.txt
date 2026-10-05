@@ -16,15 +16,12 @@
 #   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 #   FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 #   DEALINGS IN THE SOFTWARE.
-
-find_package(tomlplusplus 3.4 CONFIG REQUIRED)
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/schema.toml" QWL_SCHEMA)
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/schema.toml")
 configure_file(schema.hpp.in schema.hpp @ONLY)
 add_executable(qwl qwl.C)
-target_include_directories(qwl PRIVATE "${CMAKE_CURRENT_BINARY_DIR}"
-  "$<TARGET_PROPERTY:tomlplusplus::tomlplusplus,INTERFACE_INCLUDE_DIRECTORIES>")
-target_compile_definitions(qwl PRIVATE TOML_HEADER_ONLY=1)
+target_include_directories(qwl PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+
 add_executable(qwl_evaluate qwl_evaluate.C)
 
 target_link_libraries(qwl PRIVATE ALPS::alps ALPS::run_config ALPS::statistics)

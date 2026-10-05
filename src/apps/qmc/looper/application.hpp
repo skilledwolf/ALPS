@@ -194,7 +194,7 @@ public:
     auto const& get_measurements() const {return owner.statistics(index).get_measurements();}
     auto const& signed_measurements() const {return owner.statistics(index).signed_measurements();}
     auto const& measurement_labels() const {return owner.statistics(index).measurement_labels();}
-    template<class T=native_mc::batch> auto measurement(std::string const& name) const {return owner.statistics(index).template measurement<T>(name);}
+    template<class T=alps::mc::batch> auto measurement(std::string const& name) const {return owner.statistics(index).template measurement<T>(name);}
     template<class T> auto collect_results_as(alps::mcbase::result_names_type const& names) const {return owner.statistics(index).template collect_results_as<T>(names);}
   };
 };

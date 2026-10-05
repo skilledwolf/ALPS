@@ -6,7 +6,7 @@
 #include <alps/alea/transform.hpp>
 #include <map>
 
-namespace native_mc {
+namespace alps::mc {
 using moment_results=std::vector<alps::alea::cov_result<double>>;
 // Reuse the batch accumulator's cursor and native centered covariance algebra.
 // Moments describe individual physical samples within each bin, not bin means.

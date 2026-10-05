@@ -18,15 +18,13 @@
 #   DEALINGS IN THE SOFTWARE.
 
 function(alps_native_qmc target)
-  find_package(tomlplusplus 3.4 CONFIG REQUIRED)
   file(READ "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/schema.toml" QMC_COMMON_SCHEMA)
   file(READ "${CMAKE_CURRENT_SOURCE_DIR}/schema.toml" QMC_APPLICATION_SCHEMA)
   set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/schema.toml" "${CMAKE_CURRENT_SOURCE_DIR}/schema.toml")
   configure_file("${CMAKE_CURRENT_FUNCTION_LIST_DIR}/schema.hpp.in" schema.hpp @ONLY)
-  target_include_directories(${target} PRIVATE "${CMAKE_CURRENT_BINARY_DIR}"
-    "$<TARGET_PROPERTY:tomlplusplus::tomlplusplus,INTERFACE_INCLUDE_DIRECTORIES>")
-  target_compile_definitions(${target} PRIVATE TOML_HEADER_ONLY=1)
+  target_include_directories(${target} PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+
   target_link_libraries(${target} PRIVATE ALPS::run_config ALPS::statistics)
   file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/${target}.toml"
     "application = \"${target}\"\n${QMC_COMMON_SCHEMA}\n${QMC_APPLICATION_SCHEMA}")

@@ -9,7 +9,6 @@
 #include <alps/ngs/api.hpp>
 #include <alps/run_config.hpp>
 #include <alps/parser/xslt_path.h>
-#include <toml++/toml.hpp>
 #include <chrono>
 #include <climits>
 #include <filesystem>
@@ -20,9 +19,9 @@
 #include <set>
 #include <sstream>
 
-// Private application orchestration: retain independent, weighted batches
+// Shared application orchestration: retain independent, weighted batches
 // before any nonlinear estimator joins the aligned physical moments.
-namespace native_mc {
+namespace alps::mc {
 using batch_results = std::map<std::string,alps::alea::batch_result<double>>;
 inline batch_results pool(std::vector<batch_results> const& chains) {
     if (chains.empty()) return {};
@@ -50,30 +49,16 @@ inline batch_results pool(std::vector<batch_results> const& chains) {
     return merged;
 }
 
-using parameter_type = std::function<char const*(std::string const&, toml::node const&)>;
+using parameter_type = std::function<char const*(std::string const&)>;
 inline std::string schema(std::filesystem::path const& file, char const* base, parameter_type const& type) {
-    auto definitions = toml::parse(base);
-    if (!file.empty()) {
-        const auto document = toml::parse_file(file.string());
-        if (const auto* parameters = document["parameters"].as_table())
-            for (auto const& [name, node] : *parameters) {
-                const auto key = std::string(name.str());
-                if (definitions["parameters"].as_table()->contains(key)) continue;
-                if (key == "NUM_CLONES" || key == "SEED" || key == "RNG" || key == "SNAPSHOT_INTERVAL" ||
-                    key == "LATTICE_LIBRARY" || key == "MODEL_LIBRARY" || key == "WORKER" || key == "WORKER_SEED" ||
-                    key == "DISORDER_SEED" || key == "DISORDERSEED" || key == "ERROR_VARIABLE" ||
-                    key == "ERROR_LIMIT" || key == "PRINT_SWEEPS")
-                    throw std::invalid_argument("Retired parameter " + key + "; use typed input/output/execution fields");
-                const char* value_type = type(key, node);
-                if (!value_type) value_type = node.is_integer() ? "int64" : node.is_floating_point() ?
-                    "float64" : node.is_string() ? "string" : node.is_boolean() ? "bool" : nullptr;
-                if (!value_type) throw std::invalid_argument("Graph parameter " + key + " must be a scalar");
-                definitions["parameters"].as_table()->insert(key, toml::table{{"type", value_type}});
-            }
-    }
-    std::ostringstream output;
-    output << definitions;
-    return output.str();
+    return alps::extend_run_schema(file,base,[&](std::string const& key) {
+        if (key == "NUM_CLONES" || key == "SEED" || key == "RNG" || key == "SNAPSHOT_INTERVAL" ||
+            key == "LATTICE_LIBRARY" || key == "MODEL_LIBRARY" || key == "WORKER" || key == "WORKER_SEED" ||
+            key == "DISORDER_SEED" || key == "DISORDERSEED" || key == "ERROR_VARIABLE" ||
+            key == "ERROR_LIMIT" || key == "PRINT_SWEEPS")
+            throw std::invalid_argument("Retired parameter " + key + "; use typed input/output/execution fields");
+        return type ? type(key) : nullptr;
+    });
 }
 
 template<class Prepare>
@@ -82,7 +67,7 @@ alps::params parameters(alps::run_configuration const& run, Prepare const& prepa
     p["SEED"] = run.execution["seed"];
     p["RNG"] = run.execution["rng"];
     p["DISORDER_SEED"] = run.execution.value_or<std::uint64_t>("disorder_seed", run.execution["seed"].as<std::uint64_t>());
-    p["LATTICE_LIBRARY"] = run.input["lattice_library"];
+    if (run.input.exists("lattice_library")) p["LATTICE_LIBRARY"] = run.input["lattice_library"];
     if (run.input.exists("model_library")) p["MODEL_LIBRARY"] = run.input["model_library"];
     prepare(p, run);
     return p;
@@ -98,7 +83,7 @@ chains_type<Simulation> prepare_chains(alps::run_configuration const& run, Prepa
         throw std::invalid_argument("execution.seed + chains - 1 exceeds the supported RNG seed range");
     if (execution["bins"].as<std::size_t>() % 2)
         throw std::invalid_argument("execution.bins must be even and at least two");
-    if (run.parameters.exists("LATTICE") == run.parameters.exists("GRAPH"))
+    if (run.input.exists("lattice_library") && run.parameters.exists("LATTICE") == run.parameters.exists("GRAPH"))
         throw std::invalid_argument("Specify exactly one parameters.LATTICE or parameters.GRAPH");
     if (execution.value_or<std::uint64_t>("snapshot_interval", 0) && !run.output.exists("snapshot_prefix"))
         throw std::invalid_argument("Snapshots require output.snapshot_prefix");
@@ -175,7 +160,7 @@ template<class Derive> auto spin_output(Derive derive) {
             archive["/simulation/realizations/0/clones/" + std::to_string(id) + "/completed_sweeps"] << chains[id]->completed_sweeps();
             archive["/simulation/realizations/0/clones/" + std::to_string(id) + "/measurements"] << chains[id]->measurement_count();
             save_diagnostics(*chains[id],archive,"/simulation/realizations/0/clones/"+std::to_string(id),
-                             native_mc::batch_names(chains[id]->get_measurements()));
+                             alps::mc::batch_names(chains[id]->get_measurements()));
         }
     });
     };
@@ -265,11 +250,12 @@ int main(int argc, char** argv, char const* application, char const* base_schema
         for (auto const& file : files) protected_paths.insert(std::filesystem::weakly_canonical(file));
         for (auto const& file : files) {
             runs.push_back(alps::load_run_configuration(file, schema(file, base_schema, type)));
-            runs.back().input["lattice_library"] = std::filesystem::weakly_canonical(
-                alps::search_xml_library_path(runs.back().input.value_or<std::string>("lattice_library", "lattices.xml"))).string();
-            if (toml::parse(base_schema)["input"]["model_library"])
-                runs.back().input["model_library"] = std::filesystem::weakly_canonical(
-                    alps::search_xml_library_path(runs.back().input.value_or<std::string>("model_library", "models.xml"))).string();
+            alps::params libraries;
+            libraries["lattice_library"]="lattices.xml";
+            libraries["model_library"]="models.xml";
+            for (auto const& [name,fallback]:alps::select_parameters(libraries,base_schema,"input"))
+                runs.back().input[name]=std::filesystem::weakly_canonical(alps::search_xml_library_path(
+                    runs.back().input.value_or<std::string>(name,fallback.as<std::string>()))).string();
             simulations.push_back(prepare_chains<Simulation>(runs.back(), prepare, group));
             for (auto const& [key, value] : runs.back().input) protected_paths.insert(std::filesystem::weakly_canonical(value.as<std::string>()));
         }
@@ -300,4 +286,4 @@ int main(int argc, char** argv, char const* application, char const* base_schema
         return 1;
     }
 }
-} // namespace native_mc
+} // namespace alps::mc

@@ -1,6 +1,6 @@
 // Copyright (C) 2026 ALPS Collaboration. SPDX-License-Identifier: MIT
 #pragma once
-#include "../mc/native_driver.hpp"
+#include <alps/mc/driver.hpp>
 #include "analysis.hpp"
 
 namespace native_qmc {
@@ -16,7 +16,7 @@ void publish_into(alps::hdf5::archive& ar,alps::run_configuration const& run,Cha
     std::map<std::string,result> pooled;
     double reference=0;
     for (auto const& chain:chains) if (std::isfinite(chain->density_reference())) { reference=chain->density_reference(); break; }
-    for (auto const& name:native_mc::batch_names(chains.front()->get_measurements())) {
+    for (auto const& name:alps::mc::batch_names(chains.front()->get_measurements())) {
         std::vector<result> values;
         for (auto const& chain:chains) {
             auto value=chain->measurement(name)->result();
@@ -61,9 +61,9 @@ void publish_into(alps::hdf5::archive& ar,alps::run_configuration const& run,Cha
         ar[path+"/density_reference"] << chains[i]->density_reference();
         ar[path+"/completed_sweeps"] << chains[i]->completed_sweeps();
         ar[path+"/complete"] << (chains[i]->fraction_completed()>=1.);
-        auto names=native_mc::batch_names(chains[i]->get_measurements());
+        auto names=alps::mc::batch_names(chains[i]->get_measurements());
         alps::save_results(chains[i]->template collect_results_as<result>(names),run.parameters,ar,path+"/results");
-        native_mc::save_diagnostics(*chains[i],ar,path,names);
+        alps::mc::save_diagnostics(*chains[i],ar,path,names);
     }
 }
 
@@ -76,19 +76,14 @@ void publish(alps::run_configuration const& run,Chains const& chains,alps::param
 }
 
 inline std::string schema(char const* application,char const* common,char const* specific) {
-    auto schema=toml::parse(common), extra=toml::parse(specific);
-    schema.insert("application",application);
-    for (auto const& [name,value]:*extra["parameters"].as_table())
-        schema["parameters"].as_table()->insert(name,value);
-    std::ostringstream text; text<<schema;
-    return text.str();
+    return "application = \""+std::string(application)+"\"\n"+common+"\n"+specific;
 }
 
 template<class Simulation>
 int main(int argc,char** argv,char const* application,char const* common,char const* specific) {
     auto text=schema(application,common,specific);
-    return native_mc::main<Simulation>(argc,argv,application,text.c_str(),
-        [](std::string const&,toml::node const&)->char const*{return nullptr;},
+    return alps::mc::main<Simulation>(argc,argv,application,text.c_str(),
+        [](std::string const&)->char const*{return nullptr;},
         [](alps::params& p,alps::run_configuration const&){
             if (!p.exists("THERMALIZATION")) p["THERMALIZATION"]=p["SWEEPS"].as<uint64_t>()/10;
         }, [](auto const& run,auto const& chains,auto const& p){ publish(run,chains,p); });

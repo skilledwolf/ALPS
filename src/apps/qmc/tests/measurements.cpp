@@ -48,8 +48,8 @@ int main() {
     p.erase("RESTRICT_MEASUREMENTS[N]");
     measurements constant(p,false);
     for (int i=0;i<1000;++i) constant.sample({0,1,2,1},1.);
-    auto results=constant.collect_results_as<alps::alea::batch_result<double>>(native_mc::batch_names(constant.get_measurements()));
-    native_mc::unavailable_results unavailable;
+    auto results=constant.collect_results_as<alps::alea::batch_result<double>>(alps::mc::batch_names(constant.get_measurements()));
+    alps::mc::unavailable_results unavailable;
     native_qmc::derive(results,p,4,unavailable);
     require(results.at("Compressibility").mean()[0]==0. && results.at("Compressibility").stderror()[0]==0.,
             "Constant particle number must have zero compressibility and error");

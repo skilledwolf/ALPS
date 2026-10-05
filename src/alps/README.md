@@ -21,12 +21,20 @@ The thin HDF5 adapter shares the canonical primitive mappings. Legacy
 Standalone CT-INT, CT-HYB and Hirsch-Fye use modern ALEA, pooling raw independent
 replicas before signed analysis and publishing canonical results atomically.
 CT-INT includes general multiband density interactions and their full density
-moments; DMFT uses only external solver processes. The remaining legacy production measurement client is `loop`; `worm` and
-`dirloop_sse` now use native estimators and exact physical checkpoints. Legacy
+moments; DMFT uses only external solver processes. `loop`, `worm`, and `dirloop_sse` now use native estimators and exact physical checkpoints. Legacy
 public interfaces and released checkpoint conversion still need work before
 the old statistical library can be deleted.
 The NGS `mcbase` framework and its MPI adapter support all native estimator
 families and real/complex strategies with the same checkpoint and result codecs.
+The SDK also supplies `<alps/mc/driver.hpp>` (`alps::mc`) through `ALPS::alps`.
+It is the runner used by the bundled solvers: TOML validation, independent
+serial/MPI chains, atomic checkpoints, and application-owned result publication.
+Simulations provide their own update, measurement, progress, checkpoint identity
+and physical-state serialization; the runner does not choose scientific estimators.
+`alps::mc::main<Simulation>` takes the application schema plus callbacks for
+dynamic parameter types, parameter preparation and result publication. Model
+libraries are resolved only when declared in the schema, so generic simulations
+need no lattice. TOML parser types remain private to `run_config`.
 Python measurement maps share native accumulator
 handles; collected result dictionaries own snapshots. The old NGS measurement
 facade, feature-stack API and unused scheduler prototypes are removed.
@@ -34,7 +42,7 @@ facade, feature-stack API and unused scheduler prototypes are removed.
 this framework, with typed runs, raw-chain pooling, exact checkpoints and direct
 VTK snapshots; its duplicate Parapack workers are removed. See the
 [application guide](../apps/mc/simple/README.md).
-`spinmc` uses the same private typed-run driver with a native engine for Ising,
+`spinmc` uses the same typed-run driver with a native engine for Ising,
 XY, Heisenberg, O(4) and Potts models, local/cluster updates, matrix couplings and
 complete checkpoints. Aligned raw chains feed native joint jackknife estimates;
 direct moments and improved cluster estimators remain distinct. Its legacy

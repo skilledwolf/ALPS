@@ -1,8 +1,8 @@
 // Copyright (C) 1999–2009 Matthias Troyer, Fabian Stoeckli;
 // modifications (C) 2026 ALPS Collaboration. SPDX-License-Identifier: MIT
 #pragma once
-#include "../physical_moments.hpp"
-#include "../measurements.hpp"
+#include <alps/mc/physical_moments.hpp>
+#include <alps/mc/measurements.hpp>
 #include <alps/mcbase.hpp>
 #include <alps/lattice.h>
 #include <alps/ngs/make_deprecated_parameters.hpp>
@@ -59,7 +59,7 @@ class simulation : public alps::mcbase, private alps::graph_helper<> {
 public:
     using results_type = std::map<std::string,alps::alea::batch_result<double>>;
     results_type collect_results(result_names_type const& names={}) const {
-        return collect_results_as<alps::alea::batch_result<double>>(names.empty() ? native_mc::batch_names(measurements) : names);
+        return collect_results_as<alps::alea::batch_result<double>>(names.empty() ? alps::mc::batch_names(measurements) : names);
     }
     simulation(alps::params const& p, std::size_t bins=128, std::size_t chain=0)
         : mcbase(p,chain), graph_helper<>(graph_parameters(p)), bins_(bins), chain_(chain), moments_(4,bins),
@@ -150,7 +150,7 @@ public:
         if (p.exists("ERROR_VARIABLE")) {
             error_variable_=p["ERROR_VARIABLE"].as<std::string>(); error_limit_=p["ERROR_LIMIT"].as<double>();
             if (!(error_limit_>0) || !std::isfinite(error_limit_) || !measurements.count(error_variable_)
-                    || !std::holds_alternative<std::shared_ptr<native_mc::batch>>(measurements.at(error_variable_))
+                    || !std::holds_alternative<std::shared_ptr<alps::mc::batch>>(measurements.at(error_variable_))
                     || measurement(error_variable_)->size()!=1) throw std::invalid_argument("invalid spinmc scalar error stopping criterion");
         }
     }
@@ -230,7 +230,7 @@ public:
                 std::cout<<spins_.col(site).transpose()<<'\n';
             }
     }
-    native_mc::physical_moments const& moments() const { return moments_; }
+    alps::mc::physical_moments const& moments() const { return moments_; }
 
     void save(alps::hdf5::archive& ar) const override {
         if (measurement_count()!=updates_-warmup_updates_) throw std::logic_error("measure spinmc before checkpointing");
@@ -266,7 +266,7 @@ public:
                              : std::abs(spins.col(site).squaredNorm()-1.)<=1e-10;
             if (!valid || (!potts_ && dim_==1 && std::abs(spins(0,site))!=1.)) throw std::invalid_argument("invalid spinmc checkpoint state");
         }
-        auto layout=native_mc::validate_measurements(measurements,ar,updates-warmup_updates,bins_);
+        auto layout=alps::mc::validate_measurements(measurements,ar,updates-warmup_updates,bins_);
         auto moments=moments_;
         moments.load(ar,"checkpoint/physical_moments",layout);
         auto current_parameters=parameters;
@@ -367,9 +367,9 @@ private:
         return true;
     }
     void add(std::string const& name,std::size_t components=1) {
-        native_mc::add_measurement(*this,name,components,bins_);
+        alps::mc::add_measurement(*this,name,components,bins_);
     }
-    template<class T> void record(std::string const& name,T const& value) { native_mc::record(*this,name,value); }
+    template<class T> void record(std::string const& name,T const& value) { alps::mc::record(*this,name,value); }
     std::vector<std::array<uint64_t,3>> topology() const {
         std::vector<std::array<uint64_t,3>> result;
         for (auto const& edge:edges_) result.push_back({edge.source,edge.target,edge.type});
@@ -382,7 +382,7 @@ private:
         return result;
     }
     std::size_t bins_,chain_;
-    native_mc::physical_moments moments_;
+    alps::mc::physical_moments moments_;
     std::string model_,error_variable_;
     std::size_t dim_,bond_types_=0;
     bool potts_,cluster_=false,ferro_=true,antiferro_=true;
@@ -400,8 +400,8 @@ private:
 // All nonlinear estimates use aligned direct physical moments and weighted
 // native jackknife propagation, including their cross-observable covariance.
 inline results_type derive(results_type const& raw,alps::params const& p,
-                           native_mc::moment_results const& moments,
-                           native_mc::unavailable_results* unavailable=nullptr) {
+                           alps::mc::moment_results const& moments,
+                           alps::mc::unavailable_results* unavailable=nullptr) {
     auto results=raw;
     for (auto const& entry:raw) {
         auto const& r=entry.second;
@@ -411,10 +411,10 @@ inline results_type derive(results_type const& raw,alps::params const& p,
     }
     if (raw.empty()) return results;
     double beta=inverse_temperature(p), n=raw.at("Number of Sites").count() ? raw.at("Number of Sites").mean()(0) : 1.;
-    auto [centered,reference]=native_mc::centered_batches(moments);
+    auto [centered,reference]=alps::mc::centered_batches(moments);
     // x contains mean displacements followed by column-major centered products.
     auto covariance=[](auto const& x,int i,int j){return x(4+i+4*j)-x(i)*x(j);};
-    auto transform=[&](std::string const& name,auto fn){native_mc::estimate(results,unavailable,name,centered,fn);};
+    auto transform=[&](std::string const& name,auto fn){alps::mc::estimate(results,unavailable,name,centered,fn);};
     transform("Specific Heat",[=](auto const& x){return beta==0 ? 0. : beta*(beta*covariance(x,0,0))/n;});
     transform("Connected Susceptibility",[=](auto const& x){return beta==0 ? 0. : beta*n*covariance(x,1,1);});
     transform("Magnetization^2 slope",[=](auto const& x){return beta==0 ? 0. : beta*(beta*covariance(x,0,2));});
@@ -423,9 +423,9 @@ inline results_type derive(results_type const& raw,alps::params const& p,
         double m2=reference(2)+x(2),m4=reference(3)+x(3);
         return beta==0 && m2!=0 ? 0. : beta*(beta*(covariance(x,0,3)/(m2*m2)-2*m4*covariance(x,0,2)/(m2*m2*m2)));
     });
-    native_mc::estimate(results,unavailable,"Binder Cumulant U2",alps::alea::join(raw.at("|Magnetization|"),raw.at("Magnetization^2")),
+    alps::mc::estimate(results,unavailable,"Binder Cumulant U2",alps::alea::join(raw.at("|Magnetization|"),raw.at("Magnetization^2")),
         [](auto const& x){return x(1)/(x(0)*x(0));});
-    native_mc::estimate(results,unavailable,"Binder Cumulant",alps::alea::join(raw.at("Magnetization^2"),raw.at("Magnetization^4")),
+    alps::mc::estimate(results,unavailable,"Binder Cumulant",alps::alea::join(raw.at("Magnetization^2"),raw.at("Magnetization^4")),
         [](auto const& x){return x(1)/(x(0)*x(0));});
     return results;
 }

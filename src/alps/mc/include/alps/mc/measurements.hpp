@@ -4,7 +4,7 @@
 #include <alps/alea/checkpoint.hpp>
 #include <alps/alea/hdf5.hpp>
 
-namespace native_mc {
+namespace alps::mc {
 using batch = alps::alea::batch_acc<double>;
 using autocorr = alps::alea::autocorr_acc<double>;
 inline std::string diagnostic(std::string const& name) { return "Autocorrelation: " + name; }

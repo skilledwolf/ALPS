@@ -2,7 +2,7 @@
 
 `spinmc` reads typed TOML runs, samples with native ALEA batches and writes HDF5
 results. It supports Ising, XY, Heisenberg, O(4) and Potts (`q = 3`, `4` or `10`),
-with local and legal cluster updates. The private driver shared with `simplemc`
+with local and legal cluster updates. The SDK runner (`alps::mc`) shared with `simplemc`
 handles independent chains, complete checkpoints and pooled analysis.
 
 ```toml

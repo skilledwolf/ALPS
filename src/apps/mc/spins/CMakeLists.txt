@@ -16,15 +16,12 @@
 #   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 #   FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 #   DEALINGS IN THE SOFTWARE.
-
-find_package(tomlplusplus 3.4 CONFIG REQUIRED)
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/schema.toml" SPINMC_SCHEMA)
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/schema.toml")
 configure_file(schema.hpp.in schema.hpp @ONLY)
 add_executable(spinmc spinmc.C)
-target_include_directories(spinmc PRIVATE "${CMAKE_CURRENT_BINARY_DIR}"
-  "$<TARGET_PROPERTY:tomlplusplus::tomlplusplus,INTERFACE_INCLUDE_DIRECTORIES>")
-target_compile_definitions(spinmc PRIVATE TOML_HEADER_ONLY=1)
+target_include_directories(spinmc PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+
 target_link_libraries(spinmc PRIVATE ALPS::alps ALPS::run_config ALPS::statistics)
 alps_install_applications(spinmc)
 install(FILES schema.toml DESTINATION ${CMAKE_INSTALL_DATADIR}/alps/schemas RENAME spinmc.toml COMPONENT applications)

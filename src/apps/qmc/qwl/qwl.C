@@ -5,11 +5,11 @@
 *****************************************************************************/
 #include "qwl_sse.h"
 #include "schema.hpp"
-#include "../../mc/native_driver.hpp"
+#include <alps/mc/driver.hpp>
 
 int main(int argc,char** argv) {
-  return native_mc::main<QWL_SSE_Simulation>(argc,argv,"qwl",qwl_schema,
-    [](std::string const&,toml::node const&) -> char const* { return nullptr; },
+  return alps::mc::main<QWL_SSE_Simulation>(argc,argv,"qwl",qwl_schema,
+    [](std::string const&) -> char const* { return nullptr; },
     [](alps::params& p,alps::run_configuration const&) {
       if (!p.exists("EXPANSION_ORDER_MAXIMUM")) p["EXPANSION_ORDER_MAXIMUM"]=p["CUTOFF"];
       if (!p.exists("START_STORING")) p["START_STORING"]=p["NUMBER_OF_WANG_LANDAU_STEPS"];

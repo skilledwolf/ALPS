@@ -3,8 +3,8 @@ target_sources(alps PRIVATE
   src/mcbase.cpp
   src/ngs/api.cpp
   src/stop_callback.cpp)
-target_link_libraries(alps PUBLIC ALPS::statistics)
-target_link_libraries(alps_headers INTERFACE "$<COMPILE_ONLY:ALPS::statistics>")
+target_link_libraries(alps PUBLIC ALPS::statistics ALPS::run_config)
+target_link_libraries(alps_headers INTERFACE "$<COMPILE_ONLY:ALPS::statistics;ALPS::run_config>")
 
 target_sources(alps_headers INTERFACE
   FILE_SET mc_headers TYPE HEADERS
@@ -12,6 +12,10 @@ target_sources(alps_headers INTERFACE
   FILES
     include/alps/check_schedule.hpp
     include/alps/mcbase.hpp
+    include/alps/mc/driver.hpp
+    include/alps/mc/measurements.hpp
+    include/alps/mc/physical_moments.hpp
+    include/alps/mc/parallel.hpp
     include/alps/mcmpiadapter.hpp
     include/alps/ngs.hpp
     include/alps/ngs/api.hpp
@@ -20,7 +24,7 @@ target_sources(alps_headers INTERFACE
 
 alps_register_module(NAME mc HEADER_SET mc_headers
   TARGETS alps
-  DEPENDS alea cli hdf5 params random utilities
+  DEPENDS alea cli configuration hdf5 params random run_config utilities xml
 )
 
 if(ALPS_BUILD_TESTING)

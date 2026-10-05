@@ -16,8 +16,8 @@
 
 int main(int argc,char** argv) {
   auto schema=native_qmc::schema("loop",qmc_common_schema,qmc_application_schema);
-  return native_mc::main<looper::application>(argc,argv,"loop",schema.c_str(),
-    [](std::string const&,toml::node const&)->char const*{return nullptr;},
+  return alps::mc::main<looper::application>(argc,argv,"loop",schema.c_str(),
+    [](std::string const&)->char const*{return nullptr;},
     [](alps::params& p,alps::run_configuration const& run) {
       if (!p.exists("THERMALIZATION")) p["THERMALIZATION"]=p["SWEEPS"].as<uint64_t>()/10;
       if ((p.value_or("OPTIMIZE_TEMPERATURE",false) || p.value_or("TEMPERATURE_OPTIMIZATION",false)) && run.execution["chains"].as<size_t>()!=1)

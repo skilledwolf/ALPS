@@ -46,7 +46,7 @@ alps::params parameters(std::filesystem::path const& library, std::string const&
     p["SWEEPS"] = 50000; p["T"] = 1.1; p["UPDATE"] = update; p["J"] = vector{.7};
     return p;
 }
-auto sample(alps::params const& p, native_mc::moment_results* moments=nullptr) {
+auto sample(alps::params const& p, alps::mc::moment_results* moments=nullptr) {
     spinmc::simulation simulation(p, 64);
     finish(simulation);
     require(simulation.measurement_count() == p["SWEEPS"].as<uint64_t>(), "incorrect production sample count");
@@ -214,7 +214,7 @@ int main() {
             z += weight; e += weight*energy; e2 += weight*energy*energy; abs_m += weight*std::abs(m);
             m2 += weight*m*m; m4 += weight*std::pow(m,4); em2 += weight*energy*m*m; em4 += weight*energy*std::pow(m,4);
         }
-        native_mc::moment_results moments;
+        alps::mc::moment_results moments;
         auto raw=sample(p,&moments);
         auto measured = spinmc::derive(raw, p, moments);
         agree(measured.at("Energy"), e/z, "Ising Hamiltonian disagrees with enumeration");
@@ -326,7 +326,7 @@ int main() {
     // in one parity sector when every move accepts. Infinite-temperature local
     // updates must still sample all four pair states, not just ++ and --.
     auto hot = parameters(library, "Ising"); hot.erase("T"); hot["beta"] = 0.; hot["J"] = 0.;
-    native_mc::moment_results hot_moments;
+    alps::mc::moment_results hot_moments;
     auto hot_results = sample(hot,&hot_moments);
     agree(hot_results.at("Magnetization^2"), .5, "infinite-temperature Ising observations preserve a spurious parity sector");
     agree(hot_results.at("|Magnetization|"), .5, "infinite-temperature Ising states are not equiprobable");
@@ -334,7 +334,7 @@ int main() {
     // Centered physical moments preserve exact zero even at extreme beta.
     auto cold = parameters(library, "Ising", "pair", "cluster");
     cold.erase("T"); cold["beta"] = 1e100; cold["THERMALIZATION"] = 0; cold["SWEEPS"] = 64;
-    native_mc::moment_results cold_moments;
+    alps::mc::moment_results cold_moments;
     auto frozen = sample(cold,&cold_moments);
     auto frozen_derived = spinmc::derive(frozen, cold, cold_moments);
     for (auto const* name:{"Specific Heat","Connected Susceptibility","Magnetization^2 slope","Magnetization^4 slope","Binder Cumulant slope"})
