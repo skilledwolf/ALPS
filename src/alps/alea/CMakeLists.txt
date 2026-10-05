@@ -41,6 +41,7 @@ target_sources(alps_headers INTERFACE
 
 # Modern Eigen-based ALEA from pinned ALPSCore; a separate scientific runtime.
 add_library(alps_statistics
+  src/statistics/moments.hpp
   src/statistics/autocorr.cpp
   src/statistics/batch.cpp
   src/statistics/covariance.cpp

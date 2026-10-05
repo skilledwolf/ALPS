@@ -104,7 +104,8 @@ void measurement_contract(alps::run_configuration run, std::filesystem::path con
   check(results.at("g_0").count()==37 && results.at("g2w_re_0_0").count()==37,
         "Collection lost partial-bin samples");
   check((results.at("g2w_re_0_0").mean<double>()-alps::alea::column<double>::LinSpaced(4,1.,4.)).norm()<1e-12 &&
-        results.at("g2w_re_0_0").stderror<double>().norm()<1e-12,
+        // Propagating a singular covariance may leave O(epsilon) variance.
+        results.at("g2w_re_0_0").stderror<double>().squaredNorm()<64*std::numeric_limits<double>::epsilon(),
         "Two-particle numerator/sign covariance lost a constant physical ratio");
 
   const auto output=(directory/"time-contract.h5").string();
