@@ -1,454 +1,197 @@
-/*****************************************************************************
-*
-* ALPS Project: Algorithms and Libraries for Physics Simulations
-*
-* ALPS Libraries
-*
-* Copyright (C) 2011 by Synge Todo <wistaria@comp-phys.org>
-*
-* ALPS Project: https://alps.comp-phys.org/
-* SPDX-License-Identifier: MIT
-*
-*****************************************************************************/
-
-/**
- * @file fwrapper_impl.C
- * @brief Fortranから呼ばれるラッパ関数群の定義
- */
-
-#include <alps/parameter/parameters.h>
+// Copyright (C) 2011 Synge Todo; 2026 ALPS Collaboration. SPDX-License-Identifier: MIT
 #include <alps/fortran/fortran_wrapper.h>
 #include <alps/fortran/fwrapper_impl.h>
+#include <alps/mc/driver.hpp>
+#include <algorithm>
+#include <cstring>
 
-#include <string.h>
-#include <string>
-#include <valarray>
-
-extern "C"
-{
-  void alps_get_parameter_(void* data, char* name, int* type, int* caller, int ldata, int lname);
-  void alps_parameter_defined_(int* res, char* name, int* caller, int lname);
-  void alps_dump_(void* data, int* count,  int* type, int* caller, int lchar);
-  void alps_restore_(void* data, int* count,  int* type, int* caller, int lchar);
-  void alps_init_observable_(int* count, int* type, char* name, int* caller, int lname);
-  void alps_accumulate_observable_(void* data, int* count, int* type, char* name, int* caller, int lname);
+namespace alps {
+fortran_wrapper::fortran_wrapper(params const& p, std::size_t bins, std::size_t chain)
+    : mcbase(p, chain), bins_(bins), chain_(chain) {
+    try { alps_init(this); check(); alps_init_observables(this); check(); }
+    catch (...) { alps_finalize(this); throw; }
+}
+fortran_wrapper::~fortran_wrapper() { alps_finalize(this); }
+void fortran_wrapper::update() {
+    int thermalized = 0;
+    alps_is_thermalized(&thermalized, this); check();
+    collecting_ = thermalized != 0;
+    alps_run(this); check();
+    collecting_ = false;
+    ++steps_;
+}
+double fortran_wrapper::fraction_completed() const {
+    double value = 0;
+    alps_progress(&value, const_cast<fortran_wrapper*>(this)); check();
+    if (!std::isfinite(value) || value < 0) throw std::invalid_argument("Invalid Fortran progress");
+    return value;
+}
+std::string fortran_wrapper::field(int type, std::size_t count, bool writing) {
+    if (!archive_ || writing != writing_) throw std::logic_error("Fortran checkpoint call outside save/load");
+    auto path = "checkpoint/fortran/fields/" + std::to_string(field_++);
+    if (writing) { archive_->create_group(path); (*archive_)[path+"/@type"] << type; (*archive_)[path+"/@count"] << count; }
+    else {
+        int saved_type; std::size_t saved_count;
+        (*archive_)[path+"/@type"] >> saved_type; (*archive_)[path+"/@count"] >> saved_count;
+        if (saved_type != type || saved_count != count) throw std::invalid_argument("Fortran checkpoint field mismatch");
+    }
+    return path+"/value";
+}
+void fortran_wrapper::save(hdf5::archive& ar) const {
+    auto& self = *const_cast<fortran_wrapper*>(this);
+    mcbase::save(ar);
+    ar["checkpoint/fortran/version"] << 1;
+    ar["checkpoint/fortran/chain"] << chain_;
+    ar["checkpoint/fortran/steps"] << steps_;
+    self.archive_ = &ar; self.field_ = 0; self.writing_ = true;
+    alps_save(&self);
+    self.archive_ = nullptr; check();
+    ar["checkpoint/fortran/fields_count"] << self.field_;
+}
+void fortran_wrapper::load(hdf5::archive& ar) {
+    fortran_wrapper staged(parameters, bins_, chain_);
+    int version; std::size_t chain, fields;
+    params saved;
+    ar["checkpoint/fortran/version"] >> version;
+    ar["checkpoint/fortran/chain"] >> chain;
+    ar["/parameters"] >> saved;
+    if (version != 1 || chain != chain_ || checkpoint_parameters(saved) != checkpoint_parameters(parameters))
+        throw std::invalid_argument("Incompatible Fortran checkpoint");
+    staged.mcbase::load(ar);
+    staged.parameters = parameters; // Retain the requested production length.
+    ar["checkpoint/fortran/steps"] >> staged.steps_;
+    ar["checkpoint/fortran/fields_count"] >> fields;
+    if (ar.list_children("measurements").size() != measurements.size())
+        throw std::invalid_argument("Unexpected Fortran measurements");
+    for (auto const& name : mc::batch_names(staged.measurements)) {
+        auto const& batch = *staged.measurement(name);
+        if (batch.num_batches()!=bins_ || batch.count()!=staged.measurement<mc::autocorr>(mc::diagnostic(name))->count())
+            throw std::invalid_argument("Inconsistent Fortran checkpoint measurements");
+    }
+    staged.archive_ = &ar;
+    alps_load(&staged);
+    staged.archive_ = nullptr; staged.check();
+    if (staged.field_ != fields) throw std::invalid_argument("Unconsumed Fortran checkpoint fields");
+    staged.fraction_completed();
+    std::swap(context, staged.context);
+    std::swap(random, staged.random);
+    measurements.swap(staged.measurements);
+    steps_ = staged.steps_;
+}
+int fortran_wrapper::main(int argc, char** argv, char const* application, char const* schema) {
+    return mc::main<fortran_wrapper>(argc, argv, application, schema, {},
+        [](auto&, auto const&) {}, [](auto const& run, auto const& chains, auto const&) {
+        mc::batch_results results;
+        auto names = mc::batch_names(chains.front()->get_measurements());
+        // User observables may have different sampling intervals.
+        for (auto const& name : names) {
+            std::vector<alea::batch_result<double>> parts;
+            for (auto const& chain : chains) parts.push_back(chain->measurement(name)->result());
+            results.emplace(name, alea::merge(parts));
+        }
+        hdf5::save_checkpoint(run.output["results"].template as<std::string>(), [&](hdf5::archive& ar) {
+            save_results(results, run.parameters, ar, "/simulation/results");
+            ar["/run_config"] << run;
+            for (std::size_t i=0; i<chains.size(); ++i) {
+                auto path = "/simulation/realizations/0/clones/" + std::to_string(i);
+                ar[path+"/completed_sweeps"] << chains[i]->completed_sweeps();
+                mc::save_diagnostics(*chains[i], ar, path, names);
+            }
+        });
+    });
+}
 }
 
-namespace
-{
-  const char FORTRAN_BLANK = ' '; //!< Fortranで余白領域にセットされる文字(スペース)
-
-  /**
-   * @brief データの型を表すスイッチ。
-   * @note alps_fortran.h と合わせる必要があるため、編集時は要注意。
-   *
-   */
-  enum ALPS_TYPE_CODE
-    {
-      ALPS_CHAR = 0,
-      ALPS_INT,
-      ALPS_LONG,
-      ALPS_REAL,
-      ALPS_DOUBLE_PRECISION,
+namespace {
+using worker = alps::fortran_wrapper;
+std::string text(char const* data, std::size_t width) {
+    std::string value(data, width);
+    value.erase(value.find_last_not_of(' ')+1);
+    return value;
+}
+void put(char* data, std::size_t width, std::string const& value) {
+    if (value.size()>width) throw std::invalid_argument("Fortran character buffer too small");
+    std::fill_n(data, width, ' '); std::copy(value.begin(), value.end(), data);
+}
+template<class F> void numeric(int type, F f) {
+    switch (type) {
+    case 1: f(int{}); break;
+    case 2: f(std::int64_t{}); break;
+    case 3: f(float{}); break;
+    case 4: f(double{}); break;
+    default: throw std::invalid_argument("Invalid Fortran numeric type");
+    }
+}
+void transfer(worker& w, void* data, std::size_t count, int type, std::size_t width, bool writing) {
+    auto path = w.field(type, count, writing);
+    auto values = [&](auto values) {
+        if (writing) w.archive()[path] << values;
+        else w.archive()[path] >> values;
+        if (values.size()!=count) throw std::invalid_argument("Invalid Fortran checkpoint field size");
+        return values;
     };
-
-  /**
-   * @brief Fortran文字列からstd::stringを生成する。
-   *
-   * Fortran文字列には終端文字がないため、
-   * 文字列内で最も後ろにある「スペースでない文字」の直後に終端を挿入し、
-   * std::stringを生成する。
-   *
-   * @param[in] str Fortran文字列
-   * @param[in] len strの長さ
-   * @return 変換結果
-   */
-  std::string getString(const char* str, int len)
-  {
-    int i, ll=len;
-    char* tmp = new char[len+1];
-    memset(tmp, 0x00, len+1);
-
-    for(i=len-1; i>=0; i--)
-      {
-	if( str[i] != FORTRAN_BLANK )
-	  {
-	    ll = i+1;
-	    break;
-	  }
-      }
-    strncpy(tmp,str,ll);
-    std::string retval = tmp;
-    delete [] tmp;
-    return retval;
-  }
-
-  /**
-   * @brief Fortranの文字列配列をstd::vector<std::string> に変換する。
-   *
-   * 文字列の変換ロジック自体は getString と同じ。
-   * @param[in] str Fortran文字列配列
-   * @param[in] len 文字列1つの長さ
-   * @param[in] count 文字列の数
-   * @return 変換結果
-   */
-  std::vector< std::string > getStrings(const char* str, int len, int count)
-  {
-    std::vector<std::string> retval;
-    for(int i = 0; i < count; ++i)
-      {
-	retval.push_back(getString(str+i*len, len));
-      }
-    return retval;
-  }
-
-  /**
-   * @brief C++文字列(std::string)をFortran文字列に変換する。
-   * 
-   * len > src.size() の場合、dstの残り要素にはスペースを入れる。
-   * 終端文字は挿入されないので、dstを文字列として使用することはできないので注意。
-   * @param[out] dst 変換結果の格納先
-   * @param[in] len dstの長さ
-   * @param[in] src 変換元
-   * @retval true 変換成功
-   * @retval false 変換失敗(src.size() > len)
-   */
-  bool setString(char* dst, int len, const std::string& src)
-  {
-    if(src.size() > len)
-      return false;
-
-    memset(dst, FORTRAN_BLANK, len);
-    memcpy(dst, src.c_str(), src.size());
-
-    return true;
-  }
-
-  /**
-   * @brief 指定されたパラメータをalps::Parameterから取得し、dataにセットする。
-   * @param[out] data パラメータの格納先
-   * @param[in] params パラメータセット
-   * @param[in] name パラメータ名
-   * @param[in] lname nameの長さ
-   * @param[in] ldata dataの長さ。T=charの場合のみ使用される。
-   */
-  template <typename T> void getParameter(void* data, const alps::Parameters*& params, const char* name, int lname, int ldata = 0)
-  {
-    T* retval = reinterpret_cast<T*>(data);
-    *retval = static_cast<T>(alps::evaluate(getString(name, lname).c_str(), *params));
-  }
-
-  /**
-   * @brief 指定されたパラメータをalps::Parameterから取得し、dataにセットする。
-   * @param[out] data パラメータの格納先
-   * @param[in] params パラメータセット
-   * @param[in] name パラメータ名
-   * @param[in] lname nameの長さ
-   * @param[in] ldata dataの長さ。T=charの場合のみ使用される。
-   */
-  template<> void getParameter<char>(void* data, const alps::Parameters*& params, const char* name, int lname, int ldata)
-  {
-    char* str = reinterpret_cast<char*>(data);
-    if(!setString(str, ldata, (*params)[getString(name, lname)]))
-      boost::throw_exception(std::runtime_error("alps_get_parameter :: buffer is too small."));
-  }
-
-  /**
-   * @brief データをalps::ODumpに書き出す
-   * @param[in] data 書き出すパラメータ
-   * @param[in] count dataの要素数
-   * @param[out] odump 出力先
-   * @param[in] len dataの長さ。T=charの場合のみ使用される。
-   */
-  template <typename T> void dump(const void* data, int count, alps::ODump& odump, int len = 0)
-  {
-    const T* values = reinterpret_cast<const T*>(data);
-    for(int i = 0; i < count; ++i)
-      {
-	odump << values[i];
-      }
-  }
-
-  /**
-   * @brief データをalps::ODumpに書き出す
-   * @param[in] data 書き出すパラメータ
-   * @param[in] count dataの要素数
-   * @param[out] odump 出力先
-   * @param[in] len dataの長さ。T=charの場合のみ使用される。
-   */
-  template <> void dump<char>(const void* data, int count, alps::ODump& odump, int len)
-  {
-    std::vector<std::string> values = getStrings(reinterpret_cast<const char*>(data), len, count);
-    for(int i = 0; i < count; ++i)
-      {
-	odump << values[i];
-      }
-  }
-
-  /**
-   * @brief alps::IDumpからデータを取り出す
-   * @param[out] data 取り出したデータの格納先
-   * @param[in] count dataの要素数
-   * @param[in] idump 入力元
-   * @param[in] len dataの長さ。T=charの場合のみ使用される。
-   */
-  template <typename T> void restore(void* data, int count, alps::IDump& idump, int len = 0)
-  {
-    T* values = reinterpret_cast<T*>(data);
-    for(int i = 0; i < count; ++i)
-      {
-	idump >> values[i];
-      }
-  }
-
-  /**
-   * @brief alps::IDumpからデータを取り出す
-   * @param[out] data 取り出したデータの格納先
-   * @param[in] count dataの要素数
-   * @param[in] idump 入力元
-   * @param[in] len dataの長さ。T=charの場合のみ使用される。
-   */
-  template <> void restore<char>(void* data, int count, alps::IDump& idump, int len)
-  {
-    char* values = reinterpret_cast<char*>(data);
-    std::string tmp;
-    for(int i = 0; i < count; ++i)
-      {
-	idump >> tmp;
-	if(!setString(values + i*len, len, tmp))
-	  boost::throw_exception(std::runtime_error("alps_resotre :: buffer is too small."));
-      }
-  }
-
-  /**
-   * @brief 指定された名前のObservableにデータを追加する
-   * @param[in] data 追加されるデータ
-   * @param[in] count dataの長さ
-   * @param[out] obs データの追加先
-   * @param[in] name Observableの名前
-   */
-  template <typename T> void accumulate(void* data, int count, alps::ObservableSet& obs, const std::string& name)
-  {
-    std::valarray<T> array(reinterpret_cast<T*>(data), count);
-
-    if(count == 1)
-	obs[name] << array[0];
-    else
-	obs[name] << array;
-  }
-
-  /**
-   * @brief 指定された名前のObservableにデータを追加する
-   * @param[in] data 追加されるデータ
-   * @param[in] count dataの長さ
-   * @param[out] obs データの追加先
-   * @param[in] name Observableの名前
-   */
-  template <> void accumulate<float>(void* data, int count, alps::ObservableSet& obs, const std::string& name)
-  {
-    std::valarray<float> array(count);
-    float* values = reinterpret_cast<float*>(data);
-    for(int i = 0; i < count; ++i)
-      array[i] = static_cast<double>(values[i]);
-
-    if(count == 1)
-      obs[name] << array[0];
-    else
-      obs[name] << array;
-  }
+    if (type == 0) {
+        auto* p = static_cast<char*>(data);
+        std::vector<std::string> strings;
+        for (std::size_t i=0; i<count; ++i) strings.push_back(writing ? text(p+i*width,width) : "");
+        strings = values(std::move(strings));
+        if (!writing) for (std::size_t i=0; i<count; ++i) put(p+i*width,width,strings[i]);
+    } else numeric(type, [&](auto tag) {
+        using T = decltype(tag);
+        auto* p = static_cast<T*>(data);
+        std::vector<T> v(count);
+        if (writing) std::copy_n(p,count,v.begin());
+        v = values(std::move(v));
+        if (!writing) std::copy(v.begin(),v.end(),p);
+    });
 }
-
-/**
- * @brief alps::Parameters内に指定されたパラメータが定義されているかどうかを返す
- *
- * @param[out] res 結果格納先(1:定義されている / 0:定義されていない)
- * @param[in] name 取得するパラメータの名前
- * @param[in] caller alps::fortran_wrapper インスタンスへのポインタ
- * @param[in] lname nameの長さ
- */
-void alps_parameter_defined_(int* res, char* name, int* caller, int lname)
-{
-  alps::fortran_wrapper::alps_fortran_ptr ptr(caller);
-  const alps::Parameters* params = ptr.m_pointer->parameters();
-
-  *res = params->defined(getString(name, lname));
 }
-
-/**
- * @brief alps::Parametersからデータを取得する
- *
- * @param[out] data 取得したデータの格納先
- * @param[in] name 取得するパラメータの名前
- * @param[in] type パラメータの型
- * @param[in] caller alps::fortran_wrapper インスタンスへのポインタ
- * @param[in] len1 nameの長さ。ただし、type == ALPS_CHARの場合はdataの長さ。
- * @param[in] len2 nameの長さ。type == ALPS_CHARの場合のみ有効(それ以外の場合、値は不定)。
- */
-void alps_get_parameter_(void* data, char* name, int* type, int* caller, int len1, int len2)
-{
-  alps::fortran_wrapper::alps_fortran_ptr ptr(caller);
-  const alps::Parameters* params = ptr.m_pointer->parameters();
-
-  switch(*type)
-    {
-    case ALPS_CHAR:
-      getParameter<char>(data, params, name, len2, len1);
-      break;
-    case ALPS_INT:
-      getParameter<int>(data, params, name, len1);
-      break;
-    case ALPS_LONG:
-      getParameter<long>(data, params, name, len1);
-      break;
-    case ALPS_REAL:
-      getParameter<float>(data, params, name, len1);
-      break;
-    case ALPS_DOUBLE_PRECISION:
-      getParameter<double>(data, params, name, len1);
-      break;
-    default:
-      boost::throw_exception(std::runtime_error("alps_get_parameter : an invalid type is specified."));
-      break;
-    }
+// No C++ exception crosses a Fortran frame. Callbacks return after alps_failed()
+// and the driver rethrows the saved exception at the C++ boundary.
+extern "C" {
+void* alps_get_context(worker* w) noexcept { return w->context; }
+void alps_set_context(worker* w, void* context) noexcept { w->context = context; }
+std::int64_t alps_completed_sweeps(worker* w) noexcept { return w->completed_sweeps(); }
+bool alps_failed(worker* w) noexcept { return w->failed(); }
+void alps_fail(worker* w, char const* message) noexcept {
+    w->guard([&] { throw std::invalid_argument(message); });
 }
-
-/**
- * @brief alps::ODumpを通してデータをダンプする
- * 
- * @param[in] data ダンプするデータ
- * @param[in] count dataの要素数
- * @param[in] type dataの型
- * @param[in] caller alps::fortran_wrapper インスタンスへのポインタ
- * @param[in] lchar dataの長さ。ただし、type == ALPS_CHARの場合のみ有効。
- */
-void alps_dump_(void* data, int* count,  int* type, int* caller, int lchar)
-{
-  alps::fortran_wrapper::alps_fortran_ptr ptr(caller);
-  switch(*type)
-    {
-    case ALPS_CHAR:
-      dump<char>(data, *count, ptr.m_pointer->odump(), lchar);
-      break;
-    case ALPS_INT:
-      dump<int>(data, *count, ptr.m_pointer->odump());
-      break;
-    case ALPS_LONG:
-      dump<long>(data, *count, ptr.m_pointer->odump());
-      break;
-    case ALPS_REAL:
-      dump<float>(data, *count, ptr.m_pointer->odump());
-      break;
-    case ALPS_DOUBLE_PRECISION:
-      dump<double>(data, *count, ptr.m_pointer->odump());
-      break;
-    default:
-      boost::throw_exception(std::runtime_error("alps_dump : an invalid type is specified."));
-      break;
-    }
+double alps_random(worker* w) noexcept {
+    double value = 0; w->guard([&] { value = w->get_random()(); }); return value;
 }
-
-/**
- * @brief alps::IDumpを通してダンプデータをリストアする
- * 
- * @param[out] data リストアデータの格納先
- * @param[in] count dataの要素数
- * @param[in] type dataの型
- * @param[in] caller alps::fortran_wrapper インスタンスへのポインタ
- * @param[in] lchar dataの長さ。ただし、type == ALPS_CHARの場合のみ有効。
- */
-void alps_restore_(void* data, int* count,  int* type, int* caller, int lchar)
-{
-  alps::fortran_wrapper::alps_fortran_ptr ptr(caller);
-  switch(*type)
-    {
-    case ALPS_CHAR:
-      restore<char>(data, *count, ptr.m_pointer->idump(), lchar);
-      break;
-    case ALPS_INT:
-      restore<int>(data, *count, ptr.m_pointer->idump());
-      break;
-    case ALPS_LONG:
-      restore<long>(data, *count, ptr.m_pointer->idump());
-      break;
-    case ALPS_REAL:
-      restore<float>(data, *count, ptr.m_pointer->idump());
-      break;
-    case ALPS_DOUBLE_PRECISION:
-      restore<double>(data, *count, ptr.m_pointer->idump());
-      break;
-    default:
-      boost::throw_exception(std::runtime_error("alps_restore : an invalid type is specified."));
-      break;
-    }
+bool alps_parameter_defined(worker* w, char const* name) noexcept {
+    bool value = false; w->guard([&] { value = w->get_parameters().exists(name); }); return value;
 }
-
-/**
- * @brief alps::ObservableSetにObservableを追加する
- * @param[in] count Observableに渡す値の要素数
- * @param[in] type  Observableに渡す値の型
- * @param[in] name  Observableの名前
- * @param[in] caller alps::fortran_wrapper インスタンスへのポインタ
- * @param[in] lname nameの長さ
- *
- * count > 1 のとき、[Int|Real]VectorObservableが追加される。
- * count == 1のとき、[Int|Real]Observableが追加される。
- */
-void alps_init_observable_(int* count, int* type, char* name, int* caller, int lname)
-{
-  alps::fortran_wrapper::alps_fortran_ptr ptr(caller);
-  alps::ObservableSet& obs = ptr.m_pointer->observables();
-  std::string str = getString(name, lname);
-
-  switch(*type)
-    {
-    case ALPS_INT:
-      if(*count == 1)
-	obs << alps::IntObservable(str);
-      else
-	obs << alps::IntVectorObservable(str);
-      break;
-    case ALPS_REAL:
-    case ALPS_DOUBLE_PRECISION:
-      if(*count == 1)
-	obs << alps::RealObservable(str);
-      else
-	obs << alps::RealVectorObservable(str);
-      break;
-    default:
-      boost::throw_exception(std::runtime_error("alps_init_observable : an invalid type is specified."));
-      break;
-    }
+void alps_get_parameter(worker* w, void* data, char const* name, int type, std::size_t width) noexcept {
+    w->guard([&] {
+        auto value = w->get_parameters()[name];
+        if (type==0) put(static_cast<char*>(data),width,value.as<std::string>());
+        else numeric(type,[&](auto tag) { *static_cast<decltype(tag)*>(data) = value.as<decltype(tag)>(); });
+    });
 }
-
-/**
- * @brief alps::Observableにデータを加算する
- * @param[in] data 加算する値
- * @param[in] count dataの要素数
- * @param[in] type  dataの型
- * @param[in] name  Observableの名前
- * @param[in] caller alps::fortran_wrapper インスタンスへのポインタ
- * @param[in] lname nameの長さ
- */
-void alps_accumulate_observable_(void* data, int* count, int* type, char* name, int* caller, int lname)
-{
-  alps::fortran_wrapper::alps_fortran_ptr ptr(caller);
-  alps::ObservableSet& obs = ptr.m_pointer->observables();
-  std::string str = getString(name, lname);
-
-  switch(*type)
-    {
-    case ALPS_INT:
-      accumulate<int>(data, *count, obs, str);
-      break;
-    case ALPS_REAL:
-      accumulate<float>(data, *count, obs, str);
-      break;
-    case ALPS_DOUBLE_PRECISION:
-      accumulate<double>(data, *count, obs, str);
-      break;
-    default:
-      boost::throw_exception(std::runtime_error("alps_accumulate_observable : an invalid type is specified."));
-      break;
-    }
-
+void alps_dump(worker* w, void* data, std::size_t count, int type, std::size_t width) noexcept {
+    w->guard([&] { transfer(*w,data,count,type,width,true); });
+}
+void alps_restore(worker* w, void* data, std::size_t count, int type, std::size_t width) noexcept {
+    w->guard([&] { transfer(*w,data,count,type,width,false); });
+}
+void alps_init_observable(worker* w, std::size_t count, char const* name) noexcept {
+    w->guard([&] {
+        if (!count || !*name || w->get_measurements().count(name) || std::string(name).find("Autocorrelation: ")==0)
+            throw std::invalid_argument("Invalid or duplicate Fortran observable");
+        alps::mc::add_measurement(*w,name,count,w->bins());
+    });
+}
+void alps_accumulate_observable(worker* w, void* data, std::size_t count, int type, char const* name) noexcept {
+    w->guard([&] {
+        if (w->measurement(name)->size()!=count) throw std::invalid_argument("Fortran observable size mismatch");
+        numeric(type,[&](auto tag) {
+            auto* p = static_cast<decltype(tag)*>(data);
+            std::vector<double> v(p,p+count);
+            if (!std::all_of(v.begin(),v.end(),[](double x) { return std::isfinite(x); }))
+                throw std::invalid_argument("Nonfinite Fortran observation");
+            if (w->collecting()) alps::mc::record(*w,name,v);
+        });
+    });
+}
 }

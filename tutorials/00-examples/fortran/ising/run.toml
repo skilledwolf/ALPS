@@ -1,0 +1,6 @@
+[parameters]
+[output]
+results = "ising.h5"
+checkpoint = "ising.checkpoint.h5"
+[execution]
+chains = 2

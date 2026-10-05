@@ -1,0 +1,15 @@
+# Copyright (C) 2026 ALPS Collaboration. SPDX-License-Identifier: MIT
+function(alps_fortran_example target kind)
+  set(source "${CMAKE_CURRENT_FUNCTION_LIST_DIR}")
+  file(READ "${source}/${kind}/schema.toml.in" schema)
+  string(CONFIGURE "${schema}" schema @ONLY)
+  configure_file("${source}/schema.hpp.in" "${CMAKE_CURRENT_BINARY_DIR}/schema.hpp" @ONLY)
+  add_executable(${target} "${source}/main.C" "${source}/${kind}/${kind}_impl.f90")
+  target_include_directories(${target} PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+  target_link_libraries(${target} PRIVATE ALPS::fortran)
+  if(ALPS_BUILD_TESTING)
+    find_package(Python3 REQUIRED COMPONENTS Interpreter)
+    add_test(NAME ${target}_contract COMMAND "${Python3_EXECUTABLE}"
+      "${source}/contract.py" $<TARGET_FILE:${target}> ${kind})
+  endif()
+endfunction()

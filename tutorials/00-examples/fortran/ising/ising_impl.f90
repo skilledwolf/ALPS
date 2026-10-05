@@ -1,197 +1,139 @@
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!
-! ALPS Project: Algorithms and Libraries for Physics Simulations
-!
-! ALPS Libraries
-!
-! Copyright (C) 2011 by Synge Todo <wistaria@comp-phys.org>
-!
-! ALPS Project: https://alps.comp-phys.org/
-! SPDX-License-Identifier: MIT
-!
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
-! オリジナルコード：宮下精二著「熱・統計力学」(培風館 1993年) p.263
-
-module ising_mod
+! Copyright (C) 2011 Synge Todo; 2026 ALPS Collaboration. SPDX-License-Identifier: MIT
+module ising_state
+  use iso_c_binding
   implicit none
-  real, parameter :: V0 = .465661288D-9
+  include 'alps/fortran/alps_fortran.h'
+  type state
+    integer(c_int) :: length = 0
+    integer(c_int64_t) :: steps = 0, warmup = 0, sweeps = 0
+    real(c_double) :: temperature = 0, probability(-4:4)
+    integer(c_int), pointer :: spin(:,:) => null()
+  end type
+contains
+  function instance(caller) result(s)
+    type(c_ptr), value :: caller
+    type(state), pointer :: s
+    call c_f_pointer(alps_get_context(caller), s)
+  end function
+end module
 
-  integer, allocatable, dimension(:) :: IP, IM
-  integer, allocatable, dimension(:,:) :: IS
-  real*8, allocatable, dimension(:) :: P
-  integer :: K, MCS, INT, L, IX
-  real :: TEMP
-  !$omp threadprivate (K, MCS, INT, TEMP, IP, IM, P, IS, IX, L)
-end module ising_mod
-
-! subroutine alps_init
-subroutine alps_init(caller)
-  use ising_mod
+subroutine alps_init(caller) bind(C)
+  use ising_state
   implicit none
-  include "alps/fortran/alps_fortran.h"
-  integer :: caller(2)
-  integer :: i, j
-  real*8 :: W
-
-  call alps_get_parameter(TEMP, "TEMPERATURE", ALPS_REAL, caller)
-  call alps_get_parameter(L, "L", ALPS_INT, caller)
-  call alps_get_parameter(MCS, "MCS", ALPS_INT, caller)
-  call alps_get_parameter(INT, "INT", ALPS_INT, caller)
-  call alps_get_parameter(IX, "WORKER_SEED", ALPS_INT, caller)
-
-  write(0, *) "----- alps_init -----"
-  write(0, *) "   TEMP = ", TEMP
-  write(0, *) "   MCS = ", MCS
-  write(0, *) "   INT = ", INT
-  write(0, *) "   L = ", L
-  write(0, *) "   SEED = ", IX
-
-  allocate( IP(L) )
-  allocate( IM(L) )
-  allocate( P(-4:4) )
-  allocate( IS(L, L) )
-
-  K = 0
-
-  do i = -4, 4
-     W = exp(float(i)/TEMP)
-     P(i) = W / (W + 1/W)
-  end do
-
-  do i = 1, L
-     IP(i) = i + 1
-     IM(i) = i - 1
-  end do
-
-  do i = 1, L
-     do j = 1, L
-        IS(i, j) = 1
-     end do
-  end do
-
-  IP(L) = 1
-  IM(1) = L
-
-  return
-end subroutine alps_init
-
-! subroutine alps_run
-subroutine alps_run(caller)
-  use ising_mod
-  implicit none
-  include "alps/fortran/alps_fortran.h"
-  integer :: caller(2)
-  integer :: i, j, M
-  real*8 :: EN, MG
-
-  do i = 1, L
-     do j = 1, L
-        M = IS(IP(i), j) + IS(i, IP(j)) + IS(IM(i), j) + IS(i, IM(j))
-        IS(i, j) = -1
-
-        IX = IAND(IX * 5 * 11, 2147483647) ! this should be replaced with a better RNG
-        if(P(M).gt.V0*IX) IS(i, j) = 1
-     end do
-  end do
-
-  EN = 0.0D0
-  MG = 0.0D0
-  do i = 1, L
-     do j = 1, L
-        EN = EN + IS(i, j) * (IS(IP(i), j) + IS(i, IP(j)))
-        MG = MG + IS(i, j)
-     end do
-  end do
-
- call alps_accumulate_observable(EN, 1, ALPS_DOUBLE_PRECISION, "Energy", caller)
- call alps_accumulate_observable(MG, 1, ALPS_DOUBLE_PRECISION, "Magnetization", caller)
-  K = K + 1
-
-  return
-end subroutine alps_run
-
-! alps_init_observables
-subroutine alps_init_observables(caller)
-  implicit none
-  include "alps/fortran/alps_fortran.h"
-  integer :: caller(2)
-
-  call alps_init_observable(1, ALPS_REAL, "Energy", caller)
-  call alps_init_observable(1, ALPS_REAL, "Magnetization", caller)
-
-  return
-end subroutine alps_init_observables
-
-! alps_progerss
-subroutine alps_progress(prgrs, caller)
-  use ising_mod
-  implicit none
-  include "alps/fortran/alps_fortran.h"
-  integer :: caller(2)
-  real*8 :: prgrs
-
-  prgrs = K / (INT + MCS)
-
-end subroutine alps_progress
-
-! alps_is_thermalized
-subroutine alps_is_thermalized(thrmlz, caller)
-  use ising_mod
-  implicit none
-  include "alps/fortran/alps_fortran.h"
-  integer :: caller(2)
-  integer :: thrmlz
-
-  if(K >= INT) then
-     thrmlz = 1
-  else
-     thrmlz = 0
+  type(c_ptr), value :: caller
+  type(state), pointer :: s
+  integer :: m
+  allocate(s)
+  call alps_set_context(caller, c_loc(s))
+  call alps_get_parameter(caller, c_loc(s%length), 'L'//c_null_char, ALPS_INT, 0_c_size_t)
+  call alps_get_parameter(caller, c_loc(s%temperature), 'TEMPERATURE'//c_null_char, ALPS_DOUBLE_PRECISION, 0_c_size_t)
+  call alps_get_parameter(caller, c_loc(s%warmup), 'THERMALIZATION'//c_null_char, ALPS_INT64, 0_c_size_t)
+  call alps_get_parameter(caller, c_loc(s%sweeps), 'SWEEPS'//c_null_char, ALPS_INT64, 0_c_size_t)
+  if (alps_failed(caller)) return
+  if (s%length<2 .or. s%temperature<=0 .or. s%warmup<0 .or. s%sweeps<=0) then
+    call alps_fail(caller, 'Invalid Ising parameters'//c_null_char)
+    return
   end if
+  allocate(s%spin(s%length,s%length))
+  s%spin = 1
+  do m=-4,4
+    s%probability(m) = (1.0_c_double+tanh(real(m,c_double)/s%temperature))/2
+  end do
+end subroutine
 
-  return
-end subroutine alps_is_thermalized
-
-! alps_save
-subroutine alps_save(caller)
-  use ising_mod
+subroutine alps_init_observables(caller) bind(C)
+  use ising_state
   implicit none
-  include "alps/fortran/alps_fortran.h"
-  integer caller(2)
+  type(c_ptr), value :: caller
+  call alps_init_observable(caller, 1_c_size_t, 'Energy'//c_null_char)
+  call alps_init_observable(caller, 1_c_size_t, 'Magnetization'//c_null_char)
+end subroutine
 
-  call alps_dump(K, 1, ALPS_INT, caller)
-  call alps_dump(IX, 1, ALPS_INT, caller)
-  call alps_dump(IS, L * L, ALPS_INT, caller)
-
-  return
-end subroutine alps_save
-
-! alps_load
-subroutine alps_load(caller)
-  use ising_mod
+subroutine alps_run(caller) bind(C)
+  use ising_state
   implicit none
-  include "alps/fortran/alps_fortran.h"
-  integer :: caller(2)
+  type(c_ptr), value :: caller
+  type(state), pointer :: s
+  integer :: i,j,l,m
+  real(c_double), target :: energy, magnetization
+  s => instance(caller)
+  l = s%length
+  do j=1,l
+    do i=1,l
+      m = s%spin(modulo(i-2,l)+1,j)+s%spin(modulo(i,l)+1,j) &
+        + s%spin(i,modulo(j-2,l)+1)+s%spin(i,modulo(j,l)+1)
+      s%spin(i,j) = -1
+      if (alps_random(caller)<s%probability(m)) s%spin(i,j) = 1
+    end do
+  end do
+  energy = 0
+  magnetization = 0
+  do j=1,l
+    do i=1,l
+      energy = energy-s%spin(i,j)*(s%spin(modulo(i,l)+1,j)+s%spin(i,modulo(j,l)+1))
+      magnetization = magnetization+s%spin(i,j)
+    end do
+  end do
+  energy = energy/(real(l,c_double)*l)
+  magnetization = magnetization/(real(l,c_double)*l)
+  call alps_accumulate_observable(caller, c_loc(energy), 1_c_size_t, ALPS_DOUBLE_PRECISION, 'Energy'//c_null_char)
+  call alps_accumulate_observable(caller, c_loc(magnetization), 1_c_size_t, ALPS_DOUBLE_PRECISION, &
+    'Magnetization'//c_null_char)
+  s%steps = s%steps+1
+end subroutine
 
-  call alps_restore(K, 1, ALPS_INT, caller)
-  call alps_restore(IX, 1, ALPS_INT, caller)
-  call alps_restore(IS, L * L, ALPS_INT, caller)
-
-  return
-end subroutine alps_load
-
-! alps_finalize
-subroutine alps_finalize(caller)
-  use ising_mod
+subroutine alps_progress(progress, caller) bind(C)
+  use ising_state
   implicit none
-  include "alps/fortran/alps_fortran.h"
-  integer :: caller(2)
+  type(c_ptr), value :: caller
+  real(c_double), intent(out) :: progress
+  type(state), pointer :: s
+  s => instance(caller)
+  progress = real(s%steps,c_double)/(real(s%warmup,c_double)+s%sweeps)
+end subroutine
 
-  deallocate(IP)
-  deallocate(IM)
-  deallocate(P)
-  deallocate(IS)
+subroutine alps_is_thermalized(thermalized, caller) bind(C)
+  use ising_state
+  implicit none
+  type(c_ptr), value :: caller
+  integer(c_int), intent(out) :: thermalized
+  type(state), pointer :: s
+  s => instance(caller)
+  thermalized = 0
+  if (s%steps>=s%warmup) thermalized = 1
+end subroutine
 
-  return
-end subroutine alps_finalize
+subroutine alps_save(caller) bind(C)
+  use ising_state
+  implicit none
+  type(c_ptr), value :: caller
+  type(state), pointer :: s
+  s => instance(caller)
+  call alps_dump(caller, c_loc(s%steps), 1_c_size_t, ALPS_INT64, 0_c_size_t)
+  call alps_dump(caller, c_loc(s%spin), size(s%spin,kind=c_size_t), ALPS_INT, 0_c_size_t)
+end subroutine
 
+subroutine alps_load(caller) bind(C)
+  use ising_state
+  implicit none
+  type(c_ptr), value :: caller
+  type(state), pointer :: s
+  s => instance(caller)
+  call alps_restore(caller, c_loc(s%steps), 1_c_size_t, ALPS_INT64, 0_c_size_t)
+  call alps_restore(caller, c_loc(s%spin), size(s%spin,kind=c_size_t), ALPS_INT, 0_c_size_t)
+  if (alps_failed(caller)) return
+  if (s%steps/=alps_completed_sweeps(caller) .or. any(s%spin/=1 .and. s%spin/=-1)) &
+    call alps_fail(caller, 'Invalid Ising checkpoint state'//c_null_char)
+end subroutine
+
+subroutine alps_finalize(caller) bind(C)
+  use ising_state
+  implicit none
+  type(c_ptr), value :: caller
+  type(state), pointer :: s
+  s => instance(caller)
+  if (.not.associated(s)) return
+  if (associated(s%spin)) deallocate(s%spin)
+  deallocate(s)
+  call alps_set_context(caller, c_null_ptr)
+end subroutine

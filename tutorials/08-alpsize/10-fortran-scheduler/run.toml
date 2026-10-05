@@ -1,0 +1,6 @@
+[parameters]
+[output]
+results = "hello.h5"
+checkpoint = "hello.checkpoint.h5"
+[execution]
+chains = 2
