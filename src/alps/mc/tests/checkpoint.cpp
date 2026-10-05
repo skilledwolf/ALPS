@@ -61,14 +61,14 @@ alps::alea::batch_result<double> read_result(alps::hdf5::archive& ar, std::strin
 
 void failed_base_load(simulation& sim, boost::filesystem::path const& filename) {
     auto const parameters = sim.get_parameters();
-    auto const handle = sim.get_measurements().at("value");
+    auto const handle = sim.measurement("value");
     auto const result = handle->result();
     auto random = sim.get_random();
     bool rejected = false;
     try { sim.load(filename); } catch (std::exception const&) { rejected = true; }
     require(rejected, "invalid base checkpoint was accepted");
     require(sim.get_parameters()["retained"].as<int>() == parameters["retained"].as<int>()
-            && sim.get_measurements().at("value") == handle && handle->result() == result
+            && sim.measurement("value") == handle && handle->result() == result
             && sim.get_random()() == random(), "failed base load changed prior state");
 }
 
@@ -128,7 +128,7 @@ int main() {
             ar["/unrelated"] << 8;
         }
         sim.get_measurements().emplace("value", std::make_shared<alps::alea::batch_acc<double>>(1, 4));
-        *sim.get_measurements().at("value") << alps::alea::make_adapter(1.);
+        *sim.measurement("value") << alps::alea::make_adapter(1.);
         auto const results = sim.collect_results();
         alps::save_results(results, sim.get_parameters(), results_file, "/first/results");
         alps::save_results(results, sim.get_parameters(), results_file, "/second/results");
@@ -160,12 +160,12 @@ int main() {
         // Base loads stage parameters, every native accumulator and RNG.
         sim.get_parameters()["retained"] = 17;
         for (int i=0; i<41; ++i)
-            *sim.get_measurements().at("value") << alps::alea::make_adapter(double(i));
+            *sim.measurement("value") << alps::alea::make_adapter(double(i));
         sim.save(checkpoint);
-        auto retained = sim.get_measurements().at("value");
+        auto retained = sim.measurement("value");
         simulation resumed;
         resumed.load(checkpoint);
-        require(resumed.get_measurements().at("value")->result() == retained->result(),
+        require(resumed.measurement("value")->result() == retained->result(),
                 "native MC accumulator checkpoint lost state");
         auto const invalid = directory / "invalid.h5";
         for (int damage=0; damage<4; ++damage) {
@@ -189,15 +189,15 @@ int main() {
             }
             failed_base_load(sim, invalid);
         }
-        auto null_handle = sim.get_measurements().at("value");
-        sim.get_measurements().at("value").reset();
+        auto null_handle = sim.measurement("value");
+        sim.measurement("value").reset();
         bool invalid_measurement = false;
         try { sim.save(checkpoint); }
         catch (std::invalid_argument const&) { invalid_measurement = true; }
         require(invalid_measurement, "null MC measurement was accepted");
-        sim.get_measurements().at("value") = null_handle;
+        sim.measurement("value") = null_handle;
         resumed.load(checkpoint);
-        require(resumed.get_measurements().at("value")->result() == null_handle->result(),
+        require(resumed.measurement("value")->result() == null_handle->result(),
                 "invalid measurement save changed prior checkpoint");
         boost::filesystem::remove_all(directory);
         return 0;

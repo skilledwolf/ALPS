@@ -16,7 +16,7 @@
 
 #include <alps/ngs/config.hpp>
 #include <alps/params.hpp>
-#include <alps/alea/batch.hpp>
+#include <alps/alea/result.hpp>
 
 #include <boost/filesystem/path.hpp>
 
@@ -64,6 +64,13 @@ namespace alps {
     ALPS_DECL void save_results(std::map<std::string, alps::alea::batch_result<double>> const & results,
                                params const & params, hdf5::archive & archive,
                                std::string const & path);
+
+    ALPS_DECL void save_results(std::map<std::string,alea::result::variant_type> const& results,
+                               params const& parameters, boost::filesystem::path const& filename,
+                               std::string const& path);
+    ALPS_DECL void save_results(std::map<std::string,alea::result::variant_type> const& results,
+                               params const& parameters, hdf5::archive& archive,
+                               std::string const& path);
 
     template<typename C, typename P> void broadcast(C const & c, P & p, int r = 0) {
         p.broadcast(c, r);

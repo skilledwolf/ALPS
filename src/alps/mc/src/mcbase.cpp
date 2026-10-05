@@ -69,8 +69,10 @@ namespace alps {
         results_type partial_results;
         for (auto const& name : names) {
             auto const& value = measurements.at(name);
-            if (!value) throw std::invalid_argument("null MC measurement: " + name);
-            partial_results.emplace(name, value->result());
+            partial_results.emplace(name,std::visit([&](auto const& handle) -> alea::result::variant_type {
+                if (!handle) throw std::invalid_argument("null MC measurement: " + name);
+                return handle->result();
+            },value));
         }
         return partial_results;
     }
@@ -85,10 +87,41 @@ namespace alps {
         }
         alps::alea::hdf5_serializer serializer(ar, "measurements");
         for (auto const& entry : measurements) {
-            if (!entry.second) throw std::invalid_argument("null MC measurement: " + entry.first);
-            alps::alea::serialize(serializer, ar.encode_segment(entry.first), *entry.second);
+            std::visit([&](auto const& handle) {
+                if (!handle) throw std::invalid_argument("null MC measurement: " + entry.first);
+                alps::alea::serialize(serializer,ar.encode_segment(entry.first),*handle);
+            },entry.second);
         }
         ar["checkpoint/engine"] << random;
+    }
+
+    namespace {
+    template<class A> mcbase::observable_type read_accumulator(alea::deserializer& codec,std::string const& name) {
+        auto value=std::make_shared<A>();
+        alea::deserialize(codec,name,*value);
+        return value;
+    }
+    mcbase::observable_type read_measurement(hdf5::archive& ar,alea::deserializer& codec,std::string const& name) {
+        auto path="measurements/"+name;
+        uint32_t kind; ar[path+"/@kind"] >> kind;
+        auto field=kind==6 ? "/batch/sum" : kind==10 ? "/levels/0/value" : "/value";
+        bool complex=ar.is_complex(path+field);
+        using C=std::complex<double>;
+        switch (kind) {
+        case 6: return complex ? read_accumulator<alea::batch_acc<C>>(codec,name) : read_accumulator<alea::batch_acc<double>>(codec,name);
+        case 7: return complex ? read_accumulator<alea::mean_acc<C>>(codec,name) : read_accumulator<alea::mean_acc<double>>(codec,name);
+        case 8:
+            if (complex && ar.extent(path+"/centered_moment").size()==3)
+                return read_accumulator<alea::var_acc<C,alea::elliptic_var>>(codec,name);
+            return complex ? read_accumulator<alea::var_acc<C>>(codec,name) : read_accumulator<alea::var_acc<double>>(codec,name);
+        case 9:
+            if (complex && ar.extent(path+"/centered_moment").size()==4)
+                return read_accumulator<alea::cov_acc<C,alea::elliptic_var>>(codec,name);
+            return complex ? read_accumulator<alea::cov_acc<C>>(codec,name) : read_accumulator<alea::cov_acc<double>>(codec,name);
+        case 10: return complex ? read_accumulator<alea::autocorr_acc<C>>(codec,name) : read_accumulator<alea::autocorr_acc<double>>(codec,name);
+        default: throw std::invalid_argument("Unsupported MC accumulator checkpoint kind");
+        }
+    }
     }
 
     void mcbase::load(alps::hdf5::archive & ar) {
@@ -98,12 +131,14 @@ namespace alps {
         ar["/parameters"] >> restored_parameters;
         alps::alea::hdf5_serializer serializer(ar, "measurements");
         for (auto const& child : ar.list_children("measurements")) {
-            auto value = std::make_shared<alps::alea::batch_acc<double>>();
-            alps::alea::deserialize(serializer, child, *value);
+            auto value = read_measurement(ar,serializer,child);
             auto const name = ar.decode_segment(child);
             auto known = measurements.find(name);
-            if (known != measurements.end() && (!known->second || known->second->size() != value->size()))
-                throw alps::alea::size_mismatch();
+            if (known != measurements.end()) {
+                auto size=[](auto const& handle) { return handle ? handle->size() : 0; };
+                if (known->second.index()!=value.index()
+                    || std::visit(size,known->second)!=std::visit(size,value)) throw alps::alea::size_mismatch();
+            }
             if (!restored_measurements.emplace(name, std::move(value)).second)
                 throw std::invalid_argument("duplicate MC checkpoint measurement: " + name);
         }

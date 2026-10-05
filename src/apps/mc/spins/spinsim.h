@@ -15,7 +15,7 @@
 #include <limits>
 
 namespace spinmc {
-using results_type = alps::mcbase::results_type;
+using results_type = std::map<std::string,alps::alea::batch_result<double>>;
 inline std::vector<double> values(alps::params const& p, std::string const& key, std::vector<double> fallback) {
     if (!p.exists(key)) return fallback;
     if (p[key].isType<std::vector<double>>()) return p[key].as<std::vector<double>>();
@@ -56,6 +56,10 @@ inline bool isotropic(Eigen::MatrixXd const& m) {
 class simulation : public alps::mcbase, private alps::graph_helper<> {
     struct bond { std::size_t source, target, type; Eigen::MatrixXd coupling; };
 public:
+    using results_type = std::map<std::string,alps::alea::batch_result<double>>;
+    results_type collect_results(result_names_type const& names={}) const {
+        return collect_results_as<alps::alea::batch_result<double>>(names);
+    }
     simulation(alps::params const& p, std::size_t bins=128, std::size_t chain=0)
         : mcbase(p,chain), graph_helper<>(graph_parameters(p)), bins_(bins), chain_(chain),
           model_(p["MODEL"].as<std::string>()), dim_(model_dimension(model_)), potts_(model_=="Potts"),
@@ -145,7 +149,7 @@ public:
         if (p.exists("ERROR_VARIABLE")) {
             error_variable_=p["ERROR_VARIABLE"].as<std::string>(); error_limit_=p["ERROR_LIMIT"].as<double>();
             if (!(error_limit_>0) || !std::isfinite(error_limit_) || !measurements.count(error_variable_)
-                    || measurements.at(error_variable_)->size()!=1) throw std::invalid_argument("invalid spinmc scalar error stopping criterion");
+                    || measurement(error_variable_)->size()!=1) throw std::invalid_argument("invalid spinmc scalar error stopping criterion");
         }
     }
     simulation(simulation const&)=delete;
@@ -154,7 +158,7 @@ public:
     using mcbase::load;
     std::string effective_update() const { return cluster_?"cluster":"local"; }
     uint64_t completed_sweeps() const { return updates_; }
-    uint64_t measurement_count() const { return measurements.at("Energy")->count(); }
+    uint64_t measurement_count() const { return measurement("Energy")->count(); }
     std::size_t chain_id() const { return chain_; }
     static alps::params checkpoint_parameters(alps::params const& p) {
         auto identity=p;
@@ -164,7 +168,7 @@ public:
     double fraction_completed() const override {
         double progress=double(measurement_count())/production_;
         if (!error_variable_.empty()) {
-            auto result=measurements.at(error_variable_)->result();
+            auto result=measurement(error_variable_)->result();
             if ((result.store().count().array()>0).count()>1) {
                 double error=result.stderror()(0);
                 if (std::isfinite(error) && error<=error_limit_) progress=1.;
@@ -261,7 +265,7 @@ public:
         for (auto const& entry:measurements) {
             alps::alea::batch_acc<double> value;
             alps::alea::deserialize(measurements_codec,ar.encode_segment(entry.first),value);
-            if (value.size()!=entry.second->size() || value.num_batches()!=bins_
+            if (value.size()!=measurement(entry.first)->size() || value.num_batches()!=bins_
                     || value.current_batch_size()!=value.cursor().factor() || value.count()!=updates-warmup_updates
                     || !value.store().batch().allFinite()) throw std::invalid_argument("invalid spinmc checkpoint measurement state");
         }
@@ -364,7 +368,7 @@ private:
     void add(std::string const& name,std::size_t components=1) {
         measurements.emplace(name,std::make_shared<alps::alea::batch_acc<double>>(components,bins_));
     }
-    template<class T> void record(std::string const& name,T const& value) { *measurements.at(name)<<alps::alea::make_adapter(value); }
+    template<class T> void record(std::string const& name,T const& value) { *measurement(name)<<alps::alea::make_adapter(value); }
     std::vector<std::array<uint64_t,3>> topology() const {
         std::vector<std::array<uint64_t,3>> result;
         for (auto const& edge:edges_) result.push_back({edge.source,edge.target,edge.type});

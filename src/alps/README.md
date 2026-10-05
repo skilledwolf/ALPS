@@ -24,8 +24,9 @@ CT-INT includes general multiband density interactions and their full density
 moments; DMFT uses only external solver processes. Other legacy measurement
 producers still need migration before their statistical interfaces can be deleted:
 `loop`, `qwl`, `dirloop_sse` and `worm`.
-The NGS `mcbase` framework and its MPI adapter use the same native batches,
-checkpoints and result codec. Python measurement maps share native accumulator
+The NGS `mcbase` framework and its MPI adapter support all native estimator
+families and real/complex strategies with the same checkpoint and result codecs.
+Python measurement maps share native accumulator
 handles; collected result dictionaries own snapshots. The old NGS measurement
 facade, feature-stack API and unused scheduler prototypes are removed.
 `simplemc` shares one local-update engine for Ising, XY and Heisenberg models on

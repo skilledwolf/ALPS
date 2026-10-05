@@ -62,7 +62,16 @@ public:
         catch (...) { error = "MC result snapshot failed"; }
         agree_failure(error);
         alps::alea::mpi_reducer reduction(communicator);
-        for (auto& entry : results) entry.second.reduce(reduction);
+        for (auto& entry : results) {
+            if constexpr (alea::is_alea_result<typename Base::results_type::mapped_type>::value)
+                entry.second.reduce(reduction);
+            else {
+                auto type=int64_t(entry.second.index());
+                if (reduction.get_max(type)!=-reduction.get_max(-type))
+                    throw std::invalid_argument("MC estimator types must agree on every rank");
+                std::visit([&](auto& value) { value.reduce(reduction); },entry.second);
+            }
+        }
         if (communicator.rank()) results.clear();
         return results;
     }

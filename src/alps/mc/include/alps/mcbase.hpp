@@ -18,7 +18,7 @@
 
 #include <boost/filesystem/path.hpp>
 
-#include <alps/alea/batch.hpp>
+#include <alps/alea/result.hpp>
 #include <functional>
 #include <map>
 #include <memory>
@@ -31,13 +31,25 @@ namespace alps {
 
         public:
 
-            using observable_collection_type = std::map<std::string,
-                std::shared_ptr<alps::alea::batch_acc<double>>>;
+            using observable_type = std::variant<
+                std::shared_ptr<alea::mean_acc<double>>,
+                std::shared_ptr<alea::mean_acc<std::complex<double>>>,
+                std::shared_ptr<alea::var_acc<double>>,
+                std::shared_ptr<alea::var_acc<std::complex<double>>>,
+                std::shared_ptr<alea::var_acc<std::complex<double>,alea::elliptic_var>>,
+                std::shared_ptr<alea::cov_acc<double>>,
+                std::shared_ptr<alea::cov_acc<std::complex<double>>>,
+                std::shared_ptr<alea::cov_acc<std::complex<double>,alea::elliptic_var>>,
+                std::shared_ptr<alea::autocorr_acc<double>>,
+                std::shared_ptr<alea::autocorr_acc<std::complex<double>>>,
+                std::shared_ptr<alea::batch_acc<double>>,
+                std::shared_ptr<alea::batch_acc<std::complex<double>>>>;
+            using observable_collection_type = std::map<std::string,observable_type>;
 
             typedef alps::params parameters_type;
             typedef std::vector<std::string> result_names_type;
 
-            using results_type = std::map<std::string, alps::alea::batch_result<double>>;
+            using results_type = std::map<std::string, alea::result::variant_type>;
 
             mcbase(parameters_type const & parms, std::size_t seed_offset = 0);
             virtual ~mcbase();
@@ -50,6 +62,19 @@ namespace alps {
             result_names_type result_names() const;
             results_type collect_results() const;
             results_type collect_results(result_names_type const & names) const;
+
+            template<class A=alea::batch_acc<double>> auto& measurement(std::string const& name) {
+                return std::get<std::shared_ptr<A>>(measurements.at(name));
+            }
+            template<class A=alea::batch_acc<double>> auto const& measurement(std::string const& name) const {
+                return std::get<std::shared_ptr<A>>(measurements.at(name));
+            }
+            template<class R> std::map<std::string,R> collect_results_as(result_names_type const& names = {}) const {
+                auto all = names.empty() ? collect_results() : collect_results(names);
+                std::map<std::string,R> typed;
+                for (auto& [name,value]:all) typed.emplace(name,std::get<R>(std::move(value)));
+                return typed;
+            }
 
             void save(boost::filesystem::path const & filename) const;
             void load(boost::filesystem::path const & filename);

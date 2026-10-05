@@ -20,7 +20,7 @@ public:
         measurements.emplace("samples", std::make_shared<alps::alea::batch_acc<double>>(1, 8));
     }
     void update() override { ++steps; }
-    void measure() override { *measurements.at("samples") << double(steps); }
+    void measure() override { *measurement("samples") << double(steps); }
     double fraction_completed() const override { return double(steps)/3; }
 private:
     int steps = 0;
@@ -60,7 +60,7 @@ int main(int argc, char** argv) {
     input["/values"] >> actual;
     simulation sim;
     sim.run([] { return false; });
-    const auto result = sim.collect_results().at("samples");
+    const auto result = std::get<alps::alea::batch_result<double>>(sim.collect_results().at("samples"));
     return actual == expected && checkpoint_value == 42 && int(parameters["count"]) == 3
         && (range.min)() == 2 && (range.max)() == 5
         && result.count() == 3 && result.mean()(0) == 2.0 ? 0 : 1;

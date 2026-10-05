@@ -5,6 +5,7 @@
 // SPDX-License-Identifier: MIT
 #include <nanobind/nanobind.h>
 #include <nanobind/stl/map.h>
+#include <nanobind/stl/variant.h>
 #include <nanobind/stl/string.h>
 #include <alps/ngs/api.hpp>
 #include <alps/params.hpp>

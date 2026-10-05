@@ -31,7 +31,7 @@ int main(int argc, char* argv[]) {
         if (i < 148) { stopped.update(); stopped.measure(); }
     }
     auto filename = std::string(parameters.exists("LATTICE") ? "lattice-heisenberg-" : "chain-heisenberg-")
-                  + std::to_string(stopped.get_measurements().at("Magnetization")->size()) + ".h5";
+                  + std::to_string(stopped.measurement("Magnetization")->size()) + ".h5";
     stopped.save(filename);
     resumed.load(filename);
     for (int i = 148; i < 712; ++i) { resumed.update(); resumed.measure(); }

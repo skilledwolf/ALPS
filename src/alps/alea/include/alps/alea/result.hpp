@@ -5,7 +5,7 @@
  */
 #pragma once
 
-#include <boost/variant.hpp>
+#include <variant>
 
 #include <alps/alea/mean.hpp>
 #include <alps/alea/variance.hpp>
@@ -78,8 +78,8 @@ public:
     /** Convert result to a permanent format (write to disk etc.) */
     friend void serialize(serializer &, const std::string &, const result &);
 
-private:
-    typedef boost::variant<
+public:
+    typedef std::variant<
           mean_result<double>
         , mean_result<std::complex<double> >
         , var_result<double>
@@ -94,6 +94,7 @@ private:
         , batch_result<std::complex<double> >
         > variant_type;
 
+private:
     variant_type res_;
 };
 

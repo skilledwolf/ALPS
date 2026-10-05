@@ -58,11 +58,11 @@ void ising_sim::measure() {
             correlation /= length;
         ten /= length;
         tmag /= length;
-        *measurements.at("Energy") << alps::alea::make_adapter(ten);
-        *measurements.at("Magnetization") << alps::alea::make_adapter(tmag);
-        *measurements.at("Magnetization^2") << alps::alea::make_adapter(tmag * tmag);
-        *measurements.at("Magnetization^4") << alps::alea::make_adapter(tmag * tmag * tmag * tmag);
-        *measurements.at("Correlations") << alps::alea::make_adapter(corr);
+        *measurement("Energy") << alps::alea::make_adapter(ten);
+        *measurement("Magnetization") << alps::alea::make_adapter(tmag);
+        *measurement("Magnetization^2") << alps::alea::make_adapter(tmag * tmag);
+        *measurement("Magnetization^4") << alps::alea::make_adapter(tmag * tmag * tmag * tmag);
+        *measurement("Correlations") << alps::alea::make_adapter(corr);
     }
 }
 

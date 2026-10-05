@@ -30,6 +30,11 @@ template <int N>
 class ALPS_DECL ndim_spin_sim : public alps::mcbase {
 
     public:
+    using results_type = std::map<std::string,alps::alea::batch_result<double>>;
+    results_type collect_results(result_names_type const& names={}) const {
+        return collect_results_as<alps::alea::batch_result<double>>(names);
+    }
+
         typedef tinyvector<double, N, INTRIN_OPT> spintype;
         ndim_spin_sim(parameters_type const & parms, std::size_t seed_offset = 0);
 
@@ -96,7 +101,7 @@ ndim_spin_sim<N>::ndim_spin_sim(parameters_type const & parms, std::size_t seed_
         }
         distances.push_back(std::sqrt(d));
     }
-    *measurements.at("Distances") << alps::alea::make_adapter(distances);
+    *measurement("Distances") << alps::alea::make_adapter(distances);
 }
 
 template<int N>
@@ -148,11 +153,11 @@ void ndim_spin_sim<N>::measure() {
         double magnetization2 = dot(magnetization, magnetization);
 
         // store the measurements
-        *measurements.at("Energy") << alps::alea::make_adapter(energy);
-        *measurements.at("Magnetization") << alps::alea::make_adapter(spintype::vector(magnetization));
-        *measurements.at("Magnetization^2") << alps::alea::make_adapter(magnetization2);
-        *measurements.at("Magnetization^4") << alps::alea::make_adapter(magnetization2 * magnetization2);
-        *measurements.at("Correlations") << alps::alea::make_adapter(correlations);
+        *measurement("Energy") << alps::alea::make_adapter(energy);
+        *measurement("Magnetization") << alps::alea::make_adapter(spintype::vector(magnetization));
+        *measurement("Magnetization^2") << alps::alea::make_adapter(magnetization2);
+        *measurement("Magnetization^4") << alps::alea::make_adapter(magnetization2 * magnetization2);
+        *measurement("Correlations") << alps::alea::make_adapter(correlations);
     }
 }
 

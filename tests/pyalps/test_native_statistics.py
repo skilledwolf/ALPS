@@ -136,3 +136,57 @@ def test_complex_real_components_retain_nonlinear_and_elliptic_evidence():
     circular << 1j
     with pytest.raises(ValueError, match="elliptic"):
         circular.result().real_components()
+
+
+def test_mcbase_preserves_heterogeneous_native_estimators(tmp_path):
+    from pyalps import ngs
+
+    class Simulation(ngs.mcbase):
+        def __init__(self):
+            super().__init__({"SEED": 123}, 0)
+
+        def update(self):
+            pass
+
+        def measure(self):
+            pass
+
+        def fraction_completed(self):
+            return 0.
+
+    uninterrupted = Simulation()
+    for family in FAMILIES:
+        uninterrupted.measurements[family] = getattr(alea, family + "Accumulator")(2)
+    samples = np.column_stack((np.arange(47) % 11 - 5., np.arange(47) % 7 - 3.))
+
+    def sample(sim, values):
+        for x in values:
+            for name in sim.measurements:
+                sim.measurements[name] << (x + 1j * x[::-1] if name.startswith(("Complex", "Elliptic")) else x)
+
+    sample(uninterrupted, samples[:19])
+    filename = str(tmp_path / "mixed.h5")
+    with hdf5.archive(filename, "w") as ar:
+        uninterrupted.save(ar)
+    resumed = Simulation()
+    with hdf5.archive(filename, "r") as ar:
+        resumed.load(ar)
+    sample(uninterrupted, samples[19:])
+    sample(resumed, samples[19:])
+    expected, actual = uninterrupted.collectResults(), resumed.collectResults()
+    assert expected.keys() == actual.keys()
+    for name in FAMILIES:
+        assert type(actual[name]) is getattr(alea, name + "Result")
+        for field in ("mean", "error", "covariance", "variance", "batch_sums", "batch_counts"):
+            if hasattr(expected[name], field):
+                np.testing.assert_array_equal(getattr(expected[name], field), getattr(actual[name], field))
+    # Type mismatches reject before replacing any registered state.
+    resumed.measurements["Mean"] = alea.CovarianceAccumulator(2)
+    retained = resumed.measurements["Mean"]
+    with hdf5.archive(filename, "r") as ar:
+        with pytest.raises(Exception):
+            resumed.load(ar)
+    assert resumed.measurements["Mean"] is retained
+    assert resumed.collectResults()["Batch"].count == 47
+    with hdf5.archive(str(tmp_path / "results.h5"), "w") as ar:
+        ngs.saveResults(expected, uninterrupted.parameters, ar, "/simulation/results")

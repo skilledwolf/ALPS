@@ -71,13 +71,19 @@ A single elliptic variance component also supports this conversion;
 `y` remains the convenient plotting projection. Elliptic plotting errors use the
 circular magnitude while native results retain the exact 2x2 uncertainty blocks.
 
-The NGS `mcbase` framework stores a map of shared real batch accumulators with
-explicit component dimensions. Python assigns `BatchAccumulator` handles directly
-to `sim.measurements[name]`; a retrieved handle remains valid after replacement
-or erasure. Collected results are owning maps/dictionaries of native batch results.
-Base checkpoint loading stages parameters, measurements and RNG and validates
-all already registered names and dimensions before replacement. Subclasses
-override archive-reference hooks for their application state.
+The NGS `mcbase` framework stores shared native accumulator handles in a standard
+variant, allowing each measurement to choose any estimator family or supported
+complex strategy. Python assigns accumulator objects directly to
+`sim.measurements[name]`; a retrieved handle stays valid after replacement or
+erasure. Collected dictionaries contain the concrete native result types. C++
+can access `measurement<Accumulator>(name)` (real batches by default), inspect the
+standard result variant, or request a homogeneous collection with
+`collect_results_as<Result>()`. Spin engines explicitly select batch evidence
+for their joint jackknife analysis. Base checkpoint loading stages parameters,
+measurements and RNG and validates every registered name, type and dimension
+before replacement. The existing native kind, datatype and shape identify the
+stored estimator; there is no second type-tag protocol. Subclasses override
+archive-reference hooks for their application state.
 
 
 Variance and covariance accumulate centered weighted moments using Chan/Welford
@@ -101,7 +107,7 @@ link `MPI::MPI_CXX` alongside `ALPS::statistics`. The statistics library itself
 remains MPI-free. Construction and reductions are collective and must occur in
 the same order on every rank. Only the chosen root retains the combined result.
 Sample counts use unsigned 64-bit MPI arithmetic.
-`mcmpiadapter` checks matching result requests before reducing every entry,
+`mcmpiadapter` checks matching result requests and estimator types before reducing every entry,
 including empty local accumulators. Only the root receives collected results.
 Local sampling and callback failures reach every rank at scheduled checks.
 Custom reducers must implement `reduce(view<uint64_t>)`; rebuild downstream

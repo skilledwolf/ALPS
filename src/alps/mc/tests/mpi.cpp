@@ -34,7 +34,7 @@ public:
     }
     void measure() override {
         if (fail_measure) throw std::runtime_error("rank measurement failure");
-        *measurements.at("value") << alps::alea::make_adapter(double(steps));
+        *measurement("value") << alps::alea::make_adapter(double(steps));
     }
     double fraction_completed() const override { return completed ? 1. : steps/10.; }
     int steps = 0;
@@ -42,25 +42,52 @@ public:
 };
 using mpi_simulation = alps::mcmpiadapter<simulation, every_step>;
 
+void mixed_estimators(boost::mpi::communicator const& comm) {
+    mpi_simulation sim({},comm);
+    auto variance=std::make_shared<alps::alea::var_acc<double>>();
+    auto covariance=std::make_shared<alps::alea::cov_acc<std::complex<double>,alps::alea::elliptic_var>>();
+    auto autocorr=std::make_shared<alps::alea::autocorr_acc<double>>();
+    sim.get_measurements()["variance"]=variance;
+    sim.get_measurements()["covariance"]=covariance;
+    sim.get_measurements()["autocorrelation"]=autocorr;
+    for (int i=0;i<8;++i) {
+        double x=i+10*comm.rank();
+        *variance << x; *covariance << std::complex<double>(x,2*x); *autocorr << x;
+    }
+    auto results=sim.collect_results();
+    bool correct=true;
+    if (!comm.rank()) {
+        auto const& v=std::get<alps::alea::var_result<double>>(results.at("variance"));
+        auto const& c=std::get<alps::alea::cov_result<std::complex<double>,alps::alea::elliptic_var>>(results.at("covariance"));
+        auto const& a=std::get<alps::alea::autocorr_result<double>>(results.at("autocorrelation"));
+        correct=v.count()==16 && c.count()==16 && a.count()==16
+            && v.mean()(0)==8.5 && c.mean()(0)==std::complex<double>(8.5,17.)
+            && a.mean()(0)==8.5 && std::abs(c.cov()(0,0).reim()-2*v.var()(0))<1e-12;
+    }
+    require(correct,"heterogeneous MPI collection lost estimator evidence");
+    if (comm.rank()) sim.get_measurements()["variance"]=std::make_shared<alps::alea::batch_acc<double>>();
+    rejects([&] { sim.collect_results(); });
+}
 void contract(boost::mpi::communicator const& comm) {
+    mixed_estimators(comm);
     auto const rank = comm.rank();
     for (int active : {0, 1}) {
         mpi_simulation sim({}, comm);
         if (rank == active)
             for (int i=1; i<=7; ++i)
-                *sim.get_measurements().at("value") << alps::alea::make_adapter(double(i));
-        auto const raw = sim.get_measurements().at("value")->result();
+                *sim.measurement("value") << alps::alea::make_adapter(double(i));
+        auto const raw = sim.measurement("value")->result();
         auto result = sim.collect_results();
-        require(sim.get_measurements().at("value")->result() == raw,
+        require(sim.measurement("value")->result() == raw,
                 "collective result collection changed the live accumulator");
         require(rank ? result.empty() : result.size() == 2, "results survived on wrong MPI rank");
-        require(rank || (result.at("value").count() == 7 && result.at("value").count2() == 13.
-            && result.at("value").mean()(0) == 4. && result.at("empty").count() == 0),
+        require(rank || (std::get<alps::alea::batch_result<double>>(result.at("value")).count() == 7 && std::get<alps::alea::batch_result<double>>(result.at("value")).count2() == 13.
+            && std::get<alps::alea::batch_result<double>>(result.at("value")).mean()(0) == 4. && std::get<alps::alea::batch_result<double>>(result.at("empty")).count() == 0),
             "empty rank changed counts, partial-bin weights or means");
     }
     mpi_simulation sim({}, comm);
     for (int i=1; i<=(rank ? 5 : 7); ++i)
-        *sim.get_measurements().at("value") << alps::alea::make_adapter(double(i+100*rank));
+        *sim.measurement("value") << alps::alea::make_adapter(double(i+100*rank));
     auto result = sim.collect_results({"value"});
     bool correct = true;
     if (!rank) {
@@ -71,7 +98,7 @@ void contract(boost::mpi::communicator const& comm) {
         for (int i=0; i<7; ++i) variance += counts[i]*std::pow(sums[i]/counts[i]-mean, 2);
         variance /= 12.-22./12.;
         auto const error = std::sqrt(variance*22./144.);
-        auto const& pooled = result.at("value");
+        auto const& pooled = std::get<alps::alea::batch_result<double>>(result.at("value"));
         correct = pooled.count() == 12 && pooled.count2() == 22.
             && pooled.mean()(0) == mean && std::abs(pooled.stderror()(0)-error) < 1e-12;
     }
@@ -84,7 +111,7 @@ void contract(boost::mpi::communicator const& comm) {
     rejects([&] { sim.collect_results({"value"}); });
     sim.get_measurements()["value"] = std::make_shared<alps::alea::batch_acc<double>>(rank ? 2 : 1, 4);
     rejects([&] { sim.collect_results({"value"}); });
-    if (rank) sim.get_measurements()["value"].reset();
+    if (rank) sim.measurement("value").reset();
     rejects([&] { sim.collect_results({"value"}); });
 
     for (bool measurement : {false, true}) {

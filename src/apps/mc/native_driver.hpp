@@ -23,7 +23,8 @@
 // Private application orchestration: retain independent, weighted batches
 // before any nonlinear estimator joins the aligned physical moments.
 namespace native_mc {
-inline alps::mcbase::results_type pool(std::vector<alps::mcbase::results_type> const& chains) {
+using batch_results = std::map<std::string,alps::alea::batch_result<double>>;
+inline batch_results pool(std::vector<batch_results> const& chains) {
     if (chains.empty()) return {};
     std::size_t slots = 0;
     uint64_t samples = 0;
@@ -46,7 +47,7 @@ inline alps::mcbase::results_type pool(std::vector<alps::mcbase::results_type> c
                     throw std::invalid_argument("Empty chain batch contains observations");
         }
     }
-    alps::mcbase::results_type merged;
+    batch_results merged;
     for (auto const& [name, first] : chains.front()) {
         if (slots > std::size_t(std::numeric_limits<Eigen::Index>::max()) / first.size())
             throw std::overflow_error("Pooled chain components overflow");
@@ -196,7 +197,7 @@ void execute(alps::run_configuration const& run, chains_type<Simulation>& chains
         }
     }
     checkpoint(run, chains);
-    std::vector<alps::mcbase::results_type> raw;
+    std::vector<batch_results> raw;
     for (auto const& chain : chains) raw.push_back(chain->collect_results());
     const auto results = derive(pool(raw), parameters(run, prepare));
     alps::hdf5::save_checkpoint(run.output["results"].as<std::string>(), [&](alps::hdf5::archive& archive) {

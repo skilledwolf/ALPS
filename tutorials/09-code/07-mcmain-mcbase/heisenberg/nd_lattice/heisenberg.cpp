@@ -67,10 +67,10 @@ void heisenberg_sim::measure() {
         }
         ten /= lattice.num_sites();
         tmag /= lattice.num_sites();
-        *measurements.at("Energy") << alps::alea::make_adapter(ten);
-        *measurements.at("Magnetization") << alps::alea::make_adapter(vector_from_spintype(tmag));
-        *measurements.at("Magnetization^2") << alps::alea::make_adapter(dot(tmag, tmag));
-        *measurements.at("Magnetization^4") << alps::alea::make_adapter(dot(tmag, tmag) * dot(tmag, tmag));
+        *measurement("Energy") << alps::alea::make_adapter(ten);
+        *measurement("Magnetization") << alps::alea::make_adapter(vector_from_spintype(tmag));
+        *measurement("Magnetization^2") << alps::alea::make_adapter(dot(tmag, tmag));
+        *measurement("Magnetization^4") << alps::alea::make_adapter(dot(tmag, tmag) * dot(tmag, tmag));
     }
 }
 

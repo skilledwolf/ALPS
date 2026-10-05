@@ -27,6 +27,10 @@ class simulation : public alps::mcbase, private alps::graph_helper<> {
     using spin = std::array<double, 3>;
     static constexpr double pi = 3.14159265358979323846;
 public:
+    using results_type = std::map<std::string,alps::alea::batch_result<double>>;
+    results_type collect_results(result_names_type const& names={}) const {
+        return collect_results_as<alps::alea::batch_result<double>>(names);
+    }
     simulation(alps::params const& p, std::size_t bins = 128, std::size_t chain = 0)
         : mcbase(p, chain), graph_helper<>(graph_parameters(p)), bins_(bins), chain_(chain),
           model_(p["ALGORITHM"].as<std::string>()),
@@ -116,7 +120,7 @@ public:
 
     double fraction_completed() const override { return double(measurement_count()) / production_; }
     uint64_t completed_sweeps() const { return sweeps_; }
-    uint64_t measurement_count() const { return measurements.at("Energy")->count(); }
+    uint64_t measurement_count() const { return measurement("Energy")->count(); }
     std::size_t chain_id() const { return chain_; }
 
     void save(alps::hdf5::archive& ar) const override {
@@ -278,7 +282,7 @@ private:
         measurements.emplace(name, std::make_shared<alps::alea::batch_acc<double>>(1, bins_));
     }
     void record(std::string const& name, double value) {
-        *measurements.at(name) << alps::alea::make_adapter(value);
+        *measurement(name) << alps::alea::make_adapter(value);
     }
     std::vector<std::array<uint64_t, 3>> topology() const {
         std::vector<std::array<uint64_t, 3>> result;

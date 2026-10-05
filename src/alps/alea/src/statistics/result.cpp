@@ -9,39 +9,6 @@
 
 namespace alps { namespace alea {
 
-struct valid_visitor
-{
-    typedef bool result_type;           // required by boost::apply_visitor
-
-    template <typename Res>
-    bool operator() (const Res &r) const { return r.valid(); }
-};
-
-struct size_visitor
-{
-    typedef size_t result_type;
-
-    template <typename Res>
-    size_t operator() (const Res &r) const { return r.size(); }
-};
-
-struct count_visitor
-{
-    typedef uint64_t result_type;
-
-    template <typename Res>
-    uint64_t operator() (const Res &r) const { return r.count(); }
-};
-
-struct count2_visitor
-{
-    typedef double result_type;
-    template <typename T>
-    double operator() (const mean_result<T> &) const { throw estimate_unavailable(); }
-    template <typename Res>
-    double operator() (const Res &r) const { return r.count2(); }
-};
-
 template <typename T>
 struct stderror_visitor
 {
@@ -122,51 +89,35 @@ struct cov_visitor
     result_type operator() (const Res &) const { throw estimate_type_mismatch(); }
 };
 
-struct serialize_visitor
-{
-    typedef bool result_type;
-
-    serialize_visitor(serializer &s, const std::string &key) : s_(s), key_(key) { }
-
-    // default case
-    template <typename Res>
-    bool operator() (const Res &res) const
-    {
-        serialize(s_, key_, res);
-        return false;     // the visitor mechanism does not allow void returns
-    }
-
-private:
-    serializer &s_;
-    const std::string &key_;
-};
-
 bool result::valid() const
 {
-    return boost::apply_visitor(valid_visitor(), res_);
+    return std::visit([](auto const& r) { return r.valid(); }, res_);
 }
 
 size_t result::size() const
 {
-    return boost::apply_visitor(size_visitor(), res_);
+    return std::visit([](auto const& r) { return r.size(); }, res_);
 }
 
 uint64_t result::count() const
 {
-    return boost::apply_visitor(count_visitor(), res_);
+    return std::visit([](auto const& r) { return r.count(); }, res_);
 }
 
 double result::count2() const
 {
     if (!valid()) throw finalized_accumulator();
-    return boost::apply_visitor(count2_visitor(), res_);
+    return std::visit([](auto const& r) -> double {
+        if constexpr (traits<std::decay_t<decltype(r)>>::HAVE_VAR) return r.count2();
+        else throw estimate_unavailable();
+    }, res_);
 }
 
 template <typename T>
 column<typename bind<circular_var,T>::var_type> result::stderror() const
 {
     if (!valid()) throw finalized_accumulator();
-    return boost::apply_visitor(stderror_visitor<T>(), res_);
+    return std::visit(stderror_visitor<T>(), res_);
 }
 
 template column<double> result::stderror<double>() const;
@@ -175,7 +126,7 @@ template column<double> result::stderror<std::complex<double>>() const;
 template <typename T>
 column<T> result::mean() const
 {
-    return boost::apply_visitor(mean_visitor<T>(), res_);
+    return std::visit(mean_visitor<T>(), res_);
 }
 
 template column<double> result::mean<double>() const;
@@ -184,7 +135,7 @@ template column<std::complex<double> > result::mean<std::complex<double> >() con
 template <typename T, typename Str>
 column<typename bind<Str,T>::var_type> result::var() const
 {
-    return boost::apply_visitor(var_visitor<T,Str>(), res_);
+    return std::visit(var_visitor<T,Str>(), res_);
 }
 
 template column<double> result::var<double, circular_var>() const;
@@ -194,7 +145,7 @@ template column<complex_op<double> > result::var<std::complex<double>, elliptic_
 template <typename T, typename Str>
 typename eigen<typename bind<Str,T>::cov_type>::matrix result::cov() const
 {
-    return boost::apply_visitor(cov_visitor<T,Str>(), res_);
+    return std::visit(cov_visitor<T,Str>(), res_);
 }
 
 template eigen<double>::matrix result::cov<double, circular_var>() const;
@@ -203,7 +154,7 @@ template eigen<complex_op<double> >::matrix result::cov<std::complex<double>, el
 
 void serialize(serializer &s, const std::string &key, const result &result)
 {
-    boost::apply_visitor(serialize_visitor(s, key), result.res_);
+    std::visit([&](auto const& r) { serialize(s,key,r); }, result.res_);
 }
 
 }}

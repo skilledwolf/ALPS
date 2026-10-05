@@ -28,6 +28,11 @@
 class ising_sim : public alps::mcbase {
 
     public:
+    using results_type = std::map<std::string,alps::alea::batch_result<double>>;
+    results_type collect_results(result_names_type const& names={}) const {
+        return collect_results_as<alps::alea::batch_result<double>>(names);
+    }
+
         
         ising_sim(parameters_type const & parms, std::size_t seed_offset = 0);
 
