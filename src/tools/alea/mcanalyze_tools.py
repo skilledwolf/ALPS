@@ -1,66 +1,42 @@
-#/*****************************************************************************
-#*
-#* ALPS Project: Algorithms and Libraries for Physics Simulations
-#*
-#* Copyright (C) 2011-2012 by Lukas Gamper <gamperl@gmail.com>,
-#*                            Matthias Troyer <troyer@itp.phys.ethz.ch>,
-#*                            Maximilian Poprawe <poprawem@ethz.ch>
-#*
-#* ALPS Project: https://alps.comp-phys.org/
-#* SPDX-License-Identifier: MIT
-#*
-#*****************************************************************************/
+# Copyright (C) 2011-2012 Lukas Gamper, Matthias Troyer, Maximilian Poprawe;
+# 2026 ALPS Collaboration. SPDX-License-Identifier: MIT
+"""Shared command-line reader for native ALEA analysis results."""
+from argparse import ArgumentParser
+from pathlib import Path
 
-
-from optparse import OptionParser
-from sys import exit
-import pyalps
-import pyalps.hdf5 as h5
 import pyalps.alea as alea
+import pyalps.hdf5 as h5
+from pyalps import hdf5_name_decode, hdf5_name_encode
 
 
 def impl_calculation(name, save_path, calculate):
-
-  usage = "Usage: %prog [options] FILE [FILE [...]]"
-  parser = OptionParser(usage=usage)
-
-  parser.add_option("-v", "--verbose", action="store_true", dest="verbose", help="print detailed information")
-  parser.add_option("-w", "--write", action="store_true", dest="write", help="write the result(s) back into the file(s)")
-  parser.add_option("-n", "--name", action="append", metavar="VAR", dest="variables", help="variable name, can be specified multiple times [default: all variables]")
-  parser.add_option("-p", "--path", action="store", metavar="HDF5-PATH", dest="path", help="hdf5-path where the data is stored [default: \"/simulation/results\"]")
-  parser.set_defaults(verbose = False, write = False, variables = [], path="/simulation/results")
-
-  (options, args) = parser.parse_args()
-
-  if len(args) == 0:
-    parser.print_help()
-    exit()
-
-  variables = options.variables
-
-  for filestring in args:
-    ar = h5.archive(filestring, "a")
-    if len(options.variables) == 0:
-      variables = ar.list_children(options.path)
-      if options.verbose:
-        print("Variables in file " + filestring + ":  " + " ".join(variables))
-
-    for variablestring in variables:
-      if ar.dimensions(options.path + "/" + pyalps.hdf5_name_encode(variablestring) + "/timeseries/data") == 1:
-        obs = alea.MCScalarData()
-        #_save = mcanalyze.write_dim_0
-        #vector_save = mcanalyze.write_dim_1
-      else:
-        obs = alea.MCVectorData()
-        #scalar_save = mcanalyze.write_dim_1
-        #vector_save = mcanalyze.write_dim_2
-      obs.load(filestring, options.path +"/" + pyalps.hdf5_name_encode(variablestring))
-      result = calculate(obs)
-      if options.verbose:
-        print("The " + name + " of variable " + variablestring + " in file " + filestring + " is: " + str(result))
-      if options.write:
-        ar.write(options.path + "/" + pyalps.hdf5_name_encode(variablestring) + "/" + save_path, result)
-  print("Done")
-
-
-
+    parser = ArgumentParser(description=f"Report native ALEA {name.lower()} estimates.")
+    parser.add_argument("-v", "--verbose", action="store_true")
+    parser.add_argument("-w", "--write", action="store_true", help="write estimates back to the archive")
+    parser.add_argument("-n", "--name", action="append", dest="variables", metavar="VAR")
+    parser.add_argument("-p", "--path", default="/simulation/results", metavar="HDF5-PATH")
+    parser.add_argument("files", nargs="*")
+    options = parser.parse_args()
+    if not options.files:
+        parser.print_help()
+        return
+    try:
+        for filename in options.files:
+            if not Path(filename).is_file():
+                raise FileNotFoundError(filename)
+            with h5.archive(filename, "a" if options.write else "r") as archive:
+                variables = options.variables or [hdf5_name_decode(key) for key in archive.list_children(options.path)]
+                estimates = []
+                for variable in variables:
+                    path = options.path.rstrip('/') + '/' + hdf5_name_encode(variable)
+                    result = alea.read_result(archive, path)
+                    estimates.append((variable, path, calculate(result)))
+                # Validate all selected estimates before modifying this archive.
+                for variable, path, estimate in estimates:
+                    if options.verbose:
+                        print(f"The {name} of variable {variable} in file {filename} is: {estimate}")
+                    if options.write:
+                        archive[path + '/' + save_path] = estimate
+    except (ValueError, RuntimeError, LookupError, OSError, h5.ArchiveError) as error:
+        parser.exit(1, f"{parser.prog}: {error}\n")
+    print("Done")

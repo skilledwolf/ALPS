@@ -381,11 +381,9 @@ class Hdf5Loader:
                         d = DataSet()
                         path=base+'/'+m
                         if self.h5f.is_attribute(path+'/@kind') and self.h5f[path+'/@kind']==4:
-                            mean=self.h5f[path+'/mean/value']
-                            result_type=pa.ComplexAutocorrelationResult if np.iscomplexobj(mean) else pa.AutocorrelationResult
-                            result=result_type.read(self.h5f,path)
+                            result=pa.read_result(self.h5f,path)
                             d.x=np.arange(result.levels)
-                            d.y=np.array([result.level(i).error for i in d.x]).squeeze(axis=1) if len(mean)==1 else np.array([result.level(i).error for i in d.x])
+                            d.y=np.array([result.level(i).error for i in d.x]).squeeze(axis=1) if result.size==1 else np.array([result.level(i).error for i in d.x])
                             d.native_result=result
                             d.props.update(params)
                             d.props.update(hdf5_path=path,observable='binning analysis of '+pt.hdf5_name_decode(m))
@@ -456,21 +454,7 @@ class Hdf5Loader:
                         x = np.arange(xmin,xmin+xstep*size,xstep)
                     elif self.h5f.is_attribute(respath+'/'+m+'/@kind'):
                         kind = self.h5f[respath+'/'+m+'/@kind']
-                        types = {1: (pa.MeanResult, pa.ComplexMeanResult),
-                                 2: (pa.VarianceResult, pa.ComplexVarianceResult),
-                                 3: (pa.CovarianceResult, pa.ComplexCovarianceResult),
-                                 4: (pa.AutocorrelationResult, pa.ComplexAutocorrelationResult),
-                                 5: (pa.BatchResult, pa.ComplexBatchResult)}
-                        if kind not in types:
-                            raise ValueError("Expected a native ALEA result")
-                        path = respath+'/'+m
-                        complex_values = self.h5f.is_complex(path+'/mean/value')
-                        result_type = types[kind][complex_values]
-                        if complex_values and kind in (2, 3):
-                            moment_path = path + ('/var' if kind == 2 else '/cov')
-                            if len(self.h5f.extent(moment_path)) == (3 if kind == 2 else 4):
-                                result_type = pa.EllipticVarianceResult if kind == 2 else pa.EllipticCovarianceResult
-                        native_result = result_type.read(self.h5f, path)
+                        native_result = pa.read_result(self.h5f, respath+'/'+m)
                         size = len(native_result.mean)
                         if kind == 1:
                             obs = native_result.mean if native_result.count else None

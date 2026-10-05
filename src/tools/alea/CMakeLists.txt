@@ -17,9 +17,8 @@
 #   FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 #   DEALINGS IN THE SOFTWARE.
 
-# These Python analysis programs remain uninstalled. Their functionality is
-# duplicated by the native Python estimators; migrate their legacy archive reader
-# before removing the remaining scripts.
+# These source-tree commands share the native Python ALEA result reader.
+# They require the Python bindings and remain outside the standalone SDK tools.
 alps_register_module(NAME tools_alea
   EXTRA_FILES mean.py variance.py mcanalyze_tools.py
   DEPENDS alea hdf5)

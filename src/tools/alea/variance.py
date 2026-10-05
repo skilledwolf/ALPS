@@ -12,10 +12,12 @@
 #*
 #*****************************************************************************/
 
-from mcanalyze_tools import *
+from mcanalyze_tools import impl_calculation
 
 def calculate (obs):
-  return alea.variance(obs)
+  if not hasattr(obs, "variance"):
+    raise ValueError("This ALEA result stores a mean only; variance cannot be recovered")
+  return obs.variance
 
 impl_calculation("Variance", "variance/value", calculate)
 

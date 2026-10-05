@@ -12,10 +12,10 @@
 #*
 #*****************************************************************************/
 
-from mcanalyze_tools import *
+from mcanalyze_tools import impl_calculation
 
 def calculate (obs):
-  return alea.mean(obs)
+  return obs.mean
 
 impl_calculation("Mean", "mean/value", calculate)
 

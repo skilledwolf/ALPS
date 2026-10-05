@@ -119,3 +119,29 @@ returns: A float or numpyarray (depending on the dimension of the timeseries) wi
     return detail.binning_error(timeseries)
   if selector == "uncorrelated":
     return detail.uncorrelated_error(timeseries)
+
+
+def read_result(archive, path):
+  """Read a typed native ALEA result without discarding batches or covariance.
+
+  ``archive`` is a pyalps.hdf5 archive (or a borrowed native archive). Released
+  legacy encodings must first pass through the offline archive converter.
+  Accumulator checkpoints are deliberately not interpreted as analysis results.
+  """
+  if not archive.is_attribute(path + '/@kind'):
+    raise ValueError(f"{path}: missing native ALEA result metadata; use alps-hdf5-convert first")
+  kind = archive[path + '/@kind']
+  types = {1: (MeanResult, ComplexMeanResult),
+           2: (VarianceResult, ComplexVarianceResult),
+           3: (CovarianceResult, ComplexCovarianceResult),
+           4: (AutocorrelationResult, ComplexAutocorrelationResult),
+           5: (BatchResult, ComplexBatchResult)}
+  if not isinstance(kind, (int, numpy.integer)) or isinstance(kind, (bool, numpy.bool_)) or kind not in types:
+    raise ValueError(f"{path}: expected a native ALEA result, got kind {kind}")
+  complex_values = archive.is_complex(path + '/mean/value')
+  result_type = types[kind][complex_values]
+  if complex_values and kind in (2, 3):
+    moment_path = path + ('/var' if kind == 2 else '/cov')
+    if len(archive.extent(moment_path)) == (3 if kind == 2 else 4):
+      result_type = EllipticVarianceResult if kind == 2 else EllipticCovarianceResult
+  return result_type.read(archive, path)
