@@ -11,63 +11,19 @@
 *
 *****************************************************************************/
 
-#include <alps/alea.h>
-#include <alps/alea/mcanalyze.hpp>
-#include <alps/utility/encode.hpp>
-
-#include <alps/hdf5.hpp>
-
-#include <iostream>
-#include <string>
-
-
-// This is an example of how to estimate the error of the mean of data stored in a hdf5 file
+#include "analysis.hpp"
 
 int main() {
-  // this using-statement makes life easier when entering the named parameters
-  using namespace alps::alea;
- 
-  const std::string filename = "testfile.h5";
-
-  // create mcdata object with the correct template parameter.
-  mcdata<double> obs;
-
-  // load the variable m saved in the file testfile.h5 into the mcdata object.
-  obs.load(filename, "simulation/results/" + alps::hdf5_name_encode("m"));
-
-  // calculate the autocorrelation until it has reached 20% of its start value
-  mctimeseries<double> auto_corr = alps::alea::autocorrelation(obs, _limit = 0.2);
-  
-  // fit the autocorrelation exponentially between the values where it is at 80% and at 20% of the value at t = 1
-  std::pair<double, double> fit = exponential_autocorrelation_time(auto_corr, _max=0.8, _min=0.2);
-
-  // calculate the integrated autocorrelation time by summing up the autocorrelation and integrating the fit for the tail
-  double int_autocorr_time = integrated_autocorrelation_time(cut_tail(auto_corr, _limit=0.2), fit);
-
-
-  // calculate different error estimates:
-    // assuming uncorrelated data:
-    double error_uncorr = error(obs, uncorrelated);
-
-    // accounting for autocorrelation using binning analysis:
-    double error_binning = error(obs, binning);
-
-    // accounting for autocorrelation using the integrated autocorrelation time:
-    double error_corrtime = error_uncorr * std::sqrt(1. + 2. * int_autocorr_time);
-
-
-  // write to std::cout
-  std::cout << "The estimated integrated autocorrelation time is: " << int_autocorr_time << "\n";
-  std::cout << "The different error estimates are:\n";
-  std::cout << "uncorrelated:\t\t" << error_uncorr << "\n";
-  std::cout << "with binning:\t\t" << error_binning << "\n";
-  std::cout << "with correlation time:\t" << error_corrtime << "\n";
-
-
-  // we can also write one of the errors back to the file
-  alps::hdf5::archive ar(filename, "a");
-  ar << alps::make_pvp("simulation/results/" + alps::hdf5_name_encode("m") + "/mean/error", error_corrtime);
-
-  return 0;
+    const auto values = samples("m");
+    const auto result = statistics(values);
+    const auto correlations = correlation(values);
+    const double tau = integrated_time(correlations, exponential_fit(correlations));
+    const double independent = result.level(0).stderror()(0);
+    const double corrected = independent*std::sqrt(1+2*tau);
+    std::cout << "The estimated integrated autocorrelation time is: " << tau << '\n'
+              << "uncorrelated: " << independent << '\n'
+              << "with binning: " << result.stderror()(0) << '\n'
+              << "with correlation time: " << corrected << '\n';
+    alps::hdf5::archive archive("timeseries.h5", "a");
+    archive["/analysis/m/error"] << corrected;
 }
-

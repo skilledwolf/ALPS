@@ -1,4 +1,4 @@
-"""Generate chronological AR(1) observations for the Python analysis examples."""
+"""Generate chronological AR(1) observations for the C++ and Python analysis examples."""
 import numpy as np
 from pyalps import hdf5
 

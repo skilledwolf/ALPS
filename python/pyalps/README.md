@@ -292,11 +292,11 @@ without adding 1/2. With a fit, it adds the continuum tail integral starting at
 ALEA level-selection policy. Inspect `AutocorrelationAccumulator` results for
 level statistics and convergence; a returned error alone is not proof of convergence.
 
-The Python examples in `tutorials/00-examples/alea` use `generate_samples.py`
-to produce `timeseries.h5` with chronological AR(1) observations. The bundled
-legacy `testfile.h5` contains compressed bins, not recoverable raw observations;
-it remains only for the C++ examples awaiting migration. Offline conversion
-preserves stored information but cannot reconstruct observations lost to binning.
+The C++ and Python examples in `tutorials/00-examples/alea` use
+`generate_samples.py` to produce `timeseries.h5` with chronological AR(1)
+observations. The former compressed-bin fixture has been removed. Offline
+conversion preserves stored information but cannot reconstruct observations
+lost to binning.
 
 ## HDF5 IO
 

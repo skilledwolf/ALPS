@@ -67,8 +67,3 @@ install(
   FILES ../cmake/ALPSTesting.cmake ../cmake/run_test.cmake
   DESTINATION ${CMAKE_INSTALL_DATADIR}/alps/cmake
   COMPONENT tutorials EXCLUDE_FROM_ALL)
-# This is a fixed example input, unlike generated tutorial result archives.
-install(
-  FILES 00-examples/alea/testfile.h5
-  DESTINATION ${CMAKE_INSTALL_DATADIR}/alps/tutorials/00-examples/alea
-  COMPONENT tutorials EXCLUDE_FROM_ALL)

@@ -17,15 +17,7 @@
 #   FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 #   DEALINGS IN THE SOFTWARE.
 
-#include_directories(${PROJECT_BINARY_DIR}/src)
-#include_directories(${PROJECT_SOURCE_DIR}/src)
-#include_directories(${Boost_ROOT_DIR})
-
-
-configure_file(testfile.h5 testfile.h5 COPYONLY)
-
 foreach(example mean variance autocorrelation error running_mean)
   add_executable(example_${example} example_${example}.cpp)
-
-  target_link_libraries(example_${example} PRIVATE ALPS::alps)
+  target_link_libraries(example_${example} PRIVATE ALPS::statistics ALPS::hdf5)
 endforeach()
