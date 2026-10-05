@@ -40,6 +40,27 @@ class DataSet(ResultProperties):
         else:           self.y = y
         if props is not None:   self.props = props
     
+    @classmethod
+    def from_result(cls, result, x=None, props=None):
+        """Retain a native ALEA result and derive its plotting values.
+
+        Elliptic complex errors are displayed as circular magnitudes; their
+        complete 2x2 uncertainty remains in native_result. Transform or reindex
+        the native result before constructing a derived statistical dataset.
+        """
+        from .floatwitherror import FloatWithError
+        values = result.mean
+        if hasattr(result, 'error'):
+            error = result.error
+            if error.ndim == 3:
+                variance = result.variance
+                error = np.sqrt((variance[:, 0, 0] + variance[:, 1, 1]) / result.observations)
+            values = np.array([FloatWithError(value, uncertainty)
+                               for value, uncertainty in zip(values, error)], dtype=object)
+        data = cls(np.arange(result.size) if x is None else x, values, props)
+        data.native_result = result
+        return data
+
     def __repr__(self):
         return "x=%s\ny=%s\nprops=%s" % (self.x, self.y, self.props)
         

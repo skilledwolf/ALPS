@@ -12,6 +12,7 @@
 # 
 # ****************************************************************************
 
+import ast
 import urllib, copy, os, traceback
 import numpy as np
 
@@ -20,50 +21,35 @@ import pyalps.alea as pa
 
 from .dataset import ResultFile
 from .dataset import DataSet
-#from floatwitherror import FloatWithError as fwe
 
 import pyalps.pytools as pt # the C++ conversion functions
 
-# or the C++ class as alternative
-from pyalps.alea import MCScalarData as fwe
-from pyalps.alea import MCVectorData as vwe
-from pyalps.floatwitherror import FloatWithError
 
 def log(m):
     print(m)
     
 def parse_label(label):
-    if '--' in label:
-      vals = label.rsplit('--')
-      ret = ()
-      for val in vals:
-          ret = ret + (eval(val),)
-      return ret
-    else:
-      return eval(str(label))
- 
- 
+    text = str(label)
+    try:
+        return ast.literal_eval(text)
+    except (ValueError, SyntaxError):
+        # Released lattice labels encode a site pair as "source--target".
+        return tuple(ast.literal_eval(part) for part in text.split('--'))
+
+
 def parse_labels(labels):
-    if type(labels)==int: 
-      return np.array([labels])
-    larr=[]
-    allsame = True
-    first = None
-    for x in labels:
-      v = parse_label(x)
-      larr.append(v)
-      if '--' in x:      
-        if first is None:
-          first = v[0]
-        else:
-          if first != v[0] or len(v) != 2:
-            allsame = False
-      else:
-        allsame = False
-    if allsame:
-      larr = [x[1] for x in larr]
-    return np.array(larr)
-       
+    if isinstance(labels, (int, np.integer)):
+        return np.array([labels])
+    parsed = [parse_label(label) for label in labels]
+    # Compress legacy site pairs with a common origin to their target sites.
+    # A quoted string containing '--' is an ordinary label, not a site pair.
+    if parsed and all(isinstance(value, tuple) and len(value) == 2 and
+                      '--' in str(label) and value[0] == parsed[0][0]
+                      for label, value in zip(labels, parsed)):
+        parsed = [value[1] for value in parsed]
+    return np.asarray(parsed)
+
+
 class Hdf5Missing(Exception):
     def __init__(self,what):
         self.what = what
@@ -453,21 +439,9 @@ class Hdf5Loader:
                         size = len(obs)
                         x = np.arange(xmin,xmin+xstep*size,xstep)
                     elif self.h5f.is_attribute(respath+'/'+m+'/@kind'):
-                        kind = self.h5f[respath+'/'+m+'/@kind']
                         native_result = pa.read_result(self.h5f, respath+'/'+m)
-                        size = len(native_result.mean)
-                        if kind == 1:
-                            obs = native_result.mean if native_result.count else None
-                        else:
-                            error = native_result.error
-                            # Plotting uses a circular magnitude; the exact 2x2
-                            # uncertainty remains available on native_result.
-                            if error.ndim == 3:
-                                variance = native_result.variance
-                                error = np.sqrt((variance[:, 0, 0] + variance[:, 1, 1]) / native_result.observations)
-                            obs = (np.array([FloatWithError(value, uncertainty)
-                                             for value, uncertainty in zip(native_result.mean, error)], dtype=object)
-                                   if native_result.count else None)
+                        size = native_result.size
+                        obs = DataSet.from_result(native_result).y if native_result.count else None
                     elif "error" in self.h5f.list_children(respath+'/'+m+'/mean'): 
                         if self.h5f.is_scalar(respath+'/'+m+'/mean/value'):
                             obs = pa.MCScalarData()

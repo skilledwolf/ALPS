@@ -196,6 +196,42 @@ averaged/compressed bins as individual chronological observations. Released
 legacy observable files remain inputs to the offline converter; new producers
 write native results and no longer emit legacy statistical schemas.
 
+## Merging and saving measurements
+
+`DataSet.from_result(result, x=None, props=None)` creates plotting values while
+retaining the native ALEA estimate in `native_result`. `loadMeasurements`
+uses the same projection. Complex elliptic uncertainties are shown as circular
+magnitudes; the full covariance remains available on the native result.
+
+`mergeDataSets` pools independent runs of the same estimator family and component
+coordinates, without mutating its input list or results. Use it only for runs
+of the same physical ensemble. `mergeMeasurements` groups by observable name;
+it does not decide whether runs with different parameters may be pooled.
+`mergeMeasurementsFromFiles` now defaults to the native `/simulation/results`
+path; pass `respath` explicitly for another layout.
+Batches retain their sums and counts; summary moments retain their weights and
+covariance. Autocorrelation merging pools the levels available in every nonempty
+run, without treating independent runs as one continuous trajectory.
+
+`saveMeasurements` writes those native results and component labels, encoding
+observable names and preserving unrelated file contents. It does not infer
+parameters from plotting properties; save parameters explicitly. Plot-only
+summaries cannot supply the missing statistical evidence. Legacy files must
+first be converted offline using the appropriate `alps-hdf5-convert` profile.
+
+If you edit `DataSet.y`, merge/save will reject a mismatch with `native_result`.
+For derived quantities, transform the result itself and construct a new dataset:
+
+```python
+import pyalps
+from pyalps.dataset import DataSet
+
+# For a joint BatchResult, propagate correlations through the jackknife.
+ratio = joint_result.transform(lambda x: x[:1] / x[1:2])
+data = DataSet.from_result(ratio, props={"observable": "Ratio"})
+pyalps.saveMeasurements([data], "ratios.h5")
+```
+
 ## Time-series analysis migration
 
 `alea.mean`, `variance`, `error`, `autocorrelation`, the running means, cuts and

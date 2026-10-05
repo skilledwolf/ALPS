@@ -28,7 +28,7 @@ import pyalps.hdf5 as h5
 
 from pyalps.pytools import convert2xml, hdf5_name_encode, hdf5_name_decode, rng
 import pyalps.pytools # the C++ conversion functions
-from .load import loadBinningAnalysis, loadMeasurements,loadEigenstateMeasurements, loadSpectra, loadIterationMeasurements, loadObservableList, loadDMFTIterations, loadProperties, log, Hdf5Loader
+from .load import loadBinningAnalysis, loadMeasurements,loadEigenstateMeasurements, loadSpectra, loadIterationMeasurements, loadObservableList, loadDMFTIterations, loadProperties, log
 from .hlist import deep_flatten, flatten, depth
 from .dict_intersect import dict_intersect
 from .dataset import DataSet
@@ -899,50 +899,64 @@ def values(data, key):
                 vals.append(ds.props[key])
         return np.sort(vals)
 
+def _measurement_result(data):
+    result = getattr(data, 'native_result', None)
+    if result is None:
+        raise ValueError("measurement requires a native ALEA result; convert legacy files with alps-hdf5-convert")
+    def projection(values):
+        return np.asarray([[v.mean, v.error] if isinstance(v, FloatWithError) else [v, 0]
+                           for v in values])
+    expected = DataSet.from_result(result)
+    if (len(data.x) != result.size or
+            not np.array_equal(projection(data.y), projection(expected.y), equal_nan=True)):
+        raise ValueError("plotting values differ from the native result; transform the result and use DataSet.from_result")
+    return result
+
+
 def mergeDataSets(dsets):
-    props = dict_intersect([d.props for d in dsets])
-    merged = copy.deepcopy(dsets.pop())
-    for d in dsets:
-        if (d.x != merged.x).any():   raise ValueError('cannot merge datasets: x values mismatch')
-        if len(d.y) != len(merged.y): raise ValueError('cannot merge datasets: y shape mismatch')
-        if isinstance(merged.y,alea.MCVectorData):
-            merged.y.merge(d.y)
-        else:
-            for i in range(len(merged.y)):
-                merged.y[i].merge(d.y[i])
-    merged.props = props
-    return merged
+    """Pool independent runs using native evidence, without modifying inputs.
+
+    Components must have the same coordinates and estimator family. This is
+    not a join of correlated observables or a concatenation of plotting points.
+    """
+    dsets = list(dsets)
+    if not dsets:
+        raise ValueError("cannot merge an empty dataset collection")
+    results = [_measurement_result(d) for d in dsets]
+    if any(not np.array_equal(d.x, dsets[0].x) for d in dsets[1:]):
+        raise ValueError('cannot merge datasets: x values mismatch')
+    if any(type(result) is not type(results[0]) for result in results[1:]):
+        raise ValueError('cannot merge datasets: estimator families mismatch')
+    return DataSet.from_result(alea.merge(results), copy.deepcopy(dsets[0].x),
+                               dict_intersect([d.props for d in dsets]))
 
 def mergeMeasurements(measurements):
     byname = {}
     for mset in measurements:
         for m in mset:
             key = m.props['observable']
-            if key not in byname:   byname[key] = [m]
-            else:                   byname[key].append(m)
-    merged = [mergeDataSets(v) for v in byname.values()]
-    return merged
+            byname.setdefault(key, []).append(m)
+    return [mergeDataSets(v) for v in byname.values()]
 
-def mergeMeasurementsFromFiles(files,respath='/simulation/realizations/0/clones/0/measurements'):
-    ll = Hdf5Loader()
-    meas = ll.ReadMeasurementFromFile(files,respath=respath)
-    return mergeMeasurements(meas)
+def mergeMeasurementsFromFiles(files,respath='/simulation/results'):
+    return mergeMeasurements(loadMeasurements(files, respath=respath))
 
 def saveMeasurements(measurements,outfile,respath='/simulation/results'):
-    for m in measurements:
-        path = respath+'/'+m.props['observable']
-        if isinstance(m.y,alea.MCVectorData):
-            m.y.save(outfile,path)
-        elif isinstance(m.y,np.ndarray) and isinstance(m.y[0],alea.MCScalarData):
-            m.y[0].save(outfile,path)
-        elif isinstance(m.y,FloatWithError):
-            h5f = h5.archive(outfile, 'a')
-            h5f[path+'/mean/value'] = np.array(m.y.mean)
-            h5f[path+'/mean/error'] = np.array(m.y.error)
-            try:
-                h5f[path+'/jackknife'] = np.array(m.jacks)
-            except AttributeError:
-                pass
+    """Save retained native estimates and component labels, preserving other data.
+
+    Plot-only values cannot reconstruct counts, covariance or batches. Parameters
+    and other metadata should be saved explicitly by the caller.
+    """
+    entries = [(respath+'/'+hdf5_name_encode(m.props['observable']),
+                _measurement_result(m),
+                [repr(label) for label in np.asarray(m.x).tolist()]) for m in measurements]
+    if len({path for path, _, _ in entries}) != len(entries):
+        raise ValueError("cannot save duplicate observable names")
+    with h5.archive(outfile, 'a') as archive:
+        archive.create_group('/parameters')
+        for path, result, labels in entries:
+            result.save(archive, path)
+            archive[path+'/labels'] = np.asarray(labels, dtype=object)
 
 def SetLabels (data, proplist):
     """
