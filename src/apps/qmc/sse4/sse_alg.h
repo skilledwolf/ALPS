@@ -16,7 +16,8 @@
 #include <vector>
 #include <limits>
 
-#include <alps/osiris/dump.h>
+#include <alps/hdf5/archive.hpp>
+#include <alps/hdf5/stdarray.hpp>
 
 #include "lattice.h"
 #include "model.h"
@@ -58,9 +59,12 @@ public:
         nops = params.value_or_default("INITIAL_CUTOFF", 10);
         abort_factor = params.value_or_default("WORM_ABORT", 0.0);
         
-        if (abort_factor != 0.0)
-            worker.measure_green_function(false);
+        if (abort_factor != 0.0 && worker.measure_green_function())
+            throw std::invalid_argument("Green function measurement requires WORM_ABORT=0");
             
+        if (worker.measure_green_function() &&
+            (params.defined("RESTRICT_MEASUREMENTS[N]") || params.defined("RESTRICT_MEASUREMENTS[Sz]")))
+            throw std::invalid_argument("Green function measurement with restricted sampling is not implemented");
         measure_green_function = false;
         
         nnonzero = 0;
@@ -111,19 +115,87 @@ public:
         count_therm = 0;
     }
     
-    void save(alps::ODump& dump) const
-    {
-        dump << nworms << state << opstring << nops << nnonzero
-                 << nworms_therm << count_therm;
+    struct checkpoint_state {
+        unsigned worms, nonzero;
+        uint64_t worms_thermal, thermal_count;
+        std::vector<state_type> spins;
+        std::vector<Operator> operators;
+        std::vector<double> green;
+    };
+    std::vector<double> hamiltonian_state() const {
+        std::vector<double> values{cc};
+        for (auto const& unit:lat_units) {
+            values.push_back(unit.type);
+            for (auto site:unit.sites) values.push_back(site);
+        }
+        for (unsigned i=0;i<model.nvertices();++i) {
+            auto const& v=model.vertex(i);
+            values.push_back(v.me); values.push_back(v.unit_type);
+            for (auto state:v.state) values.push_back(state);
+        }
+        return values;
     }
-    
-    void load(alps::IDump& dump)
-    {
-        dump >> nworms >> state >> opstring >> nops >> nnonzero
-                >> nworms_therm >> count_therm;
-        op_indices.resize(nops);
+    void save(alps::hdf5::archive& ar) const {
+        ar["checkpoint/hamiltonian"] << hamiltonian_state();
+        ar["checkpoint/worms"] << nworms;
+        ar["checkpoint/nonzero"] << nnonzero;
+        ar["checkpoint/worms_thermal"] << nworms_therm;
+        ar["checkpoint/thermal_count"] << count_therm;
+        ar["checkpoint/spins"] << state;
+        std::vector<std::array<unsigned,2>> ops;
+        for (auto const& op:opstring) ops.push_back({op.vertex_index,op.vertex_index==IDENTITY ? 0 : op.unit_ref});
+        ar["checkpoint/operators"] << ops;
+        ar["checkpoint/green"] << std::vector<double>(std::begin(green),std::end(green));
     }
-    
+    checkpoint_state read_checkpoint(alps::hdf5::archive& ar) const {
+        checkpoint_state saved;
+        std::vector<double> hamiltonian;
+        ar["checkpoint/hamiltonian"] >> hamiltonian;
+        if (hamiltonian!=hamiltonian_state()) throw std::invalid_argument("Directed-loop checkpoint Hamiltonian changed");
+        ar["checkpoint/worms"] >> saved.worms;
+        ar["checkpoint/nonzero"] >> saved.nonzero;
+        ar["checkpoint/worms_thermal"] >> saved.worms_thermal;
+        ar["checkpoint/thermal_count"] >> saved.thermal_count;
+        ar["checkpoint/spins"] >> saved.spins;
+        ar["checkpoint/green"] >> saved.green;
+        std::vector<std::array<unsigned,2>> ops;
+        ar["checkpoint/operators"] >> ops;
+        if (saved.spins.size()!=nsites || ops.empty() || ops.size()>UINT_MAX ||
+            saved.green.size()!=green.size() ||
+            !std::all_of(saved.green.begin(),saved.green.end(),[](double v){return std::isfinite(v);}))
+            throw std::invalid_argument("Invalid directed-loop checkpoint shape");
+        for (size_t i=0;i<nsites;++i)
+            if (saved.spins[i]>=nbstates[lattice.sitei2alps_type(i)])
+                throw std::invalid_argument("Invalid directed-loop local state");
+        auto propagated=saved.spins;
+        unsigned count=0;
+        for (auto const& op:ops) {
+            saved.operators.push_back(Operator{op[0],op[1],{}});
+            if (op[0]==IDENTITY) continue;
+            if (op[0]>=model.nvertices() || op[1]>=lat_units.size())
+                throw std::invalid_argument("Invalid directed-loop operator");
+            auto const& vertex=model.vertex(op[0]);
+            auto const& unit=lat_units[op[1]];
+            if (vertex.unit_type!=unit.type) throw std::invalid_argument("Directed-loop vertex type mismatch");
+            for (unsigned i=0;i<UNIT_SIZE;++i) {
+                if (propagated[unit.sites[i]]!=vertex.state[i])
+                    throw std::invalid_argument("Nonperiodic directed-loop operator string");
+                propagated[unit.sites[i]]=vertex.state[UNIT_SIZE+i];
+            }
+            ++count;
+        }
+        if (count!=saved.nonzero || propagated!=saved.spins)
+            throw std::invalid_argument("Invalid directed-loop expansion order or periodicity");
+        return saved;
+    }
+    void restore(checkpoint_state saved) {
+        nworms=saved.worms; nnonzero=saved.nonzero;
+        nworms_therm=saved.worms_thermal; count_therm=saved.thermal_count;
+        state=std::move(saved.spins); opstring=std::move(saved.operators);
+        nops=opstring.size(); op_indices.resize(nops);
+        for (size_t i=0;i<green.size();++i) green[i]=saved.green[i];
+    }
+
     void do_step()
     {
         diagonal_update();
@@ -155,6 +227,13 @@ public:
             }
         } else {
             measure_green_function = worker.measure_green_function();
+            // The open worm samples off-diagonal matrix elements. Its sign can
+            // differ from the closed configuration even in sign-free models.
+            green_sign = 1;
+            if (measure_green_function)
+                for (auto const& op : opstring)
+                    if (op.vertex_index != IDENTITY)
+                        green_sign *= vertex_sign(op.vertex_index);
                     
             if (nworms == 0) {
                 if (count_therm > 0)
@@ -217,6 +296,11 @@ private:
     double abort_factor;
     
     bool measure_green_function;
+    int green_sign = 1;
+    int vertex_sign(unsigned index) const {
+        auto const& vertex = model.vertex(index);
+        return !vertex.diagonal && vertex.me > 0.0 ? -1 : 1;
+    }
     std::valarray<double>& green;
     
     void diagonal_update()
@@ -391,6 +475,8 @@ private:
             }
 
             head_op = wp->ex_op;
+            if (measure_green_function)
+                green_sign *= vertex_sign(vertex_index) * vertex_sign(wp->vertex_index);
             vertex_index = wp->vertex_index;
 
             if (cur_vertex == start_vertex && wp->ex_leg == start_leg)
@@ -462,7 +548,7 @@ private:
         double mer = model.raising_matrix_elements()[stype][state];
         double mel = model.lowering_matrix_elements()[stype][state];
 
-        double me = 0.5 * (mer * mer + mel * mel);
+        double me = green_sign * 0.5 * (mer * mer + mel * mel);
 
         if (!worker.do_measurement_origin())
             green[lattice.distance(start_site, start_site)] += me;
@@ -484,9 +570,9 @@ private:
         worm_weight *= worm_weight;
 
         if (!worker.do_measurement_origin())
-            green[lattice.distance(start_site, start_site)] += worm_weight;
+            green[lattice.distance(start_site, start_site)] += green_sign * worm_weight;
         else if (start_site == worker.measurement_origin())
-            green[start_site] += worm_weight;
+            green[start_site] += green_sign * worm_weight;
             
         return worm_weight;
     }
@@ -516,9 +602,9 @@ private:
         
         if (crossed) {
             if (!worker.do_measurement_origin())
-                green[lattice.distance(start_site, site)] += worm_weight;
+                green[lattice.distance(start_site, site)] += green_sign * worm_weight;
             else if (start_site == worker.measurement_origin())
-                green[site] += worm_weight;
+                green[site] += green_sign * worm_weight;
         }
     }
         

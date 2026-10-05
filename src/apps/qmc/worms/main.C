@@ -1,36 +1,7 @@
-/*****************************************************************************
-*
-* ALPS Project Applications
-*
-* Copyright (C) 2002-2004 by Matthias Troyer <troyer@comp-phys.org>,
-*                            Simon Trebst <trebst@comp-phys.org>
-*
-* ALPS Project: https://alps.comp-phys.org/
-* SPDX-License-Identifier: MIT
-*
-*****************************************************************************/
-
-/* $Id$ */
-
+// Copyright (C) 2026 ALPS Collaboration. SPDX-License-Identifier: MIT
 #include "WRun.h"
-#include <alps/osiris/comm.h>
-
-int main(int argc, char** argv)
-{
-#ifndef BOOST_NO_EXCEPTIONS
-  try {
-#endif
-   return alps::scheduler::start(argc,argv,alps::scheduler::SimpleMCFactory<WRun>());
-#ifndef BOOST_NO_EXCEPTIONS
-  }
-  catch (std::exception& exc) {
-    std::cerr << exc.what() << "\n";
-      alps::comm_exit(true);
-      return -1;
-    }
-  catch (...) {
-    std::cerr << "Fatal Error: Unknown Exception!\n";
-    return -2;
-  }
-#endif
+#include "schema.hpp"
+#include "../native_driver.hpp"
+int main(int argc,char** argv) {
+    return native_qmc::main<WRun>(argc,argv,"worm",qmc_common_schema,qmc_application_schema);
 }

@@ -17,7 +17,7 @@
 
 #define P_REMOVE 0.5
 
-#include <alps/scheduler.h>
+
 #include <alps/lattice.h>
 #include <alps/expression.h>
 
@@ -27,9 +27,9 @@
 
 
 #include <algorithm>
+#include <alps/hdf5/stdarray.hpp>
 
 #include <boost/multi_array.hpp>
-#include <boost/property_map/vector_property_map.hpp>
 
 //#define Print_config
 //#define Print_steps
@@ -55,14 +55,39 @@ struct subinterval_info{ time_struct start_time;
                          double integrated_time;
                          double integrated_weight; };
 
-class WRun : public QMCRun<> {
+struct worm_state {
+  using state_type=uint8_t;
+  using kink_type=Kink<state_type>;
+  using kinklist_type=std::list<kink_type>;
+  using kinkvector_type=std::vector<kinklist_type>;
+  uint64_t steps=0;
+  int measurements_done=1, num_kinks=0;
+  double worms_per_update=1., Sign=1.;
+  unsigned last_id_=0;
+  int corrections_upwards=0, corrections_downwards=0;
+  bool preadjustment_done=false, adjustment_done=false;
+  std::vector<int> nob;
+  kinkvector_type kinks;
+  std::vector<state_type> initial_state_;
+};
+
+class WRun : public QMCRun<>, private worm_state {
 public:
 
   static void print_copyright(std::ostream&);
-  WRun(const alps::ProcessList&,const alps::Parameters&,int);
+  WRun(alps::params const&,size_t bins=128,size_t chain=0);
+  alps::params sampling_parameters() const {
+    auto result=parameters;
+    if (canonical) result[adjust_parameter]=double(parms[adjust_parameter]);
+    return result;
+  }
+  void save(alps::hdf5::archive&) const override;
+  void load(alps::hdf5::archive&) override;
+  void update() override { dostep(); }
+  void measure() override {} // Measurement interval handled by dostep.
+  double fraction_completed() const override { return work_done(); }
+  uint64_t completed_sweeps() const { return steps; }
 
-  void save(alps::ODump&) const;       
-  void load(alps::IDump&);       
   void dostep();
   bool is_thermalized() const;
   double work_done() const;
@@ -76,31 +101,19 @@ private:
   std::vector<uint8_t> site_state; 
 
   std::vector<std::pair<uint8_t,uint8_t> > site_type_for_bond_type_;
-  boost::vector_property_map<int>          original_bond_type;
+  std::vector<int> original_bond_type;
   
   std::vector< std::vector<double> > matrix_element_raise_;
   std::vector< std::vector<double> > matrix_element_lower_;
 
-  std::vector< std::vector<double> > site_matrix;
+  std::vector< std::vector<double> > site_matrix, requested_site_matrix;
+  double adjustment_energy_shift=0.;
   std::vector<double>                hopping_matrix;
 
   std::map<int, boost::multi_array<double,2> > diagonal_matrix_element;
   
-  // state type, quantum nunmbers
-  typedef uint8_t state_type;
-
-  // kinks, wormheads, iterators
-  typedef Kink<state_type> kink_type;  
-#if defined ( USE_VECTOR )
-  typedef std::vector<kink_type> kinklist_type;
-#elif defined ( USE_SET )
-  typedef std::set<kink_type> kinklist_type;
-#else
-  typedef std::list<kink_type> kinklist_type;
-#endif
-
-
-  typedef std::vector<kinklist_type> kinkvector_type;
+  using state_type=worm_state::state_type;
+  size_t chain_;
   typedef ::cyclic_iterator<kinklist_type> cyclic_iterator;
   typedef cyclic_iterator::base_iterator iterator;
 
@@ -170,8 +183,7 @@ private:
                                     
   // measurements
   void make_meas();
-  void measure_green();
-  inline void measure() {
+  inline void sample() {
     if(--measurements_done==0) {
       measurements_done=skip_measurements;
       make_meas();
@@ -181,14 +193,8 @@ private:
   // adjustment
   int get_particle_number();
   void adjustment();
+  void set_adjusted_parameter(double);
   bool canonical;
-  int number_of_bosons;
-  double correction;
-  int corrections_upwards;
-  int corrections_downwards;
-  bool preadjustment_done;
-  bool adjustment_done;
-  std::vector<int> nob;
   std::string adjust_parameter;
 
   // checks
@@ -226,6 +232,7 @@ private:
 
   // initialization
   void initialize_hamiltonian();
+  std::vector<double> hamiltonian_state(bool include_sites=true) const;
   boost::multi_array<double,4> bond_hamiltonian(const bond_descriptor&);
   std::vector<double> site_hamiltonian(const site_descriptor&);
   void print_hamiltonian();
@@ -235,32 +242,24 @@ private:
 
   std::vector<wormhead_type> worm_head;
   std::valarray<double> stat;
-  int32_t steps; // steps already done
-  int min_number;
-  int max_number;
   double eta;
-  int32_t thermal_sweeps;
+  uint64_t thermal_sweeps;
   int skip_measurements;
-  int measurements_done;
   bool have_worm;
   bool chain_kappa;
   int num_chains;
 
-  int num_kinks;
   int worms_per_kink;
-  double worms_per_update;
   double log_numeric_limits_double;
   
   std::vector<subinterval_info> subinterval;
   bool subinterval_valid;
   int current_head_num;
 
-  double Sign;
   bool nonlocal;
   
   bool use_1D_stiffness ; //@#$br
 
-  unsigned last_id_;
 
   //- kinks and related data structures ----------------------
 
@@ -268,13 +267,9 @@ private:
   cyclic_iterator first_kink(site_descriptor i) { return cyclic_iterator(kinks[i],kinks[i].begin());} 
   state_type initial_state(site_descriptor i) 
   { return kinks[i].empty() ?  initial_state_[i] : kinks[i].rbegin()->state(); }
-  kinkvector_type kinks;
-  std::vector<state_type> initial_state_;
-  std::valarray<double> green;
-  std::vector<int> chain_number;
+  std::vector<int> chain_number, chain_size;
     
   alps::property_map<alps::bond_type_t,graph_type,int>::type bond_type;
-  alps::property_map<alps::boundary_crossing_t,graph_type,alps::boundary_crossing>::type boundary_crossing;
 
   inline void erase_kink(int site, iterator w) 
   {

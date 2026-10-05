@@ -1,22 +1,7 @@
-#include <alps/osiris/comm.h>
-
+// Copyright (C) 2026 ALPS Collaboration. SPDX-License-Identifier: MIT
 #include "sse.h"
-
-int main(int argc, char** argv)
-{
-#ifndef BOOST_NO_EXCEPTIONS
-	try {
-#endif
-	return alps::scheduler::start(argc, argv, 
-							alps::scheduler::SimpleMCFactory<SSE_run>());
-#ifndef BOOST_NO_EXCEPTIONS
-	} catch (std::exception& e) {
-	    std::cerr << e.what() << "\n";
-		alps::comm_exit(true);
-		return -1;
-	} catch (...) {
-		std::cerr << "Fatal Error: Unknown Exception!\n";
-		return -2;
-	}
-#endif
+#include "schema.hpp"
+#include "../native_driver.hpp"
+int main(int argc,char** argv) {
+    return native_qmc::main<SSE_run>(argc,argv,"dirloop_sse",qmc_common_schema,qmc_application_schema);
 }

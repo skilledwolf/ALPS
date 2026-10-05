@@ -23,5 +23,6 @@ add_executable(worm main.C)
 add_executable(worm_evaluate evaluate.C)
 
 target_link_libraries(worm PRIVATE worm_impl)
-target_link_libraries(worm_evaluate PRIVATE worm_impl)
+target_link_libraries(worm_evaluate PRIVATE ALPS::alps ALPS::statistics)
+alps_native_qmc(worm)
 alps_install_applications(worm worm_evaluate)

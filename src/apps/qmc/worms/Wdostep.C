@@ -24,13 +24,13 @@ double WRun::work_done() const
 
 void WRun::start()
 {
-  green.resize(1+num_sites());
-  green=0.;
   measurements_done=skip_measurements;
 }
 
 void WRun::dostep()
 {
+  if (canonical && !adjustment_done && is_thermalized())
+    throw std::runtime_error("Particle-number adjustment did not finish before production");
 #ifdef TIMINGS
   double tt;
 #endif
@@ -67,12 +67,12 @@ if (canonical&&!adjustment_done&&steps>25) {
   adjustment();
 }
 
-if (canonical) {
+if (is_thermalized() && canonical) {
   if (static_cast<int>(parms["NUMBER_OF_PARTICLES"])==get_particle_number()) 
-    measure();
+    sample();
 }
-else
-  measure();
+else if (is_thermalized())
+  sample();
 
 steps++;
 #ifdef TIMINGS

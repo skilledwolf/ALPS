@@ -12,54 +12,11 @@
 
 /* $Id$ */
 
-#include <boost/random.hpp>
-#include <boost/limits.hpp>
+#include <limits>
 #include <cmath>
 
 #ifndef ALPS_APPLICATIONS_WORM_RANDOM_H
 #define ALPS_APPLICATIONS_WORM_RANDOM_H
-
-template <class RNG, class INT>
-inline INT make_uniform_int(RNG& rng, INT i)
-{ 
-  return INT(i*rng());
-  //return boost::variate_generator< RNG&, boost::uniform_int<INT> >(rng,boost::uniform_int<INT>(0,i-1))();
-}
-
-//- Worm creation/annihilation --------------------------------------------
-
-inline double worm_creation_probability(double lambda,double time)
-{
-#ifdef SIMPLE
-  if(lambda!=0.)
-    return 0.;
-  else
-    return time*time/2.;
-#else
-  if(lambda==0. || fabs(lambda*time)<1e-10)
-    return time*time/2.;
-  else
-    return (exp(-lambda*time)-1.+lambda*time)/(lambda*lambda);
-#endif
-}   // worm_creation_probability
-
-inline double worm_creation_probability_open(double lambda,double time)
-{
-#ifdef SIMPLE
-if(lambda!=0.)
-  return 0.;
-else
-  return time*time;
-#else
-  if(lambda==0. || fabs(lambda*time)<1e-10)
-    return time*time;
-  else
-    return time/lambda*(1.-exp(-lambda*time));
-#endif
-//  return time*integrated_weight(lambda,time);
-}   // worm_creation_probability_open
-
-//- Random time from finite time interval ---------------------------------
 
 class new_finite_exponential_random {
 public:
@@ -102,25 +59,5 @@ private:
   double lambda;
   double time; 
 };   // new_finite_exponential_random
-
-template <class RNG>
-class finite_exponential_random {
-public:
-  finite_exponential_random(RNG& r, double l, double t)
-   : rng(r,boost::uniform_real<>()), lambda(l), time(t) {}
-
-  double operator()() {
-#ifdef SIMPLE
-    return time*rng();
-#else
-  return new_finite_exponential_random(rng(), lambda, time)();
-#endif
-  }
-
-private:
- boost::variate_generator<RNG&, boost::uniform_real<> > rng;
- double lambda;
- double time;
-};   // finite_exponential_random 
 
 #endif

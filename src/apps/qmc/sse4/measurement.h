@@ -39,26 +39,21 @@ public:
         lattice(lattice),
         model(model),
         worker(worker),
-        measurements(worker.measurements()),
         state(state),
         opstring(opstring)
     {
         nsites = lattice.nsites();
         
+        skip=params.value_or_default("SKIP",1);
         escale = 1.0 / worker.beta() / nsites;
-        sscale = 1.0 / worker.beta() / lattice.dimension();
+        sscale = worker.winding_dimension() ? 1.0 / worker.beta() / worker.winding_dimension() : 0.;
         
-        measurements << alps::make_observable(
-            alps::RealObservable("Kinetic Energy"), worker.is_signed());
-        measurements << alps::make_observable(
-            alps::RealObservable("Kinetic Energy Density"), worker.is_signed());
+        worker.add_measurement("Kinetic Energy");
+        worker.add_measurement("Kinetic Energy Density");
         
-        measurements << alps::make_observable(
-            alps::RealObservable("n"), worker.is_signed());
-        measurements << alps::make_observable(
-            alps::RealObservable("n^2"), worker.is_signed());
-        measurements << alps::make_observable(
-            alps::RealObservable("n^3"),  worker.is_signed());
+        worker.add_measurement("n");
+        worker.add_measurement("n^2");
+        worker.add_measurement("n^3");
             
         worker.initialize_site_states();
         worker.create_common_observables();
@@ -98,7 +93,7 @@ public:
         
         unsigned noff_diag = 0;
         
-        std::vector<double> wns(lattice.dimension(), 0.0);
+        std::vector<double> wns(worker.winding_dimension(), 0.0);
         
         int sign = 1;
         
@@ -112,7 +107,7 @@ public:
                 // winding numbers
                 vector_type const& v = lattice.bond_vector_relative(op->unit_ref);
                 int delta = vertex.state[0] < vertex.state[UNIT_SIZE] ? 1 : -1;
-                unsigned imax = std::min(unsigned(v.size()), lattice.dimension());
+                unsigned imax = std::min(unsigned(v.size()), worker.winding_dimension());
                 for (unsigned i = 0; i < imax; ++i)
                     wns[i] += delta * v[i];
                 
@@ -153,25 +148,25 @@ public:
 
         if (worker.do_common_measurements(double(sign), state, localint)) {            
             double e = (cc - nnonzero) * escale * sign;
-            measurements["Energy"] << e * nsites;
-            measurements["Energy Density"] << e;
+            worker.record("Energy",e * nsites,sign);
+            worker.record("Energy Density",e,sign);
         
             double ke = -double(noff_diag) * escale * sign;
-            measurements["Kinetic Energy"] << ke * nsites;
-            measurements["Kinetic Energy Density"] << ke;
+            worker.record("Kinetic Energy",ke * nsites,sign);
+            worker.record("Kinetic Energy Density",ke,sign);
         
             double wn = 0.0;
-            for (unsigned i = 0; i < lattice.dimension(); ++i)
+            for (unsigned i = 0; i < worker.winding_dimension(); ++i)
                 wn += wns[i] * wns[i];    
-            measurements["Stiffness"] << wn * sscale * sign;
+            if (worker.winding_dimension()) worker.record("Stiffness",wn * sscale * sign,sign);
         
             double n = double(nnonzero) * sign;
-            measurements["n"] << n;
-            measurements["n^2"] << n * nnonzero;
-            measurements["n^3"] << n * nnonzero * nnonzero;
+            worker.record("n",n,sign);
+            worker.record("n^2",n * nnonzero,sign);
+            worker.record("n^3",n * nnonzero * nnonzero,sign);
         
             if (worker.measure_green_function()) {
-                double scale = static_cast<double>(nsites) / nworms;
+                double scale = static_cast<double>(nsites) / nworms / skip;
                 if (worker.do_measurement_origin())
                     for (unsigned i = 0; i < green.size(); ++i)
                         green[i] *= scale;
@@ -179,10 +174,11 @@ public:
                     for (unsigned i = 0; i < green.size(); ++i)
                         green[i] *= scale / worker.distance_mult()[i];
                     
-                measurements["Green's Function"] << green;
-                green = 0.0;
+                worker.record("Green's Function",green,sign);
+
             }
         }
+        green=0.;
     }
 private:
     Measurement();
@@ -190,7 +186,6 @@ private:
     lattice_type const& lattice;
     model_type const& model;
     worker_type& worker;
-    alps::ObservableSet& measurements;
     
     std::vector<state_type>& state;
     std::vector<Operator> const& opstring;
@@ -201,6 +196,7 @@ private:
     std::valarray<double> localint2;
     std::valarray<unsigned> lasti;
     
+    unsigned skip;
     unsigned nsites;
     unsigned nworms;
     

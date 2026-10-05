@@ -12,11 +12,7 @@
 #ifndef __SSE_RUN_H__
 #define __SSE_RUN_H__
 
-#include <alps/scheduler/montecarlo.h>
-#include <alps/scheduler/measurement_operators.h>
-#include <alps/osiris/dump.h>
 #include <alps/lattice.h>
-#include <alps/alea.h>
 
 #include "../qmc.h"
 #include "lattice.h"
@@ -32,46 +28,47 @@ public:
     typedef Model<self_type, Lattice<self_type> > model_type;
     typedef SSE_alg<lattice_type, model_type, self_type> algorithm_type;
     
-    SSE_run(alps::ProcessList const& w, alps::Parameters const& params,
-            int n, bool issymbolic = false) :
-        super_type(w, params, n, issymbolic),
-        lattice(params, *this),
-        model(params, *this, lattice),
-        algorithm(lattice, model, *this, params)
-    {
-        nsweeps = params.defined("SWEEPS") ?
-            boost::uint64_t(params["SWEEPS"]) : (params.defined("MCS") ? 
-                boost::uint64_t(params["MCS"]) : boost::uint64_t(params["Steps"]));
-        
-        nthermalization = params.defined("THERMALIZATION") ?
-                boost::uint64_t(params["THERMALIZATION"]) : (params.defined("thermalization") ?
-                boost::uint64_t(params["thermalization"]) : nsweeps / 10);
-                
-        measurements_skip = parms.value_or_default("SKIP", 1);
+    SSE_run(alps::params const& params,size_t bins=128,size_t chain=0) :
+        super_type(params,bins,chain), lattice(parms,*this), model(parms,*this,lattice),
+        algorithm(lattice,model,*this,parms), chain_(chain),
+        nsweeps(params["SWEEPS"].as<uint64_t>()),
+        nthermalization(params["THERMALIZATION"].as<uint64_t>()),
+        sweeps_done(0), measurements_skip(params["SKIP"].as<unsigned>()), measurements_done(0) {}
 
-        if (is_signed())
-            std::cout << "Warning: hamiltonian has a sign problem.\n";
-            
-        sweeps_done = 0;
-        measurements_done = 0;
+    void save(alps::hdf5::archive& ar) const override {
+        super_type::save(ar);
+        ar["checkpoint/version"] << uint64_t(1);
+        ar["checkpoint/chain"] << uint64_t(chain_);
+        ar["checkpoint/sweeps"] << sweeps_done;
+        ar["checkpoint/measurement_cursor"] << measurements_done;
+        algorithm.save(ar);
     }
-    
-    void save(alps::ODump& dump) const
-    {
-        dump << nthermalization << sweeps_done << measurements_done;
-        algorithm.save(dump);
+    void load(alps::hdf5::archive& ar) override {
+        alps::params saved;
+        uint64_t version,sweeps,chain;
+        unsigned cursor;
+        ar["/parameters"] >> saved;
+        ar["checkpoint/version"] >> version;
+        ar["checkpoint/chain"] >> chain;
+        ar["checkpoint/sweeps"] >> sweeps;
+        ar["checkpoint/measurement_cursor"] >> cursor;
+        auto production=sweeps>nthermalization ? sweeps-nthermalization : 0;
+        if (version!=1 || chain!=chain_ || checkpoint_parameters(saved)!=checkpoint_parameters(parameters) ||
+            production>nsweeps || cursor!=production%measurements_skip)
+            throw std::invalid_argument("Invalid directed-loop checkpoint parameters or progress");
+        auto state=algorithm.read_checkpoint(ar);
+        validate_measurements(ar,production/measurements_skip);
+        auto current=parameters;
+        super_type::load(ar);
+        parameters=std::move(current);
+        algorithm.restore(std::move(state));
+        sweeps_done=sweeps; measurements_done=cursor;
     }
-    
-    void load(alps::IDump& dump)
-    {
-        if (super_type::where.empty())
-            super_type::measurements.compact();
-        else {
-            dump >> nthermalization >> sweeps_done >> measurements_done;
-            algorithm.load(dump);
-        }
-    }
-    
+    void measure() override {} // Measurements occur at the configured sweep interval.
+    void update() override { dostep(); }
+    double fraction_completed() const override { return work_done(); }
+    uint64_t completed_sweeps() const { return sweeps_done; }
+
     void dostep()
     {
 //        if (sweeps_done >= nthermalization + nsweeps)
@@ -99,33 +96,6 @@ public:
         return 0.;
     }
     
-    bool change_parameter(std::string const& name, alps::StringValue const& value)
-    {
-        boost::uint64_t new_nsweeps = 0;
-        
-        if (name == "SWEEPS")
-            new_nsweeps = boost::uint64_t(value);
-        if (name == "MCS")
-            new_nsweeps = boost::uint64_t(value);
-        if (name == "Steps")
-            new_nsweeps = boost::uint64_t(value);
-
-        if (new_nsweeps > 0) {
-            nsweeps = new_nsweeps;
-            return true;
-        }
-        
-        // cannot change anyting else
-        return false;
-    }
-    
-    static void print_copyright(std::ostream& out)
-    {
-        out << "Quantum Monte Carlo simulations using the SSE algorithm v. 4.1.1\n"
-            << "  available from http://alps.comp-phys.org/\n"
-            << "  copyright (c) 2003-2010 by Sergei Isakov <isakov@itp.phys.ethz.ch>\n\n";
-    }
-    
     bool is_thermalization_done(double percentage) const
     {
         return double(sweeps_done) > percentage * nthermalization;
@@ -141,19 +111,9 @@ public:
         return super_type::random_01();
     }
     
-    alps::ObservableSet& measurements()
-    {
-        return super_type::measurements;
-    }
-    
     bool is_signed() const
     {
         return super_type::is_signed_;
-    }
-    
-    void measure_green_function(bool flag)
-    {
-        super_type::measure_green_function_ = flag;
     }
     
     bool measure_green_function() const
@@ -214,6 +174,7 @@ private:
     model_type model;
     algorithm_type algorithm;
     
+    size_t chain_;
     boost::uint64_t nsweeps;
     boost::uint64_t nthermalization;
     boost::uint64_t sweeps_done;

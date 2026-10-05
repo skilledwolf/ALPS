@@ -24,8 +24,6 @@ int64_t WRun::make_worm()
     stat[0]+=1.;
     do {
       length++;
-      if(measure_green_function_)
-        measure_green();
 
       // can/should we annihilate the two kinks?
       if(worm_head[0].site()==worm_head[1].site() && random_real()<P_REMOVE) {
@@ -363,7 +361,7 @@ void WRun::shift_kink(wormhead_type& head,wormhead_type&)
     double time_interval  = end->time() - start->time();
     double delta_e = onsite_energy(start->state(),head.site()) -onsite_energy(h->state(),head.site());
     newtime = start->time() + 
-      finite_exponential_random<engine_type>(*engine_ptr,-beta*delta_e,time_interval)();
+      new_finite_exponential_random(random(),-beta*delta_e,time_interval)();
   }
   else {
     double random_x = random();
@@ -498,7 +496,7 @@ void WRun::insert_jump(wormhead_type& head, wormhead_type&,int dir,int nb)
 
   // determine jump time
   time_struct jump_time=th +dir*
-     finite_exponential_random<engine_type>(*engine_ptr,-beta*statistical_weight,time)();
+     new_finite_exponential_random(random(),-beta*statistical_weight,time)();
 
   // insert jump
   time_struct t=th;

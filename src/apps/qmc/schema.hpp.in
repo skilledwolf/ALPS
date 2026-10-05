@@ -1,0 +1,4 @@
+// Copyright (C) 2026 ALPS Collaboration. SPDX-License-Identifier: MIT
+#pragma once
+inline constexpr char qmc_common_schema[]=R"toml(@QMC_COMMON_SCHEMA@)toml";
+inline constexpr char qmc_application_schema[]=R"toml(@QMC_APPLICATION_SCHEMA@)toml";

@@ -1,0 +1,29 @@
+# Copyright (C) 2026 ALPS Collaboration. SPDX-License-Identifier: MIT
+[parameters.NONLOCAL]
+type = "bool"
+default = true
+[parameters.eta]
+type = "float64"
+default = 1.0
+min = 0.0
+[parameters.WORMS_PER_KINK]
+type = "int64"
+default = 1
+min = 1
+max = 2147483647
+[parameters.CHAIN_KAPPA]
+type = "bool"
+default = false
+[parameters.USE_1D_STIFFNESS]
+type = "bool"
+default = false
+[parameters.NUMBER_OF_PARTICLES]
+type = "int64"
+min = 0
+max = 2147483647
+[parameters.ADJUST]
+type = "string"
+default = "mu"
+[parameters.CORRECTION]
+type = "float64"
+min = 0.0

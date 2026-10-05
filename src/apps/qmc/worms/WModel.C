@@ -21,6 +21,7 @@ using namespace alps;
 //---------------------------------------------------------------------------------------------------
 
 void WRun::initialize_hamiltonian() {
+  for (auto [it,end]=bonds();it!=end;++it) bond_type[*it]=original_bond_type[index(*it)];
 
   // Fills the following data structures
   //
@@ -83,7 +84,7 @@ void WRun::initialize_hamiltonian() {
   std::set<unsigned int> site_types;
   for(site_iterator it=sites().first; it!=sites().second; ++it) {
     int this_site_type = inhomogeneous_site_type(*it);
-    if (site_types.find(this_site_type)==site_types.end()) {
+    if (site_types.insert(this_site_type).second) {
       if(this_site_type >= site_matrix.size())
         site_matrix.resize(this_site_type+1);
       site_matrix[this_site_type]=site_hamiltonian(*it);

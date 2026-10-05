@@ -1,0 +1,26 @@
+# Copyright (C) 2026 ALPS Collaboration. SPDX-License-Identifier: MIT
+[parameters.INITIAL_CUTOFF]
+type = "int64"
+default = 10
+min = 1
+max = 2147483647
+[parameters.NUMBER_OF_WORMS_PER_SWEEP]
+type = "int64"
+default = 0
+min = 0
+max = 2147483647
+[parameters.WORM_ABORT]
+type = "float64"
+default = 0.0
+min = 0.0
+[parameters.NO_WORMWEIGHT]
+type = "bool"
+default = false
+[parameters.WHICH_LOOP_TYPE]
+type = "string"
+default = "minbounce"
+choices = ["heatbath", "locopt", "minbounce"]
+[parameters.EPSILON]
+type = "float64"
+default = 0.0
+min = 0.0
