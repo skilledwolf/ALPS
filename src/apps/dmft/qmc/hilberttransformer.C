@@ -142,7 +142,7 @@ matsubara_green_function_t GeneralFSHilbertTransformer::operator()(const matsuba
       double wn=(2.*w+1)*boost::math::constants::pi<double>()/beta;
       for(spin_t f=0; f<G_omega.nflavor(); ++f){
         Sigma(0,f)=1./G0_omega(w,f)-1./G_omega(w,f);
-        std::complex<double> zeta=std::complex<double>(mu-h,wn)-Sigma(0,f);
+        std::complex<double> zeta=std::complex<double>(mu+(f%2 ? h : -h),wn)-Sigma(0,f);
         
         G_omega_new(0,f)=bandstruct->HilbertIntegral_PM(zeta,f);
         G0_omega(w,f)=1./(1./G_omega_new(0,f)+Sigma(0,f));

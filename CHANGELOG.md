@@ -6,6 +6,8 @@ User-facing changes and migration notes are recorded here, starting with the bui
 
 ### Changed
 
+- Apply opposite magnetic-field signs to paired flavors in the general
+  paramagnetic DMFT Hilbert transform; previously every flavor used `MU - H`.
 - Port general multiband CT-INT density interactions to `interaction`, using one
   kernel for two-flavor and multiband runs. Correct sparse-matrix detailed balance
   with uniform unordered-pair proposals; isolated flavors and zero interactions

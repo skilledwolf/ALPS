@@ -20,6 +20,8 @@
 // produce identical output for both pairs. The pre-fix code leaves pair
 // (2,3) untransformed, so its output differs from pair (0,1); the fixed
 // code is symmetric.
+// The PM check independently integrates the same DOS at mu-H and mu+H;
+// a uniform magnetic field must act with opposite signs on paired flavors.
 
 #include <boost/math/constants/constants.hpp>
 #include "hilberttransformer.h"
@@ -40,10 +42,10 @@ int main() {
   const std::string dosfile =
       (boost::filesystem::temp_directory_path() /
        "alps_dmft_afm_multiband_dos.dat").string();
+  const double es[11]  = {-2.0,-1.6,-1.2,-0.8,-0.4,0.0,0.4,0.8,1.2,1.6,2.0};
+  const double dos[11] = { 0.1, 0.2, 0.3, 0.4, 0.5,0.6,0.5,0.4,0.3,0.2,0.1};
   {
     std::ofstream f(dosfile);
-    const double es[11]  = {-2.0,-1.6,-1.2,-0.8,-0.4,0.0,0.4,0.8,1.2,1.6,2.0};
-    const double dos[11] = { 0.1, 0.2, 0.3, 0.4, 0.5,0.6,0.5,0.4,0.3,0.2,0.1};
     for (int i = 0; i < 11; ++i)
       f << es[i] << " " << dos[i] << " " << es[i] << " " << dos[i] << "\n";
   }
@@ -82,6 +84,25 @@ int main() {
 
   const matsubara_green_function_t out = transform(G_omega, G0_omega, mu, h, beta);
 
+  parms["ANTIFERROMAGNET"]=false;
+  GeneralFSHilbertTransformer pm(parms,input);
+  matsubara_green_function_t free(nfreq,1,4),bare(nfreq,1,4);
+  for (unsigned w=0; w<nfreq; ++w) {
+    const std::complex<double> iw(0.,(2.*w+1.)*boost::math::constants::pi<double>()/beta);
+    for (unsigned flavor=0; flavor<4; ++flavor) free(w,flavor)=bare(w,flavor)=1./iw;
+  }
+  const auto pm_out=pm(free,bare,mu,h,beta);
+  double pm_error=0.,normalization=0.;
+  for (unsigned i=0; i<11; ++i) normalization+=(i==0 || i==10 ? 1. : i%2 ? 4. : 2.)*dos[i];
+  for (unsigned w=0; w<nfreq; ++w)
+    for (unsigned flavor=0; flavor<4; ++flavor) {
+      const std::complex<double> z(mu+(flavor%2 ? h : -h),(2.*w+1.)*boost::math::constants::pi<double>()/beta);
+      std::complex<double> exact{};
+      for (unsigned i=0; i<11; ++i)
+        exact+=(i==0 || i==10 ? 1. : i%2 ? 4. : 2.)*dos[i]/(z-es[i]);
+      pm_error=std::max(pm_error,std::abs(pm_out(w,flavor)-exact/normalization));
+    }
+  const auto pm_splitting=std::abs(pm_out(0,0)-pm_out(0,1));
   boost::filesystem::remove(dosfile);
 
   double max_asym   = 0.0;  // |pair(2,3) - pair(0,1)|
@@ -94,6 +115,11 @@ int main() {
   }
 
   bool ok = true;
+  if (pm_error>1.e-12 || pm_splitting<1.e-6) {
+    std::printf("FAIL: PM flavor fields differ from independently integrated DOS (error=%g, splitting=%g)\n",
+                pm_error,pm_splitting);
+    ok=false;
+  }
   if (max_asym > 1e-10) {
     std::printf("FAIL: AFM transform asymmetric across identical band pairs "
                 "(max|band(2,3)-band(0,1)|=%g); flavours >=2 were skipped.\n",
