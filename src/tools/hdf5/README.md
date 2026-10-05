@@ -236,3 +236,32 @@ reinterpret random-generator state, merge statistics, or translate solver versio
 Legacy conversion belongs here. New runtime code should use the selected
 HighFive/HDF5 mappings directly; adding an automatic old-format reader there
 would reintroduce the compatibility burden this tool is intended to remove.
+
+## Scientific capability boundary
+
+Conversion and estimator reconstruction are different operations. The following
+inventory is the gate for retiring the remaining legacy measurement clients:
+
+| Released evidence | Conversion / analysis capability | Information that cannot be inferred |
+| --- | --- | --- |
+| Mean/error/variance summaries and convergence flags | `--alea` preserves values, widths and their distinct meanings, including nonlinear results | Joint covariance, effective independent sample count, or jackknife bins |
+| Histogram counts with `min`, `max`, `stepsize` | Generic conversion preserves this ordinary HDF5 layout; NumPy can use the counts directly | Original sample order or values within a histogram cell |
+| Linear histories including a partial bin | `--alea` retains the history; `--alea-batches` produces native weighted analysis evidence | Individual observations inside a bin |
+| Logarithmic histories | `--alea` retains all stored logarithmic sums, squared sums and counts | Missing levels, discarded samples, or a missing unfinished bin |
+| Core 2.3.3 native result families | `--core-alea` retains all saved statistical evidence | Unsaved accumulator state |
+| Released application checkpoint | Generic conversion preserves unselected state fields; it does **not** translate the application's restart protocol | A new solver's configuration/update state from an analysis summary |
+
+The histogram contract is `HistogramObservable<T>::save` in ALPS v3.0.0
+`src/alps/alea/histogram.h`, at the release revision above: unsigned 32-bit cell
+counts, unsigned 64-bit total count, and range/step attributes. No histogram
+format adapter or new runtime class is needed. Tests independently reconstruct
+this contract and verify preservation alongside summaries and histories.
+
+Keep original released checkpoints when continuation with the released program
+is needed. The new spin engines checkpoint their complete native state, and can
+continue those files across serial/MPI process counts; a released scheduler or
+Parapack checkpoint is not yet convertible into that new application state.
+This remains a migration gap, and blocks a claim of complete checkpoint-format
+coverage. Do not remove an old checkpoint reader merely because statistical
+result conversion passes. CT-INT, CT-HYB and Hirsch-Fye analysis files omit solver
+configurations; a converter cannot turn them into resumable solver checkpoints.

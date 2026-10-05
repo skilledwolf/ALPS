@@ -1262,3 +1262,47 @@ def test_native_conversion_rejects_nonempty_zero_weight_bins(converter, tmp_path
     with pytest.raises(ValueError, match="incomplete/inconsistent bin counts"):
         converter.convert(source, output, alea_batch_groups=["/observable"])
     assert not output.exists()
+
+
+def test_released_summary_histogram_and_history_preservation(converter, tmp_path):
+    # Reconstruct v3.0.0 histogram.h:234-250 and SimpleObservableData's
+    # summary fields. A histogram is already ordinary HDF5; no new codec.
+    source, output = tmp_path / "released.h5", tmp_path / "converted.h5"
+    with h5py.File(source, "w") as archive:
+        histogram = archive.create_group("histogram")
+        histogram["histogram"] = np.array([2, 4, 1], dtype="u4")
+        histogram["count"] = np.uint64(7)
+        histogram.attrs.update(min=-1., max=2., stepsize=1.)
+        summary = archive.create_group("summary")
+        summary["count"] = np.uint64(103)
+        summary["mean/value"] = np.array([1., 2.])
+        summary["mean/error"] = np.array([.3, .6])
+        summary["variance/value"] = np.array([2., 8.])
+        summary["mean/error_convergence"] = np.array([0, 1], dtype="i4")
+        summary.attrs.update(changed=np.int8(0), nonlinearoperations=np.int8(1))
+        history = released_bins(archive, "observable", [3., 9., 6.])
+        history["timeseries/logbinning2"] = np.array([18.])
+        history["timeseries/logbinning_counts"] = np.array([3], dtype="u8")
+        archive["checkpoint/version"] = np.int32(42)
+        archive["checkpoint/random"] = "opaque released generator state"
+    before = source.read_bytes()
+    converter.convert(source, output, alea_groups=["/summary", "/observable"])
+    assert source.read_bytes() == before
+    with h5py.File(source) as old, h5py.File(output) as new:
+        for group in ("histogram", "summary", "observable", "checkpoint"):
+            def check(name, obj):
+                if isinstance(obj, h5py.Dataset):
+                    converted = new[group + "/" + name]
+                    np.testing.assert_array_equal(obj[()], converted[()])
+                    assert obj.dtype == converted.dtype
+            old[group].visititems(check)
+        for name in ("min", "max", "stepsize"):
+            assert old["histogram"].attrs[name] == new["histogram"].attrs[name]
+        assert new["summary"].attrs["nonlinearoperations"] == np.bool_(True)
+        assert "kind" not in new["summary"].attrs
+        assert "kind" not in new["histogram"].attrs
+    # Preserved summary uncertainty cannot manufacture batches or a live cursor.
+    rejected = tmp_path / "invented.h5"
+    with pytest.raises(ValueError):
+        converter.convert(source, rejected, alea_batch_groups=["/summary"])
+    assert not rejected.exists()
