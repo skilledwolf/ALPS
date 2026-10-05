@@ -1,9 +1,5 @@
 """Regression checks found by comparing the Boost.Python conversion contracts."""
 
-import os
-import subprocess
-import sys
-import textwrap
 
 import numpy as np
 import pytest
@@ -28,33 +24,6 @@ def test_array_consumers_do_not_require_writable_samples(layout):
     for row in values:
         native << row
     np.testing.assert_allclose(native.result().mean, values.mean(axis=0))
-
-
-def test_mcvector_constructor_sizes_errors_before_indexing():
-    # Printing/indexing a mean-only vector previously read an empty error
-    # vector and crashed the interpreter. Keep native crash checks isolated.
-    code = """
-        import numpy as np
-        from pyalps.alea import MCVectorData
-        data = MCVectorData([1.0, 2.0, 3.0])
-        np.testing.assert_array_equal(data.error, [0.0, 0.0, 0.0])
-        assert data[1].mean == 2.0
-        assert data[1].error == 0.0
-        assert '2' in repr(data)
-        assert '2.00' in format(data, '.2f')
-        try:
-            MCVectorData([1.0, 2.0], [0.1])
-        except ValueError:
-            pass
-        else:
-            raise AssertionError('mismatched mean/error lengths must be rejected')
-    """
-    result = subprocess.run(
-        [sys.executable, "-X", "faulthandler", "-c", textwrap.dedent(code)],
-        capture_output=True, text=True, timeout=30,
-        env={**os.environ, "MallocScribble": "1"},
-    )
-    assert result.returncode == 0, result.stdout + result.stderr
 
 
 @pytest.mark.parametrize('vector', [False, True])

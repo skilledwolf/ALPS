@@ -17,7 +17,6 @@ Use BatchAccumulator for bounded weighted histories, AutocorrelationAccumulator
 for binning diagnostics, and NumPy arrays for full chronological sample history.
 """
 
-from .cxx.pymcdata_c import *
 from .cxx.pyalea_c import BatchAccumulator, BatchResult, ComplexBatchAccumulator, ComplexBatchResult
 from .cxx.pyalea_c import (
     MeanAccumulator, MeanResult, ComplexMeanAccumulator, ComplexMeanResult,

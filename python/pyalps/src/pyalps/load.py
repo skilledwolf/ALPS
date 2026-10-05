@@ -405,103 +405,46 @@ class Hdf5Loader:
     # Pre: file is a hdf5 file descriptor
     # Post: returns DataSet with all parameters set
     def ReadMeasurementFromFile(self,flist,proppath='/parameters',respath='/simulation/results',measurements=None,verbose=False):
-        fs = self.GetFileNames(flist)
         sets = []
-        for f in fs:
-            try:
-                fileset = []
-                self.h5f = h5.archive(f, 'r')
-                self.h5fname = f
-                if verbose: log("Loading from file " + f)
-                # Each replica temperature is a separate statistical ensemble.
-                if respath == '/simulation/results' and self.h5f.is_group('/simulation/replicas'):
-                    sets.extend(self._read_replicas(f, self.ReadMeasurementFromFile,
+        for filename in self.GetFileNames(flist):
+            with h5.archive(filename, 'r') as archive:
+                self.h5f, self.h5fname = archive, filename
+                if verbose: log("Loading from file " + filename)
+                if respath == '/simulation/results' and archive.is_group('/simulation/replicas'):
+                    sets.extend(self._read_replicas(filename, self.ReadMeasurementFromFile,
                         '/results', measurements, verbose))
                     continue
-                list_ = self.GetObservableList(respath)
+                names = self.GetObservableList(respath)
                 params = self.ReadParameters(proppath)
-                obslist = []
-                if measurements is None:
-                    obslist = list_
-                else:
-                    obslist = [pt.hdf5_name_encode(obs) for obs in measurements if pt.hdf5_name_encode(obs) in list_]
-                for m in obslist:
-                    if verbose: log( "Loading " + m)
-                    size=0
-                    xmin=0
-                    xstep=1
-                    x=None
-                    native_result=None
-                    if "histogram" in self.h5f.list_children(respath+'/'+m):
-                        obs = self.h5f[respath+'/'+m+'/histogram']
-                        xmin = self.h5f[respath+'/'+m+'/@min']
-                        xstep = self.h5f[respath+'/'+m+'/@stepsize']
-                        size = len(obs)
-                        x = np.arange(xmin,xmin+xstep*size,xstep)
-                    elif (self.h5f.is_attribute(respath+'/'+m+'/@kind') or
-                          self.h5f.is_attribute(respath+'/'+m+'/@format')):
-                        native_result = pa.read_result(self.h5f, respath+'/'+m)
-                        size = native_result.size
-                        obs = DataSet.from_result(native_result).y if native_result.count else None
-                    elif "error" in self.h5f.list_children(respath+'/'+m+'/mean'): 
-                        if self.h5f.is_scalar(respath+'/'+m+'/mean/value'):
-                            obs = pa.MCScalarData()
-                            with self.h5f.native():
-                                obs.load(self.h5fname, respath+'/'+m)
-                            obs=np.array([obs])
-                            size=1
-                            if obs[0].count==0:
-                              obs=None
-                        else:
-                            obs=None
-                            if not self.h5f.is_group(respath+'/'+m+'/timeseries'): # check for simple binning
-                                obs = np.array(self.h5f[respath+'/'+m+'/mean/value']);
-                                if 'L' in params: # ugly fix... really ugly
-                                  L = int(params['L'])
-                                  if L == obs.size:
-                                    params['origin'] = [(L-1.)/2.];
-                                  if L**2 == obs.size: # dimension 2
-                                    obs = obs.reshape([L,L]);
-                                    params['origin'] = [(L-1.)/2., (L-1.)/2.];
-                                  elif L**3 == obs.size: # dimension 3
-                                    obs = obs.reshape([L,L,L]);
-                                    params['origin'] = [(L-1.)/2., (L-1.)/2., (L-1.)/2.];
-                                size = obs.size
-                            else:
-                                obs = pa.MCVectorData()
-                                with self.h5f.native():
-                                    obs.load(self.h5fname, respath+'/'+m)
-                                size=len(obs.mean)
-                                if obs.count==0:
-                                    obs=None
+                selected = names if measurements is None else [pt.hdf5_name_encode(name)
+                    for name in measurements if pt.hdf5_name_encode(name) in names]
+                fileset = []
+                for name in selected:
+                    path = respath+'/'+name
+                    if verbose: log("Loading " + name)
+                    if archive.is_data(path+'/histogram'):
+                        values = archive[path+'/histogram']
+                        x = archive[path+'/@min'] + archive[path+'/@stepsize']*np.arange(len(values))
+                        data = DataSet(x, values)
+                    elif archive.is_attribute(path+'/@kind') or archive.is_attribute(path+'/@format'):
+                        result = pa.read_result(archive, path)
+                        if not result.count:
+                            continue
+                        data = DataSet.from_result(result)
                     else:
-                        if self.h5f.is_scalar(respath+'/'+m+'/mean/value'):
-                            obs = self.h5f[respath+'/'+m+'/mean/value']
-                            obs=np.array([obs])
-                            size=1
-                        else:
-                            obs = self.h5f[respath+'/'+m+'/mean/value']
-                            size=len(obs)
-                    if "labels" in self.h5f.list_children(respath+'/'+m) and x is None:
-                        x = parse_labels(self.h5f[respath+'/'+m+'/labels'])
-                    elif x is None:
-                        x = np.arange(xmin,xmin+xstep*size,xstep)
-                    try:
-                      if obs is not None:
-                        d = DataSet()
-                        d.y = obs
-                        d.native_result = native_result
-                        d.x = x
-                        d.props['hdf5_path'] = respath +"/"+ m
-                        d.props['observable'] = pt.hdf5_name_decode(m)
-                        d.props.update(params)
-                        fileset.append(d)
-                    except AttributeError:
-                        log( "Could not create DataSet")
+                        children = archive.list_children(path)
+                        if (any(field in children for field in ('count', 'timeseries', 'jacknife')) or
+                                archive.is_data(path+'/mean/error')):
+                            raise ValueError(f"{path}: legacy statistics require alps-hdf5-convert --alea-batches or --alea-summary")
+                        # Deterministic eigenstate measurements carry plain values.
+                        values = np.atleast_1d(archive[path+'/mean/value'])
+                        data = DataSet(np.arange(len(values)), values)
+                    if archive.is_data(path+'/labels'):
+                        data.x = parse_labels(archive[path+'/labels'])
+                    data.props.update(params)
+                    data.props.update(hdf5_path=path, observable=pt.hdf5_name_decode(name))
+                    fileset.append(data)
                 sets.append(fileset)
-            except Exception as e:
-                log(e)
-                log(traceback.format_exc())
         return sets
 
     # Pre: file is a hdf5 file descriptor

@@ -196,6 +196,25 @@ averaged/compressed bins as individual chronological observations. Released
 legacy observable files remain inputs to the offline converter; new producers
 write native results and no longer emit legacy statistical schemas.
 
+## MCData removal
+
+`MCScalarData`, `MCVectorData` and the `pymcdata_c` extension are removed.
+Measurement loading requires explicit conversion of legacy statistical records:
+use `--alea-batches` for recoverable linear/jackknife histories, or
+`--alea-summary` to retain published statistics without inferring history.
+The primitive-normalization-only `--alea` option does not produce a modern
+analysis result. Unconverted statistics now raise an actionable error rather
+than being loaded implicitly or skipped after a logged exception.
+
+Native results retain batches, covariance and diagnostics. Use their `transform`
+method for correlated or nonlinear propagation. `FloatWithError` remains the
+independent-error arithmetic tool for scalar or NumPy-vector summaries; Python 3
+true division and correct unary negation are covered by the migrated arithmetic
+checks. Plain deterministic eigenstate measurements and histograms remain
+readable without statistical conversion. Lattice shape is no longer guessed
+from `L` when reading a statistical vector; reshape components explicitly when
+that matches the recorded geometry.
+
 ## Merging and saving measurements
 
 `DataSet.from_result(result, x=None, props=None)` creates plotting values while

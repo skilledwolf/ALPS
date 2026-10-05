@@ -13,11 +13,9 @@
 #
 # ****************************************************************************
 
-# Assertion-based MCScalarData / MCVectorData arithmetic test. The
-# expected values are the ones recorded in the historic mcdata.output
-# fixture (error propagation without covariance).
-
-from pyalps.alea import *
+# Independent-error scalar/vector arithmetic, separate from native correlated
+# results. Historical numerical values remain regression checks.
+from pyalps import FloatWithError
 import numpy as np
 
 
@@ -31,43 +29,43 @@ def assert_vector(value, means, errors):
     np.testing.assert_allclose(value.error, errors, rtol=1e-9)
 
 
-def test_mcdata_scalar():
-    b = MCScalarData(1.21, 0.15)
-    c = MCScalarData(-1.5, 0.2)
+def test_independent_scalar():
+    b = FloatWithError(1.21, 0.15)
+    c = FloatWithError(-1.5, 0.2)
 
-    a = MCScalarData(0.81, 0.1)
+    a = FloatWithError(0.81, 0.1)
     a += b
     assert_scalar(a, 2.02, 0.180277563773)
 
-    a = MCScalarData(1.2, 0.1)
+    a = FloatWithError(1.2, 0.1)
     a -= b
     assert_scalar(a, -0.01, 0.180277563773)
 
-    a = MCScalarData(1.2, 0.1)
+    a = FloatWithError(1.2, 0.1)
     a *= b
     assert_scalar(a, 1.452, 0.216889372723)
 
-    a = MCScalarData(1.2, 0.1)
+    a = FloatWithError(1.2, 0.1)
     a /= b
     assert_scalar(a, 0.991735537190, 0.148138359895)
 
-    a = MCScalarData(1.2, 0.1)
+    a = FloatWithError(1.2, 0.1)
     a += 2.0
     assert_scalar(a, 3.2, 0.1)
 
-    a = MCScalarData(1.2, 0.1)
+    a = FloatWithError(1.2, 0.1)
     a -= 2.0
     assert_scalar(a, -0.8, 0.1)
 
-    a = MCScalarData(1.2, 0.1)
+    a = FloatWithError(1.2, 0.1)
     a *= 2.0
     assert_scalar(a, 2.4, 0.2)
 
-    a = MCScalarData(1.2, 0.1)
+    a = FloatWithError(1.2, 0.1)
     a /= 2.0
     assert_scalar(a, 0.6, 0.05)
 
-    a = MCScalarData(1.2, 0.1)
+    a = FloatWithError(1.2, 0.1)
     assert_scalar(a + b, 2.41, 0.180277563773)
     assert_scalar(a - b, -0.01, 0.180277563773)
     assert_scalar(a * b, 1.452, 0.216889372723)
@@ -78,13 +76,7 @@ def test_mcdata_scalar():
     assert_scalar(a / 2.0, 0.6, 0.05)
     assert_scalar(2.0 / a, 1.666666666667, 0.138888888889)
 
-    # NOTE: documents a long-standing libalps bug, present in the old
-    # Boost.Python build too (the historic fixture also shows +1.2):
-    # mcdata<T>::operator-() (src/alps/alea/include/alps/alea/mcdata.hpp) negates a copy
-    # and returns *this unchanged, so unary minus is a no-op. When the
-    # C++ operator is fixed, flip these expectations to -1.2 / negated
-    # means.
-    assert_scalar(-a, 1.2, 0.1)
+    assert_scalar(-a, -1.2, 0.1)
     assert_scalar(abs(c), 1.5, 0.2)
 
     assert_scalar(pow(a, 2.71), 1.639008390308, 0.370142728145)
@@ -100,8 +92,8 @@ def test_mcdata_scalar():
     assert_scalar(a.tanh(), 0.833654607012, 0.030501999621)
 
 
-def test_mcdata_vector():
-    X = MCVectorData(np.array([2.3, 1.2, 0.7]), np.array([0.01, 0.01, 0.01]))
+def test_independent_vector():
+    X = FloatWithError(np.array([2.3, 1.2, 0.7]), np.array([0.01, 0.01, 0.01]))
     Y = X + 1.0
 
     assert_vector(X, [2.3, 1.2, 0.7], [0.01] * 3)
@@ -119,9 +111,7 @@ def test_mcdata_vector():
                   [0.869565217391, 1.666666666667, 2.857142857143],
                   [0.003780718336, 0.013888888889, 0.040816326531])
 
-    # unary minus is a no-op — same libalps mcdata bug as in the scalar
-    # test above; flip to negated means once the C++ operator is fixed
-    assert_vector(-X, [2.3, 1.2, 0.7], [0.01] * 3)
+    assert_vector(-X, [-2.3, -1.2, -0.7], [0.01] * 3)
     assert_vector(abs(X), [2.3, 1.2, 0.7], [0.01] * 3)
 
     assert_vector(pow(X, 2.71),
@@ -162,6 +152,6 @@ def test_mcdata_vector():
 
 
 if __name__ == "__main__":
-    test_mcdata_scalar()
-    test_mcdata_vector()
+    test_independent_scalar()
+    test_independent_vector()
     print("SUCCESS")

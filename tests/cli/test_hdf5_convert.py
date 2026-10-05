@@ -1074,7 +1074,7 @@ def test_released_fixture_profiles_load_through_native_params_and_result_readers
     converter.convert(source, output,
                       parameter_groups=["/ngs-parameters", "/legacy-parameters"],
                       boolean_datasets=["/ngs-parameters/ENABLED"],
-                      alea_groups=["/scalar-mcdata", "/scalar-evaluator", "/scalar-observable", "/vector-observable"])
+                      alea_summary_groups=["/scalar-mcdata", "/scalar-evaluator", "/vector-observable"])
     # Each provider owns the file separately; no h5py/native overlap is needed.
     with hdf5.archive(str(output), "r") as archive:
         parameters = ngs.params(archive, "/ngs-parameters")
@@ -1084,21 +1084,18 @@ def test_released_fixture_profiles_load_through_native_params_and_result_readers
     np.testing.assert_array_equal(parameters["VECTOR"], [1, 2, 3])
     for name in ("EMPTY_INT", "EMPTY_REAL", "EMPTY_TEXT"):
         assert len(parameters[name]) == 0
-    scalar = alea.MCScalarData()
-    scalar.load(str(output), "/scalar-mcdata")
-    assert scalar.count == 0 and scalar.bins.size == 0
-    with pytest.raises(RuntimeError, match="No measurements available"):
-        _ = scalar.mean
-    evaluator = alea.MCScalarData()
-    evaluator.load(str(output), "/scalar-evaluator")
-    assert evaluator.count == 6 and evaluator.mean == 1 and evaluator.error == .25
-    # SimpleObservableData stores bin sums. The live domain reader supplies the
-    # cross-schema sums-to-means rule; the offline converter kept [1,2,3] intact.
-    np.testing.assert_array_equal(evaluator.bins, [.5, 1., 1.5])
-    vector = alea.MCVectorData()
-    vector.load(str(output), "/vector-observable")
-    assert vector.count == 1 and vector.bins.size == 0
-    np.testing.assert_array_equal(vector.mean, [1., 2.])
+    with hdf5.archive(output) as archive:
+        scalar = alea.read_result(archive, '/scalar-mcdata')
+        assert scalar.count == 0
+        evaluator = alea.read_result(archive, '/scalar-evaluator')
+        assert evaluator.count == 6
+        np.testing.assert_array_equal(evaluator.mean, [1.])
+        np.testing.assert_array_equal(evaluator.error, [.25])
+        # The source history remains archived with its original sum convention.
+        np.testing.assert_array_equal(archive['/scalar-evaluator/legacy/timeseries/data'], [1., 2., 3.])
+        vector = alea.read_result(archive, '/vector-observable')
+        assert vector.count == 1 and not hasattr(vector, 'error')
+        np.testing.assert_array_equal(vector.mean, [1., 2.])
 
 
 def test_parameter_profile_respects_an_explicit_integer_byte_marker(converter, tmp_path):

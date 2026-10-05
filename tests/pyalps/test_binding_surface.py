@@ -31,7 +31,6 @@ def test_extension_import_surface():
 
     expected = {
         "pyalea_c",
-        "pymcdata_c",
         "pytools_c",
         "pyngsparams_c",
         "pyngshdf5_c",
@@ -87,9 +86,9 @@ def test_cross_module_parameter_archive_and_rng_roundtrip():
         assert [rng() for _ in range(5)] == [restored_rng() for _ in range(5)]
 
 
-def test_alea_numpy_and_mcdata_operators():
+def test_alea_numpy_and_summary_operators():
     from pyalps.alea import BatchAccumulator, mean, size
-    from pyalps.cxx.pymcdata_c import MCScalarData
+    from pyalps import FloatWithError
 
     observable = BatchAccumulator()
     for sample in (0.9, 1.0, 1.1, 1.0):
@@ -103,8 +102,8 @@ def test_alea_numpy_and_mcdata_operators():
     assert mean(series) == 2.0
     np.testing.assert_allclose(series, [1.0, 2.0, 3.0])
 
-    first = MCScalarData(1.0, 0.1)
-    second = MCScalarData(2.0, 0.2)
+    first = FloatWithError(1.0, 0.1)
+    second = FloatWithError(2.0, 0.2)
     total = first + second
     assert total.mean == 3.0
     assert total.error > 0
@@ -855,51 +854,23 @@ def test_archive_setitem_saves_registered_alps_types():
             np.testing.assert_array_equal(alea.BatchResult.read(archive, "/result").mean, [1.5])
 
 
-def test_archive_setitem_rejects_mcdata_with_actionable_advice():
-    """The one ALPS family whose save() is not archive-shaped.
-
-    MCScalarData.save takes (filename, observable_name), so it is deliberately
-    excluded from the dispatch above -- but the message has to name the
-    spelling that does work rather than calling the type unsupported.
-    """
-    from pyalps import alea, hdf5
-
-    observable = alea.MCScalarData(1.0, 0.1)
-
-    with tempfile.TemporaryDirectory() as directory:
-        path = os.path.join(directory, "mcdata.h5")
-        with hdf5.archive(path, "w") as archive:
-            with pytest.raises(TypeError, match="does not declare an archive-shaped"):
-                archive["/observable"] = observable
-
-        # The documented spelling still works.
-        target = os.path.join(directory, "direct.h5")
-        observable.save(target, "/simulation/results/Energy")
-        restored = alea.MCScalarData()
-        restored.load(target, "/simulation/results/Energy")
-        assert restored.mean == pytest.approx(1.0)
-
-
 def test_numpy_arrays_are_writable_and_own_their_buffer():
     """Arrays handed to Python must stay writable and outlive their C++ owner.
 
-    The output path builds nb::ndarray over a heap std::vector owned by a
-    capsule, rather than allocating numpy.empty and memcpy'ing into it. Two
-    ways that could corrupt results instead of failing loudly: the array
-    coming back read-only, or the vector being freed while NumPy still points
-    at it.
+    Native Eigen result properties return independent NumPy storage. Mutating
+    that copy must not modify the estimator or leave a dangling C++ buffer.
     """
     import gc
 
     from pyalps import alea
 
-    observable = alea.MCVectorData(np.array([1.0, 2.0, 3.0]),
-                                   np.array([0.1, 0.2, 0.3]))
+    accumulator = alea.MeanAccumulator(3)
+    accumulator << np.array([1.0, 2.0, 3.0])
+    observable = accumulator.result()
     mean = observable.mean
     assert isinstance(mean, np.ndarray)
     assert mean.flags.writeable
     assert mean.flags.c_contiguous
-    assert mean.base is not None, "array does not keep its owner alive"
 
     mean[0] = 99.0
     assert mean[0] == 99.0
@@ -907,8 +878,9 @@ def test_numpy_arrays_are_writable_and_own_their_buffer():
     assert observable.mean[0] == 1.0
 
     def orphan():
-        local = alea.MCVectorData(np.arange(1000, dtype=float), np.full(1000, 0.5))
-        return local.mean
+        local = alea.MeanAccumulator(1000)
+        local << np.arange(1000, dtype=float)
+        return local.result().mean
 
     survivor = orphan()
     for _ in range(3):

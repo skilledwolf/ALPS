@@ -54,7 +54,6 @@ except PackageNotFoundError:  # an uninstalled source tree
 # create subtly incompatible versions of the same C++ types.
 for _extension_name in (
     "pyalea_c",
-    "pymcdata_c",
     "pytools_c",
     "pyngsparams_c",
     "pyngshdf5_c",

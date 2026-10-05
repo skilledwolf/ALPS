@@ -111,7 +111,7 @@ class FloatWithError:
     z__deri__y__   = x__.mean
     return FloatWithError(z__mean_,sqrt(z__deri__x__*z__deri__x__*x__.error*x__.error + z__deri__y__*z__deri__y__*y__.error*y__.error))
 
-  def __div__(x__,y__):
+  def __truediv__(x__,y__):
     if (isinstance(y__,float) | isinstance(y__,int)):
       y__ = FloatWithError(y__)
     z__mean_      = x__.mean / y__.mean
@@ -133,7 +133,7 @@ class FloatWithError:
     z__deri__y__   = x__.mean
     return FloatWithError(z__mean_,sqrt(z__deri__x__*z__deri__x__*x__.error*x__.error + z__deri__y__*z__deri__y__*y__.error*y__.error))
 
-  def __rdiv__(x__,y__):
+  def __rtruediv__(x__,y__):
     if (isinstance(y__,float) | isinstance(y__,int)):
       y__ = FloatWithError(y__)
     z__mean_      = y__.mean / x__.mean
@@ -155,7 +155,7 @@ class FloatWithError:
     z__deri__y__   = x__.mean
     return FloatWithError(z__mean_,sqrt(z__deri__x__*z__deri__x__*x__.error*x__.error + z__deri__y__*z__deri__y__*y__.error*y__.error))
 
-  def __idiv__(x__,y__):
+  def __itruediv__(x__,y__):
     if (isinstance(y__,float) | isinstance(y__,int)):
       y__ = FloatWithError(y__)
     z__mean_      = x__.mean / y__.mean

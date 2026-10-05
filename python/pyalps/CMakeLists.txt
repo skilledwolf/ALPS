@@ -67,7 +67,6 @@ function(pyalps_add_module target source)
 endfunction()
 
 pyalps_add_module(pyalea_c cpp/pyalea.cpp ALPS::statistics)
-pyalps_add_module(pymcdata_c cpp/pymcdata.cpp)
 pyalps_add_module(pytools_c cpp/pytools.cpp)
 pyalps_add_module(pyngsparams_c cpp/params.cpp ALPS::run_config)
 pyalps_add_module(pyngshdf5_c cpp/hdf5.cpp)
