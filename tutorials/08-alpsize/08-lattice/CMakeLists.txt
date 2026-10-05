@@ -9,4 +9,15 @@ target_link_libraries(lattice PRIVATE ALPS::alps)
 
 # rule for generating wolff program
 add_executable(wolff wolff.C)
+
+set(WOLFF_LATTICE_SCHEMA "
+[parameters.LATTICE]
+type = \"string\"
+[parameters.GRAPH]
+type = \"string\"
+[input.lattice_library]
+type = \"path\"
+")
 target_link_libraries(wolff PRIVATE ALPS::alps)
+
+include("${CMAKE_CURRENT_SOURCE_DIR}/../Wolff.cmake")

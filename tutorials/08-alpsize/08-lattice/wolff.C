@@ -28,88 +28,20 @@
 *
 *****************************************************************************/
 
-#include <alps/alea.h>
-#include <alps/parameter.h>
+#include "../wolff.hpp"
 #include <alps/lattice.h>
-#include <boost/foreach.hpp>
-#include <boost/random.hpp>
-#include <chrono>
-#include <cmath>
-#include <iostream>
-#include <stack>
-#include <vector>
+#include <alps/ngs/make_deprecated_parameters.hpp>
 
-int main() {
-
-  alps::Parameters params(std::cin);
-  const double T = params.value_or_default("T", 2.2);
-  const int MCSTEP = params.value_or_default("SWEEPS", 1 << 15);
-  const int MCTHRM = params.value_or_default("THERMALIZATION", MCSTEP >> 3);
-  const unsigned int SEED = params.value_or_default("SEED", 93812);
-
-  // setting up square lattice
-  alps::graph_helper<> graph(params);
-  const int N = graph.num_sites();
-
-  // random number generator
-  boost::mt19937 eng(SEED);
-  boost::variate_generator<boost::mt19937&, boost::uniform_real<> >
-    random_01(eng, boost::uniform_real<>());
-
-  // spin configuration
-  std::vector<int> spin(N, 1);
-  int sz = N;
-
-  // stack for uninspected sites
-  std::stack<int> stck;
-
-  // connecting probability
-  double pc = 1 - std::exp(-2./T);
-
-  // measurement
-  alps::ObservableSet measurements;
-  measurements << alps::RealObservable("Magnetization");
-  measurements << alps::RealObservable("Magnetization^2");
-  measurements << alps::RealObservable("Magnetization^4");
-
-  // timer
-  auto const started = std::chrono::steady_clock::now();
-
-  for (int mcs = 0; mcs < MCSTEP + MCTHRM; ++mcs) {
-    if (mcs == MCTHRM) measurements.reset(true);
-    int s = static_cast<int>(random_01() * N);
-    int so = spin[s];
-    spin[s] = -so;
-    stck.push(s);
-    int cs = 0;
-    while (!stck.empty()) {
-      ++cs;
-      int sc = stck.top();
-      stck.pop();
-      BOOST_FOREACH(alps::graph_helper<>::site_descriptor const& sn, graph.neighbors(sc)) {
-        if (spin[sn] == so && random_01() < pc) {
-          stck.push(sn);
-          spin[sn] = -so;
-        }
-      }
-    }
-    sz -= 2 * so * cs;
-    double dsz = sz / static_cast<double>(N);
-    measurements["Magnetization"] << dsz;
-    measurements["Magnetization^2"] << dsz * dsz;
-    measurements["Magnetization^4"] << dsz * dsz * dsz * dsz;
-  }
-
-  // calculate Binder parameter
-  alps::RealObsevaluator m2 = measurements["Magnetization^2"];
-  alps::RealObsevaluator m4 = measurements["Magnetization^4"];
-  alps::RealObsevaluator binder("Binder Ratio of Magnetization");
-  binder = m2 * m2 / m4;
-  measurements.addObservable(binder);
-
-  // output results
-  std::cout << measurements;
-  std::cerr << "Elapsed time = " << std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count() << " sec\n";
-
-  return 0;
+int main(int argc, char** argv) {
+    return wolff_main(argc, argv, [](alps::run_configuration const& run) {
+        auto parameters = run.parameters;
+        if (parameters.exists("LATTICE") == parameters.exists("GRAPH"))
+            throw std::invalid_argument("Specify exactly one LATTICE or GRAPH");
+        if (run.input.exists("lattice_library")) parameters["LATTICE_LIBRARY"] = run.input["lattice_library"];
+        alps::graph_helper<> graph(alps::make_deprecated_parameters(parameters));
+        std::vector<std::vector<int>> neighbors(graph.num_sites());
+        for (size_t i=0; i<neighbors.size(); ++i)
+            for (auto [it,end]=graph.neighbors(i); it!=end; ++it) neighbors[i].push_back(*it);
+        return neighbors;
+    }, true);
 }

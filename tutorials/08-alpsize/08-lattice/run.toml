@@ -1,0 +1,6 @@
+[parameters]
+LATTICE = "square lattice"
+L = 32
+T = 2.2
+[output]
+results = "wolff.h5"

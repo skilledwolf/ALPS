@@ -1,0 +1,31 @@
+application = "wolff-tutorial"
+schema_version = 1
+[parameters.L]
+type = "int64"
+default = 32
+min = 2
+max = 32767
+[parameters.T]
+type = "float64"
+default = 2.2
+min = 0.0
+[parameters.SWEEPS]
+type = "int64"
+default = 32768
+min = 2
+[parameters.THERMALIZATION]
+type = "int64"
+min = 0
+[execution.seed]
+type = "int64"
+default = 93812
+min = 0
+max = 2147483647
+[execution.bins]
+type = "int64"
+default = 64
+min = 2
+[output.results]
+type = "path"
+required = true
+[input]

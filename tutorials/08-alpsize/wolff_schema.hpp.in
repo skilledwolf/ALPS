@@ -1,0 +1,2 @@
+#pragma once
+inline constexpr char wolff_schema[] = R"toml(@WOLFF_SCHEMA@)toml";
