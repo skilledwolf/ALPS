@@ -74,8 +74,8 @@ alps::params parameters(alps::run_configuration const& run, Prepare const& prepa
 }
 
 template<class Simulation> using chains_type = std::vector<std::unique_ptr<Simulation>>;
-template<class Simulation, class Prepare>
-chains_type<Simulation> prepare_chains(alps::run_configuration const& run, Prepare const& prepare, parallel const& group) {
+template<class Simulation, class Prepare, class Group>
+chains_type<Simulation> prepare_chains(alps::run_configuration const& run, Prepare const& prepare, Group const& group) {
     auto const& execution = run.execution;
     const auto chains = execution["chains"].as<std::size_t>();
     const auto seed = execution["seed"].as<std::uint64_t>();
@@ -102,7 +102,7 @@ chains_type<Simulation> prepare_chains(alps::run_configuration const& run, Prepa
     chains_type<Simulation> simulations;
     for (std::size_t id = 0; id < chains; ++id)
         simulations.push_back(group.rank()==0 || group.owns(id)
-            ? std::make_unique<Simulation>(p, execution["bins"].as<std::size_t>(), id) : nullptr);
+            ? group.template make<Simulation>(p, execution["bins"].as<std::size_t>(), id) : nullptr);
     if (run.input.exists("checkpoint")) {
         alps::hdf5::archive archive(run.input["checkpoint"].as<std::string>());
         alps::run_configuration saved;
@@ -166,9 +166,9 @@ template<class Derive> auto spin_output(Derive derive) {
     };
 }
 
-template<class Simulation, class Prepare, class Publish>
+template<class Simulation, class Prepare, class Publish, class Group>
 void execute(alps::run_configuration const& run, chains_type<Simulation>& chains,
-             Prepare const& prepare, Publish const& publish, snapshot_type<Simulation> const& snapshot, parallel const& group) {
+             Prepare const& prepare, Publish const& publish, snapshot_type<Simulation> const& snapshot, Group const& group) {
     using clock = std::chrono::steady_clock;
     const auto started = clock::now();
     auto last_checkpoint = started;
@@ -183,8 +183,9 @@ void execute(alps::run_configuration const& run, chains_type<Simulation>& chains
     bool active=true;
     while (active && !group.any(stopped())) {
         group.checked([&] {
-            // Amortize communication without delaying local stopping checks.
-            for (int step=0;step<32 && !stopped();++step) {
+            // Independent chains amortize communication; collective workers
+            // agree on stopping before entering each physical sweep.
+            for (int step=0;step<32 && !group.stopped(stopped());++step) {
                 active=false;
                 for (std::size_t id=0;id<chains.size();++id) if (group.owns(id)) {
                     auto& chain=*chains[id];
@@ -214,7 +215,7 @@ void execute(alps::run_configuration const& run, chains_type<Simulation>& chains
     });
 }
 
-template<class Simulation, class Prepare, class Publish>
+template<class Simulation, class Group=parallel, class Prepare, class Publish>
 int main(int argc, char** argv, char const* application, char const* base_schema,
          parameter_type type, Prepare prepare, Publish publish, snapshot_type<Simulation> snapshot = {}) {
     try {
@@ -240,13 +241,17 @@ int main(int argc, char** argv, char const* application, char const* base_schema
         }
         if (files.empty()) throw std::invalid_argument("No TOML run file specified");
 #ifdef ALPS_HAVE_MPI
-        boost::mpi::environment environment(argc, argv, false);
+        boost::mpi::environment environment(argc, argv, boost::mpi::threading::funneled, false);
 #endif
-        parallel group;
+        Group group;
         std::vector<alps::run_configuration> runs;
         std::vector<chains_type<Simulation>> simulations;
         std::set<std::filesystem::path> protected_paths, destinations;
         group.checked([&] {
+#ifdef ALPS_HAVE_MPI
+        if (boost::mpi::environment::thread_level()<boost::mpi::threading::funneled)
+            throw std::runtime_error("Native MC requires MPI support for worker threads with calls on the main thread");
+#endif
         for (auto const& file : files) protected_paths.insert(std::filesystem::weakly_canonical(file));
         for (auto const& file : files) {
             runs.push_back(alps::load_run_configuration(file, schema(file, base_schema, type)));
@@ -276,6 +281,7 @@ int main(int argc, char** argv, char const* application, char const* base_schema
                         throw std::invalid_argument("Snapshot prefix overlaps another output path or prefix");
             }
         });
+        group.verify(runs,validate);
         for (std::size_t index = 0; index < runs.size(); ++index) {
             if (validate) { if (group.rank()==0) std::cout << "Valid " << application << " configuration: " << files[index].string() << '\n'; }
             else execute(runs[index], simulations[index], prepare, publish, snapshot, group);

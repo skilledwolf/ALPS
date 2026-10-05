@@ -77,6 +77,12 @@ if(ALPS_BUILD_TESTING)
   endforeach()
 
   if(ALPS_ENABLE_MPI)
+    add_executable(mc_driver_mpi tests/driver_mpi.cpp)
+    target_link_libraries(mc_driver_mpi PRIVATE ALPS::alps MPI::MPI_CXX)
+    add_test(NAME mc_driver_mpi COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2
+      ${MPIEXEC_PREFLAGS} $<TARGET_FILE:mc_driver_mpi> ${MPIEXEC_POSTFLAGS})
+    set_tests_properties(mc_driver_mpi PROPERTIES LABELS "mc;mpi" PROCESSORS 2 TIMEOUT 60)
+
     add_executable(mcbase_mpi tests/mpi.cpp)
     target_link_libraries(mcbase_mpi PRIVATE ALPS::alps MPI::MPI_CXX)
     add_test(NAME mcbase_mpi COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2

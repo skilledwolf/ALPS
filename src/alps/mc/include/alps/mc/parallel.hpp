@@ -2,8 +2,10 @@
 #pragma once
 #include <alps/config.h>
 #include <alps/hdf5/archive.hpp>
+#include <alps/params.hpp>
 #include <boost/filesystem.hpp>
 #include <fstream>
+#include <memory>
 #include <sstream>
 #include <climits>
 #ifdef ALPS_HAVE_MPI
@@ -24,6 +26,14 @@ struct parallel {
     int size() const { return 1; }
 #endif
     bool owns(size_t id) const { return id%size()==size_t(rank()); }
+    template<class Simulation>
+    auto make(alps::params const& p,size_t bins,size_t id) const {
+        return std::make_unique<Simulation>(p,bins,id);
+    }
+    // Independent chains stop locally between scheduled collective checks.
+    // A spatial worker's group instead agrees before every collective sweep.
+    bool stopped(bool local) const { return local; }
+    template<class Runs> void verify(Runs const&,bool) const {}
     bool any(bool local) const {
 #ifdef ALPS_HAVE_MPI
         return boost::mpi::all_reduce(world,local,std::logical_or<bool>());
