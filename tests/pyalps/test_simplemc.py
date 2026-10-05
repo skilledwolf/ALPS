@@ -46,12 +46,13 @@ def read_results(filename):
 
 
 @pytest.mark.parametrize("model", ["ising", "xy", "heisenberg"])
-def test_simplemc_restart_matches_complete_native_batches(executable, tmp_path, model):
-    full = run_file(tmp_path, "full", model, output={"checkpoint": "full-checkpoint.h5"})
-    stopped = run_file(tmp_path, "stopped", model, execution={"max_sweeps": 14},
+@pytest.mark.parametrize("rng", ["mt19937", "lagged_fibonacci607"])
+def test_simplemc_restart_matches_complete_native_batches(executable, tmp_path, model, rng):
+    full = run_file(tmp_path, "full", model, execution={"rng": rng}, output={"checkpoint": "full-checkpoint.h5"})
+    stopped = run_file(tmp_path, "stopped", model, execution={"max_sweeps": 14, "rng": rng},
                        output={"checkpoint": "stopped-checkpoint.h5"})
     execute(executable, [full, stopped])
-    resumed = run_file(tmp_path, "resumed", model, input={"checkpoint": "stopped-checkpoint.h5"})
+    resumed = run_file(tmp_path, "resumed", model, execution={"rng": rng}, input={"checkpoint": "stopped-checkpoint.h5"})
     execute(executable, resumed)
     expected, actual = read_results(tmp_path / "full.h5"), read_results(tmp_path / "resumed.h5")
     assert expected.keys() == actual.keys()

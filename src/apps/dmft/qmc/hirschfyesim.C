@@ -71,8 +71,8 @@ HirschFyeRun::HirschFyeRun(alps::run_configuration const& run,
   if (parameters["SITES"].as<int>() != 1 || g0.nsite() != 1 || g0.nflavor() != 2 ||
       g0.nfreq() != parameters["NMATSUBARA"].as<unsigned int>())
     throw std::invalid_argument("Hirsch-Fye requires a one-site, two-flavor Green function of NMATSUBARA values");
-  alps::seed_with_sequence(random_01.engine(),
-    run.execution["seed"].as<std::uint32_t>() + static_cast<std::uint32_t>(rank));
+  random_01.with_engine([&](auto& engine) { alps::seed_with_sequence(engine,
+    run.execution["seed"].as<std::uint32_t>() + static_cast<std::uint32_t>(rank)); });
   boost::shared_ptr<FourierTransformer> fourier;
   FourierTransformer::generate_transformer(parameters, fourier);
   fourier->backward_ft(bare_green_tau, g0);

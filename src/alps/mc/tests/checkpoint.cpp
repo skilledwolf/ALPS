@@ -78,6 +78,13 @@ int main() {
     auto const directory = boost::filesystem::unique_path("test_mcbase_checkpoint.%%%%-%%%%");
     boost::filesystem::create_directory(directory);
     try {
+        boost::variate_generator<boost::mt19937,boost::uniform_01<double>> mt(boost::mt19937(37),{});
+        boost::random::lagged_fibonacci<uint32_t,48,607,273> fib(37);
+        alps::random01 native_mt(37), native_fib(37,"lagged_fibonacci607");
+        for (int i=0;i<2000;++i) {
+            require(native_mt()==mt(), "MT19937 stream changed");
+            require(native_fib()==boost::uniform_01<double>()(fib), "wrong released Fibonacci engine");
+        }
         auto const checkpoint = directory / "state.h5";
         simulation sim;
         sim.state = 1;

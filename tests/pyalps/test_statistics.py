@@ -234,9 +234,10 @@ def test_python_checkpoint_publication_closes_callbacks_and_rolls_back(tmp_path)
     assert set(tmp_path.iterdir()) == {filename}
 
 
+@pytest.mark.parametrize("name", ["mt19937", "lagged_fibonacci607"])
 @pytest.mark.parametrize("state", ["invalid engine", "trailing"])
-def test_random_checkpoint_failure_preserves_the_stream(tmp_path, state):
-    random = ngs.random01(17)
+def test_random_checkpoint_failure_preserves_the_stream(tmp_path, state, name):
+    random = ngs.random01(17, name)
     for _ in range(31):
         random()
     expected = copy.deepcopy(random)
@@ -247,3 +248,17 @@ def test_random_checkpoint_failure_preserves_the_stream(tmp_path, state):
         with pytest.raises(RuntimeError, match="invalid random01 checkpoint"):
             random.load(archive)
     assert [random() for _ in range(64)] == [expected() for _ in range(64)]
+
+
+@pytest.mark.parametrize("name", ["mt19937", "lagged_fibonacci607"])
+def test_random_engines_checkpoint_and_copy(tmp_path, name):
+    random = ngs.random01(37, name)
+    values = [random() for _ in range(1001)]
+    assert all(0 <= value < 1 for value in values)
+    expected = copy.deepcopy(random)
+    with hdf5.archive(tmp_path / "random.h5", "w") as archive:
+        random.save(archive)
+        restored = ngs.random01(0)
+        restored.load(archive)
+    assert restored.name == name
+    assert [restored() for _ in range(1001)] == [expected() for _ in range(1001)]

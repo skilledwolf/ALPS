@@ -48,7 +48,7 @@ results = "result.h5"
                        ('L = 4', 'L = 4\nDISORDERSEED = 3'),
                        ('bins = 8', 'bins = 3'),
                        ('seed = 2873', 'seed = 2147483647'),
-                       ('seed = 2873', 'seed = 2873\nrng = "lagged_fibonacci607"'),
+                       ('seed = 2873', 'seed = 2873\nrng = "unknown_rng"'),
                        ('seed = 2873', 'seed = 2873\nerror_variable = "Energy"'),
                        ('results = "result.h5"', 'results = "run.toml"')]
             for old, new in changes:

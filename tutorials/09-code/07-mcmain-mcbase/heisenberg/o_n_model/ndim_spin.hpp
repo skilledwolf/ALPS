@@ -207,7 +207,7 @@ void ndim_spin_sim<N>::load(alps::hdf5::archive & ar) {
 
 template <int N>
 const typename ndim_spin_sim<N>::spintype ndim_spin_sim<N>::random_spin() {
-    return random_spin_gen(random.engine());
+    return random.with_engine([&](auto& engine) { return random_spin_gen(engine); });
 }
 
 #endif 

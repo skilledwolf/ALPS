@@ -71,7 +71,9 @@ options may change when resuming; the current run's options take effect.
 
 Independent `execution.chains` use successive seeds and run serially. The graph
 uses one `execution.disorder_seed`, defaulting to the base seed. The RNG is
-`mt19937`; old alternate-RNG checkpoints require the released executable.
+`mt19937` by default; `lagged_fibonacci607` is also available. Both retain exact
+native checkpoint continuation. Seeding uses Boost’s integer seed constructor;
+released scheduler seed expansion and buffered checkpoint layouts differ.
 Multi-process launches and legacy XML run inputs are rejected. Separate TOML
 tasks can be distributed by an external job launcher.
 

@@ -19,7 +19,7 @@ namespace alps {
 
     mcbase::mcbase(parameters_type const & parms, std::size_t seed_offset)
         : parameters(parms)
-        , random((parameters.value_or("SEED", 42)) + seed_offset)
+        , random((parameters.value_or("SEED", 42)) + seed_offset, parameters.value_or<std::string>("RNG", "mt19937"))
     {
     }
 

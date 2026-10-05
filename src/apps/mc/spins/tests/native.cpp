@@ -370,7 +370,7 @@ int main() {
         }
         rejects([&] { fresh.load(checkpoint); }, "checkpoint accepted impossible cluster warmup counters");
         require(fresh.completed_sweeps() == 0 && fresh.measurement_count() == 0
-                && fresh.get_random().engine() == rng.engine(), "failed warmup load changed continuation state");
+                && fresh.get_random() == rng, "failed warmup load changed continuation state");
     }
     std::cout << "spinmc independent Hamiltonian, cluster and exact restart gates passed\n";
 }

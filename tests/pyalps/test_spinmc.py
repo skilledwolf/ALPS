@@ -56,14 +56,15 @@ def results(filename):
     {"UPDATE": "cluster", "J": [-.8], "L": 4},
     *[{"MODEL": "Potts", "q": q, "UPDATE": "cluster"} for q in (3, 4, 10)],
 ])
-def test_spinmc_restart_retains_every_native_result(executable, tmp_path, parameters):
+@pytest.mark.parametrize("rng", ["mt19937", "lagged_fibonacci607"])
+def test_spinmc_restart_retains_every_native_result(executable, tmp_path, parameters, rng):
     full = run_file(tmp_path, "full", parameters=parameters,
-                    output={"checkpoint": "full-checkpoint.h5"})
+                    execution={"rng": rng}, output={"checkpoint": "full-checkpoint.h5"})
     stopped = run_file(tmp_path, "stopped", parameters=parameters,
-                       execution={"max_sweeps": 14}, output={"checkpoint": "partial.h5"})
+                       execution={"max_sweeps": 14, "rng": rng}, output={"checkpoint": "partial.h5"})
     execute(executable, [full, stopped])
     resumed = run_file(tmp_path, "resumed", parameters=parameters,
-                       input={"checkpoint": "partial.h5"})
+                       execution={"rng": rng}, input={"checkpoint": "partial.h5"})
     execute(executable, resumed)
     expected, actual = results(tmp_path / "full.h5"), results(tmp_path / "resumed.h5")
     assert expected.keys() == actual.keys()

@@ -26,7 +26,7 @@ local_config(run.parameters,run.input,crank),
 hyb_config(run.parameters,run.input)
 {
   const auto &parms=run.parameters;
-  random.engine().seed(run.execution["seed"].as<std::uint32_t>()+static_cast<std::uint32_t>(crank));
+  random.seed(run.execution["seed"].as<std::uint32_t>()+static_cast<std::uint32_t>(crank));
   show_info(run,crank);
   
   //initializing general simulation constants

@@ -108,7 +108,7 @@ void heisenberg_sim::load(alps::hdf5::archive & ar) {
 }
 
 const spintype heisenberg_sim::random_spin() {
-    return spin_from_vector(random_spin_gen(random.engine()));
+    return spin_from_vector(random.with_engine([&](auto& engine) { return random_spin_gen(engine); }));
 }
 
 const spintype heisenberg_sim::random_spin_accept_reject() {

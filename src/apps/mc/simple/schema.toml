@@ -44,6 +44,7 @@ max = 2147483647
 [execution.rng]
 type = "string"
 default = "mt19937"
+choices = ["mt19937", "lagged_fibonacci607"]
 [execution.disorder_seed]
 type = "int64"
 min = 0

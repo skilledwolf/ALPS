@@ -49,7 +49,7 @@ almost_zero(run.parameters["ALMOSTZERO"].as<double>()),
 bare_green_itime(n_tau+1, n_site, n_flavors)
 {
   const auto &parms = run.parameters;
-  random.engine().seed(run.execution["seed"].as<std::uint64_t>() + static_cast<std::uint64_t>(node));
+  random.seed(run.execution["seed"].as<std::uint64_t>() + static_cast<std::uint64_t>(node));
   //initialize measurement method
   if (parms.value_or("HISTOGRAM_MEASUREMENT", false))
     measurement_method=selfenergy_measurement_itime_rs;

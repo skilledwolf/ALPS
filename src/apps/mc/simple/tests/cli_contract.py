@@ -40,7 +40,7 @@ class SimpleMCContract(unittest.TestCase):
     def test_invalid_settings_preserve_outputs(self):
         changes = [('T = 2.0', 'T = 0.0'), ('chains = 2', 'chains = 0'),
                    ('bins = 8', 'bins = 3'), ('seed = 2873', 'seed = 2147483647'),
-                   ('seed = 2873', 'seed = 2873\nrng = "lagged_fibonacci607"'),
+                   ('seed = 2873', 'seed = 2873\nrng = "unknown_rng"'),
                    ('L = 4', 'L = 4\nNUM_CLONES = 2'),
                    ('L = 4', 'L = 4\nDISORDERSEED = 3'),
                    ('SWEEPS = 37', 'SWEEPS = "[37:]"'),
@@ -52,8 +52,6 @@ class SimpleMCContract(unittest.TestCase):
                 (self.directory / "ising.h5").write_bytes(b"existing scientific data")
                 result = self.invoke(path)
                 self.assertNotEqual(result.returncode, 0)
-                if "lagged_fibonacci" in new:
-                    self.assertIn("mt19937", result.stderr)
 
     def test_implicit_lattice_library_is_protected(self):
         library = self.directory / "lattices.xml"

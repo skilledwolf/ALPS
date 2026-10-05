@@ -94,6 +94,7 @@ template<class Prepare>
 alps::params parameters(alps::run_configuration const& run, Prepare const& prepare) {
     auto p = run.parameters;
     p["SEED"] = run.execution["seed"];
+    p["RNG"] = run.execution["rng"];
     p["DISORDER_SEED"] = run.execution.value_or<std::uint64_t>("disorder_seed", run.execution["seed"].as<std::uint64_t>());
     p["LATTICE_LIBRARY"] = run.input["lattice_library"];
     prepare(p, run);
@@ -104,8 +105,6 @@ template<class Simulation> using chains_type = std::vector<std::unique_ptr<Simul
 template<class Simulation, class Prepare>
 chains_type<Simulation> prepare_chains(alps::run_configuration const& run, Prepare const& prepare) {
     auto const& execution = run.execution;
-    if (execution["rng"].as<std::string>() != "mt19937")
-        throw std::invalid_argument("Use execution.rng = 'mt19937'; other RNG checkpoints require the released executable");
     const auto chains = execution["chains"].as<std::size_t>();
     const auto seed = execution["seed"].as<std::uint64_t>();
     if (chains - 1 > INT_MAX - seed)

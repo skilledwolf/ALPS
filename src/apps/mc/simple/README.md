@@ -48,7 +48,9 @@ disorder/depletion seed and otherwise defaults to `execution.seed`; all chains
 share it. Use separate explicit tasks for different disorder realizations. The
 driver executes chains serially. Multi-process MPI launches are rejected;
 independent task files can be dispatched through a job scheduler. The supported
-RNG is `mt19937`; other choices fail explicitly.
+RNG choices are `mt19937` (default) and `lagged_fibonacci607`. Both retain
+exact native checkpoint continuation. Seeding uses Boost’s integer seed constructor;
+released scheduler seed expansion and buffered checkpoint layouts differ.
 
 Raw native batches are concatenated across chains before computing specific
 heat or Binder ratios, preserving sample weights and moment covariance. Errors

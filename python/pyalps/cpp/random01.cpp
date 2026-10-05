@@ -11,7 +11,8 @@
 namespace nb = nanobind;
 NB_MODULE(pyngsrandom01_c, m) {
     nb::class_<alps::random01>(m, "random01")
-        .def(nb::init<int>(), nb::arg("seed") = 42)
+        .def(nb::init<int, std::string const&>(), nb::arg("seed") = 42, nb::arg("name") = "mt19937")
+        .def_prop_ro("name", &alps::random01::name)
         .def("__deepcopy__",
              // copy.deepcopy() passes (self, memo); memo is unused.
              [](alps::random01 const & self, nb::handle /*memo*/) {
