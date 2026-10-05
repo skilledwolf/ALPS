@@ -342,11 +342,17 @@ not introduce another scan scheduler or another result format.
 Exchange includes explicit temperature/inverse-temperature sets, regular grids,
 exchange intervals and randomized ordering, plus rate and population ladder
 optimization. Native `<alps/mc/temperature_grid.hpp>` implements both
-optimization methods with worker-provided weight laws; the loop application's
-`src/apps/qmc/looper/application.hpp` owns its ladder and restart state.
-Use this existing implementation as the starting point for consolidation after
-checking its worker assumptions. Do not introduce a second temperature-grid
-optimizer or restore the legacy observable framework to reuse the old adapters.
+optimization methods with worker-provided weight laws.
+`<alps/mc/replica_exchange.hpp>` now owns the assignment of walkers to temperature
+slots, RNG, feedback schedule and restart state, and the loop application uses
+this shared implementation. Applications supply physical updates, weights and
+statistical recording; signed classical energies are supported without imposing
+quantum expansion-order constraints. Acceptance/population diagnostics refer to
+temperature slots, while round-trip diagnostics retain physical walker identity.
+Do not introduce another exchange engine or restore the legacy observable
+framework to reuse the old adapters. The existing native grid requires positive
+finite inverse temperatures; the classical beta-zero endpoint needs explicit
+assessment during its port, especially for temperature-coordinate feedback.
 The generic `alps::mc` runner supplies execution and transport; an application
 still has to implement its ensemble's physical state and measurements.
 

@@ -17,6 +17,7 @@ target_sources(alps_headers INTERFACE
     include/alps/mc/physical_moments.hpp
     include/alps/mc/parallel.hpp
     include/alps/mc/temperature_grid.hpp
+    include/alps/mc/replica_exchange.hpp
     include/alps/mcmpiadapter.hpp
     include/alps/ngs.hpp
     include/alps/ngs/api.hpp
@@ -29,6 +30,11 @@ alps_register_module(NAME mc HEADER_SET mc_headers
 )
 
 if(ALPS_BUILD_TESTING)
+  add_executable(mc_replica_exchange tests/replica_exchange.cpp)
+  target_link_libraries(mc_replica_exchange PRIVATE ALPS::alps)
+  alps_add_test(mc_replica_exchange)
+  set_property(TEST mc_replica_exchange PROPERTY LABELS "mc;hdf5")
+
   add_executable(mcbase_checkpoint tests/checkpoint.cpp)
   target_link_libraries(mcbase_checkpoint PRIVATE ALPS::alps)
   alps_add_test(mcbase_checkpoint)
