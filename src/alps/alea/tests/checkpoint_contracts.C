@@ -2,11 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 #include <alps/alea.h>
-#include <alps/alea/mcdata.hpp>
 #include <alps/hdf5.hpp>
 
 #include <filesystem>
-#include <cmath>
 #include <iostream>
 #include <sstream>
 #include <stdexcept>
@@ -33,22 +31,10 @@ template<typename T> T sample(std::size_t i) {
     else return T{value, 2.0 * value + 3.0};
 }
 
-template<typename L, typename R> bool close(L const& lhs, R const& rhs) {
-    if constexpr (std::is_arithmetic_v<L> && std::is_arithmetic_v<R>)
-        return std::abs(lhs - rhs) <= 1e-12 * std::max(1.0, std::abs(double(rhs)));
-    else {
-        if (lhs.size() != rhs.size()) return false;
-        for (std::size_t i = 0; i < lhs.size(); ++i)
-            if (!close(lhs[i], rhs[i])) return false;
-        return true;
-    }
-}
-
 template<typename Observable> void observable_roundtrip(alps::hdf5::archive& ar,
                                                         std::string const& path) {
     using T = typename Observable::value_type;
     using Data = alps::SimpleObservableData<T>;
-    using ResultT = std::conditional_t<std::is_arithmetic_v<T>, double, std::vector<double>>;
     Observable observable("energy");
     for (std::size_t i = 0; i < 256; ++i) observable << sample<T>(i);
     Data original(observable);
@@ -68,17 +54,8 @@ template<typename Observable> void observable_roundtrip(alps::hdf5::archive& ar,
     ar >> alps::make_pvp(path + "/timeseries/data2/@maxbinnum", maximum);
     require(maximum == observable.max_bin_number(), "squared-bin metadata was not written");
 
-    // Evaluator bins contain sums; a result reader must still decode means.
-    alps::alea::mcdata<ResultT> expected(observable), means;
-    ar >> alps::make_pvp(path, means);
-    T raw_mean = sample<T>(0);
-    for (std::size_t i = 1; i < 256; ++i) raw_mean += sample<T>(i);
-    raw_mean /= 256.0;
-    require(close(means.mean(), raw_mean), "observable-to-result mean changed");
-    require(equal(means.bins(), expected.bins()), "observable sums were not decoded as bin means");
+    // Released evaluators omitted binsize; infer it from count/bin count.
     ar.delete_attribute(path + "/timeseries/data/@binsize");
-    ar >> alps::make_pvp(path, means);
-    require(equal(means.bins(), expected.bins()), "official evaluator bin-size inference changed");
     ar >> alps::make_pvp(path, restored);
     require(restored.bin_size() == original.bin_size(), "official evaluator bin-size inference failed");
 
@@ -132,12 +109,9 @@ template<typename Observable> void observable_roundtrip(alps::hdf5::archive& ar,
         require(!ar.is_data(path + field), "empty observable save retained optional leaf");
 
     // A result discriminator left in a reused group must not disable sum decoding.
-    ar << alps::make_pvp(path, expected);
+    ar << alps::make_pvp(path + "/@cannotrebin", true);
     ar << alps::make_pvp(path, original);
     require(!ar.is_attribute(path + "/@cannotrebin"), "observable retained result discriminator");
-    ar >> alps::make_pvp(path, means);
-    require(equal(means.bins(), expected.bins()), "reused result group changed sum decoding");
-
     // Rebinning a loaded evaluator needs its restored bin size.
     ar >> alps::make_pvp(path, restored);
     auto rebinned = original;
@@ -151,25 +125,6 @@ template<typename Observable> void observable_roundtrip(alps::hdf5::archive& ar,
     ar << alps::make_pvp(path + "/single_sample", single_observable);
     require(!ar.is_data(path + "/single_sample/mean/error"),
             "raw first-sample observable unexpectedly serialized an error");
-    alps::alea::mcdata<ResultT> single_live(single_observable);
-    ar >> alps::make_pvp(path + "/single_sample", means);
-    require(means.count() == 1 && means.bin_number() == 0,
-            "single raw observable count or bins changed");
-    require(equal(means.mean(), single_live.mean()) && equal(means.error(), single_live.error()),
-            "single raw observable decoding differs from live infinite-error result");
-
-    Observable empty_observable("energy");
-    alps::alea::mcdata<ResultT> empty_result(empty_observable);
-    ar << alps::make_pvp(path, empty_result);
-    ResultT mean, error;
-    ar >> alps::make_pvp(path + "/mean/value", mean)
-       >> alps::make_pvp(path + "/mean/error", error);
-    require(equal(mean, ResultT{}) && equal(error, ResultT{}),
-            "empty observable-to-result checkpoint persisted uninitialized statistics");
-    ar >> alps::make_pvp(path, means);
-    require(means.count() == 0 && means.bin_number() == 0
-            && !means.has_variance() && !means.has_tau(),
-            "empty observable-to-result checkpoint retained populated state");
 }
 
 void assignment_preserves_evaluation_method() {

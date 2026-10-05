@@ -236,3 +236,36 @@ retain refinement and multicanonical state; completed production can be extended
 Thermodynamic evaluation uses each chain's final corrected coefficients before
 averaging curves. See [QWL](../../apps/qmc/qwl/README.md) for window normalization
 and the released per-run result converter.
+
+## Removed post-processing APIs
+
+The retired `mcdata.hpp`, `mcanalyze.hpp` and `value_with_error.hpp` headers are
+no longer installed or included by `alea.h`. Their application and example
+consumers have migrated. The remaining legacy observable producers are still
+present until the scheduler/model clients are migrated; this is not completion
+of the whole ALEA consolidation.
+
+Use native result means, variances, covariance, errors and `merge` for statistical
+analysis. Arithmetic and component selection use `transform`; joint batch
+samples retain correlations for nonlinear jackknife propagation. `join` of
+summary results assumes independence, whereas aligned batch results retain
+joint evidence. Do not reproduce the old practice of treating correlated
+quantities as independent error bars.
+
+Raw chronological histories are ordinary arrays, separate from compressed
+statistical results. Python's array analysis functions retain lag selection,
+exponential fits, integrated times, cuts and running means. The C++ examples in
+`tutorials/00-examples/alea` demonstrate the same numerical operations with
+STL/Eigen arrays and native moments. They do not introduce another time-series
+container. Choose a native accumulator's base batch size before inserting
+samples; changing its configuration resets its data. To discard startup samples
+or regroup a raw history, slice/group the chronological input and recompute.
+A pooled result is not a time series: never assume its batch storage order is
+chronological or infer missing samples from bin means.
+
+For published estimates lacking statistical evidence, Python's `ReportedEstimate`
+preserves the reported fields without inventing covariance, weights or restart
+state; `FloatWithError` supports explicitly independent error arithmetic.
+Released archives use the offline `alps-hdf5-convert` profiles (`--alea-batches`,
+`--alea-autocorr`, `--alea-summary`). Original fields remain under `legacy/`.
+Converted analysis results do not constitute physical simulation checkpoints.

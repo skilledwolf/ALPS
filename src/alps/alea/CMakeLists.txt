@@ -18,8 +18,6 @@ target_sources(alps_headers INTERFACE
     include/alps/alea/histogram.h
     include/alps/alea/histogramdata.h
     include/alps/alea/histogrameval.h
-    include/alps/alea/mcanalyze.hpp
-    include/alps/alea/mcdata.hpp
     include/alps/alea/nan.h
     include/alps/alea/nobinning.h
     include/alps/alea/observable.h
@@ -36,8 +34,7 @@ target_sources(alps_headers INTERFACE
     include/alps/alea/simpleobservable.ipp
     include/alps/alea/simpleobseval.h
     include/alps/alea/simpleobseval.ipp
-    include/alps/alea/type_tag.hpp
-    include/alps/alea/value_with_error.hpp)
+    include/alps/alea/type_tag.hpp)
 
 # Modern Eigen-based ALEA from pinned ALPSCore; a separate scientific runtime.
 add_library(alps_statistics

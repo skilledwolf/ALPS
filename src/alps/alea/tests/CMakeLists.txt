@@ -30,10 +30,6 @@ foreach(
   observableset_hdf5
   observableset_xml
   vectorobseval
-  mcdata
-  mcdata2
-  mcdata_transform_variance
-  mcanalyze
   mergeobs_plus
   mergeobs_plus2
   mergeobs_times
