@@ -69,13 +69,21 @@ at least two batches are occupied. `execution.print_sweeps` sets a diagnostic
 interval in updates (zero disables printing). These stopping and printing
 options may change when resuming; the current run's options take effect.
 
-Independent `execution.chains` use successive seeds and run serially. The graph
-uses one `execution.disorder_seed`, defaulting to the base seed. The RNG is
-`mt19937` by default; `lagged_fibonacci607` is also available. Both retain exact
-native checkpoint continuation. Seeding uses Boost’s integer seed constructor;
-released scheduler seed expansion and buffered checkpoint layouts differ.
-Multi-process launches and legacy XML run inputs are rejected. Separate TOML
-tasks can be distributed by an external job launcher.
+Independent `execution.chains` use successive seeds. In an MPI build,
+`mpiexec -n 4 spinmc run.toml` distributes their global IDs across ranks; set
+`execution.chains` to at least the process count to use every rank. The same
+chains have identical streams, raw bins and diagnostics in serial and MPI, and
+checkpoints can resume with a different process count. The graph uses one
+`execution.disorder_seed`, defaulting to the base seed. RNG choices are
+`mt19937` (default) and `lagged_fibonacci607`; both support exact native restart.
+Released scheduler seed expansion and buffered checkpoint layouts differ.
+
+The root publishes checkpoints and results. At publication, other ranks transfer
+native HDF5 checkpoint bytes through MPI using private temporary spools; this
+needs no shared scratch directory and adds no second state schema. Rank failures
+propagate at checks every 32 updates. Local budgets/signals are checked each
+update. Aggregate checkpoint transport is limited to approximately 2 GiB per
+publication by Boost.MPI's count range.
 
 Raw batches from all chains are concatenated with their actual sample weights.
 Native joint jackknife analysis writes Specific Heat, Connected Susceptibility,

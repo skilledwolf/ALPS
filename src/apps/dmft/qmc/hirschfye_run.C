@@ -56,6 +56,10 @@ void alps::dmft::run_hirschfye(run_configuration run) {
                                         std::chrono::seconds(seconds));
   };
 #ifdef ALPS_HAVE_MPI
+  int processes=1;
+  MPI_Comm_size(MPI_COMM_WORLD, &processes);
+  if (processes==1) { while (!stop() && simulation.work_done()<1.) simulation.dostep(); }
+  else {
   alps::check_schedule check;
   double fraction=0.;
   do {
@@ -68,6 +72,7 @@ void alps::dmft::run_hirschfye(run_configuration run) {
       check.update(fraction);
     }
   } while (fraction<1.);
+  }
   alps::alea::mpi_reducer reducer(MPI_COMM_WORLD);
 #else
   while (!stop() && simulation.work_done()<1.) simulation.dostep();

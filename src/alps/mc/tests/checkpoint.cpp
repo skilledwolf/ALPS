@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include <alps/mcbase.hpp>
+#include <alps/check_schedule.hpp>
 #include <alps/alea/hdf5.hpp>
 #include <alps/alea/checkpoint.hpp>
 
@@ -75,6 +76,10 @@ void failed_base_load(simulation& sim, boost::filesystem::path const& filename) 
 }
 
 int main() {
+    alps::check_schedule schedule(60., 60.);
+    require(schedule.check_interval()==0. && schedule.pending(), "Initial progress check must be immediate");
+    schedule.update(0.25);
+    require(schedule.check_interval()==60. && !schedule.pending(), "Updated progress check must respect interval");
     auto const directory = boost::filesystem::unique_path("test_mcbase_checkpoint.%%%%-%%%%");
     boost::filesystem::create_directory(directory);
     try {

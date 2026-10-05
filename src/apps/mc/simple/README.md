@@ -46,8 +46,10 @@ sweeps, using seed `execution.seed + chain index`. These are chains of the same
 Hamiltonian and graph. `execution.disorder_seed` sets the graph's quenched
 disorder/depletion seed and otherwise defaults to `execution.seed`; all chains
 share it. Use separate explicit tasks for different disorder realizations. The
-driver executes chains serially. Multi-process MPI launches are rejected;
-independent task files can be dispatched through a job scheduler. The supported
+driver distributes global chain IDs across ranks in MPI builds; for example,
+`mpiexec -n 4 simplemc run.toml`. Set `execution.chains` to at least the process
+count to use every rank. Streams and raw evidence are identical in serial/MPI,
+and checkpoints can resume with a different process count. The supported
 RNG choices are `mt19937` (default) and `lagged_fibonacci607`. Both retain
 exact native checkpoint continuation. Seeding uses Boost’s integer seed constructor;
 released scheduler seed expansion and buffered checkpoint layouts differ.
@@ -126,3 +128,9 @@ distribution. Python can use NumPy histogram routines on the retained samples.
 another chain. Its datasets retain `native_result` for level counts, uncertainties
 and `tau`. A finite autocorrelation estimate does not prove convergence. Never
 join independent chains into one chronological series.
+
+MPI publishes on the root after transporting native HDF5 checkpoint bytes using
+private temporary spools; ranks need no shared scratch directory. Failures reach
+every rank at checks every 32 updates, with local stopping checked every update.
+Boost.MPI limits aggregate checkpoint transport to approximately 2 GiB per
+publication. The same scientific checkpoint codec serves serial and MPI runs.

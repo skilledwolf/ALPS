@@ -46,7 +46,7 @@ int main(int argc, char** argv) {
     }
     if (file.empty()) throw std::invalid_argument("No TOML run file specified");
 #ifdef ALPS_HAVE_MPI
-    boost::mpi::environment environment(argc, argv);
+    boost::mpi::environment environment(argc, argv, false);
 #endif
     alps::run_configuration run;
     std::string error;

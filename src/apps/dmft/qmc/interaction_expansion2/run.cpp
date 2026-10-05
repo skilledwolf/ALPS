@@ -82,6 +82,10 @@ void alps::solvers::ctint(const run_configuration &supplied) {
   };
 
 #ifdef ALPS_HAVE_MPI
+  int processes=1;
+  MPI_Comm_size(MPI_COMM_WORLD, &processes);
+  if (processes==1) { s.run(stop); }
+  else {
   // SWEEPS is aggregate work across independent chains, as in the old driver.
   const auto interval = run.execution["check_interval"].as<double>();
   alps::check_schedule check(interval, interval);
@@ -96,6 +100,7 @@ void alps::solvers::ctint(const run_configuration &supplied) {
       check.update(fraction);
     }
   } while (fraction < 1.);
+  }
   alps::alea::mpi_reducer reducer(MPI_COMM_WORLD);
 #else
   s.run(stop);

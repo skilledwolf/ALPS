@@ -49,7 +49,7 @@ int main(int argc, char *argv[]) {
             sim.load(checkpoint_file);
 
         // TODO: how do we handle signels in mpi context? do we want to handle these in the callback or in the simulation?
-        // do not use stop_callback_mpi: we do not want an bcast after every sweep!
+        // The adapter coordinates stopping at scheduled checks; use a local callback.
         //  Additionally this causes a race cond and deadlocks as mcmpiadapter::run will always call the stop_callback broadcast
         //  but only sometimes all_reduce on the fraction. Timers on different procs are not synchronized so they may not agree
         //  on the mpi call.

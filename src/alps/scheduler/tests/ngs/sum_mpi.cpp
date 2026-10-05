@@ -69,11 +69,11 @@ int main(int argc, char *argv[]) {
         if (c.rank() > 0)
           /* do nothing*/ ;
         else params = load_sum_parameters(options.input_file);
-        broadcast(c, params);
+        params.broadcast(c, 0);
 
         alps::mcmpiadapter<my_sim_type> my_sim(params, c, alps::check_schedule(options.tmin, options.tmax)); // creat a simulation
 
-        my_sim.run(alps::stop_callback(c, options.timelimit)); // run the simulation
+        my_sim.run(alps::stop_callback(options.timelimit)); // adapter coordinates local stopping
 
         using alps::collect_results;
 

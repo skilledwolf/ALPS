@@ -1,6 +1,7 @@
 // Copyright (C) 2026 ALPS Collaboration. SPDX-License-Identifier: MIT
 #pragma once
 #include "measurements.hpp"
+#include "parallel.hpp"
 #include <alps/alea/convert.hpp>
 #include <alps/alea/batch.hpp>
 #include <alps/ngs/signal.hpp>
@@ -17,9 +18,6 @@
 #include <memory>
 #include <set>
 #include <sstream>
-#ifdef ALPS_HAVE_MPI
-#include <boost/mpi/environment.hpp>
-#endif
 
 // Private application orchestration: retain independent, weighted batches
 // before any nonlinear estimator joins the aligned physical moments.
@@ -90,7 +88,7 @@ alps::params parameters(alps::run_configuration const& run, Prepare const& prepa
 
 template<class Simulation> using chains_type = std::vector<std::unique_ptr<Simulation>>;
 template<class Simulation, class Prepare>
-chains_type<Simulation> prepare_chains(alps::run_configuration const& run, Prepare const& prepare) {
+chains_type<Simulation> prepare_chains(alps::run_configuration const& run, Prepare const& prepare, parallel const& group) {
     auto const& execution = run.execution;
     const auto chains = execution["chains"].as<std::size_t>();
     const auto seed = execution["seed"].as<std::uint64_t>();
@@ -115,7 +113,8 @@ chains_type<Simulation> prepare_chains(alps::run_configuration const& run, Prepa
         throw std::invalid_argument("Total sweep count exceeds the counter range");
     chains_type<Simulation> simulations;
     for (std::size_t id = 0; id < chains; ++id)
-        simulations.push_back(std::make_unique<Simulation>(p, execution["bins"].as<std::size_t>(), id));
+        simulations.push_back(group.rank()==0 || group.owns(id)
+            ? std::make_unique<Simulation>(p, execution["bins"].as<std::size_t>(), id) : nullptr);
     if (run.input.exists("checkpoint")) {
         alps::hdf5::archive archive(run.input["checkpoint"].as<std::string>());
         alps::run_configuration saved;
@@ -131,7 +130,7 @@ chains_type<Simulation> prepare_chains(alps::run_configuration const& run, Prepa
         for (std::size_t id = 0; id < chains; ++id)
             if (!archive.is_group(clones + std::to_string(id)))
                 throw std::invalid_argument("Unexpected checkpoint clone name or type");
-        for (std::size_t id = 0; id < chains; ++id) {
+        for (std::size_t id = 0; id < chains; ++id) if (simulations[id]) {
             archive.set_context(clones + std::to_string(id));
             simulations[id]->load(archive);
         }
@@ -154,7 +153,7 @@ void checkpoint(alps::run_configuration const& run, chains_type<Simulation> cons
 template<class Simulation> using snapshot_type = std::function<void(Simulation const&, std::filesystem::path const&)>;
 template<class Simulation, class Prepare, class Derive>
 void execute(alps::run_configuration const& run, chains_type<Simulation>& chains,
-             Prepare const& prepare, Derive const& derive, snapshot_type<Simulation> const& snapshot) {
+             Prepare const& prepare, Derive const& derive, snapshot_type<Simulation> const& snapshot, parallel const& group) {
     using clock = std::chrono::steady_clock;
     const auto started = clock::now();
     auto last_checkpoint = started;
@@ -163,26 +162,39 @@ void execute(alps::run_configuration const& run, chains_type<Simulation>& chains
     const auto budget = run.execution["max_sweeps"].as<std::uint64_t>();
     const auto snapshots = run.execution.value_or<std::uint64_t>("snapshot_interval", 0);
     std::vector<std::uint64_t> initial;
-    for (auto const& chain : chains) initial.push_back(chain->completed_sweeps());
+    for (auto const& chain : chains) initial.push_back(chain ? chain->completed_sweeps() : 0);
     alps::ngs::signal signal;
-    bool active = true;
-    while (active && signal.empty() && (!limit || std::chrono::duration<double>(clock::now() - started).count() < limit)) {
-        active = false;
-        for (std::size_t id = 0; id < chains.size(); ++id) {
-            auto& chain = *chains[id];
-            if (chain.fraction_completed() >= 1. || (budget && chain.completed_sweeps() - initial[id] >= budget)) continue;
-            active = true;
-            chain.update(); chain.measure();
-            if (snapshots && chain.completed_sweeps() % snapshots == 0)
-                snapshot(chain, run.output["snapshot_prefix"].as<std::string>() + ".clone" +
-                    std::to_string(id + 1) + "." + std::to_string(chain.completed_sweeps()) + ".vtk");
-        }
-        if (interval && run.output.exists("checkpoint") &&
-            std::chrono::duration<double>(clock::now() - last_checkpoint).count() >= interval) {
-            checkpoint(run, chains); last_checkpoint = clock::now();
+    auto stopped=[&] { return !signal.empty() || (limit && std::chrono::duration<double>(clock::now()-started).count()>=limit); };
+    bool active=true;
+    while (active && !group.any(stopped())) {
+        group.checked([&] {
+            // Amortize communication without delaying local stopping checks.
+            for (int step=0;step<32 && !stopped();++step) {
+                active=false;
+                for (std::size_t id=0;id<chains.size();++id) if (group.owns(id)) {
+                    auto& chain=*chains[id];
+                    if (chain.fraction_completed()>=1. || (budget && chain.completed_sweeps()-initial[id]>=budget)) continue;
+                    active=true;
+                    chain.update(); chain.measure();
+                    if (snapshots && chain.completed_sweeps()%snapshots==0)
+                        snapshot(chain,run.output["snapshot_prefix"].as<std::string>()+".clone"+
+                            std::to_string(id+1)+"."+std::to_string(chain.completed_sweeps())+".vtk");
+                }
+                if (!active) break;
+            }
+        });
+        active=group.any(active);
+        if (group.any(interval && run.output.exists("checkpoint") &&
+                std::chrono::duration<double>(clock::now()-last_checkpoint).count()>=interval)) {
+            group.synchronize(chains);
+            group.checked([&] { if (group.rank()==0) checkpoint(run,chains); });
+            last_checkpoint=clock::now();
         }
     }
-    checkpoint(run, chains);
+    group.synchronize(chains);
+    group.checked([&] {
+    if (group.rank()!=0) return;
+    checkpoint(run,chains);
     std::vector<batch_results> raw;
     for (auto const& chain : chains) raw.push_back(chain->collect_results());
     const auto results = derive(pool(raw), parameters(run, prepare));
@@ -195,6 +207,7 @@ void execute(alps::run_configuration const& run, chains_type<Simulation>& chains
             save_diagnostics(*chains[id],archive,"/simulation/realizations/0/clones/"+std::to_string(id),
                              native_mc::batch_names(chains[id]->get_measurements()));
         }
+    });
     });
 }
 
@@ -224,20 +237,19 @@ int main(int argc, char** argv, char const* application, char const* base_schema
         }
         if (files.empty()) throw std::invalid_argument("No TOML run file specified");
 #ifdef ALPS_HAVE_MPI
-        boost::mpi::environment environment(argc, argv);
-        int processes;
-        MPI_Comm_size(MPI_COMM_WORLD, &processes);
-        if (processes != 1) throw std::invalid_argument("Independent execution.chains run in one process; use separate TOML tasks for parallel jobs");
+        boost::mpi::environment environment(argc, argv, false);
 #endif
+        parallel group;
         std::vector<alps::run_configuration> runs;
         std::vector<chains_type<Simulation>> simulations;
         std::set<std::filesystem::path> protected_paths, destinations;
+        group.checked([&] {
         for (auto const& file : files) protected_paths.insert(std::filesystem::weakly_canonical(file));
         for (auto const& file : files) {
             runs.push_back(alps::load_run_configuration(file, schema(file, base_schema, type)));
             runs.back().input["lattice_library"] = std::filesystem::weakly_canonical(
                 alps::search_xml_library_path(runs.back().input.value_or<std::string>("lattice_library", "lattices.xml"))).string();
-            simulations.push_back(prepare_chains<Simulation>(runs.back(), prepare));
+            simulations.push_back(prepare_chains<Simulation>(runs.back(), prepare, group));
             for (auto const& [key, value] : runs.back().input) protected_paths.insert(std::filesystem::weakly_canonical(value.as<std::string>()));
         }
         for (auto const& run : runs)
@@ -256,9 +268,10 @@ int main(int argc, char** argv, char const* application, char const* base_schema
                     if (path.string().compare(0, prefix.size(), prefix) == 0)
                         throw std::invalid_argument("Snapshot prefix overlaps another output path or prefix");
             }
+        });
         for (std::size_t index = 0; index < runs.size(); ++index) {
-            if (validate) std::cout << "Valid " << application << " configuration: " << files[index].string() << '\n';
-            else execute(runs[index], simulations[index], prepare, derive, snapshot);
+            if (validate) { if (group.rank()==0) std::cout << "Valid " << application << " configuration: " << files[index].string() << '\n'; }
+            else execute(runs[index], simulations[index], prepare, derive, snapshot, group);
         }
         return 0;
     } catch (std::exception const& error) {

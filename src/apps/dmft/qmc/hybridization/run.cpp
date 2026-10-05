@@ -81,6 +81,10 @@ void alps::solvers::cthyb(alps::run_configuration const& supplied) {
                                std::chrono::seconds(seconds));
   };
 #ifdef ALPS_HAVE_MPI
+  int processes=1;
+  MPI_Comm_size(MPI_COMM_WORLD, &processes);
+  if (processes==1) { s.run(stop); }
+  else {
   // SWEEPS is aggregate work across independent chains, as in the old driver.
   alps::check_schedule check;
   double fraction=0.;
@@ -93,6 +97,7 @@ void alps::solvers::cthyb(alps::run_configuration const& supplied) {
       check.update(fraction);
     }
   } while (fraction < 1.);
+  }
   alps::alea::mpi_reducer reducer(MPI_COMM_WORLD);
 #else
   s.run(stop);
