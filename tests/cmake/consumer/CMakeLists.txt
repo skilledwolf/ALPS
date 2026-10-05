@@ -51,9 +51,10 @@ else()
      OR EXISTS "${expected_prefix}/include/alps/python/save_observable_to_hdf5.hpp")
     message(FATAL_ERROR "The C++ SDK still installs Python-owned headers")
   endif()
-  foreach(removed_header IN ITEMS alps/ngs/accumulator.hpp alps/ngs/accumulator/accumulator.hpp
-                                  alps/ngs/accumulator/wrappers.hpp alps/ngs/accumulator/feature/weight.hpp
-                                  alps/ngs/accumulator/feature/weight_holder.hpp
+  foreach(removed_header IN ITEMS alps/ngs/accumulator.hpp alps/ngs/accumulator
+                                  alps/ngs/mcobservable.hpp alps/ngs/mcobservables.hpp
+                                  alps/ngs/mcresult.hpp alps/ngs/mcresults.hpp
+                                  alps/ngs/observablewrappers.hpp
                                   alps/hdf5/tuple.hpp alps/hdf5/shared_array.hpp)
     if(EXISTS "${expected_prefix}/include/${removed_header}")
       message(FATAL_ERROR "The SDK still installs an obsolete header: ${removed_header}")

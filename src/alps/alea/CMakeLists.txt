@@ -3,12 +3,7 @@ target_sources(alps PRIVATE
   src/alea/nan.C
   src/alea/observable.C
   src/alea/observablefactory.C
-  src/alea/observableset.C
-  src/ngs/mcobservable.cpp
-  src/ngs/mcobservables.cpp
-  src/ngs/mcresult.cpp
-  src/ngs/mcresults.cpp
-  src/ngs/observablewrappers.cpp)
+  src/alea/observableset.C)
 
 target_sources(alps_headers INTERFACE
   FILE_SET alea_headers TYPE HEADERS
@@ -42,14 +37,7 @@ target_sources(alps_headers INTERFACE
     include/alps/alea/simpleobseval.h
     include/alps/alea/simpleobseval.ipp
     include/alps/alea/type_tag.hpp
-    include/alps/alea/value_with_error.hpp
-    include/alps/ngs/lib/mcresult_impl_base.ipp
-    include/alps/ngs/lib/mcresult_impl_derived.ipp
-    include/alps/ngs/mcobservable.hpp
-    include/alps/ngs/mcobservables.hpp
-    include/alps/ngs/mcresult.hpp
-    include/alps/ngs/mcresults.hpp
-    include/alps/ngs/observablewrappers.hpp)
+    include/alps/alea/value_with_error.hpp)
 
 # Modern Eigen-based ALEA from pinned ALPSCore; a separate scientific runtime.
 add_library(alps_statistics

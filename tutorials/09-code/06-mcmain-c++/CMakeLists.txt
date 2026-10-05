@@ -3,5 +3,7 @@ project(alps_ising_tutorial LANGUAGES C CXX)
 
 find_package(ALPS CONFIG REQUIRED)
 include("${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/SpinParameters.cmake")
-add_executable(ising ising.cpp main.cpp)
+set(ISING_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/../../10-ngs/1_accumulator_only")
+add_executable(ising "${ISING_SOURCE}/ising.cpp" main.cpp)
+target_include_directories(ising PRIVATE "${ISING_SOURCE}")
 target_link_libraries(ising PRIVATE ALPS::alps ALPS::run_config)

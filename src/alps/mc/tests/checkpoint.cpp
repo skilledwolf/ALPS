@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include <alps/mcbase.hpp>
+#include <alps/alea/hdf5.hpp>
+#include <alps/alea/checkpoint.hpp>
 
 #include <boost/filesystem.hpp>
 
@@ -50,54 +52,26 @@ void save_failure(simulation const& sim, boost::filesystem::path const& target) 
     require(!has_temporary(target.parent_path(), target.filename().string()), "failed checkpoint left temporary data");
 }
 
-template <typename Collection>
-void collection_replacement(boost::filesystem::path const& filename, Collection collection) {
-    auto const original = collection;
-    alps::hdf5::archive ar(filename, "w");
-    ar["/unrelated"] << 8;
-    ar["/collection"] << collection;
-    ar["/collection/@tag"] << 9;
-
-    collection.erase("gone");
-    ar["/collection/orphan"] << 10;
-    ar["/collection"] << collection;
-    Collection restored;
-    ar["/collection"] >> restored;
-    require(restored.size() == 1 && restored.has("kept") && !restored.has("gone"),
-            "collection save retained a removed entry");
-    require(!ar.is_data("/collection/orphan"), "collection save retained an orphan dataset");
-    int value = 0;
-    ar["/unrelated"] >> value;
-    require(value == 8, "collection replacement changed an unrelated group");
-    ar["/collection/@tag"] >> value;
-    require(value == 9, "collection replacement removed the group attribute");
-
-    collection.clear();
-    ar["/collection"] << collection;
-    Collection empty;
-    ar["/collection"] >> empty;
-    require(ar.is_group("/collection") && ar.list_children("/collection").empty() && empty.empty(),
-            "empty collection save retained old entries");
-    ar["/collection/@tag"] >> value;
-    require(value == 9, "empty collection save removed the group attribute");
-
-    // Root is also a valid collection context. Replace its children without
-    // trying to unlink root, then persist an explicitly empty collection.
-    ar["/"] << original;
-    ar["/@tag"] << 11;
-    Collection root;
-    ar["/"] >> root;
-    require(root.size() == 2 && root.has("kept") && root.has("gone"),
-            "root collection save did not replace its children");
-    ar["/"] << collection;
-    Collection empty_root;
-    ar["/"] >> empty_root;
-    require(ar.list_children("/").empty() && empty_root.empty(),
-            "empty root collection save retained old entries");
-    ar["/@tag"] >> value;
-    require(value == 11, "root collection replacement removed the root attribute");
-    ar.close();
+alps::alea::batch_result<double> read_result(alps::hdf5::archive& ar, std::string const& path) {
+    alps::alea::hdf5_serializer serializer(ar, path);
+    alps::alea::batch_result<double> result;
+    alps::alea::deserialize(serializer, "", result);
+    return result;
 }
+
+void failed_base_load(simulation& sim, boost::filesystem::path const& filename) {
+    auto const parameters = sim.get_parameters();
+    auto const handle = sim.get_measurements().at("value");
+    auto const result = handle->result();
+    auto random = sim.get_random();
+    bool rejected = false;
+    try { sim.load(filename); } catch (std::exception const&) { rejected = true; }
+    require(rejected, "invalid base checkpoint was accepted");
+    require(sim.get_parameters()["retained"].as<int>() == parameters["retained"].as<int>()
+            && sim.get_measurements().at("value") == handle && handle->result() == result
+            && sim.get_random()() == random(), "failed base load changed prior state");
+}
+
 }
 
 int main() {
@@ -153,8 +127,8 @@ int main() {
             alps::hdf5::archive ar(results_file, "w");
             ar["/unrelated"] << 8;
         }
-        sim.get_measurements() << alps::accumulator::RealObservable("value");
-        sim.get_measurements()["value"] << 1.;
+        sim.get_measurements().emplace("value", std::make_shared<alps::alea::batch_acc<double>>(1, 4));
+        *sim.get_measurements().at("value") << alps::alea::make_adapter(1.);
         auto const results = sim.collect_results();
         alps::save_results(results, sim.get_parameters(), results_file, "/first/results");
         alps::save_results(results, sim.get_parameters(), results_file, "/second/results");
@@ -169,13 +143,10 @@ int main() {
         alps::save_results(simulation::results_type{}, sim.get_parameters(), results_file, "/first/results");
         {
             alps::hdf5::archive ar(results_file);
-            simulation::results_type empty, preserved;
-            ar["/first/results"] >> empty;
-            ar["/second/results"] >> preserved;
-            require(empty.empty() && ar.is_group("/first/results") &&
+            require(ar.is_group("/first/results") &&
                     ar.list_children("/first/results").empty(),
                     "saving empty results retained old entries");
-            require(preserved.size() == 1 && preserved.has("value") && preserved["value"].count() == 1,
+            require(read_result(ar, "/second/results/value").count() == 1,
                     "saving empty results changed an unrelated result collection");
             alps::params parameters;
             ar["/parameters"] >> parameters;
@@ -186,15 +157,48 @@ int main() {
             require(value == 8, "saving empty results changed unrelated data");
         }
 
-        alps::mcobservables observables;
-        observables << alps::accumulator::RealObservable("kept") << alps::accumulator::RealObservable("gone");
-        observables["kept"] << 1.;
-        observables["gone"] << 2.;
-        alps::mcresults collection_results;
-        collection_results.insert("kept", alps::mcresult(observables["kept"]));
-        collection_results.insert("gone", alps::mcresult(observables["gone"]));
-        collection_replacement(directory / "observables.h5", observables);
-        collection_replacement(directory / "collection_results.h5", collection_results);
+        // Base loads stage parameters, every native accumulator and RNG.
+        sim.get_parameters()["retained"] = 17;
+        for (int i=0; i<41; ++i)
+            *sim.get_measurements().at("value") << alps::alea::make_adapter(double(i));
+        sim.save(checkpoint);
+        auto retained = sim.get_measurements().at("value");
+        simulation resumed;
+        resumed.load(checkpoint);
+        require(resumed.get_measurements().at("value")->result() == retained->result(),
+                "native MC accumulator checkpoint lost state");
+        auto const invalid = directory / "invalid.h5";
+        for (int damage=0; damage<4; ++damage) {
+            sim.save(invalid);
+            {
+                alps::hdf5::archive ar(invalid, "a");
+                auto changed = sim.get_parameters();
+                changed["retained"] = 99;
+                ar["/parameters"] << changed;
+                auto const clone = "/simulation/realizations/0/clones/0/";
+                if (damage == 0)
+                    ar[std::string(clone)+"checkpoint/engine/engine"] << std::string("invalid engine");
+                else if (damage == 1)
+                    ar.delete_group(std::string(clone)+"measurements/value");
+                else if (damage == 2) {
+                    alps::alea::batch_acc<double> wrong_shape(2,4);
+                    alps::alea::hdf5_serializer serializer(ar, std::string(clone)+"measurements/value");
+                    alps::alea::serialize(serializer, "", wrong_shape);
+                } else
+                    ar[std::string(clone)+"measurements/value/@kind"] << std::uint64_t(5);
+            }
+            failed_base_load(sim, invalid);
+        }
+        auto null_handle = sim.get_measurements().at("value");
+        sim.get_measurements().at("value").reset();
+        bool invalid_measurement = false;
+        try { sim.save(checkpoint); }
+        catch (std::invalid_argument const&) { invalid_measurement = true; }
+        require(invalid_measurement, "null MC measurement was accepted");
+        sim.get_measurements().at("value") = null_handle;
+        resumed.load(checkpoint);
+        require(resumed.get_measurements().at("value")->result() == null_handle->result(),
+                "invalid measurement save changed prior checkpoint");
         boost::filesystem::remove_all(directory);
         return 0;
     } catch (std::exception const& error) {

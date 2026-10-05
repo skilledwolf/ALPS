@@ -9,51 +9,40 @@
  # SPDX-License-Identifier: MIT                                                    #
  # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 
+import getopt
+from pathlib import Path
+import sys
+import time
 import pyalps.hdf5 as hdf5
 import pyalps.ngs as ngs
-import sys, time, traceback, getopt
-import sys, time
-
 import ising
 
+
 if __name__ == '__main__':
-
     try:
-        optlist, positional = getopt.getopt(sys.argv[1:], 'T:c')
-        args = dict(optlist)
-        try:
-            limit = float(args['-T'])
-        except KeyError:
-            limit = 0
-        resume = True if 'c' in args else False
+        options, positional = getopt.getopt(sys.argv[1:], 'T:c')
+        args = dict(options)
+        limit = float(args.get('-T', 0))
         outfile = positional[0]
-    except (IndexError, getopt.GetoptError):
-        print('usage: [-T timelimit] [-c] outputfile')
-        exit()
+    except (IndexError, ValueError, getopt.GetoptError):
+        sys.exit('usage: [-T timelimit] [-c] outputfile')
 
-    sim = ising.sim({
-        'L': 100,
-        'THERMALIZATION': 100,
-        'SWEEPS': 1000,
-        'T': 2
-    })
+    simulation = ising.sim({'L': 100, 'THERMALIZATION': 100, 'SWEEPS': 1000, 'T': 2.})
+    checkpoint = Path(outfile).with_suffix('.clone0.h5')
+    clone = '/simulation/realizations/0/clones/0'
+    if '-c' in args and checkpoint.exists():
+        with hdf5.archive(checkpoint, 'r') as archive:
+            archive.set_context(clone)
+            simulation.load(archive)
+    started = time.monotonic()
+    simulation.run(lambda: limit > 0 and time.monotonic() > started + limit)
 
-    if resume:
-        try:
-            with hdf5.archive(outfile[0:outfile.rfind('.h5')] + '.clone0.h5', 'r') as ar:
-                sim.load(ar)
-        except hdf5.ArchiveNotFound: pass
-
-    if limit == 0:
-        sim.run(lambda: False)
-    else:
-        start = time.time()
-        sim.run(lambda: time.time() > start + float(limit))
-
-    with hdf5.archive(outfile[0:outfile.rfind('.h5')] + '.clone0.h5', 'w') as ar:
-        ar['/'] = sim
-
-    results = ngs.collectResults(sim)
-    print(results)
-    with hdf5.archive(outfile, 'w') as ar:
-        ngs.saveResults(results, sim.parameters, ar, "/simulation/results")
+    def save(archive):
+        archive.set_context(clone)
+        simulation.save(archive)
+    hdf5.save_checkpoint(str(checkpoint), save)
+    results = ngs.collectResults(simulation)
+    for name, result in results.items():
+        print(f'{name}: {result.mean} +/- {result.error}')
+    hdf5.save_checkpoint(outfile, lambda archive:
+                         ngs.saveResults(results, simulation.parameters, archive, '/simulation/results'))

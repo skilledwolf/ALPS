@@ -16,49 +16,21 @@
 #include "archive_savable.hpp"
 
 #include <nanobind/nanobind.h>
+#include <nanobind/stl/map.h>
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/vector.h>
+#include <nanobind/stl/shared_ptr.h>
 
 #include <cstddef>
 #include <string>
+#include <utility>
+
+NB_MAKE_OPAQUE(alps::mcbase::observable_collection_type);
 
 namespace alps {
 namespace python {
 
 namespace nb = nanobind;
-
-template <typename Simulation>
-class exported_simulation : public Simulation {
-public:
-    using parameters_type = typename Simulation::parameters_type;
-    using result_names_type = typename Simulation::result_names_type;
-    using results_type = typename Simulation::results_type;
-
-    explicit exported_simulation(parameters_type const & parameters,
-                                 std::size_t seed_offset = 0)
-        : Simulation(parameters, seed_offset) {}
-
-    ~exported_simulation() override = default;
-
-    bool run_python(nb::object stop_callback) {
-        return Simulation::run([stop_callback]() -> bool {
-            nb::gil_scoped_acquire gil;
-            return nb::cast<bool>(stop_callback());
-        });
-    }
-
-    results_type collect_results_python(
-        result_names_type const & names = result_names_type()) const {
-        return names.empty() ? Simulation::collect_results()
-                             : Simulation::collect_results(names);
-    }
-
-    alps::random01 & get_random() { return this->random; }
-    parameters_type & get_parameters() { return this->parameters; }
-    auto & get_measurements() {
-        return this->measurements;
-    }
-};
 
 template <typename Simulation>
 void export_sim_to_python(nb::module_ & module, char const * name) {
@@ -68,40 +40,34 @@ void export_sim_to_python(nb::module_ & module, char const * name) {
     nb::module_::import_("pyalps.ngs");
     nb::module_::import_("pyalps.hdf5");
 
-    using wrapper = exported_simulation<Simulation>;
-    nb::class_<wrapper, alps::mcbase>(module, name)
-        .def(nb::init<typename wrapper::parameters_type const &, std::size_t>(),
+    nb::class_<Simulation, alps::mcbase>(module, name)
+        .def(nb::init<typename Simulation::parameters_type const &, std::size_t>(),
              nb::arg("parameters"), nb::arg("seed_offset") = 0)
-        .def_prop_ro("random", &wrapper::get_random,
-                     nb::rv_policy::reference_internal)
-        .def_prop_ro("parameters", &wrapper::get_parameters,
-                     nb::rv_policy::reference_internal)
-        .def_prop_ro("measurements", &wrapper::get_measurements,
-                     nb::rv_policy::reference_internal)
-        .def("run", &wrapper::run_python, nb::arg("stop_callback"))
-        .def("resultNames", &wrapper::result_names)
-        .def("unsavedResultNames", &wrapper::unsaved_result_names)
-        .def("collectResults", &wrapper::collect_results_python,
-             nb::arg("names") = typename wrapper::result_names_type())
+        .def("run", [](Simulation & self, nb::object stop_callback) {
+            return self.run([stop_callback = std::move(stop_callback)] {
+                nb::gil_scoped_acquire gil;
+                return nb::cast<bool>(stop_callback());
+            });
+        }, nb::arg("stop_callback"))
+        .def("resultNames", &Simulation::result_names)
+        .def("collectResults", [](Simulation const & self,
+                                   typename Simulation::result_names_type const & names) {
+            return names.empty() ? self.collect_results() : self.collect_results(names);
+        }, nb::arg("names") = typename Simulation::result_names_type())
         .def("save",
-             [](wrapper const & self, nb::handle archive) {
-                 pyalps::with_native_archive(archive, [&](auto & native) { static_cast<Simulation const &>(self).save(native); });
+             [](Simulation const & self, nb::handle archive) {
+                 pyalps::with_native_archive(archive, [&](auto & native) { self.save(native); });
              })
         .def("load",
-             [](wrapper & self, nb::handle archive) {
-                 pyalps::with_native_archive(archive, [&](auto & native) { static_cast<Simulation &>(self).load(native); });
+             [](Simulation & self, nb::handle archive) {
+                 pyalps::with_native_archive(archive, [&](auto & native) { self.load(native); });
              });
 }
 
 }  // namespace python
 }  // namespace alps
 
-#define ALPS_NANOBIND_EXPORT_SIM_TO_PYTHON(MODULE, NAME, CLASS) \
-    ::alps::python::export_sim_to_python<CLASS>((MODULE), #NAME)
-
-// Source-compatible spelling for old export.cpp files after changing their
-// module declaration to ``NB_MODULE(module_name, m)``.
 #define ALPS_EXPORT_SIM_TO_PYTHON(NAME, CLASS) \
-    ALPS_NANOBIND_EXPORT_SIM_TO_PYTHON(m, NAME, CLASS)
+    ::alps::python::export_sim_to_python<CLASS>(m, #NAME)
 
 #endif

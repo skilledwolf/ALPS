@@ -30,34 +30,6 @@
 #include <alps/ngs/boost_mpi.hpp>
 #include <alps/ngs/short_print.hpp>
 #include <alps/ngs/thread_exceptions.hpp>
-#include <alps/ngs/observablewrappers.hpp> // TODO: remove!
-
-	namespace alps {
-		namespace accumulator {
-
-			typedef ::alps::ngs::SimpleRealObservable SimpleRealObservable;
-			typedef ::alps::ngs::SimpleRealVectorObservable SimpleRealVectorObservable;
-
-			typedef ::alps::ngs::RealObservable RealObservable;
-			typedef ::alps::ngs::RealVectorObservable RealVectorObservable;
-
-			typedef ::alps::ngs::SignedRealObservable SignedRealObservable;
-			typedef ::alps::ngs::SignedRealVectorObservable SignedRealVectorObservable;
-
-			typedef ::alps::ngs::SignedSimpleRealObservable SignedSimpleRealObservable;
-			typedef ::alps::ngs::SignedSimpleRealVectorObservable SignedSimpleRealVectorObservable;
-		}
-	}
-// #include <alps/mcbase.hpp>
-// #include <alps/parseargs.hpp>
-// #include <alps/stop_callback.hpp>
-// #include <alps/progress_callback.hpp> // TODO: remove this file!
-
-// TODO: remove these deprecated headers:
-#include <alps/ngs/mcresult.hpp>
-#include <alps/ngs/mcresults.hpp>
 #include <alps/ngs/mcoptions.hpp>
-#include <alps/ngs/mcobservable.hpp>
-#include <alps/ngs/mcobservables.hpp> // TODO: rethink this!
 
 #endif

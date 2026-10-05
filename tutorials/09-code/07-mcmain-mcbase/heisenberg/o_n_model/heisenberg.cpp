@@ -52,12 +52,11 @@ int main(int argc, char *argv[]) {
         // get the results and write an overeview to stdout
         using alps::collect_results;
         alps::results_type<sim_type>::type results = collect_results(sim);
-        std::cout << results << std::endl;
+        for (auto const& entry : results)
+            std::cout << entry.first << ": " << entry.second << '\n';
 
         // store parameters and results to the output file (default named after input file)
-        alps::hdf5::archive ar(options.output_file, "w");
-        ar["/parameters"] << parameters;
-        ar["/simulation/results"] << results;
+        alps::save_results(results, sim.get_parameters(), options.output_file, "/simulation/results");
 
     } catch (std::exception const & e) {
         std::cerr << "Caught exception: " << e.what() << std::endl;

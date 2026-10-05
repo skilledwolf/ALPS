@@ -16,9 +16,12 @@
 
 #include <alps/ngs.hpp>
 
-#include <boost/function.hpp>
 #include <boost/filesystem/path.hpp>
 
+#include <alps/alea/batch.hpp>
+#include <functional>
+#include <map>
+#include <memory>
 #include <vector>
 #include <string>
 
@@ -28,12 +31,13 @@ namespace alps {
 
         public:
 
-            typedef alps::mcobservables observable_collection_type;
+            using observable_collection_type = std::map<std::string,
+                std::shared_ptr<alps::alea::batch_acc<double>>>;
 
             typedef alps::params parameters_type;
             typedef std::vector<std::string> result_names_type;
 
-            typedef alps::mcresults results_type;
+            using results_type = std::map<std::string, alps::alea::batch_result<double>>;
 
             mcbase(parameters_type const & parms, std::size_t seed_offset = 0);
             virtual ~mcbase();
@@ -41,10 +45,9 @@ namespace alps {
             virtual void update() = 0;
             virtual void measure() = 0;
             virtual double fraction_completed() const = 0;
-            bool run(boost::function<bool ()> const & stop_callback);
+            bool run(std::function<bool ()> const & stop_callback);
 
             result_names_type result_names() const;
-            result_names_type unsaved_result_names() const;
             results_type collect_results() const;
             results_type collect_results(result_names_type const & names) const;
 
@@ -63,7 +66,6 @@ namespace alps {
         protected:
 
             parameters_type parameters;
-            parameters_type & params; // TODO: deprecated, remove!
             alps::random01 mutable random;
             observable_collection_type measurements;
     };

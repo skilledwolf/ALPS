@@ -206,6 +206,8 @@ template<class T> void bind_statistics_io(nb::class_<T>& cls) {
 
 template<class R> void bind_estimate(nb::class_<R>& result) {
     result.def_prop_ro("count", &R::count)
+        .def("__copy__", [](R const& value) { return R(value); })
+        .def("__deepcopy__", [](R const& value, nb::handle) { return R(value); })
         .def_prop_ro("mean", [](R const& value) { return value.mean().eval(); })
         .def_prop_ro("error", [](R const& value) { return value.stderror().eval(); })
         .def_prop_ro("count2", &R::count2)
@@ -239,6 +241,8 @@ template<class T> void bind_batches(nb::module_& module, char const* accumulator
         }, nb::arg("size") = 1, nb::arg("num_batches") = 64, nb::arg("base_size") = 1)
         .def_prop_ro("size", &A::size)
         .def_prop_ro("count", &A::count)
+        .def("__copy__", [](A const& value) { return A(value); })
+        .def("__deepcopy__", [](A const& value, nb::handle) { return A(value); })
         .def("reset", &A::reset)
         .def("result", &A::result)
         .def("__lshift__", [](A& self, nb::handle sample) -> A& {

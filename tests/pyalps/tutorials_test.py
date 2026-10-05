@@ -37,7 +37,6 @@ PURE_PYTHON_TUTORIALS = ["6_python_native", "7_python_extend"]
 
 @pytest.mark.parametrize("tutorial", [
     "10-ngs/6_python_native", "10-ngs/7_python_extend",
-    "09-code/08-mcmain-python", "09-code/09-mcmain-python-hybrid",
 ])
 @pytest.mark.parametrize("length", [3, 4])
 def test_ising_metropolis_uses_measured_energy(tutorial, length, monkeypatch):

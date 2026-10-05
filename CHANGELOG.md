@@ -6,6 +6,20 @@ User-facing changes and migration notes are recorded here, starting with the bui
 
 ### Changed
 
+- Move NGS `mcbase`, its MPI adapter and Python simulation bindings to native ALEA
+  batches. Use explicit component dimensions and owning result snapshots; retain
+  complete RNG and unfinished-bin checkpoint state, with staged base loads.
+  Include empty ranks in collective result reduction and validate matching result
+  requests before pooling. Propagate scheduled rank-local failures. Remove the
+  old measurement/result facade, scalar feature-stack API, five Python statistical
+  modules and unused scheduler prototypes. Consolidate duplicate Ising tutorials,
+  repair virtual checkpoint hooks, correct Heisenberg coupling acceptance and
+  remove its invalid partial-magnetization susceptibility estimator.
+- Add `--alea-batches GROUP` to the offline converter. Recover released ALPS 3.0.0
+  complete linear bin sums and partial weights as native ALEA analysis results;
+  recompute uncertainty and preserve vector covariance. Reject unrecoverable
+  histories instead of inventing restart state or missing covariance.
+
 - Apply opposite magnetic-field signs to paired flavors in the general
   paramagnetic DMFT Hilbert transform; previously every flavor used `MU - H`.
 - Port general multiband CT-INT density interactions to `interaction`, using one
@@ -74,7 +88,7 @@ User-facing changes and migration notes are recorded here, starting with the bui
   batch-weight overflow and reject wrong-sized samples before changing state;
   remove the unsafe autocorrelation accumulator/result merge.
 - Remove the unsupported `ALPS_NGS_USE_NEW_ALEA` backend selector, unused wrappers
-  and unregistered tests; preserve the active scalar feature-stack API.
+  and unregistered tests; the remaining scalar feature-stack API is now retired.
 
 - Consolidate ALPSCore's Eigen-based modern ALEA as independent `ALPS::statistics`,
   with one canonical HDF5 adapter and explicit result versions/kinds. Add actual

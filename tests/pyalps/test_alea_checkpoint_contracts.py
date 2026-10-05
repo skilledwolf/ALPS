@@ -4,22 +4,20 @@ import h5py
 import numpy as np
 import pytest
 
-from pyalps import alea, hdf5, ngs
+from pyalps import alea, hdf5
 
 
 def _full_result(tmp_path, vector):
     samples = np.arange(256) % 17 - 8.0
     if vector:
         samples = np.column_stack((samples, 2.0 * samples + 3.0))
-    observable = (ngs.createRealVectorObservable if vector
-                  else ngs.createRealObservable)("energy")
+    observable = (alea.RealVectorObservable if vector else alea.RealObservable)("energy")
     for sample in samples:
         observable << sample
     filename = str(tmp_path / "alea.h5")
-    with hdf5.archive(filename, "w") as archive:
-        archive["result"] = ngs.observable2result(observable)
+    observable.save(filename)
     value = (alea.MCVectorData if vector else alea.MCScalarData)()
-    value.load(filename, "/result")
+    value.load(filename, "/simulation/results/energy")
     np.testing.assert_allclose(value.mean, samples.mean(axis=0), rtol=1e-12)
     np.testing.assert_allclose(value.variance, samples.var(axis=0, ddof=1), rtol=1e-12)
     # Materialize the optional jackknife cache before the first save.

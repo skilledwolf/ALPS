@@ -61,10 +61,9 @@ int main(int argc, char *argv[]) {
         alps::results_type<ising_sim>::type results = collect_results(sim);
 
         if (comm.rank() == 0) {
-            std::cout << results << std::endl;
-            alps::hdf5::archive ar(options.output_file, "w");
-            ar["/parameters"] << parameters;
-            ar["/simulation/results"] << results;
+            for (auto const& entry : results)
+                std::cout << entry.first << ": " << entry.second << '\n';
+            alps::save_results(results, sim.get_parameters(), options.output_file, "/simulation/results");
         }
 
     } catch (std::exception const & e) {

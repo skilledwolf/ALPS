@@ -13,7 +13,8 @@
 
 #include "ising.hpp"
 
-#include <alps/ngs.hpp>
+#include <alps/parseargs.hpp>
+#include <alps/stop_callback.hpp>
 #include <alps/mcmpiadapter.hpp>
 #include "spin_config.hpp"
 
@@ -87,11 +88,10 @@ int main(int argc, char *argv[]) {
             alps::results_type<ising_sim>::type results = collect_results(sim);
 
             if (comm_local.rank() == 0) {
-                std::cout << results << std::endl;
+                for (auto const& entry : results)
+                    std::cout << entry.first << ": " << entry.second << '\n';
                 std::string output_file = infile.substr(0, infile.find_last_of('.')) + ".out.h5";
-                alps::hdf5::archive ar(output_file, "w");
-                ar["/parameters"] << parameters;
-                ar["/simulation/results"] << results;
+                alps::save_results(results, sim.get_parameters(), output_file, "/simulation/results");
             }
 
         }

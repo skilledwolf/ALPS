@@ -13,26 +13,31 @@
 
 #include <alps/ngs/api.hpp>
 #include <alps/hdf5/archive.hpp>
-
-#include <boost/filesystem.hpp>
+#include <alps/alea/hdf5.hpp>
 
 namespace alps {
 
-    namespace detail {
-        template<typename R, typename P> void save_results_impl(R const & results, P const & params, boost::filesystem::path const & filename, std::string const & path) {
-            hdf5::archive ar(filename.string(), "a");
-            ar["/parameters"] << params;
-            ar[path] << results;
-            ar.close();
+    void save_results(std::map<std::string, alps::alea::batch_result<double>> const & results,
+                      params const & params, boost::filesystem::path const & filename,
+                      std::string const & path) {
+        hdf5::archive ar(filename, "a");
+        save_results(results, params, ar, path);
+        ar.close();
+    }
+
+    void save_results(std::map<std::string, alps::alea::batch_result<double>> const & results,
+                      params const & params, hdf5::archive & ar, std::string const & path) {
+        ar["/parameters"] << params;
+        auto const target = ar.complete_path(path);
+        ar.create_group(target);
+        for (auto const& child : ar.list_children(target)) {
+            auto const key = target + "/" + child;
+            if (ar.is_group(key)) ar.delete_group(key);
+            else ar.delete_data(key);
         }
-    }
-
-    void save_results(mcresults const & results, params const & params, boost::filesystem::path const & filename, std::string const & path) {
-        detail::save_results_impl(results, params, filename, path);
-    }
-
-    void save_results(mcobservables const & observables, params const & params, boost::filesystem::path const & filename, std::string const & path) {
-        detail::save_results_impl(observables, params, filename, path);
+        alps::alea::hdf5_serializer serializer(ar, target);
+        for (auto const& entry : results)
+            alps::alea::serialize(serializer, ar.encode_segment(entry.first), entry.second);
     }
 
 }

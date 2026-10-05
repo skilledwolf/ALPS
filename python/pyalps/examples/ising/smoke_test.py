@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
-"""Exercise the public downstream simulation-export compatibility helper."""
+"""Exercise the public downstream simulation-export helper with native ALEA batches."""
 
 import faulthandler
+import copy
 import os
+import shutil
 import tempfile
+import h5py
 import numpy as np
 
 # Report the Python frame if a native callback or import stalls in CI.
@@ -60,7 +63,44 @@ with tempfile.TemporaryDirectory() as directory:
     assert restored.parameters["couplings"][0] == 4
     assert restored.resultNames() == simulation.resultNames()
     assert after["Magnetization"].count == before["Magnetization"].count
-    assert after["Magnetization"].mean == before["Magnetization"].mean
+    np.testing.assert_array_equal(after["Magnetization"].mean, before["Magnetization"].mean)
+    np.testing.assert_array_equal(after["Magnetization"].batch_sums, before["Magnetization"].batch_sums)
+    np.testing.assert_array_equal(after["Magnetization"].batch_counts, before["Magnetization"].batch_counts)
+
+    target = ising_c.sim(ngs.params({"SEED": 19, "SWEEPS": 3, "label": "kept"}))
+    assert target.run(lambda: False)
+    handle = target.measurements["Magnetization"]
+    saved_result = target.collectResults()["Magnetization"]
+    random = copy.deepcopy(target.random)
+    random_values = [random() for _ in range(17)]
+    broken = os.path.join(directory, "invalid-app.h5")
+    for fault in ("state", "sweeps", "count", "missing"):
+        shutil.copyfile(checkpoint, broken)
+        with h5py.File(broken, "a") as archive:
+            if fault == "state":
+                archive["checkpoint/state"][()] = 0.
+            elif fault == "sweeps":
+                archive["checkpoint/sweeps"][()] = 11
+            elif fault == "count":
+                archive["measurements/Magnetization/batch/count"][0] += 1
+            else:
+                del archive["checkpoint/state"]
+        with hdf5.archive(broken, "r") as archive:
+            try:
+                target.load(archive)
+            except (ValueError, hdf5.ArchiveError):
+                pass
+            else:
+                raise AssertionError(f"invalid {fault} checkpoint accepted")
+            assert archive.context == "/"
+        assert target.parameters["label"] == "kept" and target.parameters["SWEEPS"] == 3
+        assert target.measurements["Magnetization"] is handle
+        current = target.collectResults()["Magnetization"]
+        assert current.count == saved_result.count == 3
+        np.testing.assert_array_equal(current.batch_sums, saved_result.batch_sums)
+        np.testing.assert_array_equal(current.batch_counts, saved_result.batch_counts)
+        random = copy.deepcopy(target.random)
+        assert [random() for _ in range(17)] == random_values
 
     # `archive[path] = simulation` must write exactly what simulation.save()
     # writes. It reaches save() through the archive-savable marker that this

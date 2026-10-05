@@ -6,7 +6,6 @@
 #include "heisenberg.hpp"
 #include "helper.hpp"
 
-#include <boost/lambda/lambda.hpp>
 
 heisenberg_sim::heisenberg_sim(parameters_type const & parms, std::size_t seed_offset)
     : alps::mcbase(parms, seed_offset)
@@ -23,13 +22,11 @@ heisenberg_sim::heisenberg_sim(parameters_type const & parms, std::size_t seed_o
     {
         spins[i] = random_spin();
     }
-    measurements
-        << alps::accumulator::RealObservable("Energy")
-        << alps::accumulator::RealVectorObservable("Magnetization")
-        << alps::accumulator::RealObservable("Magnetization^2")
-        << alps::accumulator::RealObservable("Magnetization^4")
-        << alps::accumulator::RealVectorObservable("Correlations")
-    ;
+    measurements.emplace("Energy", std::make_shared<alps::alea::batch_acc<double>>(1, 64));
+    measurements.emplace("Magnetization", std::make_shared<alps::alea::batch_acc<double>>(3, 64));
+    measurements.emplace("Magnetization^2", std::make_shared<alps::alea::batch_acc<double>>(1, 64));
+    measurements.emplace("Magnetization^4", std::make_shared<alps::alea::batch_acc<double>>(1, 64));
+    measurements.emplace("Correlations", std::make_shared<alps::alea::batch_acc<double>>(length, 64));
 }
 
 void heisenberg_sim::update() {
@@ -41,7 +38,7 @@ void heisenberg_sim::update() {
         /* generate a new random spin for update and accept or not */
         spintype new_spin = random_spin();
         double delta_H = dot(new_spin - spins[i], spins[right] + spins[left]);
-        double p = exp( -beta * delta_H );
+        double p = exp(beta * delta_H);
         if ( p >= 1. || random() < p )
             spins[i] = new_spin;
     }
@@ -61,16 +58,14 @@ void heisenberg_sim::measure() {
             for (int d = 0; d < length; ++d)
                 corr[d] += dot(spins[i], spins[( i + d ) % length ]);
         }
-        // pull in operator/ for vectors
-        using alps::ngs::numeric::operator/;
-        corr = corr / double(length);
+        for (auto& correlation : corr) correlation /= length;
         ten /= length;
         tmag /= length;
-        measurements["Energy"] << ten;
-        measurements["Magnetization"] << vector_from_spintype(tmag);
-        measurements["Magnetization^2"] << dot(tmag, tmag);
-        measurements["Magnetization^4"] << dot(tmag, tmag) * dot(tmag, tmag);
-        measurements["Correlations"] << corr;
+        *measurements.at("Energy") << alps::alea::make_adapter(ten);
+        *measurements.at("Magnetization") << alps::alea::make_adapter(vector_from_spintype(tmag));
+        *measurements.at("Magnetization^2") << alps::alea::make_adapter(dot(tmag, tmag));
+        *measurements.at("Magnetization^4") << alps::alea::make_adapter(dot(tmag, tmag) * dot(tmag, tmag));
+        *measurements.at("Correlations") << alps::alea::make_adapter(corr);
     }
 }
 
@@ -85,15 +80,31 @@ void heisenberg_sim::save(alps::hdf5::archive & ar) const {
 }
 
 void heisenberg_sim::load(alps::hdf5::archive & ar) {
+    parameters_type restored_parameters;
+    ar["/parameters"] >> restored_parameters;
+    if (restored_parameters["L"].as<int>() != parameters["L"].as<int>())
+        throw std::invalid_argument("checkpoint geometry differs from the simulation");
+    int restored_thermalization = restored_parameters["THERMALIZATION"].as<int>();
+    int restored_total = restored_parameters["SWEEPS"].as<int>();
+    double restored_beta = 1. / restored_parameters["T"].as<double>();
+    int restored_sweeps;
+    std::vector<spintype> restored_spins;
+    ar["checkpoint/sweeps"] >> restored_sweeps;
+    ar["checkpoint/spins"] >> restored_spins;
+    if (!std::isfinite(restored_beta) || restored_beta <= 0 || restored_thermalization < 0
+            || restored_total <= 0 || restored_sweeps < 0
+            || std::int64_t(restored_sweeps) > std::int64_t(restored_thermalization) + restored_total
+            || restored_spins.size() != std::size_t(length))
+        throw std::invalid_argument("invalid Heisenberg checkpoint progress or shape");
+    for (auto const& spin : restored_spins)
+        if (!std::isfinite(dot(spin, spin)) || std::abs(dot(spin, spin) - 1.) > 1e-12)
+            throw std::invalid_argument("invalid Heisenberg checkpoint spin");
     mcbase::load(ar);
-
-    length = int(parameters["L"]);
-    thermalization_sweeps = int(parameters["THERMALIZATION"]);
-    total_sweeps = int(parameters["SWEEPS"]);
-    beta = 1. / double(parameters["T"]);
-
-    ar["checkpoint/sweeps"] >> sweeps;
-    ar["checkpoint/spins"] >> spins;
+    thermalization_sweeps = restored_thermalization;
+    total_sweeps = restored_total;
+    beta = restored_beta;
+    sweeps = restored_sweeps;
+    spins = std::move(restored_spins);
 }
 
 const spintype heisenberg_sim::random_spin() {

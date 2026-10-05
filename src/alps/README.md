@@ -23,8 +23,10 @@ replicas before signed analysis and publishing canonical results atomically.
 CT-INT includes general multiband density interactions and their full density
 moments; DMFT uses only external solver processes. Other legacy measurement
 producers still need migration before their statistical interfaces can be deleted.
-The unsupported NGS backend selector and wrappers are removed. The scalar
-feature-stack API remains for its active Python and SDK clients.
+The NGS `mcbase` framework and its MPI adapter use the same native batches,
+checkpoints and result codec. Python measurement maps share native accumulator
+handles; collected result dictionaries own snapshots. The old NGS measurement
+facade, feature-stack API and unused scheduler prototypes are removed.
 Historical reconciliation probes disabled ALEA; they do not validate this import.
 
 ## Consolidation acceptance contracts
@@ -73,30 +75,32 @@ Opening an archive leaves process signal handlers alone. Termination polling
 belongs to utilities and solver execution. Independent opens have independent
 permissions; copied views share ownership and close together.
 
-The measurement pilot in [checkpoint contracts](../../tests/pyalps/test_checkpoint_contracts.py)
-uses deterministic scalar/vector sample streams. A checkpoint must preserve an
-accumulator's unfinished bin so resumed statistics agree with an uninterrupted
-stream. Aligned independent runs must preserve sample counts and means; their
-merged errors are checked against an independent bin-level calculation. Results
-must retain count, mean, error, variance, autocorrelation and bin data through
-HDF5 reload, including scalar/vector shape and escaped observable names. These
-tests constrain migration to Core's newer Eigen-based ALEA implementation.
+The [checkpoint contracts](../../tests/pyalps/test_checkpoint_contracts.py)
+cover complete scalar/vector batch continuation, RNG state, escaped measurement
+names and failed-load preservation. NGS base loads stage parameters, measurements
+and RNG together, require already registered measurements and validate their
+component dimensions. Application subclasses validate their own spin/progress
+state before calling the base load. Virtual archive hooks take an archive reference;
+the former by-value tutorial hooks did not override the base and skipped that state.
 
-Uneven or incomplete legacy bin merging is an unresolved scientific gate. Direct
-`MCScalarData` merging of samples 0–999 and 1000–2999 changes count from 3000 to
-2976 on reanalysis and gives mean 1492.8333 instead of 1499.5. `mcobservable.merge`
-of samples 0–516 and 517–1030 keeps count 1031 but gives mean 514 instead of 515.
-These paths are unchanged from upstream master at `c22bfd701`; their outcomes
-are not acceptance oracles for a replacement.
-Require exact retained sample counts and means before admitting those merges;
-errors for independent runs need not equal errors for a concatenated correlated
-stream. Result collection loads replace their contents; observable collection
-loads retain their existing overlay behavior. Direct statistical object loads
-replace validated state and preserve their destination on failure.
+MPI collection checks result names on every rank and includes empty ranks in
+raw reduction. Independent partial bins retain their original weights; pooling
+never pairs unrelated replica bins. Scheduled failure consensus propagates local
+sampling/callback errors before progress collectives. The native Ising and
+Heisenberg contracts verify exact restart and independently calculated Boltzmann
+energies; they do not use legacy statistics as a correctness oracle.
+
+Direct legacy `MCScalarData` still serves other applications and has unresolved
+uneven-bin merging: samples 0–999 and 1000–2999 change count from 3000 to 2976
+on reanalysis and give mean 1492.8333 instead of 1499.5. This upstream behavior
+is a migration gate for those remaining callers. Native result reduction retains
+exact sample counts, sums and weights. Released recoverable linear-bin histories
+can be converted offline to native batch analysis; missing joint covariance or
+checkpoint cursors cannot be reconstructed from summaries.
 
 ## Source ownership
 
-Each module uses `include/`, `src/` and `tests/` where applicable. Public include spellings describe the API, independently of the physical owner: for example, NGS measurement headers live in `alea/include/alps/ngs/`, while typed parameters live in `params/include/alps/`.
+Each module uses `include/`, `src/` and `tests/` where applicable. Public include spellings describe the API, independently of the physical owner: for example, the simulation framework lives in `mc/include/alps/`, while typed parameters live in `params/include/alps/`.
 
 | Source module under `src/alps/` | Responsibility | Binary or compile owner |
 | --- | --- | --- |
@@ -116,7 +120,6 @@ Each module uses `include/`, `src/` and `tests/` where applicable. Public includ
 | `graph/`, `lattice/`, `model/` | Graph helpers, lattice definitions and physical models | `ALPS::headers`, `ALPS::alps` |
 | `random/` | Random generators and their factories | `ALPS::alps` |
 | `alea/` | Legacy observables and modern Eigen-based statistical estimators | `ALPS::alps`, `ALPS::statistics` |
-| `accumulators/` | Scalar feature-stack accumulator headers | `ALPS::headers` |
 | `mc/`, `scheduler/`, `parapack/` | Simulation API, execution and scheduling | `ALPS::alps` |
 | `fortran/` | C++ bridge with public headers in `include/alps/fortran/` | `ALPS::fortran` |
 | `solvers/` | Shared `<alps/solvers.hpp>` declarations for MaxEnt and CT-QMC | `ALPS::solver_headers` |

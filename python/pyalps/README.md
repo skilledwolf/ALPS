@@ -121,6 +121,35 @@ Wheel installation writes `pyalps/runtime.json`. After auditwheel or delocate re
 
 CMake derives build-time search paths from the imported targets. If you install or redistribute your extension, set its `INSTALL_RPATH` for the destination layout using normal CMake installation rules. The target does not hard-code the build environment's Python installation into installed extensions. For an extension installed for the same environment, CMake's `INSTALL_RPATH_USE_LINK_PATH` target property can retain the runtime search paths.
 
+## Native Monte Carlo measurements
+
+Python subclasses of `ngs.mcbase` use the same ALEA batches as native C++
+simulations. Assign an accumulator to each named measurement, then append samples:
+
+```python
+from pyalps import alea, ngs
+
+# Inside a simulation constructor, after super().__init__(parameters):
+self.measurements["Energy"] = alea.BatchAccumulator(num_batches=64)
+self.measurements["Correlations"] = alea.BatchAccumulator(size=length, num_batches=64)
+
+# Inside measure():
+self.measurements["Energy"] << energy
+self.measurements["Correlations"] << correlations
+```
+
+`ngs.collectResults(simulation)` returns an owning `dict` of `BatchResult`
+snapshots. Means and errors are vectors, including one-component scalar results.
+Retrieved measurement handles remain usable after collection entries are removed
+or replaced. `ngs.saveResults(results, simulation.parameters, archive, path)`
+stores native kind-5 analysis results; `mcbase.save` stores complete kind-6 batch
+state and the random stream. Subclasses save their own configuration and progress
+alongside that base state. See the [Python simulation tutorial](../../tutorials/10-ngs/7_python_extend/).
+The former NGS observable/result facades and experimental accumulator module are
+removed. Released bins can be converted to native analysis results with the
+[offline converter](../../src/tools/hdf5/README.md); analysis results do not supply
+the sampling state needed for restart.
+
 ## HDF5 IO
 
 `pyalps.hdf5.archive` owns an h5py file. Primitive datasets and attributes follow
@@ -129,7 +158,7 @@ fields. Reading a group returns an h5py Group. Dictionaries and ragged lists are
 not inferred as containers: write their named fields explicitly. Modes are exactly
 `r` (read), `a` (create/update), and `w` (truncate).
 
-Scientific objects such as params, observables, results, RNGs, and simulations
+Scientific objects such as params, batch accumulators/results, RNGs, and simulations
 retain their native save/load methods. These methods transfer file ownership for
 the complete operation, closing h5py and reopening it afterwards. Native virtual
 callbacks receive a small native archive that accepts scalars and explicit NumPy
@@ -198,3 +227,33 @@ run file or manifest with the application executable, then runs them in order an
 returns their absolute result paths. Job execution through the legacy
 scheduler/parapack fronts remains pending migration. See the [CT-HYB guide](../../src/apps/dmft/qmc/hybridization/README.md)
 for numerical formats and supported measurements.
+
+## Installed-wheel validation
+
+From the repository root, validate the installed package and retain reproducible
+source, dependency, extension and distribution evidence:
+
+```sh
+python .github/scripts/validate_pyalps.py --output _build/validation --wheelhouse wheelhouse
+```
+
+The output includes logs, JUnit results, hashes, commands, timings and pass/fail
+status. Failed runs retain their evidence. `--packaging` adds the release and
+packaging tests. `--downstream` enables compiled SDK/extension consumers and
+requires the matching SDK, CMake, a C++ compiler and nanobind. Check reported
+skips; the ordinary run does not enable those consumers or provide mpi4py.
+
+`--applications` additionally exercises input generation, dispatch and result
+loading through six installed solvers. The four-site Heisenberg diagonalization
+checks require ground-state energy -2 within 1e-10; short Monte Carlo and DMRG
+runs check finite results without asserting convergence. Outputs stay beneath
+the evidence directory. These workflows use the existing SDK and Python
+environment without another build matrix.
+
+MPI checks can run against the installed package separately:
+
+```sh
+mpiexec -n 2 python -m pytest -q \
+  tests/pyalps/test_binding_surface.py::test_mpi4py_compatibility_surface \
+  tests/pyalps/test_mpi_requests.py
+```

@@ -16,7 +16,7 @@
 #include <alps/stop_callback.hpp>
 #include "sum_config.hpp"
 
-#include <boost/lambda/lambda.hpp>
+#include <cmath>
 
 // Simulation to measure e^(-x*x)
 class my_sim_type : public alps::mcbase {
@@ -28,34 +28,24 @@ class my_sim_type : public alps::mcbase {
             , total_count(params["COUNT"])
 
         {
-            measurements << alps::accumulator::RealObservable("SValue")
-                         << alps::accumulator::RealVectorObservable("VValue");
-        }
-
-        // if not compiled with mpi boost::mpi::communicator does not exists, 
-        // so template the function
-        template <typename Arg> my_sim_type(parameters_type const & params, Arg comm)
-            : alps::mcbase(params, comm)
-            , total_count(params["COUNT"])
-        {
-            measurements << alps::accumulator::RealObservable("SValue")
-                         << alps::accumulator::RealVectorObservable("VValue");
+            measurements.emplace("SValue", std::make_shared<alps::alea::batch_acc<double>>(1, 64));
+            measurements.emplace("VValue", std::make_shared<alps::alea::batch_acc<double>>(3, 64));
         }
 
         // do the calculation in this function
-        void update() {
+        void update() override {
             double x = random();
             value = exp(-x * x);
         };
 
         // do the measurements here
-        void measure() {
+        void measure() override {
             ++count;
-            measurements["SValue"] << value;
-            measurements["VValue"] << std::vector<double>(3, value);
+            *measurements.at("SValue") << alps::alea::make_adapter(value);
+            *measurements.at("VValue") << alps::alea::make_adapter(std::vector<double>(3, value));
         };
 
-        double fraction_completed() const {
+        double fraction_completed() const override {
             return count / double(total_count);
         }
 
@@ -79,5 +69,5 @@ int main(int argc, char *argv[]) {
 
     std::cout << "e^(-x*x): " << results["SValue"] << std::endl;
     std::cout << "e^(-x*x): " << results["VValue"] << std::endl;
-    save_results(results, params, options.output_file, "/simulation/results");
+    alps::save_results(results, params, options.output_file, "/simulation/results");
 }

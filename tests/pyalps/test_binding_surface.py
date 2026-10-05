@@ -21,6 +21,7 @@ from types import SimpleNamespace
 import numpy as np
 
 from pyalps.hdf5 import archive as hdf5_archive
+from pyalps.alea import BatchAccumulator
 import pytest
 
 
@@ -35,13 +36,8 @@ def test_extension_import_surface():
         "pyngsparams_c",
         "pyngshdf5_c",
         "pyngsbase_c",
-        "pyngsobservable_c",
-        "pyngsobservables_c",
-        "pyngsresult_c",
-        "pyngsresults_c",
         "pyngsapi_c",
         "pyngsrandom01_c",
-        "pyngsaccumulator_c",
     }
     assert pyalps is not None
     assert expected <= set(vars(cxx))
@@ -194,33 +190,11 @@ def test_packaged_xml_stylesheets():
         assert os.path.exists(os.path.join(xml_dir, name))
 
 
-def test_ngs_observable_containers():
-    from pyalps import ngs
-
-    observables = ngs.observables()
-    observables.createRealObservable("magnetization")
-    observables["magnetization"] << 1.5
-    assert "magnetization" in observables
-    assert ngs.observable2result(observables["magnetization"]).count == 1
-
-
 def test_name_encoding_roundtrip():
     from pyalps.cxx.pytools_c import hdf5_name_decode, hdf5_name_encode
 
     for value in ("plain", "with space", "slash/inside", "café"):
         assert hdf5_name_decode(hdf5_name_encode(value)) == value
-
-
-def test_accumulator_surface():
-    from pyalps.cxx.pyngsaccumulator_c import error_accumulator
-
-    accumulator = error_accumulator()
-    for sample in (1.0, 2.0, 3.0):
-        accumulator(sample)
-    result = accumulator.result()
-    assert result.count() == 3
-    assert result.mean() == 2.0
-    assert result.error() >= 0
 
 
 def test_optional_application_extension_surface():
@@ -517,20 +491,6 @@ def test_mpi4py_compatibility_surface():
     assert 0 < timer.elapsed_min < timer.elapsed_max
     assert mpi.max_tag + 1 == mpi.collectives_tag
 
-    # The legacy mcbase constructor accepted a communicator but did not use
-    # it internally. Preserve that call shape without binding Boost.MPI.
-    class Simulation(ngs.mcbase):
-        def update(self):
-            pass
-
-        def measure(self):
-            pass
-
-        def fraction_completed(self):
-            return 1.0
-
-    assert isinstance(Simulation({"SEED": 1}, 42, mpi.world), ngs.mcbase)
-
 
 def test_mpi_finalization_ownership():
     pytest.importorskip("mpi4py")
@@ -706,13 +666,6 @@ def test_params_mapping_mixins():
     assert p.pop("absent", 7) == 7
     with pytest.raises(KeyError):
         p.pop("absent")
-    obs = ngs.observables()
-    obs.createRealObservable("x")
-    assert obs.get("absent", 3) == 3
-    assert obs.pop("absent", 3) == 3
-    with pytest.raises(KeyError):
-        obs.pop("absent")
-    assert obs.pop("x") is not None and "x" not in obs
 
 
 def test_archive_errors_use_the_typed_hierarchy(tmp_path):
@@ -772,7 +725,7 @@ def test_mcbase_base_save_is_not_virtual(tmp_path):
     class Base(ngs.mcbase):
         def __init__(self, parms):
             ngs.mcbase.__init__(self, parms, 42)
-            self.measurements.createRealObservable("E")
+            self.measurements["E"] = BatchAccumulator()
             self.steps = 0
 
         def update(self):
@@ -814,102 +767,15 @@ def test_params_native_bool_vector_hdf5_roundtrip(tmp_path):
     np.testing.assert_array_equal(loaded["flags"], [True, False, True])
 
 
-def test_observable_lshift_chains():
-    from pyalps import ngs
-
-    observables = ngs.observables()
-    observables.createRealObservable("chain")
-    observable = observables["chain"]
-    returned = (observable << 1.0) << 2.0
-    assert returned is observable
-    assert ngs.observable2result(observable).count == 2
-
-
-def test_standalone_observables_accept_samples():
-    """ngs.createRealObservable() handles must accept measurements.
-
-    They stopped doing so under nanobind: extensions are compiled with
-    -fvisibility=hidden, so instantiating a libalps class template inside a
-    binding TU emits a hidden vtable/type_info that cannot merge with
-    libalps' copy, and the dynamic_cast<RecordableObservable<T>*> in
-    Observable::add then fails with "Cannot add measurement to observable".
-    The fix keeps construction on the libalps side; this pins it.
-    """
-    import numpy as np
-
-    from pyalps import ngs
-
-    scalar = ngs.createRealObservable("Energy")
-    scalar << 1.0
-    scalar << 2.0
-
-    vector = ngs.createRealVectorObservable("Correlations")
-    vector << np.array([1.0, 2.0, 3.0])
-
-    # the container-held equivalents must keep working too
-    observables = ngs.observables()
-    observables.createRealObservable("Energy")
-    observables["Energy"] << 1.5
-
-
-def test_observables_item_deletion():
-    from pyalps import ngs
-
-    observables = ngs.observables()
-    observables.createRealObservable("a")
-    observables.createRealObservable("b")
-    del observables["a"]
-    assert "a" not in observables and "b" in observables
-    observables.clear()
-    assert len(observables) == 0
-
-
 def test_mapping_views_are_set_like():
-    """keys/values/items must be MutableMapping views, not one-shot iterators.
-
-    Boost.Python's map_indexing_suite defined none of the three, so on the
-    legacy build they resolved through MutableMapping to KeysView/ValuesView/
-    ItemsView: sized, re-iterable and set-like. The nanobind port must keep
-    that, which means NOT defining them natively in C++ -- pyalps/ngs.py only
-    grafts a mixin onto names the extension type leaves alone.
-    """
-    from collections.abc import MutableMapping
-
     from pyalps import ngs
-
-    observables = ngs.observables()
-    observables.createRealObservable("a")
-    observables.createRealObservable("b")
-
-    for mapping in (observables, ngs.params({"a": 1, "b": 2})):
-        keys = mapping.keys()
-        # sized, and re-iterable (a nanobind iterator is exhausted after one pass)
-        assert len(keys) == 2
-        assert sorted(keys) == ["a", "b"]
-        assert sorted(keys) == ["a", "b"]
-        # set-like
-        assert keys & {"a"} == {"a"}
-        assert keys | {"c"} == {"a", "b", "c"}
-
-        items = mapping.items()
-        assert len(items) == 2
-        assert sorted(k for k, _ in items) == ["a", "b"]
-        assert sorted(k for k, _ in items) == ["a", "b"]
-
-        values = mapping.values()
-        assert len(values) == 2
-        assert len(list(values)) == 2
-        assert len(list(values)) == 2
-
-    # `results` is the third mapping type and goes through the same shim, but
-    # it is deliberately not constructible from Python -- master bound it with
-    # boost::python::no_init and the port binds no nb::init<> either -- so the
-    # view semantics are asserted here only through the two types that are.
-    for _name in ("keys", "values", "items"):
-        assert getattr(ngs.results, _name) is getattr(MutableMapping, _name), (
-            "results.%s must come from the MutableMapping mixin, not a native "
-            "one-shot nanobind iterator" % _name
-        )
+    mapping = ngs.params({"a": 1, "b": 2})
+    keys = mapping.keys()
+    assert len(keys) == 2
+    assert sorted(keys) == sorted(keys) == ["a", "b"]
+    assert keys & {"a"} == {"a"}
+    assert keys | {"c"} == {"a", "b", "c"}
+    assert len(mapping.items()) == len(mapping.values()) == 2
 
 
 def test_mcbase_save_load_overrides_reach_cpp_dispatch():
@@ -938,7 +804,7 @@ def test_mcbase_save_load_overrides_reach_cpp_dispatch():
 
     simulation = Simulation({"SEED": 42})
     # the base save/load expects a non-empty measurements container
-    simulation.measurements << ngs.RealObservable("energy")
+    simulation.measurements["energy"] = BatchAccumulator()
     simulation.measurements["energy"] << 1.0
     with tempfile.TemporaryDirectory() as directory:
         path = os.path.join(directory, "checkpoint.h5")
@@ -962,19 +828,6 @@ def test_mcbase_save_load_overrides_reach_cpp_dispatch():
         assert calls == ["save", "load"]
 
 
-def test_accumulator_result_inplace_identity():
-    from pyalps.cxx.pyngsaccumulator_c import error_accumulator
-
-    accumulator = error_accumulator()
-    accumulator(1.0)
-    accumulator(2.0)
-    result = accumulator.result()
-    alias = result
-    alias += 1.0
-    assert alias is result
-    assert np.isclose(result.mean(), 2.5)
-
-
 def test_python3_property_comparison(monkeypatch):
     import pyalps
     import pyalps.apptest as apptest
@@ -993,53 +846,24 @@ def test_python3_property_comparison(monkeypatch):
 
 
 def test_archive_setitem_saves_registered_alps_types():
-    """`archive[path] = obj` must reach the save() of a registered ALPS type.
-
-    Each of these binds an archive-taking save(), but the __setitem__ gate only
-    recognised bound methods defined in Python -- nanobind's are a distinct
-    type -- so every one of them fell through to extract_from_pyobject, which
-    has no branch for them, and raised "Unsupported type" even though
-    obj.save(archive) worked when called directly.
-    """
-    from pyalps import hdf5, ngs
-
+    from pyalps import alea, hdf5, ngs
     parameters = ngs.params({"L": 8, "T": 2.5, "MODEL": "spin"})
-    observable = ngs.createRealObservable("Energy")
-    observable << 1.0
-    observable << 2.0
-    result = ngs.observable2result(observable)
-    container = ngs.observables()
-    container.createRealObservable("Magnetization")
-    container["Magnetization"] << 0.5
-
-    cases = {
-        "parameters": parameters,
-        "observable": observable,
-        "result": result,
-        "observables": container,
-    }
-
+    accumulator = alea.BatchAccumulator()
+    accumulator << 1.0 << 2.0
+    cases = {"parameters": parameters, "measurements": accumulator, "result": accumulator.result()}
     with tempfile.TemporaryDirectory() as directory:
         path = os.path.join(directory, "registered.h5")
         with hdf5.archive(path, "w") as archive:
             for key, value in cases.items():
                 archive["/" + key] = value
-
         with hdf5.archive(path, "r") as archive:
-            # Each save() writes a group of its own children; an empty or
-            # missing group would mean the dispatch silently did nothing.
-            for key in cases:
-                assert archive.is_group("/" + key), key
-                assert archive.list_children("/" + key), key
             assert archive["/parameters/format"] == "alps.params.v2"
-            assert archive.list_children("/observables") == ["Magnetization"]
-
-        restored = ngs.params()
-        with hdf5.archive(path, "r") as archive:
-            restored.load(archive, "/parameters")
-        assert int(restored["L"]) == 8
-        assert float(restored["T"]) == 2.5
-        assert str(restored["MODEL"]) == "spin"
+            assert archive["/measurements/@kind"] == 6
+            assert archive["/result/@kind"] == 5
+            restored = ngs.params(archive, "/parameters")
+            assert restored["L"] == 8 and restored["T"] == 2.5
+            assert restored["MODEL"] == "spin"
+            np.testing.assert_array_equal(alea.BatchResult.read(archive, "/result").mean, [1.5])
 
 
 def test_archive_setitem_rejects_mcdata_with_actionable_advice():
@@ -1065,23 +889,6 @@ def test_archive_setitem_rejects_mcdata_with_actionable_advice():
         restored = alea.MCScalarData()
         restored.load(target, "/simulation/results/Energy")
         assert restored.mean == pytest.approx(1.0)
-
-
-def test_accumulator_results_are_printable():
-    """__str__ returns std::string, which needs the caster in that module.
-
-    Without nanobind/stl/string.h in accumulator.cpp, str() on all ten
-    accumulator and result types raised TypeError.
-    """
-    from pyalps.cxx import pyngsaccumulator_c as accumulator
-
-    for name in ("count_accumulator", "mean_accumulator", "error_accumulator",
-                 "binning_analysis_accumulator", "max_num_binning_accumulator"):
-        accum = getattr(accumulator, name)()
-        for sample in range(16):
-            accum(float(sample))
-        assert isinstance(str(accum), str) and str(accum), name
-        assert isinstance(str(accum.result()), str) and str(accum.result()), name
 
 
 def test_numpy_arrays_are_writable_and_own_their_buffer():
@@ -1196,22 +1003,14 @@ if __name__ == "__main__":
         test_alea_numpy_and_mcdata_operators,
         test_alea_mcanalyze_surface,
         test_packaged_xml_stylesheets,
-        test_ngs_observable_containers,
         test_name_encoding_roundtrip,
-        test_accumulator_surface,
         test_optional_application_extension_surface,
         test_params_mapping_equality_and_value_ladder,
         test_params_mapping_mixins,
-        test_observable_lshift_chains,
-        test_standalone_observables_accept_samples,
-        test_observables_item_deletion,
         test_mapping_views_are_set_like,
         test_mcbase_save_load_overrides_reach_cpp_dispatch,
-        test_accumulator_result_inplace_identity,
         test_archive_setitem_saves_registered_alps_types,
-        test_archive_setitem_reaches_registered_types_nested_in_containers,
         test_archive_setitem_rejects_mcdata_with_actionable_advice,
-        test_accumulator_results_are_printable,
         test_numpy_arrays_are_writable_and_own_their_buffer,
         test_archive_arrays_preserve_shape_dtype_and_outlive_the_archive,
         test_integer_arrays_keep_their_exact_numpy_dtype,

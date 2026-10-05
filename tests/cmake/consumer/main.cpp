@@ -7,28 +7,24 @@
 #include <alps/hdf5/vector.hpp>
 #include <alps/params.hpp>
 #include <alps/utility/encode.hpp>
-#include <alps/ngs/accumulator/feature/binning_analysis.hpp>
-#include <alps/ngs/accumulator/feature/max_num_binning.hpp>
+#include <alps/mcbase.hpp>
 #include <alps/parser/xslt_path.h>
 #include <alps/osiris/xdrdump.h>
 #include <alps/numeric/functional.hpp>
 #include <boost/filesystem/operations.hpp>
 #include <vector>
 
-using namespace alps::accumulator;
-using Count = impl::Accumulator<double, count_tag, impl::AccumulatorBase<double>>;
-using Mean = impl::Accumulator<double, mean_tag, Count>;
-using Error = impl::Accumulator<double, error_tag, Mean>;
-using Binning = impl::Accumulator<double, binning_analysis_tag, Error>;
-using MaxBinning = impl::Accumulator<double, max_num_binning_tag, Error>;
-
-template<class Accumulator> bool check_accumulator() {
-    Accumulator accumulator;
-    accumulator(1.0);
-    accumulator(2.0);
-    accumulator(3.0);
-    return accumulator.count() == 3 && accumulator.mean() == 2.0;
-}
+class simulation : public alps::mcbase {
+public:
+    simulation() : alps::mcbase(alps::params{}) {
+        measurements.emplace("samples", std::make_shared<alps::alea::batch_acc<double>>(1, 8));
+    }
+    void update() override { ++steps; }
+    void measure() override { *measurements.at("samples") << double(steps); }
+    double fraction_completed() const override { return double(steps)/3; }
+private:
+    int steps = 0;
+};
 
 int main(int argc, char** argv) {
     if (argc == 2) {
@@ -62,8 +58,10 @@ int main(int argc, char** argv) {
     std::vector<double> actual;
     alps::hdf5::archive input("sdk-contract.h5", "r");
     input["/values"] >> actual;
+    simulation sim;
+    sim.run([] { return false; });
+    const auto result = sim.collect_results().at("samples");
     return actual == expected && checkpoint_value == 42 && int(parameters["count"]) == 3
         && (range.min)() == 2 && (range.max)() == 5
-        && check_accumulator<Mean>() && check_accumulator<Error>()
-        && check_accumulator<Binning>() && check_accumulator<MaxBinning>() ? 0 : 1;
+        && result.count() == 3 && result.mean()(0) == 2.0 ? 0 : 1;
 }

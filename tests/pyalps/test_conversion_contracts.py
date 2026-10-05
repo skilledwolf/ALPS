@@ -8,16 +8,9 @@ import textwrap
 import numpy as np
 import pytest
 
-from pyalps import alea, ngs
-from pyalps.cxx.pyngsaccumulator_c import count_accumulator
+from pyalps import alea
 
 
-def test_count_accumulator_accepts_non_scalar_samples():
-    accumulator = count_accumulator()
-    for sample in (np.ones((2, 3)), 1 + 2j, [1, 2], {"x": 1}, None):
-        accumulator(sample)
-    assert accumulator.count() == 5
-    assert accumulator.result().count() == 5
 
 
 @pytest.mark.parametrize("vector", [False, True])
@@ -59,12 +52,12 @@ def test_array_consumers_do_not_require_writable_samples(layout):
     np.testing.assert_array_equal(alea.MCScalarTimeseries(values[0]).timeseries(), values[0])
     np.testing.assert_array_equal(alea.MCVectorTimeseries(values).timeseries(), values)
     observable = alea.RealVectorObservable("samples")
-    ngs_observable = ngs.createRealVectorObservable("samples")
+    native = alea.BatchAccumulator(values.shape[1])
     for row in values:
         observable << row
-        ngs_observable << row
+        native << row
     np.testing.assert_allclose(observable.mean, values.mean(axis=0))
-    np.testing.assert_allclose(ngs.observable2result(ngs_observable).mean, values.mean(axis=0))
+    np.testing.assert_allclose(native.result().mean, values.mean(axis=0))
 
 
 def test_mcvector_constructor_sizes_errors_before_indexing():

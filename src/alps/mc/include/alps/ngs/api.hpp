@@ -16,14 +16,15 @@
 
 #include <alps/ngs/config.hpp>
 #include <alps/params.hpp>
-#include <alps/ngs/mcresults.hpp>
-#include <alps/ngs/mcobservables.hpp>
+#include <alps/alea/batch.hpp>
 
 #include <boost/filesystem/path.hpp>
 
 #include <string>
+#include <map>
 
 namespace alps {
+    namespace hdf5 { class archive; }
 
     template<typename S> struct result_names_type {
         typedef typename S::result_names_type type;
@@ -39,10 +40,6 @@ namespace alps {
 
     template<typename S> typename result_names_type<S>::type result_names(S const & s) {
         return s.result_names();
-    }
-
-    template<typename S> typename result_names_type<S>::type unsaved_result_names(S const & s) {
-        return s.unsaved_result_names();
     }
 
     template<typename S> typename results_type<S>::type collect_results(S const & s) {
@@ -61,9 +58,12 @@ namespace alps {
         return s.fraction_completed();
     }
 
-    ALPS_DECL void save_results(mcresults const & results, params const & params, boost::filesystem::path const & filename, std::string const & path);
-
-    ALPS_DECL void save_results(mcobservables const & observables, params const & params, boost::filesystem::path const & filename, std::string const & path);
+    ALPS_DECL void save_results(std::map<std::string, alps::alea::batch_result<double>> const & results,
+                               params const & params, boost::filesystem::path const & filename,
+                               std::string const & path);
+    ALPS_DECL void save_results(std::map<std::string, alps::alea::batch_result<double>> const & results,
+                               params const & params, hdf5::archive & archive,
+                               std::string const & path);
 
     template<typename C, typename P> void broadcast(C const & c, P & p, int r = 0) {
         p.broadcast(c, r);

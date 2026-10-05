@@ -43,7 +43,9 @@
 #include <alps/mcbase.hpp>
 #include <alps/hdf5/archive.hpp>
 #include <nanobind/nanobind.h>
+#include <nanobind/stl/bind_map.h>
 #include "archive_savable.hpp"
+#include "export_simulation.hpp"
 #include <nanobind/make_iterator.h>
 #include <nanobind/stl/function.h>
 #include <nanobind/trampoline.h>
@@ -66,9 +68,7 @@ namespace alps {
             // save(archive&) / load(archive&); all five must be
             // forwarded so Python overrides are seen by C++ callers.
             NB_TRAMPOLINE(mcbase, 5);
-            PyMCBase(nb::dict const & arg,
-                     std::size_t seed_offset = 42,
-                     nb::handle /*communicator*/ = nb::none())
+            PyMCBase(nb::dict const & arg, std::size_t seed_offset = 42)
                 : mcbase(pyalps::params_from_dict(arg), seed_offset)
             {}
             void update() override {
@@ -99,16 +99,11 @@ namespace alps {
     };
 }
 NB_MODULE(pyngsbase_c, m) {
+    nb::bind_map<alps::mcbase::observable_collection_type>(m, "measurements");
     nb::class_<alps::mcbase, alps::PyMCBase>(m, "mcbase")
-        // Retain the legacy third argument without binding Boost.MPI. The
-        // Boost.Python-era constructor accepted a communicator but never
-        // passed it to alps::mcbase (which has no communicator constructor),
-        // so accepting and ignoring it is behaviorally faithful. Python-side
-        // communication is provided by pyalps.mpi's mpi4py adapter.
-        .def(nb::init<nb::dict const &, std::size_t, nb::handle>(),
+        .def(nb::init<nb::dict const &, std::size_t>(),
              nb::arg("dict"),
-             nb::arg("seed_offset") = 42,
-             nb::arg("communicator") = nb::none())
+             nb::arg("seed_offset") = 42)
         .def_prop_ro(
             "random",
             [](alps::mcbase & self) -> alps::random01 & {
@@ -123,10 +118,11 @@ NB_MODULE(pyngsbase_c, m) {
             nb::rv_policy::reference_internal)
         .def_prop_ro(
             "measurements",
-            [](alps::mcbase & self) -> alps::mcobservables & {
+            [](alps::mcbase & self) -> alps::mcbase::observable_collection_type & {
                 return self.get_measurements();
             },
-            nb::rv_policy::reference_internal)
+             nb::rv_policy::reference_internal)
+        .def("collectResults", [](alps::mcbase const & self) { return self.collect_results(); })
         .def("run",
              [](alps::mcbase & self, nb::object stop_callback) {
                  return self.run([stop_callback = std::move(stop_callback)]() -> bool {

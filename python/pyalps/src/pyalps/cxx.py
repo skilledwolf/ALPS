@@ -28,13 +28,8 @@ _EXTENSIONS = (
     "pyngsparams_c",
     "pyngshdf5_c",
     "pyngsbase_c",
-    "pyngsobservable_c",
-    "pyngsobservables_c",
-    "pyngsresult_c",
-    "pyngsresults_c",
     "pyngsapi_c",
     "pyngsrandom01_c",
-    "pyngsaccumulator_c",
 )
 
 import importlib

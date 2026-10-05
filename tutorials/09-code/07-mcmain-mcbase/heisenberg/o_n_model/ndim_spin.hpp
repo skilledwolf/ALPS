@@ -8,7 +8,6 @@
 #include "tinyvector/tinyvector.hpp"
 
 #include <alps/mcbase.hpp>
-#include <alps/ngs/numeric.hpp>
 #include <alps/ngs/make_deprecated_parameters.hpp>
 #include <alps/random/uniform_on_sphere_n.h>
 #include <alps/lattice.h>
@@ -20,7 +19,6 @@
 #include <boost/function.hpp>
 #include <boost/filesystem/path.hpp>
 #include <boost/array.hpp>
-#include <boost/lambda/lambda.hpp>
 
 #include <vector>
 #include <string>
@@ -35,15 +33,15 @@ class ALPS_DECL ndim_spin_sim : public alps::mcbase {
         typedef tinyvector<double, N, INTRIN_OPT> spintype;
         ndim_spin_sim(parameters_type const & parms, std::size_t seed_offset = 0);
 
-        virtual void update();
-        virtual void measure();
-        virtual double fraction_completed() const;
+        void update() override;
+        void measure() override;
+        double fraction_completed() const override;
 
         using alps::mcbase::save;
-        virtual void save(alps::hdf5::archive & ar) const;
+        void save(alps::hdf5::archive & ar) const override;
 
         using alps::mcbase::load;
-        virtual void load(alps::hdf5::archive & ar);
+        void load(alps::hdf5::archive & ar) override;
 
         // convenience function to get a random spin (uniformly distancesributed direction)
         const spintype random_spin();
@@ -80,27 +78,25 @@ ndim_spin_sim<N>::ndim_spin_sim(parameters_type const & parms, std::size_t seed_
         spins[i] = random_spin();
     }
 
-    measurements
-        << alps::accumulator::RealObservable("Energy")
-        << alps::accumulator::RealVectorObservable("Magnetization")
-        << alps::accumulator::RealObservable("Magnetization^2")
-        << alps::accumulator::RealObservable("Magnetization^4")
-        << alps::accumulator::RealVectorObservable("Correlations")
-        << alps::accumulator::RealVectorObservable("Distances")
-    ;
+    measurements.emplace("Energy", std::make_shared<alps::alea::batch_acc<double>>(1, 64));
+    measurements.emplace("Magnetization", std::make_shared<alps::alea::batch_acc<double>>(N, 64));
+    measurements.emplace("Magnetization^2", std::make_shared<alps::alea::batch_acc<double>>(1, 64));
+    measurements.emplace("Magnetization^4", std::make_shared<alps::alea::batch_acc<double>>(1, 64));
+    measurements.emplace("Correlations", std::make_shared<alps::alea::batch_acc<double>>(num_sites, 64));
+    measurements.emplace("Distances", std::make_shared<alps::alea::batch_acc<double>>(num_sites, 64));
 
-    using alps::ngs::numeric::operator-;
     std::vector<double> ref = lattice.coordinate(0);
     std::vector<double> a;
     for (int i = 0; i < num_sites; ++i) {
         double d = 0;
-        a = lattice.coordinate(i) - ref;
+        a = lattice.coordinate(i);
+        for (std::size_t j = 0; j < a.size(); ++j) a[j] -= ref[j];
         for (int j = 0; j < a.size(); ++j) {
             d += a[j] * a[j];
         }
         distances.push_back(std::sqrt(d));
     }
-    measurements["Distances"] << distances;
+    *measurements.at("Distances") << alps::alea::make_adapter(distances);
 }
 
 template<int N>
@@ -123,7 +119,7 @@ void ndim_spin_sim<N>::update() {
         // generate a new random spin and decide if we keep it
         typename ndim_spin_sim<N>::spintype new_spin = random_spin();
         double delta_H = dot(new_spin - spins[i], nn_sum);
-        double p = exp( -beta * delta_H );
+        double p = exp(beta * delta_H);
         if ( p >= 1. || random() < p )
             spins[i] = new_spin;
     }
@@ -147,18 +143,16 @@ void ndim_spin_sim<N>::measure() {
         for(boost::tie(bond_it, bond_end) = lattice.bonds(); bond_it != bond_end; ++bond_it) {
             energy += - dot(spins[lattice.source(*bond_it)], spins[lattice.target(*bond_it)]);
         }
-        // pull in operator/ for vectors
-        using alps::ngs::numeric::operator/;
         energy /= num_sites;                // $\frac{1}{V} \sum_{\text{i,j nn}}{\sigma_i \sigma_j}$
         magnetization /= num_sites;         // $\frac{1}{V} \sum_{i}{\sigma_i}$
         double magnetization2 = dot(magnetization, magnetization);
 
         // store the measurements
-        measurements["Energy"] << energy;
-        measurements["Magnetization"] << spintype::vector(magnetization);
-        measurements["Magnetization^2"] << magnetization2;
-        measurements["Magnetization^4"] << magnetization2 * magnetization2;
-        measurements["Correlations"] << correlations;
+        *measurements.at("Energy") << alps::alea::make_adapter(energy);
+        *measurements.at("Magnetization") << alps::alea::make_adapter(spintype::vector(magnetization));
+        *measurements.at("Magnetization^2") << alps::alea::make_adapter(magnetization2);
+        *measurements.at("Magnetization^4") << alps::alea::make_adapter(magnetization2 * magnetization2);
+        *measurements.at("Correlations") << alps::alea::make_adapter(correlations);
     }
 }
 
@@ -176,9 +170,34 @@ void ndim_spin_sim<N>::save(alps::hdf5::archive & ar) const {
 
 template <int N>
 void ndim_spin_sim<N>::load(alps::hdf5::archive & ar) {
+    parameters_type restored_parameters;
+    ar["/parameters"] >> restored_parameters;
+    if (restored_parameters["L"].template as<int>() != parameters["L"].template as<int>())
+        throw std::invalid_argument("checkpoint geometry differs from the simulation");
+    for (auto const* key : {"LATTICE", "LATTICE_LIBRARY"})
+        if (restored_parameters.template value_or<std::string>(key, "") != parameters.template value_or<std::string>(key, ""))
+            throw std::invalid_argument("checkpoint lattice differs from the simulation");
+    int restored_thermalization = restored_parameters["THERMALIZATION"].template as<int>();
+    int restored_total = restored_parameters["SWEEPS"].template as<int>();
+    double restored_beta = 1. / restored_parameters["T"].template as<double>();
+    int restored_sweeps;
+    std::vector<spintype> restored_spins;
+    ar["checkpoint/sweeps"] >> restored_sweeps;
+    ar["checkpoint/spins"] >> restored_spins;
+    if (!std::isfinite(restored_beta) || restored_beta <= 0 || restored_thermalization < 0
+            || restored_total <= 0 || restored_sweeps < 0
+            || std::int64_t(restored_sweeps) > std::int64_t(restored_thermalization) + restored_total
+            || restored_spins.size() != std::size_t(num_sites))
+        throw std::invalid_argument("invalid Heisenberg checkpoint progress or shape");
+    for (auto const& spin : restored_spins)
+        if (!std::isfinite(dot(spin, spin)) || std::abs(dot(spin, spin) - 1.) > 1e-12)
+            throw std::invalid_argument("invalid Heisenberg checkpoint spin");
     mcbase::load(ar);
-    ar["checkpoint/sweeps"] >> sweeps;
-    ar["checkpoint/spins"] >> spins;
+    thermalization_sweeps = restored_thermalization;
+    total_sweeps = restored_total;
+    beta = restored_beta;
+    sweeps = restored_sweeps;
+    spins = std::move(restored_spins);
 }
 
 template <int N>

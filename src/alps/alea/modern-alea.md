@@ -37,6 +37,13 @@ arrays; means and errors are always vectors, including one-component results.
 and replace complete state; `BatchAccumulator.read(archive, path)` and
 `BatchResult.read(archive, path)` construct only after a successful read. Returned
 NumPy arrays own their data. Batch sums have `[slots, components]` axes.
+The NGS `mcbase` framework stores a map of shared real batch accumulators with
+explicit component dimensions. Python assigns `BatchAccumulator` handles directly
+to `sim.measurements[name]`; a retrieved handle remains valid after replacement
+or erasure. Collected results are owning maps/dictionaries of native batch results.
+Base checkpoint loading stages parameters, measurements and RNG and validates
+all already registered names and dimensions before replacement. Subclasses
+override archive-reference hooks for their application state.
 `VarianceResult` and `ComplexVarianceResult` read ordinary componentwise
 variance results through the same native codec; they expose means, errors,
 variance, counts and squared weights without introducing another accumulator API.
@@ -53,6 +60,9 @@ link `MPI::MPI_CXX` alongside `ALPS::statistics`. The statistics library itself
 remains MPI-free. Construction and reductions are collective and must occur in
 the same order on every rank. Only the chosen root retains the combined result.
 Sample counts use unsigned 64-bit MPI arithmetic.
+`mcmpiadapter` checks matching result requests before reducing every entry,
+including empty local accumulators. Only the root receives collected results.
+Local sampling and callback failures reach every rank at scheduled checks.
 Custom reducers must implement `reduce(view<uint64_t>)`; rebuild downstream
 binaries after this interface change. The combined sample count must fit in
 `uint64_t`.
@@ -113,3 +123,9 @@ views close before publication, and a failed save preserves the previous file.
 The pure Python Ising tutorial uses this path and checks complete restart against
 an uninterrupted spin stream. Both Python and C++ pilots use one canonical
 representation for real and complex batch state.
+
+Released recoverable ALPS 3.0.0 linear bin histories migrate offline using
+[`alps-hdf5-convert --alea-batches GROUP`](../../tools/hdf5/README.md). Conversion
+keeps original bin sums and weights, including partial bins, and recomputes native
+analysis uncertainty. Summary-only or nonlinear results cannot recover missing
+joint covariance; analysis bins cannot reconstruct an accumulator's merge cursor.

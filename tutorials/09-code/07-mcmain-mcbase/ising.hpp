@@ -31,15 +31,15 @@ class ising_sim : public alps::mcbase {
         
         ising_sim(parameters_type const & parms, std::size_t seed_offset = 0);
 
-        virtual void update();
-        virtual void measure();
-        virtual double fraction_completed() const;
+        void update() override;
+        void measure() override;
+        double fraction_completed() const override;
 
         using alps::mcbase::save;
-        virtual void save(alps::hdf5::archive & ar) const;
+        void save(alps::hdf5::archive & ar) const override;
 
         using alps::mcbase::load;
-        virtual void load(alps::hdf5::archive & ar);
+        void load(alps::hdf5::archive & ar) override;
 
     private:
         

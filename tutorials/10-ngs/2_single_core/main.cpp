@@ -13,7 +13,8 @@
 
 #include "ising.hpp"
 
-#include <alps/ngs.hpp>
+#include <alps/parseargs.hpp>
+#include <alps/stop_callback.hpp>
 #include "spin_config.hpp"
 
 #include <boost/chrono.hpp>
@@ -45,10 +46,9 @@ int main(int argc, char *argv[]) {
         using alps::collect_results;
         alps::results_type<ising_sim>::type results = collect_results(sim);
 
-        std::cout << results << std::endl;
-        alps::hdf5::archive ar(options.output_file, "w");
-        ar["/parameters"] << parameters;
-        ar["/simulation/results"] << results;
+        for (auto const& entry : results)
+            std::cout << entry.first << ": " << entry.second << '\n';
+        alps::save_results(results, sim.get_parameters(), options.output_file, "/simulation/results");
 
     } catch (std::exception const & e) {
         std::cerr << "Caught exception: " << e.what() << std::endl;

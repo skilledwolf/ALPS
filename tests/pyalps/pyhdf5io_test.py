@@ -2,7 +2,7 @@
 import h5py
 import numpy as np
 import pytest
-from pyalps import hdf5, ngs
+from pyalps import alea, hdf5, ngs
 
 
 @pytest.mark.parametrize("dtype", ["i4", "i8", "u8", "f4", "f8", "c8", "c16", "bool"])
@@ -118,7 +118,7 @@ def test_retained_native_callback_archive_is_closed_before_h5py_reopens(tmp_path
             native["field"] = Field()
 
     simulation = Simulation({"SEED": 42})
-    simulation.measurements << ngs.RealObservable("energy")
+    simulation.measurements["energy"] = alea.BatchAccumulator()
     simulation.measurements["energy"] << 1.0
     with hdf5.archive(tmp_path / "retained.h5", "w") as archive:
         with archive.native() as native:

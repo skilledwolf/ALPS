@@ -14,59 +14,17 @@
 
 from collections.abc import MutableMapping
 from .cxx.pyngsparams_c import params
+from .cxx.pyngsbase_c import mcbase
+from .cxx.pyngsapi_c import collectResults, saveResults
+from .cxx.pyngsrandom01_c import random01
 
-from .cxx.pyngsobservable_c import observable
+# Extension types cannot inherit the Python mapping mixin directly.
+MutableMapping.register(params)
+for _method in ("keys", "values", "items", "get", "popitem", "clear", "update",
+                "setdefault", "__eq__", "__ne__", "__hash__"):
+    if getattr(params, _method, None) is getattr(object, _method, None):
+        setattr(params, _method, getattr(MutableMapping, _method))
 
-class RealObservable:
-    def __init__(self, name, binnum = 0):
-        self.name = name
-        self.binnum = binnum
-    def addToObservables(self, observables): #rename this with new ALEA
-        observables.createRealObservable(self.name, self.binnum)
-
-class RealVectorObservable:
-    def __init__(self, name, binnum = 0):
-        self.name = name
-        self.binnum = binnum
-    def addToObservables(self, observables): #rename this with new ALEA
-        observables.createRealVectorObservable(self.name, self.binnum)
-
-from .cxx.pyngsobservables_c import observables
-
-from .cxx.pyngsobservable_c import createRealObservable #remove this with new ALEA!
-from .cxx.pyngsobservable_c import createRealVectorObservable #remove this with new ALEA!
-
-from .cxx.pyngsresult_c import result
-from .cxx.pyngsresult_c import observable2result #remove this with new ALEA!
-
-from .cxx.pyngsresults_c import results
-
-# Boost.Python allowed mutating extension-type base classes after creation.
-# nanobind extension types use a different allocator/deallocator layout, so
-# register them as virtual MutableMapping implementations and copy the mixin
-# methods onto the concrete classes instead. A method is copied when the
-# class doesn't provide its own — "inherited from object" counts as absent,
-# otherwise __eq__/__ne__ (which every type inherits from object) would be
-# skipped and mapping equality lost. __hash__ rides along as None, exactly
-# as MutableMapping inheritance made these types unhashable before.
-for _mapping_type in (params, observables, results):
-    MutableMapping.register(_mapping_type)
-    for _method in ("keys", "values", "items", "get", "pop", "popitem",
-                    "clear", "update", "setdefault", "__eq__", "__ne__",
-                    "__hash__"):
-        if getattr(_mapping_type, _method, None) is getattr(object, _method, None):
-            setattr(_mapping_type, _method, getattr(MutableMapping, _method))
-
-# Two mixin methods cannot simply be copied onto these types.
-#
-# MutableMapping.pop reads `self.__marker`, which name-mangles to
-# self._MutableMapping__marker -- a class attribute of MutableMapping. Under
-# the old `params.__bases__ = (MutableMapping,) + ...` rebasing that resolved
-# through the MRO; on a virtual subclass whose methods were copied it does
-# not, so pop() raised AttributeError instead of returning the default or
-# raising KeyError. Supply an implementation that tests membership instead of
-# relying on __getitem__ raising.
-#
 _MAPPING_POP_MARKER = object()
 
 
@@ -80,12 +38,4 @@ def _mapping_pop(self, key, default=_MAPPING_POP_MARKER):
     return default
 
 
-for _mapping_type in (params, observables, results):
-    _mapping_type.pop = _mapping_pop
-
-
-from .cxx.pyngsbase_c import mcbase
-
-from .cxx.pyngsapi_c import collectResults, saveResults
-
-from .cxx.pyngsrandom01_c import random01
+params.pop = _mapping_pop
