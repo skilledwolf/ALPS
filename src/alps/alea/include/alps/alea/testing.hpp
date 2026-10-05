@@ -10,6 +10,7 @@
 #include <alps/alea/util.hpp>
 #include <alps/alea/variance.hpp>
 #include <alps/alea/covariance.hpp>
+#include <alps/alea/convert.hpp>
 #include <alps/alea/fisher_f.hpp>
 #include <alps/alea/internal/util.hpp>
 
@@ -82,57 +83,6 @@ t2_result t2_test(const column<double> &diff, const column<double> &var,
 namespace internal {
 t2_result test_covariance(const column<double>& diff, const Eigen::MatrixXd& cov,
                           double dof, double atol);
-
-template<class Derived>
-column<double> real_vector(const Eigen::MatrixBase<Derived>& value)
-{
-    if (value.rows() != 1 && value.cols() != 1) throw size_mismatch();
-    constexpr bool complex = Eigen::NumTraits<typename Derived::Scalar>::IsComplex;
-    column<double> out(value.size() * (complex ? 2 : 1));
-    for (Eigen::Index i=0; i<value.size(); ++i) {
-        if constexpr (complex) {
-            out(2*i) = value.derived().coeff(i).real();
-            out(2*i+1) = value.derived().coeff(i).imag();
-        } else out(i) = value.derived().coeff(i);
-    }
-    return out;
-}
-
-template<class Result>
-Eigen::MatrixXd real_covariance(const Result& result)
-{
-    if constexpr (!Eigen::NumTraits<typename traits<Result>::value_type>::IsComplex) {
-        if constexpr (traits<Result>::HAVE_COV) return result.cov();
-        else {
-            if (result.size() != 1)
-                throw std::invalid_argument("Multicomponent mean tests require full covariance");
-            return result.var().asDiagonal();
-        }
-    } else {
-        // Circular covariance does not determine real/imaginary covariance.
-        // Raw batches and elliptic results do retain the necessary information.
-        if constexpr (traits<Result>::HAVE_BATCH ||
-                      std::is_same_v<typename traits<Result>::var_type, complex_op<double>>) {
-            auto blocks = [&] {
-                if constexpr (traits<Result>::HAVE_BATCH)
-                    return result.template cov<elliptic_var>();
-                else if constexpr (traits<Result>::HAVE_COV) return result.cov();
-                else {
-                    if (result.size() != 1)
-                        throw std::invalid_argument("Multicomponent complex mean tests require full covariance");
-                    return typename eigen<complex_op<double>>::matrix(result.var().asDiagonal());
-                }
-            }();
-            Eigen::MatrixXd out(2*result.size(), 2*result.size());
-            for (size_t i=0; i<result.size(); ++i) for (size_t j=0; j<result.size(); ++j) {
-                auto b = blocks(i,j);
-                out(2*i,2*j)=b.rere(); out(2*i,2*j+1)=b.reim();
-                out(2*i+1,2*j)=b.imre(); out(2*i+1,2*j+1)=b.imim();
-            }
-            return out;
-        } else throw std::invalid_argument("Complex mean tests require raw batches or elliptic covariance");
-    }
-}
 
 template<class Result> double test_observations(const Result& result)
 {

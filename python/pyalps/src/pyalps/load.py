@@ -411,6 +411,7 @@ class Hdf5Loader:
                     xmin=0
                     xstep=1
                     x=None
+                    native_result=None
                     if "histogram" in self.h5f.list_children(respath+'/'+m):
                         obs = self.h5f[respath+'/'+m+'/histogram']
                         xmin = self.h5f[respath+'/'+m+'/@min']
@@ -419,16 +420,34 @@ class Hdf5Loader:
                         x = np.arange(xmin,xmin+xstep*size,xstep)
                     elif self.h5f.is_attribute(respath+'/'+m+'/@kind'):
                         kind = self.h5f[respath+'/'+m+'/@kind']
-                        types = {2: (pa.VarianceResult, pa.ComplexVarianceResult),
+                        types = {1: (pa.MeanResult, pa.ComplexMeanResult),
+                                 2: (pa.VarianceResult, pa.ComplexVarianceResult),
+                                 3: (pa.CovarianceResult, pa.ComplexCovarianceResult),
+                                 4: (pa.AutocorrelationResult, pa.ComplexAutocorrelationResult),
                                  5: (pa.BatchResult, pa.ComplexBatchResult)}
                         if kind not in types:
-                            raise ValueError("Expected a modern ALEA variance or batch result")
-                        result_type = types[kind][self.h5f.is_complex(respath+'/'+m+'/mean/value')]
-                        result = result_type.read(self.h5f, respath+'/'+m)
-                        size = len(result.mean)
-                        obs = (np.array([FloatWithError(value, error)
-                                         for value, error in zip(result.mean, result.error)], dtype=object)
-                               if result.count else None)
+                            raise ValueError("Expected a native ALEA result")
+                        path = respath+'/'+m
+                        complex_values = self.h5f.is_complex(path+'/mean/value')
+                        result_type = types[kind][complex_values]
+                        if complex_values and kind in (2, 3):
+                            moment_path = path + ('/var' if kind == 2 else '/cov')
+                            if len(self.h5f.extent(moment_path)) == (3 if kind == 2 else 4):
+                                result_type = pa.EllipticVarianceResult if kind == 2 else pa.EllipticCovarianceResult
+                        native_result = result_type.read(self.h5f, path)
+                        size = len(native_result.mean)
+                        if kind == 1:
+                            obs = native_result.mean if native_result.count else None
+                        else:
+                            error = native_result.error
+                            # Plotting uses a circular magnitude; the exact 2x2
+                            # uncertainty remains available on native_result.
+                            if error.ndim == 3:
+                                variance = native_result.variance
+                                error = np.sqrt((variance[:, 0, 0] + variance[:, 1, 1]) / native_result.observations)
+                            obs = (np.array([FloatWithError(value, uncertainty)
+                                             for value, uncertainty in zip(native_result.mean, error)], dtype=object)
+                                   if native_result.count else None)
                     elif "error" in self.h5f.list_children(respath+'/'+m+'/mean'): 
                         if self.h5f.is_scalar(respath+'/'+m+'/mean/value'):
                             obs = pa.MCScalarData()
@@ -476,6 +495,7 @@ class Hdf5Loader:
                       if obs is not None:
                         d = DataSet()
                         d.y = obs
+                        d.native_result = native_result
                         d.x = x
                         d.props['hdf5_path'] = respath +"/"+ m
                         d.props['observable'] = pt.hdf5_name_decode(m)

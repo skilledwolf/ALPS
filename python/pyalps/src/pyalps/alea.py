@@ -27,7 +27,16 @@ This module contains classes for the evaluation of Monte Carlo measurements:
 from .cxx.pymcdata_c import *
 from .cxx.pyalea_c import RealObservable, RealVectorObservable, RealTimeSeriesObservable, RealVectorTimeSeriesObservable
 from .cxx.pyalea_c import BatchAccumulator, BatchResult, ComplexBatchAccumulator, ComplexBatchResult
-from .cxx.pyalea_c import VarianceResult, ComplexVarianceResult
+from .cxx.pyalea_c import (
+    MeanAccumulator, MeanResult, ComplexMeanAccumulator, ComplexMeanResult,
+    VarianceAccumulator, VarianceResult, ComplexVarianceAccumulator, ComplexVarianceResult,
+    CovarianceAccumulator, CovarianceResult, ComplexCovarianceAccumulator, ComplexCovarianceResult,
+    AutocorrelationAccumulator, AutocorrelationResult,
+    ComplexAutocorrelationAccumulator, ComplexAutocorrelationResult,
+    EllipticVarianceAccumulator, EllipticVarianceResult,
+    EllipticCovarianceAccumulator, EllipticCovarianceResult,
+    MeanTest, merge, ratio_real_imag,
+)
 from .cxx.pyalea_c import MCScalarTimeseries, MCScalarTimeseriesView, MCVectorTimeseries, MCVectorTimeseriesView, ValueWithError, StdPairDouble, size, mean, variance, integrated_autocorrelation_time, running_mean, reverse_running_mean
 from . import alea_detail as detail
 import numpy

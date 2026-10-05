@@ -101,7 +101,9 @@ public:
     using value_type = T;
 
 public:
-    mean_acc(size_t size=1) : store_(new mean_data<T>(size)), size_(size) { }
+    mean_acc(size_t size=1) : store_(new mean_data<T>(size)), size_(size) {
+        if (!size) throw std::invalid_argument("ALEA requires at least one component");
+    }
 
     mean_acc(const mean_acc &other);
 

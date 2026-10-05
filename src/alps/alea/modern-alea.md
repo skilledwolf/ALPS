@@ -41,13 +41,36 @@ Loading stages the complete state before replacement. Inserting an independent
 result into a live autocorrelation accumulator remains unsupported: a result
 cannot reconstruct a missing partial hierarchy.
 
-Python exposes `pyalps.alea.BatchAccumulator` and `ComplexBatchAccumulator` with
-the same native estimators and checkpoint codecs. Samples are scalar or 1D numeric
-arrays; means and errors are always vectors, including one-component results.
-`result()` exports a snapshot. `save(archive, path)` / `load(archive, path)` store
-and replace complete state; `BatchAccumulator.read(archive, path)` and
-`BatchResult.read(archive, path)` construct only after a successful read. Returned
-NumPy arrays own their data. Batch sums have `[slots, components]` axes.
+Python exposes native `Mean`, `Variance`, `Covariance`, `Autocorrelation` and
+`Batch` accumulator/result pairs, with `Complex` variants and `EllipticVariance`
+and `EllipticCovariance`. Samples are scalar or 1D numeric arrays; means and
+errors are vectors, including one-component results. Elliptic uncertainty arrays
+retain explicit trailing `[real/imag, real/imag]` axes. Arrays own their data.
+`result()` takes a snapshot. `save(archive,path)`, `load(archive,path)` and
+`Class.read(archive,path)` use the native result or full checkpoint codec.
+Batch accumulators expose offsets; autocorrelation results expose the hierarchy,
+level estimates, `tau` and whether a coarse level is available.
+
+`alea.merge(results)` pools independent runs with their original weights;
+`result.join(other)` concatenates components, preserving aligned batch evidence
+or assuming independence between summary results. Covariance joins retain
+squared weights. `result.transform(function, output_size, method, dx)` calls the
+native propagation code: `none`, `linear`, or `jackknife` where the evidence
+supports it. Batch transforms default to jackknife; other uncertain estimates
+default to linear propagation. A callback receives and returns 1D arrays.
+`test_mean(expected)` accepts a reference vector or another result of the same
+type and returns the native test statistic and probabilities. Complex batches
+and elliptic full covariance can expose `real_components()` for arbitrary
+real/imaginary transforms, retaining the joint evidence. Circular complex
+summary covariance cannot reconstruct this information and rejects conversion.
+A single elliptic variance component also supports this conversion;
+`ratio_real_imag` handles componentwise signed ratios directly.
+
+`pyalps.loadMeasurements` reads all five native result kinds. Each returned
+`DataSet.native_result` retains the full native estimator for subsequent analysis;
+`y` remains the convenient plotting projection. Elliptic plotting errors use the
+circular magnitude while native results retain the exact 2x2 uncertainty blocks.
+
 The NGS `mcbase` framework stores a map of shared real batch accumulators with
 explicit component dimensions. Python assigns `BatchAccumulator` handles directly
 to `sim.measurements[name]`; a retrieved handle remains valid after replacement
@@ -55,9 +78,7 @@ or erasure. Collected results are owning maps/dictionaries of native batch resul
 Base checkpoint loading stages parameters, measurements and RNG and validates
 all already registered names and dimensions before replacement. Subclasses
 override archive-reference hooks for their application state.
-`VarianceResult` and `ComplexVarianceResult` read ordinary componentwise
-variance results through the same native codec; they expose means, errors,
-variance, counts and squared weights without introducing another accumulator API.
+
 
 Variance and covariance accumulate centered weighted moments using Chan/Welford
 updates. Merging never modifies its input result. MPI reductions sum local
