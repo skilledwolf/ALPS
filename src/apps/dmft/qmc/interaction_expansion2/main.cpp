@@ -13,6 +13,7 @@
 #include <alps/solvers.hpp>
 #include <alps/ctint.hpp>
 #include <alps/run_config.hpp>
+#include "run_config.hpp"
 #include <iostream>
 #ifdef ALPS_HAVE_MPI
 #include <boost/mpi/environment.hpp>
@@ -24,9 +25,13 @@ int main(int argc, char** argv) {
     std::string file;
     for (int i = 1; i < argc; ++i) {
       const std::string argument = argv[i];
-      if (argument == "--schema") { std::cout << alps::ctint::schema(); return 0; }
+      if (argument == "--schema") {
+        if (i + 2 < argc) throw std::invalid_argument("expected at most one TOML run file after --schema");
+        std::cout << alps::ctint::schema_for_run(i + 1 < argc ? argv[i + 1] : "");
+        return 0;
+      }
       if (argument == "--help" || argument == "-h") {
-        std::cout << "Usage: interaction [--validate] run.toml | interaction --schema\n"
+        std::cout << "Usage: interaction [--validate] run.toml | interaction --schema [run.toml]\n"
                   << "Use [parameters], [input], [output], and [execution] TOML sections.\n";
         return 0;
       }
@@ -43,9 +48,14 @@ int main(int argc, char** argv) {
 #ifdef ALPS_HAVE_MPI
     boost::mpi::environment environment(argc, argv);
 #endif
-    auto run = alps::load_run_configuration(file, alps::ctint::schema());
+    alps::run_configuration run;
+    std::string error;
+    try {
+      run = alps::load_run_configuration(file, alps::ctint::schema_for_run(file));
+      if (validate) alps::ctint::prepare_run(run);
+    } catch (const std::exception &failure) { error = failure.what(); }
+    alps::ctint::agree_failure(error);
     if (validate) {
-      alps::ctint::prepare_run(run);
       std::cout << "Valid CT-INT configuration: " << file << '\n';
     } else alps::solvers::ctint(run);
     return 0;

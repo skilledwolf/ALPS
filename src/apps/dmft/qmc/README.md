@@ -29,15 +29,17 @@ seed = 42
 ```
 
 `execution.solver` selects the `hybridization` (CT-HYB), `interaction` (CT-INT)
-or `hirschfye` executable in the ALPS `bin` directory (`ALPS_BIN_PATH`), or the
-in-process `Interaction Expansion` solver. Any other value names a custom
-executable, resolved against that directory unless it is absolute. The driver
+or `hirschfye` executable in the ALPS `bin` directory (`ALPS_BIN_PATH`). Any other
+value names a custom executable, resolved against that directory unless it is
+absolute. The driver
 maps its time/frequency grids and flavors to the child application's parameters.
 It passes one TOML file and a separate temporary HDF5 archive holding one vector
 per flavor, `/Delta_<f>` for hybridization solvers and `/G0_<f>` otherwise;
 temporary files are removed after success or failure. Each child process uses
 the requested seed. `execution.time_limit = 0` disables the child time limit;
 finite `SWEEPS` still terminate sampling.
+DMFT launches these solvers serially. Direct standalone MPI runs use independent
+chains, distinct seeds and aggregate `SWEEPS`.
 
 `dmft --schema run.toml` prints the composed application schema, including the
 selected solver's scientific settings. The embedded DMFT base schema is extended
@@ -56,6 +58,9 @@ least three points. It selects the general omega Hilbert transform; the previous
 retain the existing two-dimensional bandstructure settings.
 
 `input.interaction_matrix` retains the sparse DMFT text convention `i j U_ij`.
+CT-INT accepts a finite, symmetric matrix with zero diagonal, including isolated
+flavors or an entirely zero matrix. Without this file, `U`, `J` and optional
+`"U'"` (default `U - 2*J`) assemble the interactions for paired flavors.
 For segment CT-HYB, optional `input.retarded_interaction` and its format/coordinate
 settings follow the [CT-HYB scientific-input contract](hybridization/README.md).
 These files contain scientific data, not run settings.
@@ -82,6 +87,15 @@ counts. Green-function paths are unchanged. The complete HDF5 output replaces
 the destination only after successful evaluation and serialization. These
 analysis files do not resume the solver's Markov chain.
 
+CT-INT supports between 2 and 128 flavors with one density-density kernel. It proposes
+uniformly among unordered interacting flavor pairs, preserving detailed balance
+for sparse matrices without retry loops on zero rows. Its joint signed batches
+retain all `FLAVORS * FLAVORS` density products, including `n_f² = n_f`.
+General interaction-dependent Fourier tails use those density moments and each
+flavor's full interaction row. `PertOrder` supplies order diagnostics in HDF5.
+`interaction --schema run.toml` and Python's `ctint.schema(parameters={...})`
+include the selected flavor count's `EPS_<f>` and `EPSSQ_<f>` settings.
+
 Standalone CT-INT's `input.atomic = true` uses a zero-energy bare level. It
 derives zero `EPS_<f>` and `EPSSQ_<f>` Fourier moments; explicit nonzero moments
 are rejected. This keeps both measurement paths consistent with the atomic input.
@@ -97,15 +111,9 @@ with `pyalps.run_io.execute("dmft", run_files)`, which also accepts job manifest
 All runs are validated before execution. A successful call returns the absolute
 `output.results` path of each run; process failures raise an exception.
 
-The in-process `Interaction Expansion` solver remains on the older scheduler
-because it supplies the multiband density-density model not yet supported by
-standalone `interaction`. Its private parameter adapter remains until that port.
 Standalone `hirschfye` has its own schema (`hirschfye --schema`, installed under
 `share/alps/schemas`) and reads `/G0_<f>` vectors from the HDF5 file `input.g0`.
-DMFT selects this executable with `execution.solver = "hirschfye"`; the old
-`"Hirsch-Fye"` scheduler selector is removed. DMFT invokes it serially, as it
-does the other external solvers; direct standalone MPI runs retain independent
-chains, aggregate `SWEEPS` and distinct seeds.
+DMFT selects this executable with `execution.solver = "hirschfye"`.
 
 Hirsch-Fye uses native ALEA batches for Sign and the two joint Green/sign
 streams. Every physical time sample includes the beta endpoint before

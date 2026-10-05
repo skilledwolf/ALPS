@@ -15,8 +15,10 @@
 #include <alps/ngs/signal.hpp>
 #include <alps/alea/hdf5.hpp>
 #include "interaction_expansion.hpp"
+#include "run_config.hpp"
 #include <alps/utility/copyright.hpp>
 #include <chrono>
+#include <optional>
 #ifdef ALPS_HAVE_MPI
 #include <alps/alea/mpi.hpp>
 #include <alps/check_schedule.hpp>
@@ -24,18 +26,43 @@
 #endif
 
 void compute_greens_functions(InteractionExpansion::results_type const&,
-                             alps::params const&, alps::params const&, alps::params const&,
+                             alps::params const&, alps::params const&,
                              alps::hdf5::archive&);
+
+void alps::ctint::agree_failure(std::string const& failure) {
+#ifdef ALPS_HAVE_MPI
+  int rank, size;
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  MPI_Comm_size(MPI_COMM_WORLD, &size);
+  int origin = failure.empty() ? size : rank;
+  MPI_Allreduce(MPI_IN_PLACE, &origin, 1, MPI_INT, MPI_MIN, MPI_COMM_WORLD);
+  if (origin == size) return;
+  auto message = rank == origin ? failure : std::string{};
+  if (message.size() > INT_MAX) message = "CT-INT error exceeds MPI message limit";
+  int length = static_cast<int>(message.size());
+  MPI_Bcast(&length, 1, MPI_INT, origin, MPI_COMM_WORLD);
+  message.resize(length);
+  MPI_Bcast(message.data(), length, MPI_CHAR, origin, MPI_COMM_WORLD);
+  throw std::runtime_error(message);
+#else
+  if (!failure.empty()) throw std::runtime_error(failure);
+#endif
+}
 
 void alps::solvers::ctint(const run_configuration &supplied) {
   auto run = supplied;
-  alps::ctint::prepare_run(run);
   int rank=0;
 #ifdef ALPS_HAVE_MPI
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-  MPI_Barrier(MPI_COMM_WORLD);
 #endif
-  HubbardInteractionExpansion s(run, rank);
+  std::string failure;
+  std::optional<InteractionExpansion> owned;
+  try {
+    alps::ctint::prepare_run(run);
+    owned.emplace(run, rank);
+  } catch (std::exception const& error) { failure = error.what(); }
+  alps::ctint::agree_failure(failure);
+  auto& s = *owned;
   if (rank==0) {
     alps::print_copyright(std::cout);
     std::cout << "****************************************************************"<<std::endl;
@@ -60,9 +87,10 @@ void alps::solvers::ctint(const run_configuration &supplied) {
   alps::check_schedule check(interval, interval);
   double fraction=0.;
   do {
-    s.update();
-    s.measure();
-    if (check.pending()) {
+    try { s.update(); s.measure(); }
+    catch (std::exception const& error) { failure = error.what(); }
+    if (!failure.empty() || check.pending()) {
+      alps::ctint::agree_failure(failure);
       fraction = stop() ? 1. : s.fraction_completed();
       MPI_Allreduce(MPI_IN_PLACE, &fraction, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
       check.update(fraction);
@@ -73,7 +101,6 @@ void alps::solvers::ctint(const run_configuration &supplied) {
   s.run(stop);
 #endif
   // All MPI ranks participate in collection; only root writes results.
-  std::string output_error;
   try {
 #ifdef ALPS_HAVE_MPI
     auto results = s.collect_results(&reducer);
@@ -92,16 +119,9 @@ void alps::solvers::ctint(const run_configuration &supplied) {
             serialize(serializer, archive.encode_segment(entry.first), entry.second);
         archive["/run_config"] << run;
         if (results.at("Sign").count() != 0)
-          compute_greens_functions(results, run.parameters, run.input, run.output, archive);
+          compute_greens_functions(results, run.parameters, run.input, archive);
       });
     }
-  } catch (const std::exception& error) { output_error = error.what(); }
-#ifdef ALPS_HAVE_MPI
-  if (output_error.size() > INT_MAX) output_error = "CT-INT output error exceeds MPI message limit";
-  int length = static_cast<int>(output_error.size());
-  MPI_Bcast(&length, 1, MPI_INT, 0, MPI_COMM_WORLD);
-  output_error.resize(length);
-  MPI_Bcast(output_error.data(), length, MPI_CHAR, 0, MPI_COMM_WORLD);
-#endif
-  if (!output_error.empty()) throw std::runtime_error(output_error);
+  } catch (const std::exception& error) { failure = error.what(); }
+  alps::ctint::agree_failure(failure);
 }

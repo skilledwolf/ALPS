@@ -56,7 +56,6 @@ double InteractionExpansion::fastupdate_up(const int flavor, bool compute_only_w
     lastrow    *= 1./lambda;
     boost::numeric::bindings::blas::ger(1.0,lastcolumn,lastrow,M[flavor].matrix());
     lastcolumn *= 1./lambda;
-    //std::cout<<lambda<<" "<<M[flavor]<<std::endl;
   }
   //add row and column to M
   resize(M[flavor].matrix(), noperators+1, noperators+1);

@@ -21,6 +21,7 @@
 #include <alps/params.hpp>
 #include <boost/shared_ptr.hpp>
 
+class U_matrix;
 
 inline std::complex<double> f_omega(std::complex<double> iw, double c1, double c2, double c3) {
   std::complex<double> iwsq=iw*iw;
@@ -88,7 +89,8 @@ public:
   static void generate_transformer_U(const alps::params &parms,
                                      boost::shared_ptr<FourierTransformer> &fourier_ptr,
                                      const std::vector<double> &densities,
-                                     const std::vector<double> &magnetization);
+                                     const U_matrix &interaction,
+                                     const std::vector<double> &density_pairs);
   
 protected:
   
@@ -127,6 +129,10 @@ public:
 class GFourierTransformer : public FourierTransformer
 {
 public: 
+  GFourierTransformer(const alps::params &parms, const U_matrix &interaction,
+                      const std::vector<double> &densities,
+                      const std::vector<double> &density_pairs);
+
   GFourierTransformer(const double beta, const double mu, const double U, const int n_flavor, const int n_site, 
                       const std::vector<double>& densities, 
                       const std::vector<std::vector<double> >& eps, const std::vector<std::vector<double> >& epssq)

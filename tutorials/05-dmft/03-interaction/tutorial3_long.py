@@ -41,7 +41,7 @@ for b in [6., 8., 10., 12., 14., 16.]:
             'BETA'                    : b
         },
         output={'results': 'parm_beta_'+str(b)+'.h5'},
-        execution={'solver': 'Interaction Expansion', 'max_iterations': 18,
+        execution={'solver': 'interaction', 'max_iterations': 18,
                    'time_limit': 10, 'seed': 0})
     execute('dmft', run)
 

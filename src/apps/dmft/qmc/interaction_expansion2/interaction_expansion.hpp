@@ -46,10 +46,10 @@ enum measurement_methods {
 
 
 typedef class vertex
-{        
+{
 public:
-  vertex(const spin_t &flavor1, const site_t &site1, const unsigned int &c_dagger_1, const unsigned int &c_1, 
-         const spin_t &flavor2, const site_t &site2, const unsigned int &c_dagger_2, const unsigned int &c_2, 
+  vertex(const spin_t &flavor1, const site_t &site1, const unsigned int &c_dagger_1, const unsigned int &c_1,
+         const spin_t &flavor2, const site_t &site2, const unsigned int &c_dagger_2, const unsigned int &c_2,
          const double &abs_w)
   {
     z1_=flavor1;
@@ -62,7 +62,7 @@ public:
     c2_=c_2;
     abs_w_=abs_w;
   }
-  
+
   inline const double &abs_w() const {return abs_w_;}
   inline const unsigned int &flavor1() const {return z1_;}
   inline const unsigned int &flavor2() const {return z2_;}
@@ -112,69 +112,61 @@ class InteractionExpansion
 public:
 
   InteractionExpansion(const alps::run_configuration& run, int rank);
-  virtual ~InteractionExpansion() = default;
   using results_type = std::map<std::string, alps::alea::batch_result<double>>;
   bool run(std::function<bool()> const& stop_callback);
   results_type collect_results(alps::alea::reducer const* reduction = nullptr) const;
-  bool is_thermalized() const {return step >= therm_steps;}
+  bool is_thermalized() const {return step > therm_steps;}
   void update();
   void measure();
   double fraction_completed() const;
-    
+
 protected:
-  
+
   struct measurement {
     bool signed_value;
     alps::alea::batch_acc<double> accumulator;
   };
-  alps::params parameters;
   alps::random01 random;
   std::map<std::string, measurement> measurements;
   void record_measurement(std::string const&, std::valarray<double> const&);
   void record_measurement(std::string const&, double);
 
   /*functions*/
-  /*io & initialization*/
-  // in file io.cpp
-  void print(std::ostream &os);
-  
   /*green's function*/
   // in file spines.cpp
   double green0_spline(const c_or_cdagger &cdagger, const c_or_cdagger &c) const;
   double green0_spline(const itime_t delta_t, const spin_t flavor, const site_t site1, const site_t site2) const;
   double green0_spline(const itime_t delta_t, const spin_t flavor) const;
-  
+
   /*the actual solver functions*/
   // in file solver.cpp
   void interaction_expansion_step(void);
   void reset_perturbation_series(void);
-  
+
   // in file fastupdate.cpp:
   double fastupdate_up(const int operator_nr, bool compute_only_weight);
   double fastupdate_down(const int operator_nr, const int flavor, bool compute_only_weight);
-  
+
   /*measurement functions*/
   // in file measurements.cpp
   void measure_observables(void);
   void initialize_observables(void);
-  
+
   void compute_W_matsubara();
   void compute_W_itime();
   void measure_Wk(std::vector<std::vector<std::valarray<std::complex<double> > > >& Wk, const unsigned int nfreq);
   void measure_densities();
-  
-  /*abstract virtual functions. Implement these for specific models.*/
-  virtual double try_add()=0;
-  virtual void perform_add()=0;
-  virtual void reject_add()=0;
-  virtual double try_remove(unsigned int vertex_nr)=0;
-  virtual void perform_remove(unsigned int vertex_nr)=0;
-  virtual void reject_remove()=0;
-  
+
+  double try_add();
+  void perform_add();
+  void reject_add();
+  double try_remove(unsigned int vertex_nr);
+  void perform_remove(unsigned int vertex_nr);
+
   const std::size_t num_bins;
 
   /*private member variables, constant throughout the simulation*/
-  const unsigned int max_order;                        
+  const unsigned int max_order;
   const spin_t n_flavors;                                //number of flavors (called 'flavors') in InteractionExpansion
   const site_t n_site;                                //number of sites
   const frequency_t n_matsubara;        //number of matsubara freq
@@ -182,97 +174,36 @@ protected:
   const itime_index_t n_tau;                        //number of imag time slices
   const itime_t n_tau_inv;                        //the inverse of n_tau
   const frequency_t n_self;                        //number of self energy (W) binning points
-  const boost::uint64_t mc_steps;                        
+  const boost::uint64_t mc_steps;
   const std::uint64_t therm_steps;
-  
-  const double beta;                                
-  const double temperature;                        //only for performance reasons: avoid 1/beta computations where possible        
-  const double onsite_U;                        
-  const double alpha;                                
+
+  const double beta;
+  const double temperature;                        //only for performance reasons: avoid 1/beta computations where possible
+  const double alpha;
   const U_matrix U;
-  
-  
-  const unsigned int recalc_period;                
-  const unsigned int measurement_period;        
-  
+  std::vector<std::pair<spin_t, spin_t>> interaction_pairs;
+
+
+  const unsigned int recalc_period;
+  const unsigned int measurement_period;
+
   /*InteractionExpansion's roundoff threshold*/
-  const double almost_zero;                        
-  
+  const double almost_zero;
+
   /*private member variables*/
-  matsubara_green_function_t bare_green_matsubara;
   itime_green_function_t bare_green_itime;
-  
+
   vertex_array vertices;
   std::vector<inverse_m_matrix> M;
-    
+
   double sign;
   unsigned int measurement_method;
-  
-  
+
+
   std::uint64_t step;
 
 };
 
 
-
-/*aux functions*/
-std::ostream& operator << (std::ostream& os, const std::vector<double>& v);
-std::ostream& operator << (std::ostream &os, const vertex_array &vertices);
-std::ostream& operator << (std::ostream &os, const vertex &v);
-std::ostream& operator << (std::ostream &os, const c_or_cdagger &c);
-
-
-
-//Use this for the most simple single site Hubbard model.
-class HalfFillingHubbardInteractionExpansion: public InteractionExpansion{
-public:
-  HalfFillingHubbardInteractionExpansion(const alps::run_configuration& run, int rank)
-    :InteractionExpansion(run, rank)
-  {
-    if(n_flavors !=1){throw std::invalid_argument("you need a different model for n_flavors!=1.");}
-  }
-  double try_add();
-  void perform_add();
-  void reject_add();
-  double try_remove(unsigned int vertex_nr);
-  void perform_remove(unsigned int vertex_nr);
-  void reject_remove();
-};
-
-
-
-class HubbardInteractionExpansion: public InteractionExpansion{
-public:
-  HubbardInteractionExpansion(const alps::run_configuration& run, int rank)
-    :InteractionExpansion(run, rank)
-  {
-    if(n_flavors !=2){throw std::invalid_argument("you need a different model for n_flavors!=2.");}
-  }
-  double try_add();
-  void perform_add();
-  void reject_add();
-  double try_remove(unsigned int vertex_nr);
-  void perform_remove(unsigned int vertex_nr);
-  void reject_remove();
-};
-
-
-
-//Use this for multiple bands where you have terms Un_i n_j
-class MultiBandDensityHubbardInteractionExpansion: public InteractionExpansion{
-public:
-  MultiBandDensityHubbardInteractionExpansion(const alps::run_configuration& run, int rank)
-    :InteractionExpansion(run, rank)
-  {
-    if(n_site !=1){throw std::invalid_argument("you need a different model for n_site!=1.");}
-  }
-  
-  double try_add();
-  void perform_add();
-  void reject_add();
-  double try_remove(unsigned int vertex_nr);
-  void perform_remove(unsigned int vertex_nr);
-  void reject_remove();
-};
 
 #endif

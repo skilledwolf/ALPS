@@ -20,7 +20,6 @@
 void evaluate_selfenergy_measurement_matsubara(const InteractionExpansion::results_type &results,
                                                                         matsubara_green_function_t &green_matsubara_measured,
                                                                         const matsubara_green_function_t &bare_green_matsubara, 
-                                                                        std::vector<double>& densities,
                                                                         const double &beta, std::size_t n_site, 
                                                                         std::size_t n_flavors, std::size_t n_matsubara);
 void evaluate_selfenergy_measurement_itime_rs(const InteractionExpansion::results_type &results,
@@ -31,7 +30,7 @@ void evaluate_selfenergy_measurement_itime_rs(const InteractionExpansion::result
 
 
 
-void compute_greens_functions(const InteractionExpansion::results_type &results, const alps::params& parms, const alps::params &input, const alps::params &output, alps::hdf5::archive& archive)
+void compute_greens_functions(const InteractionExpansion::results_type &results, const alps::params& parms, const alps::params &input, alps::hdf5::archive& archive)
 {
   std::cout<<"getting result!"<<std::endl;
   unsigned int n_matsubara = parms["NMATSUBARA"].as<unsigned int>();
@@ -53,26 +52,19 @@ void compute_greens_functions(const InteractionExpansion::results_type &results,
   auto mean_order = results.at("PertOrder").mean();
   
   std::cout<<"average matrix size was: "<<std::endl;
-  std::ofstream matrix_size;
-  if (output.exists("matrix_size")) {
-    matrix_size.open(output["matrix_size"].as<std::string>(), std::ios::app);
-    if (!matrix_size)
-      throw std::runtime_error("cannot open CT-INT matrix_size output");
-  }
   for(unsigned int i=0;i<n_flavors;++i){
     std::cout<<mean_order[i]<<"\t";
-    if (matrix_size.is_open()) matrix_size<<mean_order[i]<<"\t";
   }
   std::cout<<std::endl;
-  if (matrix_size.is_open()) matrix_size<<std::endl;
   std::cout<<"average sign was: "<<results.at("Sign").mean()(0)<<" error: "<<results.at("Sign").stderror()(0)<<std::endl;
   //single particle Green function measurements
   matsubara_green_function_t bare_green_matsubara(n_matsubara, n_site, n_flavors);
-  std::vector<double> densities(n_flavors);
+  const auto density_mean = results.at("densities").mean();
+  const std::vector<double> densities(density_mean.data(), density_mean.data()+density_mean.size());
   read_ctint_bare_green(parms, input, bare_green_matsubara);
   if(measure_in_matsubara) {
     evaluate_selfenergy_measurement_matsubara(results, green_matsubara_measured, 
-                                              bare_green_matsubara, densities, 
+                                              bare_green_matsubara,
                                               beta, n_site, n_flavors, n_matsubara_measurements);
   } 
   else {
@@ -82,21 +74,18 @@ void compute_greens_functions(const InteractionExpansion::results_type &results,
                                              beta, n_site, n_flavors, n_tau, n_self);
   }
   //Fourier transformations
-  if (!measure_in_matsubara) {
-    for (unsigned int z=0; z<n_flavors; ++z) {
-      densities[z] = 0;
-      for (unsigned int i=0; i<n_site; ++i)
-        densities[z] -= green_itime_measured(n_tau,i,i,z);
-      densities[z] /= n_site;
-    }
-  }
-  FourierTransformer::generate_transformer_U(parms, fourier_ptr, densities);
+  const auto pair_mean = results.at("n_i n_j").mean();
+  const std::vector<double> density_pairs(pair_mean.data(), pair_mean.data()+pair_mean.size());
+  FourierTransformer::generate_transformer_U(parms, fourier_ptr, densities,
+                                            U_matrix(parms, input), density_pairs);
   if (measure_in_matsubara) {
     fourier_ptr->append_tail(green_matsubara_measured, bare_green_matsubara, n_matsubara_measurements);
     fourier_ptr->backward_ft(green_itime_measured, green_matsubara_measured);
   }
   else 
     fourier_ptr->forward_ft(green_itime_measured, green_matsubara_measured);
+  require_finite(green_matsubara_measured, "CT-INT G_omega");
+  require_finite(green_itime_measured, "CT-INT G_tau");
   green_matsubara_measured.write_hdf5(archive, "/G_omega");
   green_itime_measured.write_hdf5(archive, "/G_tau");
 } 

@@ -6,6 +6,15 @@ User-facing changes and migration notes are recorded here, starting with the bui
 
 ### Changed
 
+- Port general multiband CT-INT density interactions to `interaction`, using one
+  kernel for two-flavor and multiband runs. Correct sparse-matrix detailed balance
+  with uniform unordered-pair proposals; isolated flavors and zero interactions
+  terminate normally. Validate finite, symmetric, zero-diagonal matrices, expand
+  flavor-dependent TOML/Python schemas, and retain full native ALEA density moments
+  for general Fourier tails. DMFT now uses external solver processes exclusively;
+  remove its `Interaction Expansion` selector, scheduler adapters and duplicate
+  CT-INT implementation. Update tutorials to select `interaction` and remove
+  `output.matrix_size`; order diagnostics remain in canonical HDF5 results.
 - Migrate Hirsch-Fye to native ALEA joint Green/sign batches and raw MPI
   collection. Form physical endpoints before accumulation, retain partial bins,
   exclude warm-up, and publish native statistics, Green functions and provenance
@@ -115,7 +124,7 @@ Python archive indexing reads primitive datasets or returns h5py groups; use exp
 
 The unreferenced `alps::ngs_parapack` XML frontend is removed: all its references were internal to that frontend, and the project assumes no external consumers. The active `alps::parapack` implementation and older `alps::Parameters` applications remain; migrating their application orchestration is separate work. The internal typed-to-`Parameters` adapter remains for live model and lattice callers.
 
-The Python MaxEnt, CT-HYB and CT-INT modules expose `schema()`, `prepare(parameters, input, output, execution)` and `solve(run)`. `solve` takes a run returned by `prepare` or loaded with `pyalps.run_config.load` instead of a combined parameter dictionary, and MaxEnt's `AnalyticContinuation` function is removed. `pyalps.runDMFT` is replaced by `pyalps.run_io.execute(application, runs)`, which validates every TOML run file or job manifest before running any; `write_run_file` and `write_run_files` take an optional schema. In-process Interaction Expansion runs no longer accept the scheduler settings `NRUNS`, `CONVERGENCE_CHECK_PERIOD` and `SWEEP_MULTIPLICATOR`.
+The Python MaxEnt, CT-HYB and CT-INT modules expose `schema()`, `prepare(parameters, input, output, execution)` and `solve(run)`. CT-INT's `schema(parameters={})` expands its per-flavor settings. `solve` takes a run returned by `prepare` or loaded with `pyalps.run_config.load` instead of a combined parameter dictionary, and MaxEnt's `AnalyticContinuation` function is removed. `pyalps.runDMFT` is replaced by `pyalps.run_io.execute(application, runs)`, which validates every TOML run file or job manifest before running any; `write_run_file` and `write_run_files` take an optional schema. DMFT's in-process solvers and scheduler settings `NRUNS`, `CONVERGENCE_CHECK_PERIOD` and `SWEEP_MULTIPLICATOR` are removed.
 
 The old build interfaces are removed without compatibility aliases. Reconfigure existing build scripts and downstream projects using [CONTRIBUTING.md](CONTRIBUTING.md#getting-started-with-the-code).
 

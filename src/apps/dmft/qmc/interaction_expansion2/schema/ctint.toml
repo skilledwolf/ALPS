@@ -9,7 +9,15 @@ min = 0.0
 
 [parameters.U]
 type = "float64"
-required = true
+description = "Intra-band interaction; required unless input.interaction_matrix is supplied."
+
+[parameters.J]
+type = "float64"
+default = 0.0
+
+[parameters."U'"]
+type = "float64"
+description = "Inter-band interaction; defaults to U - 2*J."
 
 [parameters.MU]
 type = "float64"
@@ -22,7 +30,9 @@ required = true
 [parameters.FLAVORS]
 type = "int64"
 default = 2
-choices = [2]
+min = 2
+max = 128
+description = "Number of diagonal fermion flavors. Generated Hund interactions require paired flavors; an explicit matrix also supports odd counts."
 
 [parameters.SITES]
 type = "int64"
@@ -115,7 +125,11 @@ default = 1.0
 
 [input.g0]
 type = "path"
-description = "HDF5 file with complex /G0_0 and /G0_1 vectors of NMATSUBARA values."
+description = "HDF5 file with complex /G0_f vectors of NMATSUBARA values for every flavor."
+
+[input.interaction_matrix]
+type = "path"
+description = "Text triplets i j U_ij using zero-based flavor indices. The matrix must be finite, symmetric and have a zero diagonal; omitted entries are zero. Overrides U, J and U'."
 
 [input.atomic]
 type = "bool"
@@ -125,10 +139,6 @@ description = "Use G0(iw)=1/(iw) for a zero-energy half-filled atomic level; MU,
 [output.results]
 type = "path"
 required = true
-
-[output.matrix_size]
-type = "path"
-description = "Optional text file to append the mean perturbation orders to."
 
 [execution.time_limit]
 type = "int64"

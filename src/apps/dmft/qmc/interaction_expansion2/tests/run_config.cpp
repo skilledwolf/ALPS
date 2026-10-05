@@ -4,6 +4,7 @@
 #include <alps/hdf5/complex.hpp>
 #include <alps/alea/hdf5.hpp>
 #include "interaction_expansion.hpp"
+#include "run_config.hpp"
 #include <filesystem>
 #include <fstream>
 #include <limits>
@@ -41,9 +42,9 @@ alps::run_configuration configuration() {
     return run;
 }
 // Exercise the actual production registry without changing the Markov chain.
-class measured_simulation : public HubbardInteractionExpansion {
+class measured_simulation : public InteractionExpansion {
 public:
-    using HubbardInteractionExpansion::HubbardInteractionExpansion;
+    using InteractionExpansion::InteractionExpansion;
     void density_sample(double sample_sign, std::array<double, 2> const& density) {
         sign = sample_sign;
         record_measurement("densities", std::valarray<double>{sign * density[0], sign * density[1]});
@@ -176,6 +177,71 @@ void atomic_moment_contract(alps::run_configuration run) {
     std::filesystem::remove(filename);
 }
 
+void multiband_input_contract() {
+    auto run = configuration();
+    run.parameters["FLAVORS"] = 4;
+    run.parameters["J"] = .1;
+    run.parameters["U'"] = .2;
+    const auto schema = alps::ctint::schema(run.parameters);
+    auto resolved = alps::resolve_run_configuration(run, schema);
+    require(resolved.parameters["EPS_3"].as<double>() == 0. &&
+            resolved.parameters["EPSSQ_3"].as<double>() == 1., "multiband moment defaults missing");
+    alps::ctint::prepare_run(run);
+    for (unsigned flavor = 0; flavor < 4; ++flavor)
+        for (const auto *prefix : {"EPS_", "EPSSQ_"}) {
+            const auto key = std::string(prefix) + std::to_string(flavor);
+            require(run.parameters[key].as<double>() == 0. && run.origins.at("parameters." + key) == "derived",
+                    "multiband atomic moments were not derived");
+        }
+    auto invalid = configuration();
+    invalid.parameters.erase("U");
+    rejects([&] { alps::ctint::prepare_run(invalid); }, "parameters.U or input.interaction_matrix");
+    invalid = configuration();
+    invalid.parameters["FLAVORS"] = 3;
+    rejects([&] { alps::ctint::prepare_run(invalid); }, "paired FLAVORS");
+    invalid = configuration();
+    invalid.parameters["FLAVORS"] = 4;
+    invalid.parameters["EPS_4"] = 0.;
+    rejects([&] { alps::ctint::prepare_run(invalid); }, "EPS_4");
+    invalid = configuration();
+    invalid.parameters["FLAVORS"] = 128;
+    invalid.parameters["N"] = 214748363;
+    rejects([&] { alps::ctint::prepare_run(invalid); }, "storage range");
+    invalid = configuration();
+    invalid.parameters["BETA"] = std::numeric_limits<double>::denorm_min();
+    rejects([&] { alps::ctint::prepare_run(invalid); }, "Fourier arithmetic range");
+    invalid = configuration();
+    invalid.parameters["MU"] = std::numeric_limits<double>::max();
+    invalid.parameters["H"] = std::numeric_limits<double>::max();
+    rejects([&] { alps::ctint::prepare_run(invalid); }, "Fourier arithmetic range");
+
+    const auto matrix = std::filesystem::absolute("ctint-contract-interaction.dat");
+    const auto write_matrix = [&](const std::string &text) { std::ofstream(matrix) << text; };
+    run = configuration();
+    run.parameters["FLAVORS"] = 3;
+    run.parameters.erase("U");
+    run.input["interaction_matrix"] = matrix.string();
+    write_matrix("0 1 1.5\n1 0 1.5\n");
+    alps::ctint::prepare_run(run);  // An isolated flavor is valid.
+    require(!run.parameters.exists("U"), "explicit matrix inserted an unused scalar U");
+    write_matrix("");
+    alps::ctint::prepare_run(run);  // A zero interaction matrix is valid.
+    write_matrix("0 1 1.5\n");
+    rejects([&] { alps::ctint::prepare_run(run); }, "symmetric");
+    write_matrix("0 0 1.5\n");
+    rejects([&] { alps::ctint::prepare_run(run); }, "zero diagonal");
+    write_matrix("3 0 1.5\n");
+    rejects([&] { alps::ctint::prepare_run(run); }, "Invalid index or value");
+    write_matrix("0 1 nope\n");
+    rejects([&] { alps::ctint::prepare_run(run); }, "Malformed input.interaction_matrix");
+    write_matrix("0 1 1e200\n1 0 1e200\n");
+    rejects([&] { alps::ctint::prepare_run(run); }, "interaction moments");
+    write_matrix("0 1 1.5\n1 0 1.5\n");
+    run.output["results"] = matrix.string();
+    rejects([&] { alps::ctint::prepare_run(run); }, "replace input.interaction_matrix");
+    std::filesystem::remove(matrix);
+}
+
 int main(int argc, char **argv) {
 #ifdef ALPS_HAVE_MPI
     boost::mpi::environment environment(argc, argv);
@@ -183,6 +249,7 @@ int main(int argc, char **argv) {
     auto run = configuration();
     alps::ctint::prepare_run(run);
     atomic_moment_contract(run);
+    multiband_input_contract();
     statistics_contract(run);
     auto negative_run = run;
     negative_run.parameters["U"] = -4.0;
@@ -215,7 +282,7 @@ int main(int argc, char **argv) {
     invalid.parameters["MEASUREMENT_PERIOD"] = 0;
     rejects([&] { alps::ctint::prepare_run(invalid); }, "MEASUREMENT_PERIOD");
     invalid = configuration();
-    invalid.parameters["FLAVORS"] = 4;
+    invalid.parameters["FLAVORS"] = 1;
     rejects([&] { alps::ctint::prepare_run(invalid); }, "FLAVORS");
     invalid = configuration();
     invalid.input["atomic"] = false;
@@ -226,12 +293,12 @@ int main(int argc, char **argv) {
 
     // The frequency measurement limit is distinct from the input extent.
     const auto input_file = std::filesystem::absolute("ctint-contract-g0.h5").string();
-    const auto write_input = [&](std::size_t count, bool nonfinite = false) {
+    const auto write_input = [&](std::size_t count, bool nonfinite = false, unsigned flavors = 2) {
         alps::hdf5::archive archive(input_file, "w");
         std::vector<std::complex<double>> values(count, {0.0, -0.5});
         if (nonfinite) values[0] = {std::numeric_limits<double>::infinity(), 0.0};
-        archive["/G0_0"] << values;
-        archive["/G0_1"] << values;
+        for (unsigned flavor = 0; flavor < flavors; ++flavor)
+            archive["/G0_" + std::to_string(flavor)] << values;
     };
     auto file_run = configuration();
     file_run.input["atomic"] = false;
@@ -254,10 +321,17 @@ int main(int argc, char **argv) {
     write_input(4);
     file_run.output["results"] = input_file;
     rejects([&] { alps::ctint::prepare_run(file_run); }, "replace input.g0");
+    file_run.output["results"] = "ctint-contract-results.h5";
+    file_run.parameters["FLAVORS"] = 4;
+    rejects([&] { alps::ctint::prepare_run(file_run); }, "/G0_2");
+    write_input(4, false, 4);
+    alps::ctint::prepare_run(file_run);
+    file_run.parameters["EPS_3"] = .25;
+    alps::ctint::prepare_run(file_run);
     std::filesystem::remove(input_file);
 
     // Explicit thermalization must finish; prethermalization observations are excluded.
-    HubbardInteractionExpansion simulation(run, 0);
+    InteractionExpansion simulation(run, 0);
     require(!simulation.is_thermalized(), "thermalized before any updates");
     simulation.update(); simulation.measure();
     require(simulation.collect_results().at("Sign").count() == 0, "warmup counted as measurement");

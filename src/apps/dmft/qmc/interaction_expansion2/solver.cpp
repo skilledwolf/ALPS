@@ -19,6 +19,7 @@
 ///This is the heart of InteractionExpansion's code.
 void InteractionExpansion::interaction_expansion_step(void)
 {
+  if (interaction_pairs.empty()) return;
   int pert_order=vertices.size();   //current order of perturbation series
   double metropolis_weight=0.;
   //double oldsign=sign;
@@ -26,6 +27,10 @@ void InteractionExpansion::interaction_expansion_step(void)
     if(vertices.size()>=max_order) 
       return; //we have already reached the highest perturbation order
     metropolis_weight=try_add();
+    if (!std::isfinite(metropolis_weight)) {
+      reject_add();
+      throw std::runtime_error("CT-INT vertex insertion ratio is not finite");
+    }
     if(fabs(metropolis_weight)> random()){
       record_measurement("VertexInsertion", 1.);
       perform_add();
@@ -41,13 +46,14 @@ void InteractionExpansion::interaction_expansion_step(void)
     //this might be the ideal place to do some cleanup, e.g. get rid of the roundoff errors and such.
     int vertex_nr=(int)(random() * pert_order);
     metropolis_weight=try_remove(vertex_nr); //get the determinant ratio. don't perform fastupdate yet
+    if (!std::isfinite(metropolis_weight))
+      throw std::runtime_error("CT-INT vertex removal ratio is not finite");
     if(fabs(metropolis_weight)> random()){ //do the actual update
       record_measurement("VertexRemoval", 1.);
       perform_remove(vertex_nr);
       sign*=metropolis_weight<0?-1:1;
     }else{
       record_measurement("VertexRemoval", 0.);
-      reject_remove();
     }
   }//end REMOVE
 }

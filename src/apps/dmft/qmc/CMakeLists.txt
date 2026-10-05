@@ -24,22 +24,9 @@ set(DMFT_QMC_SOURCE
     hilberttransformer.C
     hirschfyesim.C
     hirschfye_run.C
-    alps_solver.C
     bandstructure.C
     auxiliaryfunctions.C)
 add_library(dmft_qmc_impl STATIC ${DMFT_QMC_SOURCE})
-
-set(DMFT_QMC_INTERACTION_EXPANSION_SOURCE
-    interaction_expansion/auxiliary.cpp
-    interaction_expansion/observables.cpp
-    interaction_expansion/fastupdate.cpp
-    interaction_expansion/selfenergy.cpp
-    interaction_expansion/solver.cpp
-    interaction_expansion/io.cpp
-    interaction_expansion/splines.cpp
-    interaction_expansion/interaction_expansion.cpp
-    interaction_expansion/measurements.cpp
-    interaction_expansion/model.cpp)
 
 add_library(alps_cthyb STATIC
     hybridization/run.cpp
@@ -57,12 +44,10 @@ add_library(alps_cthyb STATIC
 add_library(alps_ctint STATIC
     interaction_expansion2/run.cpp
     fouriertransform.C
-    interaction_expansion2/auxiliary.cpp
     interaction_expansion2/observables.cpp
     interaction_expansion2/fastupdate.cpp
     interaction_expansion2/selfenergy.cpp
     interaction_expansion2/solver.cpp
-    interaction_expansion2/io.cpp
     interaction_expansion2/splines.cpp
     interaction_expansion2/interaction_expansion.cpp
     interaction_expansion2/measurements.cpp
@@ -78,10 +63,6 @@ add_subdirectory(hybridization)
 add_subdirectory(interaction_expansion2)
 install(TARGETS alps_cthyb alps_ctint EXPORT ALPSTargets
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT libraries)
-
-#Interaction Expansion
-add_library(interaction_expansion_impl STATIC ${DMFT_QMC_INTERACTION_EXPANSION_SOURCE})
-target_link_libraries(interaction_expansion_impl PUBLIC ALPS::alps ALPS::run_config)
 
 find_package(tomlplusplus 3.4 CONFIG REQUIRED)
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/schema/dmft.toml" ALPS_DMFT_SCHEMA)
@@ -99,15 +80,13 @@ endif()
 install(FILES schema/dmft.toml schema/hirschfye.toml
   DESTINATION ${CMAKE_INSTALL_DATADIR}/alps/schemas COMPONENT applications)
 
-target_include_directories(interaction_expansion_impl PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
-
 add_executable(dmft main.C selfconsistency.C)
 add_executable(hirschfye solver_main.C)
 
 add_executable(hybridization hybridization/hybmain.cpp)
 add_executable(interaction interaction_expansion2/main.cpp)
 
-target_link_libraries(dmft PRIVATE dmft_qmc_impl interaction_expansion_impl)
+target_link_libraries(dmft PRIVATE dmft_qmc_impl)
 target_link_libraries(hirschfye PRIVATE dmft_qmc_impl)
 
 target_link_libraries(hybridization PRIVATE ALPS::cthyb)
@@ -153,9 +132,6 @@ if(ALPS_BUILD_TESTING)
   alps_add_test(dmft_hilberttransformer_afm_multiband_numeric)
   set_property(TEST dmft_hilberttransformer_afm_multiband_numeric PROPERTY LABELS dmft)
 
-  add_executable(dmft_interaction_expansion_choice dmft_interaction_expansion_choice.C)
-  alps_add_test(dmft_interaction_expansion_choice)
-  set_property(TEST dmft_interaction_expansion_choice PROPERTY LABELS dmft)
 endif()
 
 alps_install_applications(dmft hirschfye hybridization interaction)

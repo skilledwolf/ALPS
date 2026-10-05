@@ -10,6 +10,10 @@
 #include <iostream>
 #include <iterator>
 
+namespace alps::ctint { void agree_failure(std::string const&); }
+void compute_greens_functions(InteractionExpansion::results_type const&,
+                             alps::params const&, alps::params const&, alps::hdf5::archive&);
+
 namespace {
 void require(bool value, char const* message) {
   int agreed = value;
@@ -27,6 +31,7 @@ alps::run_configuration configuration() {
   run.parameters["U"] = 0.;
   run.parameters["MU"] = 0.;
   run.parameters["ALPHA"] = -.01;
+  run.parameters["FLAVORS"] = 4;
   run.parameters["N"] = 8;
   run.parameters["NMATSUBARA"] = 4;
   run.parameters["SWEEPS"] = 8;
@@ -39,19 +44,19 @@ alps::run_configuration configuration() {
   alps::ctint::prepare_run(run);
   return run;
 }
-struct fixture : HubbardInteractionExpansion {
-  using HubbardInteractionExpansion::HubbardInteractionExpansion;
+struct fixture : InteractionExpansion {
+  using InteractionExpansion::InteractionExpansion;
   void sample(double s, double value) {
     sign = s;
     record_measurement("Sign", s);
-    record_measurement("densities", std::valarray<double>{s * value, 2 * s * value});
+    record_measurement("densities", std::valarray<double>{s * value, 2 * s * value, 3 * s * value, 4 * s * value});
   }
   void change_name() {
     auto entry = measurements.extract("VertexRemoval");
     entry.key() = "VertexRemovas"; // Same registry count and name length.
     measurements.insert(std::move(entry));
   }
-  void change_shape() { measurements.at("densities").accumulator.set_size(4); }
+  void change_shape() { measurements.at("densities").accumulator.set_size(6); }
   void change_sign() { measurements.at("densities").signed_value = false; }
 };
 void collection(alps::run_configuration const& run, MPI_Comm comm) {
@@ -65,8 +70,8 @@ void collection(alps::run_configuration const& run, MPI_Comm comm) {
     bool ok = results.empty();
     if (!rank) {
       auto const& density = results.at("densities");
-      ok = density.size() == 2 && density.count() == (active < 0 ? 0 : 3);
-      if (active >= 0) ok = ok && density.mean()(0) == 2. && density.stderror()(0) == 0.;
+      ok = density.size() == 4 && density.count() == (active < 0 ? 0 : 3);
+      if (active >= 0) ok = ok && density.mean()(0) == 2. && density.mean()(3) == 8. && density.stderror()(0) == 0.;
     }
     require(ok, "empty CT-INT replica changed the root result");
   }
@@ -81,6 +86,7 @@ void collection(alps::run_configuration const& run, MPI_Comm comm) {
     ok = results.at("Sign").count() == 8 && results.at("Sign").mean()(0) == .5
       && density.count() == 8 && std::abs(density.mean()(0)-3.275) < 1.e-12
       && std::abs(density.mean()(1)-6.55) < 1.e-12
+      && std::abs(density.mean()(3)-13.1) < 1.e-12
       && std::abs(density.stderror()(0)-std::sqrt(1.955625)) < 1.e-12;
   }
   require(ok, "CT-INT reduced corrected replica means instead of joint signed batches");
@@ -122,9 +128,64 @@ void driver(alps::run_configuration run, int rank) {
     previous.assign(std::istreambuf_iterator<char>(file), {});
   } catch (std::exception const& error) { std::cerr << error.what() << '\n'; ok = false; }
   require(ok, "native CT-INT driver did not publish canonical results, Green functions and provenance");
-  // Failure occurs inside Green-function processing, after result serialization.
-  run.output["matrix_size"] = "ctint-mpi-missing-directory/matrix_size";
-  rejects([&] { alps::solvers::ctint(run); });
+  // A preflight failure on a nonrecipient must reach the healthy root before
+  // any chain begins running. This exercises the actual production driver.
+  const auto input=std::filesystem::absolute("ctint-mpi-g0.h5").string();
+  if (!rank) {
+    alps::hdf5::archive archive(input,"w");
+    std::vector<std::complex<double>> values(4);
+    for (std::size_t i=0; i<values.size(); ++i) values[i]={0.,-2./((2.*i+1.)*std::acos(-1.))};
+    for (int flavor=0; flavor<4; ++flavor) archive["/G0_"+std::to_string(flavor)]<<values;
+  }
+  MPI_Barrier(MPI_COMM_WORLD);
+  auto invalid=run;
+  invalid.input["atomic"]=false;
+  invalid.input["g0"]=rank ? input+".missing" : input;
+  rejects([&] { alps::solvers::ctint(invalid); });
+  if (!rank) {
+    std::ifstream file(path,std::ios::binary);
+    ok=previous==std::string(std::istreambuf_iterator<char>(file),{});
+    std::filesystem::remove(input);
+  }
+  require(ok,"nonrecipient preflight failure changed previous CT-INT output");
+  // Finite input can overflow a proposal on one chain. Exercise the actual
+  // runtime failure path while its healthy peer reaches a scheduled check.
+  auto overflowing=run;
+  overflowing.parameters["U"]=.5;
+  overflowing.parameters["SWEEPS"]=1024;
+  if (rank) overflowing.parameters["ALPHA"]=1.e308;
+  bool agreed=false;
+  try { alps::solvers::ctint(overflowing); }
+  catch (std::exception const& error) {
+    agreed=std::string(error.what()).find("vertex insertion ratio is not finite")!=std::string::npos;
+  }
+  require(agreed,"scheduled runtime consensus lost a nonrecipient CT-INT failure");
+  if (!rank) {
+    std::ifstream file(path,std::ios::binary);
+    ok=previous==std::string(std::istreambuf_iterator<char>(file),{});
+  }
+  require(ok,"nonrecipient runtime failure changed previous CT-INT output");
+  // Exercise the production checkpoint/Green-function helper boundary: after
+  // serializing real native snapshots, an incomplete scientific snapshot must
+  // roll back the archive. The driver is exercised separately above.
+  std::string publication_failure;
+  bool serialized=false;
+  if (!rank) try {
+    InteractionExpansion simulation(run,0);
+    simulation.run([] { return false; });
+    const auto snapshots=simulation.collect_results();
+    alps::hdf5::save_checkpoint(path,[&](alps::hdf5::archive& archive) {
+      alps::alea::hdf5_serializer serializer(archive,"/simulation/results");
+      for (auto const& [name,snapshot] : snapshots)
+        if (snapshot.count()) serialize(serializer,archive.encode_segment(name),snapshot);
+      serialized=true;
+      auto incomplete=snapshots;
+      incomplete.erase("Wk_real_0_0_0");
+      compute_greens_functions(incomplete,run.parameters,run.input,archive);
+    });
+  } catch (std::exception const& error) { publication_failure=error.what(); }
+  rejects([&] { alps::ctint::agree_failure(publication_failure); });
+  require(rank || serialized,"CT-INT publication fixture failed before native snapshots were serialized");
   if (!rank) {
     std::ifstream file(path, std::ios::binary);
     ok = previous == std::string(std::istreambuf_iterator<char>(file), {});

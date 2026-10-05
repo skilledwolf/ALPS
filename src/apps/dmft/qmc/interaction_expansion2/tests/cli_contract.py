@@ -3,6 +3,7 @@ import argparse
 from pathlib import Path
 import subprocess
 import tempfile
+import tomllib
 import unittest
 
 class CTIntCLIContract(unittest.TestCase):
@@ -51,6 +52,40 @@ time_limit=0
     def test_validation_has_no_output(self):
         result = self.invoke("--validate", self.config())
         self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_multiband_schema_and_validation(self):
+        path = self.config()
+        path.write_text(path.read_text().replace("N=8", "N=8\nFLAVORS=4\nEPS_3=0.0\nEPSSQ_3=0.0"))
+        result = self.invoke("--schema", path)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        schema = tomllib.loads(result.stdout)
+        self.assertIn("EPS_3", schema["parameters"])
+        self.assertNotIn("EPS_4", schema["parameters"])
+        self.assertIn("interaction_matrix", schema["input"])
+        result = self.invoke("--validate", path)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        path.write_text(path.read_text().replace("EPS_3=0.0", "EPS_4=0.0"))
+        self.assertNotEqual(self.invoke("--validate", path).returncode, 0)
+        for value in ("true", "3.0", "1", "129"):
+            path = self.config()
+            path.write_text(path.read_text().replace("N=8", f"N=8\nFLAVORS={value}"))
+            self.assertNotEqual(self.invoke("--schema", path).returncode, 0)
+
+    def test_explicit_matrix_and_sparse_rows(self):
+        path = self.config()
+        matrix = self.directory / "interaction.dat"
+        path.write_text(path.read_text().replace("\nU=0.0\n", "\nFLAVORS=3\n")
+                        .replace("atomic=true", 'atomic=true\ninteraction_matrix="interaction.dat"'))
+        for text in ("", "0 1 1.0\n1 0 1.0\n"):
+            matrix.write_text(text)
+            result = self.invoke("--validate", path)
+            self.assertEqual(result.returncode, 0, result.stderr)
+        for text, message in (("0 1 1.0\n", "symmetric"), ("0 0 1.0\n", "zero diagonal"),
+                              ("3 0 1.0\n", "Invalid index"), ("0 1 broken\n", "Malformed")):
+            matrix.write_text(text)
+            result = self.invoke("--validate", path)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn(message, result.stderr)
 
     def test_invalid_settings_preserve_outputs(self):
         changes = [("N=8", "N=0"), ("N=8", "N_TAU=8"),

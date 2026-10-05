@@ -3,6 +3,7 @@
 from pathlib import Path
 import subprocess
 import sys
+import tomllib
 import numpy as np
 import pytest
 from pyalps import run_config, hdf5
@@ -150,6 +151,51 @@ def test_prepared_run_keeps_paths_after_archive_reload_and_cwd_change(tmp_path, 
         recorded.load(ar)
         assert recorded.input["delta"] == str(scientific)
         assert recorded.output["results"] == str(directory / "result.h5")
+
+
+def test_ctint_dynamic_schema_and_matrix_run(tmp_path):
+    solver = pytest.importorskip("pyalps.ctint")
+    schema = tomllib.loads(solver.schema(parameters={"FLAVORS": 3}))
+    assert "EPS_2" in schema["parameters"] and "EPS_3" not in schema["parameters"]
+    assert "interaction_matrix" in schema["input"]
+    parameters = {"BETA": 2., "MU": 0., "ALPHA": -.01, "FLAVORS": 3,
+                  "N": 4, "NMATSUBARA": 4, "SWEEPS": 3, "THERMALIZATION": 0,
+                  "MEASUREMENT_PERIOD": 1}
+    matrix = tmp_path / "interaction.dat"
+    matrix.write_text("")
+    output = tmp_path / "result.h5"
+    run = solver.prepare(parameters, input={"atomic": True, "interaction_matrix": str(matrix)},
+                         output={"results": str(output)})
+    assert "U" not in run.parameters
+    for flavor in range(3):
+        for prefix in ("EPS_", "EPSSQ_"):
+            key = f"{prefix}{flavor}"
+            assert run.parameters[key] == 0.
+            assert run.origins[f"parameters.{key}"] == "derived"
+    original = matrix.read_bytes()
+    solver.solve(run)
+    assert matrix.read_bytes() == original
+    with hdf5.archive(str(output), "r") as ar:
+        for flavor in range(3):
+            np.testing.assert_allclose(ar[f"/G_tau/{flavor}/mean/value"], -.5, atol=1e-12)
+    assert set(tmp_path.iterdir()) == {matrix, output}
+
+
+@pytest.mark.parametrize("matrix, message", [
+    ("0 1 1.0\n", "symmetric"),
+    ("0 0 1.0\n", "zero diagonal"),
+    ("3 0 1.0\n", "Invalid index"),
+])
+def test_ctint_programmatic_matrix_validation(tmp_path, matrix, message):
+    solver = pytest.importorskip("pyalps.ctint")
+    filename = tmp_path / "interaction.dat"
+    filename.write_text(matrix)
+    parameters = {"BETA": 2., "MU": 0., "ALPHA": -.01, "FLAVORS": 3,
+                  "N": 4, "NMATSUBARA": 4, "SWEEPS": 3, "THERMALIZATION": 0}
+    with pytest.raises((ValueError, RuntimeError), match=message):
+        solver.prepare(parameters, input={"atomic": True, "interaction_matrix": str(filename)},
+                       output={"results": str(tmp_path / "result.h5")})
+    assert list(tmp_path.iterdir()) == [filename]
 
 
 def test_archived_run_roundtrip_and_transactional_failure(tmp_path):

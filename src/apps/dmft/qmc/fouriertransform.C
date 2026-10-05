@@ -20,6 +20,7 @@
 #include <boost/numeric/bindings/lapack/driver/gesv.hpp>
 
 #include "fouriertransform.h"
+#include "U_matrix.h"
 #include <valarray>
 #include <boost/numeric/ublas/io.hpp>
 #include <alps/params.hpp>
@@ -238,4 +239,45 @@ void FourierTransformer::generate_transformer_U(const alps::params &parms,
   }
   fourier_ptr.reset(new GFourierTransformer(parms["BETA"].as<double>(), parms["MU"].as<double>()+U/2., U,
                                             n_flavors, 1, densities, eps, epssq));
+}
+
+GFourierTransformer::GFourierTransformer(const alps::params &parms, const U_matrix &interaction,
+                                        const std::vector<double> &densities,
+                                        const std::vector<double> &density_pairs)
+  : FourierTransformer(parms["BETA"].as<double>(), interaction.nf(), 1)
+{
+  const auto flavors = interaction.nf();
+  if (densities.size() != flavors || density_pairs.size() != std::size_t(flavors)*flavors)
+    throw std::invalid_argument("Density interaction moments have inconsistent flavor dimensions");
+  for (spin_t flavor = 0; flavor < flavors; ++flavor) {
+    long double shift = 0., mean = 0., second = 0.;
+    for (spin_t j = 0; j < flavors; ++j) {
+      shift += .5*interaction(flavor, j);
+      mean += static_cast<long double>(interaction(flavor, j))*densities[j];
+      for (spin_t k = 0; k < flavors; ++k)
+        second += static_cast<long double>(interaction(flavor, j))*interaction(flavor, k)*
+                  density_pairs[std::size_t(j)*flavors+k];
+    }
+    const double field = parms.value_or<double>("H", 0.);
+    const long double mu = parms["MU"].as<double>() + (flavor%2 ? field : -field) + shift;
+    const auto suffix = std::to_string(flavor);
+    const double eps = parms.value_or<double>("EPS_"+suffix, 0.);
+    const double epssq = parms.value_or<double>("EPSSQ_"+suffix, 1.);
+    c2_[flavor][0][0] = eps-mu+mean;
+    c3_[flavor][0][0] = epssq-2*mu*eps+mu*mu+2*mean*(eps-mu)+second;
+    Sc0_[flavor][0][0] = mean-shift;
+    Sc1_[flavor][0][0] = second-mean*mean;
+    if (!std::isfinite(c2_[flavor][0][0]) || !std::isfinite(c3_[flavor][0][0]) ||
+        !std::isfinite(Sc0_[flavor][0][0]) || !std::isfinite(Sc1_[flavor][0][0]))
+      throw std::overflow_error("Density interaction moments exceed the Fourier arithmetic range");
+  }
+}
+
+void FourierTransformer::generate_transformer_U(const alps::params &parms,
+                                                boost::shared_ptr<FourierTransformer> &fourier_ptr,
+                                                const std::vector<double> &densities,
+                                                const U_matrix &interaction,
+                                                const std::vector<double> &density_pairs)
+{
+  fourier_ptr.reset(new GFourierTransformer(parms, interaction, densities, density_pairs));
 }

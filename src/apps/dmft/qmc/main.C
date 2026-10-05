@@ -18,8 +18,6 @@
 #include "selfconsistency.h"
 #include "externalsolver.h"
 #include "hilberttransformer.h"
-#include "interaction_expansion_choice.h"
-#include "interaction_expansion/interaction_expansion.hpp"
 #include "run_config.h"
 #include <alps/utility/copyright.hpp>
 #include <memory>
@@ -94,21 +92,8 @@ int main(int argc, char** argv) {
         FourierTransformer::generate_transformer(initial_parameters, fourier);
       }
       if (!ready()) return 0;
-      std::unique_ptr<MatsubaraImpuritySolver> solver;
-      alps::scheduler::BasicFactory<InteractionExpansionSim,HubbardInteractionExpansionRun> ss;
-      alps::scheduler::BasicFactory<InteractionExpansionSim,MultiBandDensityHubbardInteractionExpansionRun> mb;
-      switch (alps::dmft::selected_solver(run)) {
-        case alps::dmft::solver_kind::interaction_expansion:
-          // load_run rejects the unsupported dimensions.
-          if (select_interaction_expansion(p["FLAVORS"].as<int>(), p["SITES"].as<int>()) ==
-              interaction_expansion_choice::single_site_hubbard)
-            solver.reset(new alps::ImpuritySolver(ss, run, argc, argv));
-          else solver.reset(new alps::ImpuritySolver(mb, run, argc, argv));
-          break;
-        default:
-          solver.reset(new ExternalSolver(run));
-      }
-      selfconsistency_loop_omega(run, *solver, *transform, std::move(initial));
+      ExternalSolver solver(run);
+      selfconsistency_loop_omega(run, solver, *transform, std::move(initial));
     }
     alps::hdf5::archive archive(run.output["results"].as<std::string>(), "a");
     archive["/run_config"] << run;

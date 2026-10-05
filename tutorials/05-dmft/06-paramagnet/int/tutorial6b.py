@@ -42,7 +42,7 @@ run = write_run_file('parm_int.toml', overwrite=True,
         'BETA'                    : 32.
     },
     output={'results': 'parm_int.h5'},
-    execution={'solver': 'Interaction Expansion', 'max_iterations': 12, 'time_limit': 120, 'seed': 0})
+    execution={'solver': 'interaction', 'max_iterations': 12, 'time_limit': 120, 'seed': 0})
 
 #run the simulation
 execute('dmft', run)

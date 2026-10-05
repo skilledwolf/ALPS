@@ -65,11 +65,10 @@ void InteractionExpansion::initialize_observables()
       add("Sz2_" + suffix, 1, true);
       add("Sz0_Sz" + suffix, 1, true);
     }
-  } else if (measurement_method == selfenergy_measurement_matsubara) {
-    add("densities", n_flavors, true);
-    add("density_correlation", 1, true);
-    add("n_i n_j", n_site * n_site * 4, true);
   }
+  add("densities", n_flavors, true);
+  add("density_correlation", 1, true);
+  add("n_i n_j", std::size_t(n_flavors) * n_flavors, true);
   add("VertexInsertion", 1);
   add("VertexRemoval", 1);
 }
@@ -153,6 +152,7 @@ void InteractionExpansion::measure_observables()
     compute_W_matsubara();
   else if (measurement_method == selfenergy_measurement_itime_rs)
     compute_W_itime();
+  measure_densities();
   std::valarray<double> pert_order(n_flavors);
   for (unsigned int i = 0; i < n_flavors; ++i) {
     assert(num_rows(M[i].matrix()) == num_cols(M[i].matrix()));

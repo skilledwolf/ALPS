@@ -124,8 +124,37 @@ time_limit=0
                 path.write_text(path.read_text().replace(old, new))
                 self.validate_preserving_files(path)
 
-    def test_in_process_interaction_expansion_two_iterations(self):
-        self.run_case("Interaction Expansion", "exact")
+    def test_multiband_ctint_forwards_the_interaction_matrix(self):
+        path = self.config()
+        path.write_text(path.read_text().replace("FLAVORS=2", "FLAVORS=4")
+                        .replace("\nU=0.0\n", "\nU=0.5\n")
+                        .replace("[input]", '[input]\ninteraction_matrix="zero matrix.dat"'))
+        matrix = self.directory / "zero matrix.dat"
+        matrix.write_text("0 1 0\n1 0 0\n")
+        before = path.read_bytes(), matrix.read_bytes()
+        validated = self.invoke("--validate", path)
+        self.assertEqual(validated.returncode, 0, validated.stdout + validated.stderr)
+        result = self.invoke(path)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(before, (path.read_bytes(), matrix.read_bytes()))
+        self.assertEqual(list(self.work.iterdir()), [])
+        self.assertEqual({p.name for p in self.directory.iterdir()},
+                         {"run.toml", "zero matrix.dat", "results.h5"})
+        # Scalar U is nonzero: dropping the zero matrix changes this exact result.
+        self.verify("exact")
+
+    def test_removed_scheduler_selector_requires_a_custom_solver_contract(self):
+        path = self.config("Interaction Expansion")
+        self.validate_preserving_files(path)
+
+    def test_multiband_matrix_validation_matches_the_standalone_solver(self):
+        for content in ("0 1 1\n", "0 0 1\n", "0 4 1\n", "bad matrix\n"):
+            with self.subTest(content=content):
+                path = self.config()
+                path.write_text(path.read_text().replace("FLAVORS=2", "FLAVORS=4")
+                                .replace("[input]", '[input]\ninteraction_matrix="matrix.dat"'))
+                (self.directory / "matrix.dat").write_text(content)
+                self.validate_preserving_files(path)
 
     def test_cthyb_nonzero_retarded_kernel_two_iterations(self):
         path = self.config("hybridization", retarded=True)
@@ -219,10 +248,9 @@ time_limit=0
                 path.write_text(path.read_text().replace(old, new).replace("FLAVORS=2", "FLAVORS=4"))
                 self.validate_preserving_files(path)
 
-    def test_scheduler_frequency_measurements_cannot_overrun_the_grid(self):
+    def test_frequency_measurements_cannot_overrun_the_grid(self):
         path = self.config()
-        document = path.read_text().replace('solver="interaction"', 'solver="Interaction Expansion"')
-        path.write_text(document.replace("NMATSUBARA=8", "NMATSUBARA=8\nNMATSUBARA_MEASUREMENTS=9"))
+        path.write_text(path.read_text().replace("NMATSUBARA=8", "NMATSUBARA=8\nNMATSUBARA_MEASUREMENTS=9"))
         result = self.validate_preserving_files(path)
         self.assertIn("NMATSUBARA_MEASUREMENTS", result.stderr)
 

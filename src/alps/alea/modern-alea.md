@@ -83,6 +83,11 @@ use ordinary batches. Its published analysis results use the same kind-5 codec;
 The CT-INT driver publishes the result, Green functions and run configuration
 together through the existing checked HDF5 publication helper. These files are
 analysis outputs; CT-INT does not expose a solver restart interface.
+The same density-density kernel serves two-flavor and general multiband runs.
+It retains the full flavor-pair density moments, with occupation idempotence on
+the diagonal, for general interaction-dependent Fourier tails in both measurement
+modes. Uniform unordered interacting-pair proposals preserve detailed balance
+for sparse matrices; isolated flavors and zero interactions need no retry loop.
 
 CT-HYB uses the same native collection and publication path. Time measurements
 pair their averaged numerators with the sign averaged over `N_MEAS` updates;

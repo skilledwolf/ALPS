@@ -15,7 +15,6 @@
 
 #include <boost/math/constants/constants.hpp>
 #include "interaction_expansion.hpp"
-#include <ctime>
 #include "run_config.hpp"
 
 //global variables
@@ -24,13 +23,12 @@ frequency_t c_or_cdagger::nm_;
 bool c_or_cdagger::use_static_exp_;
 unsigned int c_or_cdagger::ntau_;
 double c_or_cdagger::beta_;
-double *c_or_cdagger::omegan_;
-std::complex<double> *c_or_cdagger::exp_iomegan_tau_;
+std::vector<double> c_or_cdagger::omegan_;
+std::vector<std::complex<double>> c_or_cdagger::exp_iomegan_tau_;
 
 
 InteractionExpansion::InteractionExpansion(const alps::run_configuration &run, int node)
-: parameters(run.parameters),
-num_bins(run.execution["bins"].as<std::size_t>()),
+: num_bins(run.execution["bins"].as<std::size_t>()),
 max_order(run.parameters["MAX_ORDER"].as<unsigned int>()),
 n_flavors(run.parameters["FLAVORS"].as<unsigned int>()),
 n_site(run.parameters["SITES"].as<unsigned int>()),
@@ -43,13 +41,11 @@ mc_steps((boost::uint64_t)run.parameters["SWEEPS"]),
 therm_steps(run.parameters["THERMALIZATION"].as<std::uint64_t>()),
 beta((double)run.parameters["BETA"]),
 temperature(1./beta),
-onsite_U((double)run.parameters["U"]),
 alpha((double)run.parameters["ALPHA"]),
-U(run.parameters),
+U(run.parameters, run.input),
 recalc_period(run.parameters["RECALC_PERIOD"].as<unsigned int>()),
 measurement_period(run.parameters["MEASUREMENT_PERIOD"].as<unsigned int>()),
 almost_zero(run.parameters["ALMOSTZERO"].as<double>()),
-bare_green_matsubara(n_matsubara,n_site, n_flavors), 
 bare_green_itime(n_tau+1, n_site, n_flavors)
 {
   const auto &parms = run.parameters;
@@ -62,20 +58,23 @@ bare_green_itime(n_tau+1, n_site, n_flavors)
   //other parameters
   sign=1;
   step=0;
-  read_ctint_bare_green(parms, run.input, bare_green_matsubara);
   if (run.input["atomic"].as<bool>()) {
     for (spin_t flavor = 0; flavor < n_flavors; ++flavor)
       for (itime_index_t t = 0; t <= n_tau; ++t)
         bare_green_itime(t, 0, 0, flavor) = -0.5;
   } else {
+    matsubara_green_function_t bare_green_matsubara(n_matsubara, n_site, n_flavors);
+    read_ctint_bare_green(parms, run.input, bare_green_matsubara);
     boost::shared_ptr<FourierTransformer> fourier_ptr;
     FourierTransformer::generate_transformer(parms, fourier_ptr);
     fourier_ptr->backward_ft(bare_green_itime, bare_green_matsubara);
   }
   //initialize the simulation variables
   M.resize(n_flavors);
+  for (spin_t i = 0; i < n_flavors; ++i)
+    for (spin_t j = i + 1; j < n_flavors; ++j)
+      if (U(i, j) != 0.) interaction_pairs.emplace_back(i, j);
   initialize_observables();
-  if(node==0) {print(std::cout);}
   c_or_cdagger::initialize_simulation(parms);
   
   if(n_site !=1) throw std::invalid_argument("you're trying to run this code for more than one site. Do you know what you're doing?!?");
@@ -121,15 +120,14 @@ void c_or_cdagger::initialize_simulation(const alps::params &p)
 {
   beta_=p["BETA"];
   nm_=p["NMATSUBARA"].as<unsigned int>();
-  omegan_ = new double[nm_];
+  omegan_.resize(nm_);
   for(unsigned int i=0;i<nm_;++i) {
     omegan_[i]=(2.*i+1.)*boost::math::constants::pi<double>()/beta_;
   }
   if(p.exists("TAU_DISCRETIZATION_FOR_EXP")) {
     ntau_=p["TAU_DISCRETIZATION_FOR_EXP"];
     use_static_exp_=true;
-    exp_iomegan_tau_=new std::complex<double> [std::size_t(2)*nm_*ntau_];
-    if(exp_iomegan_tau_==0){throw std::runtime_error("not enough memory for computing exp!"); }
+    exp_iomegan_tau_.resize(std::size_t(2)*nm_*ntau_);
     std::cout<<"starting computation of exp values for measurement"<<std::endl;
     for(unsigned int i=0;i<ntau_;++i){
       double tau=i*beta_/(double)ntau_;
@@ -141,5 +139,6 @@ void c_or_cdagger::initialize_simulation(const alps::params &p)
     std::cout<<"done exp computation."<<std::endl;
   } else {
     use_static_exp_=false;
+    exp_iomegan_tau_.clear();
   }
 }

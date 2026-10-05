@@ -18,13 +18,6 @@
 
 
 
-extern "C" void vdsin_(const int *n, const double *a, double *y);
-extern "C" void vdcos_(const int *n, const double *a, double *y);
-extern "C" void vdsincos_(const int *n, const double *a, double *s, double *c);
-extern "C" void vrda_sincos_(const int *n, const double *a, double *s, double *c);
-
-
-
 /*creation and annihilation operator class*/
 typedef class c_or_cdagger   //represents a creation operator or an annihilation operator
 { 
@@ -122,8 +115,8 @@ private:
   static bool use_static_exp_; //do we compute the exps once only or for each time slice?
   static unsigned int ntau_;
   static double beta_;
-  static double *omegan_;
-  static std::complex<double> *exp_iomegan_tau_;//huge field with exp(i omega_n tau) for discretized taus.
+  static std::vector<double> omegan_;
+  static std::vector<std::complex<double>> exp_iomegan_tau_;
 
 
 
@@ -134,40 +127,12 @@ public:
   {
     if(!use_static_exp_){
       if(!exp_computed_){
-        double* sin_array = new double[n_matsubara];
-        double* cos_array = new double[n_matsubara];
-        //ACML vector functions
-#ifdef ACML
-        int one=1;
-        double arg_array[n_matsubara];
-        int nm=n_matsubara;
-        memcpy(arg_array, omegan_, n_matsubara*sizeof(double));
-        dscal_(&n_matsubara, &t_, arg_array, &one);
-        vrda_sincos_(&nm, arg_array, sin_array, cos_array);
-#else 
-        //MKL vector functions
-#ifdef MKL
-        int one=1;
-        double arg_array = new double[n_matsubara];
-        int nm=n_matsubara;
-        memcpy(arg_array, omegan_, n_matsubara*sizeof(double));
-        dscal_(&n_matsubara, &t_, arg_array, &one);
-        vdsincos_(&nm, arg_array, sin_array, cos_array);
-        delete [] arg_array;
-#else
-        //NO vector functions
-        for(frequency_t o=0;o<n_matsubara;++o){
-          cos_array[o]=cos(omegan_[o]*t_);
-          sin_array[o]=sin(omegan_[o]*t_);
-        }
-#endif
-#endif    
         exp_iomegat_=new std::complex<double>[n_matsubara];
-        for(frequency_t o=0;o<n_matsubara;++o)
-          exp_iomegat_[o] = std::complex<double>(cos_array[o], sign*sin_array[o]);
+        for(frequency_t o=0;o<n_matsubara;++o) {
+          const double phase=omegan_[o]*t_;
+          exp_iomegat_[o]={std::cos(phase), sign*std::sin(phase)};
+        }
         exp_computed_=true;
-        delete[] sin_array;
-        delete[] cos_array;
       }
     } else { //use static exp
       int taun=(int)(t_*ntau_/beta_);
@@ -184,4 +149,3 @@ public:
 } creator, annihilator;
 
 #endif
-

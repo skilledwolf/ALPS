@@ -3,7 +3,7 @@
 #include "dmft_schema.hpp"
 #include "U_matrix.h"
 #include "hirschfyeaux.h"
-#include "interaction_expansion_choice.h"
+#include "interaction_expansion2/run_config.hpp"
 #include "hybridization/input.hpp"
 #include <alps/cthyb.hpp>
 #include <alps/ctint.hpp>
@@ -26,7 +26,7 @@ std::string driver_name(std::string_view solver_key) {
   return std::string(solver_key);
 }
 // Scientific inputs the driver passes to a solver that declares them.
-constexpr const char* forwarded_inputs[] = {"retarded_interaction", "retarded_interaction_format",
+constexpr const char* forwarded_inputs[] = {"interaction_matrix", "retarded_interaction", "retarded_interaction_format",
                                             "retarded_interaction_coordinate"};
 std::string read_text(const std::filesystem::path& file) {
   std::ifstream stream(file);
@@ -41,10 +41,9 @@ std::string compose(const run_configuration& selectors, const std::filesystem::p
   if (const auto* source = child["parameters"].as_table())
     for (const auto& [name, rule] : *source)
       if (!parameters.contains(driver_name(name.str()))) parameters.insert(driver_name(name.str()), rule);
-  if (external(selected_solver(selectors)))
-    if (const auto* source = child["execution"].as_table())
-      for (const auto& [name, rule] : *source)
-        if (!root["execution"].as_table()->contains(name)) root["execution"].as_table()->insert(name, rule);
+  if (const auto* source = child["execution"].as_table())
+    for (const auto& [name, rule] : *source)
+      if (!root["execution"].as_table()->contains(name)) root["execution"].as_table()->insert(name, rule);
   for (const auto* key : forwarded_inputs)
     if (const auto* rule = child["input"][key].node()) root["input"].as_table()->insert(key, *rule);
   const auto flavors = selectors.parameters.value_or<std::int64_t>(
@@ -113,26 +112,18 @@ void validate_solver(const run_configuration& run) {
       if (run.input.exists("retarded_interaction")) cthyb_input::retarded_kernel(parameters, run.input);
       break;
     }
-    case solver_kind::interaction:
-      ctint::prepare_parameters(solver_parameters(p, schema));
+    case solver_kind::interaction: {
+      const auto parameters = ctint::prepare_parameters(solver_parameters(p, schema));
+      ctint::validate_interaction(parameters, run.input);
+      ctint::validate_execution(run.execution);
       break;
+    }
     case solver_kind::hirsch_fye:
       prepare_hirschfye_parameters(solver_parameters(p, schema));
       validate_hirschfye_execution(run.execution);
       break;
     case solver_kind::custom:
       resolve_parameters(solver_parameters(p, schema), schema);
-      break;
-    case solver_kind::interaction_expansion:
-      // The scheduler CT-INT supports multiband densities; the standalone schema does not.
-      if (select_interaction_expansion(p["FLAVORS"].as<int>(), p["SITES"].as<int>()) ==
-          interaction_expansion_choice::unsupported)
-        throw std::invalid_argument("Unsupported Interaction Expansion dimensions");
-      if (p["THERMALIZATION"].as<std::uint64_t>() > std::numeric_limits<unsigned int>::max())
-        throw std::invalid_argument("Interaction Expansion THERMALIZATION exceeds the scheduler counter");
-      if (p.exists("NMATSUBARA_MEASUREMENTS") &&
-          p["NMATSUBARA_MEASUREMENTS"].as<int>() > p["NMATSUBARA"].as<int>())
-        throw std::invalid_argument("NMATSUBARA_MEASUREMENTS must not exceed NMATSUBARA");
       break;
   }
 }
@@ -207,12 +198,7 @@ solver_kind selected_solver(const run_configuration& run) {
   if (name == "hybridization") return solver_kind::hybridization;
   if (name == "interaction") return solver_kind::interaction;
   if (name == "hirschfye") return solver_kind::hirsch_fye;
-  if (name == "Interaction Expansion") return solver_kind::interaction_expansion;
   return solver_kind::custom;
-}
-bool external(solver_kind kind) {
-  return kind == solver_kind::hybridization || kind == solver_kind::interaction ||
-         kind == solver_kind::hirsch_fye || kind == solver_kind::custom;
 }
 bool receives_delta(const run_configuration& run) {
   const auto kind = selected_solver(run);
@@ -222,8 +208,7 @@ bool receives_delta(const run_configuration& run) {
 std::string solver_schema(const run_configuration& run, const std::filesystem::path& base) {
   switch (selected_solver(run)) {
     case solver_kind::hybridization: return std::string(cthyb::schema());
-    case solver_kind::interaction:
-    case solver_kind::interaction_expansion: return std::string(ctint::schema());
+    case solver_kind::interaction: return ctint::schema(run.parameters);
     case solver_kind::hirsch_fye: return std::string(hirschfye_schema);
     case solver_kind::custom: break;
   }
@@ -258,7 +243,7 @@ std::string schema_for_run(const std::filesystem::path& file) {
     else throw std::invalid_argument("DMFT input.solver_schema must be a path");
   }
   if (const auto* node = raw["parameters"]["FLAVORS"].node()) {
-    if (auto value = node->value<std::int64_t>()) selectors.parameters["FLAVORS"] = *value;
+    if (auto value = node->value_exact<std::int64_t>()) selectors.parameters["FLAVORS"] = *value;
     else throw std::invalid_argument("DMFT FLAVORS must be an integer");
   }
   return compose(selectors, std::filesystem::absolute(file).parent_path());
