@@ -17,8 +17,9 @@
 #   FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 #   DEALINGS IN THE SOFTWARE.
 
-# These C++ and Python analysis programs remain unbuilt and uninstalled.
-# Ownership registration is separate from enabling or supporting a program.
+# These Python analysis programs remain uninstalled. Their functionality is
+# duplicated by the native Python estimators; migrate their legacy archive reader
+# before removing the remaining scripts.
 alps_register_module(NAME tools_alea
-  EXTRA_FILES mean.cpp variance.cpp mcanalyze_tools.hpp mcanalyze_tools.ipp
-  DEPENDS alea hdf5 numerics utilities)
+  EXTRA_FILES mean.py variance.py mcanalyze_tools.py
+  DEPENDS alea hdf5)

@@ -17,7 +17,6 @@
 #   FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 #   DEALINGS IN THE SOFTWARE.
 
-#include_directories(${PROJECT_SOURCE_DIR}/src/tools/alea)
 #include_directories(${PROJECT_BINARY_DIR}/src)
 #include_directories(${PROJECT_SOURCE_DIR}/src)
 #include_directories(${Boost_ROOT_DIR})
