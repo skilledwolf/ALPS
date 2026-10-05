@@ -144,3 +144,28 @@ def test_spinmc_pools_independent_unequal_partial_bins(executable, tmp_path):
                                       np.concatenate((left[name].batch_counts, right[name].batch_counts)))
         np.testing.assert_array_equal(pooled[name].batch_sums,
                                       np.concatenate((left[name].batch_sums, right[name].batch_sums)))
+
+
+@pytest.mark.parametrize("parameters", [{"MODEL": "Ising", "UPDATE": "local"}, {"MODEL": "Ising", "UPDATE": "cluster"}, {"MODEL": "O(4)", "UPDATE": "cluster"}, {"MODEL": "Potts", "q": 3, "UPDATE": "cluster"}])
+def test_spinmc_extend_completed_run(executable, tmp_path, parameters):
+    full = run_file(tmp_path, "full", parameters=parameters)
+    short = run_file(tmp_path, "short", parameters={**parameters, "SWEEPS": 8},
+                     output={"checkpoint": "continuation.h5"})
+    execute(executable, [full, short])
+    resumed = run_file(tmp_path, "resumed", parameters=parameters,
+                       input={"checkpoint": "continuation.h5"},
+                       output={"checkpoint": "extended.h5"})
+    execute(executable, resumed)
+    expected, actual = results(tmp_path / "full.h5"), results(tmp_path / "resumed.h5")
+    assert expected.keys() == actual.keys()
+    for name in expected:
+        for field in ("mean", "error", "batch_sums", "batch_counts"):
+            np.testing.assert_array_equal(getattr(expected[name], field), getattr(actual[name], field))
+    invalid = run_file(tmp_path, "too-short", parameters={**parameters, "SWEEPS": 36},
+                       input={"checkpoint": "extended.h5"},
+                       output={"checkpoint": "invalid.h5"})
+    before = (tmp_path / "extended.h5").read_bytes()
+    rejected = subprocess.run([executable, str(invalid)], text=True, capture_output=True, timeout=20)
+    assert rejected.returncode != 0
+    assert (tmp_path / "extended.h5").read_bytes() == before
+    assert not (tmp_path / "too-short.h5").exists()

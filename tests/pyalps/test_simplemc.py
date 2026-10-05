@@ -137,3 +137,28 @@ def test_simplemc_custom_graph_bindings_couplings_and_vtk(executable, tmp_path):
     assert result.count == 8 and abs(result.mean[0]) <= 1.2 + 1e-12
     text = (tmp_path / "spins.clone1.8.vtk").read_text()
     assert "# vtk DataFile Version" in text and "POINTS 4 " in text and "SCALARS spins" in text
+
+
+@pytest.mark.parametrize("parameters", [{"ALGORITHM": model} for model in ("ising", "xy", "heisenberg")])
+def test_simplemc_extend_completed_run(executable, tmp_path, parameters):
+    full = run_file(tmp_path, "full", parameters=parameters)
+    short = run_file(tmp_path, "short", parameters={**parameters, "SWEEPS": 8},
+                     output={"checkpoint": "continuation.h5"})
+    execute(executable, [full, short])
+    resumed = run_file(tmp_path, "resumed", parameters=parameters,
+                       input={"checkpoint": "continuation.h5"},
+                       output={"checkpoint": "extended.h5"})
+    execute(executable, resumed)
+    expected, actual = read_results(tmp_path / "full.h5"), read_results(tmp_path / "resumed.h5")
+    assert expected.keys() == actual.keys()
+    for name in expected:
+        for field in ("mean", "error", "batch_sums", "batch_counts"):
+            np.testing.assert_array_equal(getattr(expected[name], field), getattr(actual[name], field))
+    invalid = run_file(tmp_path, "too-short", parameters={**parameters, "SWEEPS": 36},
+                       input={"checkpoint": "extended.h5"},
+                       output={"checkpoint": "invalid.h5"})
+    before = (tmp_path / "extended.h5").read_bytes()
+    rejected = subprocess.run([executable, str(invalid)], text=True, capture_output=True, timeout=20)
+    assert rejected.returncode != 0
+    assert (tmp_path / "extended.h5").read_bytes() == before
+    assert not (tmp_path / "too-short.h5").exists()

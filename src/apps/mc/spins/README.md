@@ -58,8 +58,11 @@ while `SWEEPS` counts subsequent production updates.
 `execution.max_sweeps` limits update calls per chain for this invocation,
 including warm-up. `execution.time_limit` and `checkpoint_interval` are seconds.
 To resume, set `input.checkpoint` to the previous checkpoint and use a distinct
-output checkpoint. Keep the model, graph, seed, chain count and batch capacity
-fixed. Checkpoints retain spins, RNG, progress and unfinished batches; analysis
+output checkpoint filename. Keep the model, graph, seed, chain count,
+batch capacity and thermalization fixed. `SWEEPS` may increase after completion,
+but cannot fall below the measurements already taken. Set `THERMALIZATION`
+explicitly when changing `SWEEPS` so its default does not change.
+Checkpoints retain spins, RNG, progress and unfinished batches; analysis
 results cannot replace restart state. `execution.error_variable` and a positive
 `error_limit` optionally stop on a scalar native measurement's uncertainty once
 at least two batches are occupied. `execution.print_sweeps` sets a diagnostic

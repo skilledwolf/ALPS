@@ -67,7 +67,10 @@ public:
     simulation& operator=(simulation const&) = delete;
     using mcbase::save;
     using mcbase::load;
-    static alps::params const& checkpoint_parameters(alps::params const& p) { return p; }
+    static alps::params checkpoint_parameters(alps::params p) {
+        p.erase("SWEEPS");
+        return p;
+    }
 
     void update() override {
         if (sweeps_ == thermalization_ + production_)
@@ -146,7 +149,7 @@ public:
         ar["checkpoint/spins"] >> spins;
         ar["checkpoint/bonds"] >> graph;
         ar["checkpoint/couplings"] >> couplings;
-        if (restored_parameters != parameters || chain != chain_ || graph != topology()
+        if (checkpoint_parameters(restored_parameters) != checkpoint_parameters(parameters) || chain != chain_ || graph != topology()
                 || couplings != bond_couplings() || sweeps > thermalization_ + production_
                 || spins.size() != spins_.size())
             throw std::invalid_argument("simplemc checkpoint does not match this run");
@@ -170,7 +173,9 @@ public:
                     || !value.store().batch().allFinite())
                 throw std::invalid_argument("invalid simplemc checkpoint measurement state");
         }
+        auto current_parameters = parameters;
         mcbase::load(ar);
+        parameters = std::move(current_parameters);
         spins_ = std::move(spins);
         sweeps_ = sweeps;
     }

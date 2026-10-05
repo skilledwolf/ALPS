@@ -70,9 +70,11 @@ disables periodic saves). Results from the completed measurements are published
 even when interrupted during warm-up.
 
 Resume by setting `input.checkpoint` to the saved file, keeping the model,
-graph, seed, chain count, bin count and sweep target unchanged. Stopping budgets
-and output paths may change. Use a new `output.checkpoint` filename when saving
-the resumed state; outputs cannot overwrite an input checkpoint. Checkpoints
+graph, seed, chain count, bin count and thermalization unchanged. `SWEEPS` may
+increase, including after completion, but cannot fall below the measurements
+already taken. Set `THERMALIZATION` explicitly when changing `SWEEPS` so its
+default does not change. Stopping budgets and output paths may change.
+Use a distinct output checkpoint filename. Checkpoints
 contain spins, total sweep count, RNG and live native accumulators, including
 partially filled batches. All chains are loaded and checked before any output
 is written.

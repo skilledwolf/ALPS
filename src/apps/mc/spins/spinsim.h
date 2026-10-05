@@ -162,7 +162,7 @@ public:
     std::size_t chain_id() const { return chain_; }
     static alps::params checkpoint_parameters(alps::params const& p) {
         auto identity=p;
-        for (auto const* key:{"ERROR_VARIABLE","ERROR_LIMIT","PRINT_SWEEPS"}) identity.erase(key);
+        for (auto const* key:{"SWEEPS","ERROR_VARIABLE","ERROR_LIMIT","PRINT_SWEEPS"}) identity.erase(key);
         return identity;
     }
     double fraction_completed() const override {
