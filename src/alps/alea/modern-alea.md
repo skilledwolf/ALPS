@@ -305,14 +305,14 @@ or unused includes does not establish completion of those migrations.
 
 The `tutorials/00-examples/parapack` targets are not all redundant copies of
 the native solvers. Inspection of their workers and adapters establishes the
-following requirements. Except for the completed `ising_single` port described
-below, these remain outstanding work; old implementations are not correctness
-oracles.
+following requirements. Except for the completed `ising_single` and
+`ising_multiple` ports described below, these remain outstanding work; old
+implementations are not correctness oracles.
 
 | Command | Functionality to preserve or establish an equivalent for |
 | --- | --- |
-| `ising_single` | Native port completed: graph-colored heat-bath updates, deterministic OpenMP within a lattice, extensive moments and centered heat capacity, and resumable warm-start temperature scans. Its shared kernel still supplies the temporary legacy adapter used by exchange/spatial-MPI callers. |
-| `ising_multiple` | MPI spatial decomposition of **one** chain, ghost spins and reductions, with a serial worker fallback. Independent chains distributed across ranks do not replace this execution mode. |
+| `ising_single` | Native port completed: graph-colored heat-bath updates, deterministic OpenMP within a lattice, extensive moments and centered heat capacity, and resumable warm-start temperature scans. Its shared kernel still supplies the temporary legacy exchange adapter. |
+| `ising_multiple` | Native port completed: MPI spatial decomposition of **one** chain, ghost spins and global moments, sharing the serial model's statistics and scans. Odd/uneven ring partitions and exact restart with different rank counts are supported; arbitrary graphs retain a serial fallback. Spatial ranks do not multiply samples. |
 | `ising` | Lattice-library heat-bath simulation with bond-type `J`, `J0`, … couplings, normalized magnetization, extensive energy, Binder/heat-capacity analysis, and replica exchange. |
 | `heisenberg` | Unit-vector Metropolis updates with bond-type couplings; both vector-magnitude and z-component second/fourth moments and Binder ratios; replica exchange. |
 | `loop_single` | Continuous-time quantum loop example with energy, staggered magnetization and uniform/staggered susceptibility estimators. Compare its model, normalization and disorder inputs against native `loop` before consolidating. |
@@ -325,8 +325,14 @@ inconsistent model inputs collectively before communication. Direct worker tests
 at one, two and three MPI ranks cover odd and uneven partitions, canonical
 ferromagnetic/antiferromagnetic moments, physical bounds, exact restart and
 invalid-input consensus, with synchronous sends to expose buffering-dependent
-deadlocks. Its native ALEA port and the legacy MPI scheduler remain separate
-validation tasks; the historical golden files are not scientific references.
+deadlocks. The native command additionally tests partition-independent results,
+cross-rank restart of unfinished warmups/statistical bins, both RNGs, temperature
+scans, heat capacity and Binder analysis, collective stopping and root-only
+publication. Proposals and results also remain identical under OpenMP. Native
+spatial preflight checks run settings and input-file bytes across ranks before
+physical collectives; constructors and checkpoint loading stay local. The legacy
+MPI scheduler remains a separate validation task; its
+historical golden files were not scientific references and have been removed.
 
 The authoritative registrations are each directory's `.C` files; the behavior
 is in the worker headers and `alps/parapack/{temperature_scan,exchange,exchange_multi,wanglandau}.h`.

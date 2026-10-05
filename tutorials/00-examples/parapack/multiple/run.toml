@@ -1,0 +1,13 @@
+[parameters]
+LATTICE = "chain lattice"
+L = 64
+J = 1.0
+T = 2.0
+SWEEPS = 4096
+THERMALIZATION = 512
+[execution]
+seed = 2873
+chains = 2
+[output]
+results = "ising.h5"
+checkpoint = "ising.checkpoint.h5"

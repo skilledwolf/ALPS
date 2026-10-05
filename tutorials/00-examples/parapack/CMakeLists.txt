@@ -24,6 +24,4 @@ add_subdirectory(loop)
 add_subdirectory(exchange)
 add_subdirectory(wanglandau)
 
-if(ALPS_ENABLE_MPI)
-  add_subdirectory(multiple)
-endif()
+add_subdirectory(multiple)

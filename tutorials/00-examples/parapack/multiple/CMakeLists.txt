@@ -17,5 +17,10 @@
 #   FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 #   DEALINGS IN THE SOFTWARE.
 
-add_executable(ising_multiple main.C ising.C)
+add_executable(ising_multiple main.C)
+target_include_directories(ising_multiple PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/../single")
 target_link_libraries(ising_multiple PRIVATE ALPS::alps)
+if(ALPS_ENABLE_OPENMP)
+  find_package(OpenMP REQUIRED COMPONENTS CXX)
+  target_link_libraries(ising_multiple PRIVATE OpenMP::OpenMP_CXX)
+endif()

@@ -20,7 +20,7 @@
 #include <alps/mc/physical_moments.hpp>
 #include <alps/alea/transformer.hpp>
 
-class single_ising {
+template<class Kernel> class basic_ising {
 public:
     struct statistics {
         alps::alea::batch_acc<double> joint;
@@ -32,9 +32,10 @@ public:
             joint<<alps::alea::make_adapter(x); diagnostics<<alps::alea::make_adapter(x);
         }
     };
-    single_ising(alps::params const& p,size_t bins,size_t chain):parameters_(p),bins_(bins),chain_(chain),
+    template<class... Context>
+    basic_ising(alps::params const& p,size_t bins,size_t chain,Context const&... context):parameters_(p),bins_(bins),chain_(chain),
         random_(p["SEED"].as<int>()+chain,p["RNG"].as<std::string>()),
-        state_(alps::graph_helper<>(alps::make_deprecated_parameters(p)),p["J"].as<double>(),[&]{return random_();}) {
+        state_(alps::graph_helper<>(alps::make_deprecated_parameters(p)),p["J"].as<double>(),[&]{return random_();},context...) {
         const bool scan=p["ALGORITHM"].as<std::string>()=="ising; temperature scan";
         const size_t n=scan ? p["NUM_TEMPERATURES"].as<size_t>() : 1;
         uint64_t offset=0;
@@ -67,6 +68,7 @@ public:
         if (steps_>start_[i]+warm_[i]) stats_[i].add(state_.sample());
     }
     void measure() {}
+    void synchronize() {state_.synchronize();}
     void save(alps::hdf5::archive& ar) const {
         ar["/parameters"]<<parameters_; ar["checkpoint/engine"]<<random_;
         ar["checkpoint/sweeps"]<<steps_; ar["checkpoint/chain"]<<uint64_t(chain_);
@@ -78,7 +80,7 @@ public:
         }
     }
     void load(alps::hdf5::archive& ar) {
-        single_ising restored(parameters_,bins_,chain_);
+        auto restored=*this;
         alps::params saved; uint64_t chain;
         ar["/parameters"]>>saved; ar["checkpoint/chain"]>>chain;
         ar["checkpoint/sweeps"]>>restored.steps_; ar["checkpoint/engine"]>>restored.random_;
@@ -104,9 +106,69 @@ private:
     alps::params parameters_;
     size_t bins_,chain_;
     alps::random01 random_;
-    ising_kernel state_;
+    Kernel state_;
     std::vector<statistics> stats_;
     std::vector<double> temperatures_;
     std::vector<uint64_t> start_,warm_;
     uint64_t steps_=0,total_=0;
 };
+
+using single_ising=basic_ising<ising_kernel>;
+
+template<class Simulation,class Group=alps::mc::parallel>
+int ising_main(int argc,char** argv,char const* command) {
+    auto prepare=[](alps::params& p,alps::run_configuration const&) {
+        if (!p.exists("THERMALIZATION")) p["THERMALIZATION"]=p["SWEEPS"].as<uint64_t>()/8;
+        if (p["ALGORITHM"].as<std::string>()=="ising") {
+            if (!p.exists("T")) throw std::invalid_argument("ising requires T");
+            for (auto key:{"NUM_TEMPERATURES","INITIAL_TEMPERATURE","DIFF_TEMPERATURE","INITIAL_THERMALIZATION"})
+                if (p.exists(key)) throw std::invalid_argument("Scan parameters require the temperature-scan algorithm");
+        } else {
+            if (p.exists("T")) throw std::invalid_argument("Scans define temperatures through their initial value and increment");
+            if (!p.exists("NUM_TEMPERATURES") || !p.exists("INITIAL_TEMPERATURE") || !p.exists("DIFF_TEMPERATURE"))
+                throw std::invalid_argument("Temperature scans require count, initial temperature and increment");
+        }
+    };
+    auto publish=[](alps::run_configuration const& run,auto const& chains,alps::params const& p) {
+        alps::hdf5::save_checkpoint(run.output["results"].as<std::string>(),[&](auto& ar) {
+            ar["/parameters"]<<p; ar["/run_config"]<<run;
+            const auto n=chains.front()->stages();
+            for (size_t i=0;i<n;++i) {
+                std::vector<alps::alea::batch_result<double>> batches;
+                alps::mc::moment_results moments;
+                for (auto const& chain:chains) {
+                    auto const& stats=chain->stage_statistics(i);
+                    batches.push_back(stats.joint.result());
+                    auto bins=stats.physical.results(); moments.insert(moments.end(),bins.begin(),bins.end());
+                }
+                const auto joint=alps::alea::merge(batches);
+                const std::string path=n==1 ? "/simulation" : "/simulation/replicas/"+std::to_string(i);
+                auto stage=p; stage["T"]=chains.front()->temperature(i);
+                ar[path+"/parameters"]<<stage;
+                if (n==1) ar["/parameters"]<<stage;
+                alps::alea::hdf5_serializer raw(ar,path),output(ar,path+"/results");
+                serialize(raw,"joint",joint); ar.create_group(path+"/results");
+                std::map<std::string,alps::alea::batch_result<double>> results;
+                alps::mc::unavailable_results unavailable;
+                if (joint.observations()>1) {
+                    const char* names[]={"Number of Sites","Energy","Energy^2","Magnetization","Magnetization^2","Magnetization^4"};
+                    for (size_t k=0;k<6;++k) {
+                        Eigen::Matrix<double,1,6> select=Eigen::Matrix<double,1,6>::Zero(); select(k)=1;
+                        results.emplace(names[k],alps::alea::transform(alps::alea::jackknife_prop(),alps::alea::linear_transformer<double>(select),joint));
+                    }
+                    alps::mc::estimate(results,&unavailable,"Binder Ratio of Magnetization",joint,[](auto const& x){return x(5)>0 ? x(4)*x(4)/x(5) : NAN;});
+                    const auto centered=alps::mc::centered_batches(moments).first;
+                    const double beta=1/chains.front()->temperature(i),sites=joint.mean()(0);
+                    alps::mc::estimate(results,&unavailable,"Specific Heat",centered,[=](auto const& x){return (beta*((x(1)-x(0)*x(0))*beta))/sites;});
+                } else unavailable["Statistics"]="At least two effective batches are required";
+                for (auto const& [name,value]:results) serialize(output,ar.encode_segment(name),value);
+                for (auto const& [name,reason]:unavailable) ar[path+"/unavailable/"+ar.encode_segment(name)]<<reason;
+                for (size_t id=0;id<chains.size();++id) {
+                    alps::alea::hdf5_serializer diag(ar,path+"/realizations/0/clones/"+std::to_string(id)+"/autocorrelation");
+                    serialize(diag,"Moments",chains[id]->stage_statistics(i).diagnostics.result());
+                }
+            }
+        });
+    };
+    return alps::mc::main<Simulation,Group>(argc,argv,command,ising_schema,{},prepare,publish);
+}

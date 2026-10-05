@@ -4,7 +4,7 @@ schema_version = 1
 type = "int64"
 default = 16
 min = 1
-max = 32767
+max = 2147483645
 [parameters.T]
 type = "float64"
 min = 0.0

@@ -15,6 +15,9 @@ from test_native_mpi import compare, invoke, launcher
 
 @pytest.fixture
 def executable():
+    explicit=os.environ.get('ALPS_SINGLE_ISING_EXECUTABLE')
+    if explicit:
+        return str(Path(explicit).resolve(strict=True))
     root=os.environ.get('ALPS_EXAMPLES_BUILD_DIR')
     if not root:
         pytest.skip('Set ALPS_EXAMPLES_BUILD_DIR to the built C++ examples')

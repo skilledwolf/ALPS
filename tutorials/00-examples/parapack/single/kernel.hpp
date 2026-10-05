@@ -22,6 +22,11 @@
 // legacy exchange callers. Colors contain no connected pair of distinct sites.
 class ising_kernel {
 public:
+    // Stable logistic heat-bath flip probability, including zero local field.
+    static bool heatbath_flip(double difference, double beta, double proposal) {
+        const double x=difference*beta,e=std::exp(-std::abs(x));
+        return proposal<(x>0 ? e/(1+e) : 1/(1+e));
+    }
     template<class Graph, class Random>
     ising_kernel(Graph const& graph, double coupling, Random&& random) : coupling_(coupling) {
         if (!graph.num_sites()) throw std::invalid_argument("The lattice must contain sites");
@@ -52,10 +57,7 @@ public:
                 const size_t i=sites[k];
                 double field=0;
                 for (auto j:neighbors_[i]) if (j!=i) field+=coupling_*spins_[j];
-                const double x=(2*spins_[i]*field)*beta;
-                // Logistic heat-bath flip probability, stable at both extremes.
-                const double e=std::exp(-std::abs(x));
-                if (proposals_[i]<(x>0 ? e/(1+e) : 1/(1+e))) spins_[i]=-spins_[i];
+                if (heatbath_flip(2*spins_[i]*field,beta,proposals_[i])) spins_[i]=-spins_[i];
             }
         }
     }
@@ -70,6 +72,7 @@ public:
         return {double(size()),e,e*e,m,m*m,m*m*m*m};
     }
     auto const& spins() const { return spins_; }
+    void synchronize() {}
     void restore(std::vector<int> spins) {
         if (spins.size()!=size() || !std::all_of(spins.begin(),spins.end(),[](int s){return s==1 || s==-1;}))
             throw std::invalid_argument("Invalid Ising checkpoint spins");

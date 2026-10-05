@@ -252,7 +252,10 @@ def test_tutorials_are_an_explicit_install_component(tmp_path):
     assert (tutorials / "00-examples/parapack/exchange/params-ising").is_file()
     assert (tutorials / "00-examples/parapack/loop/params_disorder").is_file()
     assert (tutorials / "00-examples/parapack/wanglandau/params_learn").is_file()
-    assert (tutorials / "00-examples/parapack/multiple/ising.op-2").is_file()
+    for name in ("main.C", "kernel.hpp", "run.toml", "README.md"):
+        assert (tutorials / "00-examples/parapack/multiple" / name).is_file()
+    for name in ("ising.C", "ising.ip", "ising.op-2", "ising.op-4", "params"):
+        assert not (tutorials / "00-examples/parapack/multiple" / name).exists()
     assert (install / "share/alps/cmake/ALPSTesting.cmake").is_file()
     assert (install / "share/alps/cmake/run_test.cmake").is_file()
     assert not (tutorials / "10-ngs/5_export_python").exists()
