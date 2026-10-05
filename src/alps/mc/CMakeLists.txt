@@ -16,6 +16,7 @@ target_sources(alps_headers INTERFACE
     include/alps/mc/measurements.hpp
     include/alps/mc/physical_moments.hpp
     include/alps/mc/parallel.hpp
+    include/alps/mc/temperature_grid.hpp
     include/alps/mcmpiadapter.hpp
     include/alps/ngs.hpp
     include/alps/ngs/api.hpp

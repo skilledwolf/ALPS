@@ -1,7 +1,7 @@
 // Copyright (C) 2026 ALPS Collaboration. SPDX-License-Identifier: MIT
 #pragma once
 #include "loop_worker.h"
-#include "temperature_grid.hpp"
+#include <alps/mc/temperature_grid.hpp>
 #include <numeric>
 #include <optional>
 #include <variant>
@@ -17,7 +17,7 @@ class application {
   std::vector<worker> workers_;
   alps::params parameters_;
   size_t bins_,chain_;
-  std::optional<temperature_grid> grid_;
+  std::optional<alps::mc::temperature_grid> grid_;
   alps::random01 random_;
   bool exchange_=false,random_exchange_=false,population_=false,ready_=false;
   uint64_t steps_=0,production_=0,warm_=0,interval_=1,stage_=0,stage_count_=0,events_=0,returnees_=0;

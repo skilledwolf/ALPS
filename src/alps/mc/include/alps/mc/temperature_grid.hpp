@@ -7,7 +7,7 @@
 #include <stdexcept>
 #include <vector>
 
-namespace looper {
+namespace alps::mc {
 // Scientific temperature feedback formerly embedded in Parapack's scheduler.
 class temperature_grid {
   std::vector<double> beta_;

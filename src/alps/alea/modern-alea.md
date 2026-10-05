@@ -332,8 +332,9 @@ not introduce another scan scheduler or another result format.
 
 Exchange includes explicit temperature/inverse-temperature sets, regular grids,
 exchange intervals and randomized ordering, plus rate and population ladder
-optimization. Native `src/apps/qmc/looper/temperature_grid.hpp` already implements
-both optimization methods; `application.hpp` owns the ladder and restart state.
+optimization. Native `<alps/mc/temperature_grid.hpp>` implements both
+optimization methods with worker-provided weight laws; the loop application's
+`src/apps/qmc/looper/application.hpp` owns its ladder and restart state.
 Use this existing implementation as the starting point for consolidation after
 checking its worker assumptions. Do not introduce a second temperature-grid
 optimizer or restore the legacy observable framework to reuse the old adapters.

@@ -25,7 +25,7 @@ alps_install_applications(loop)
 
 if(ALPS_BUILD_TESTING)
   add_executable(loop_temperature_grid tests/temperature_grid.cpp)
-  target_link_libraries(loop_temperature_grid PRIVATE ALPS::params)
+  target_link_libraries(loop_temperature_grid PRIVATE ALPS::params ALPS::headers)
   alps_add_test(loop_temperature_grid)
   set_tests_properties(loop_temperature_grid PROPERTIES LABELS "qmc")
 endif()
