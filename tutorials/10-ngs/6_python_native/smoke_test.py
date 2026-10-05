@@ -86,7 +86,7 @@ with tempfile.TemporaryDirectory() as directory:
     with hdf5.archive(checkpoint, "r") as archive:
         assert archive["/parameters/format"] == "alps.params.v2"
         assert sorted(archive.list_children(BASE + "/measurements")) == OBSERVABLES
-        assert sorted(archive.list_children(BASE + "/checkpoint")) == ["engine", "spins", "sweeps"]
+        assert sorted(archive.list_children(BASE + "/checkpoint")) == ["engine", "name", "spins", "sweeps"]
         # 137 samples overflow the 64 slots twice and leave an unfinished batch.
         assert archive[BASE + "/measurements/Energy/cursor/level"] >= 2
         counts = archive[BASE + "/measurements/Energy/batch/count"]

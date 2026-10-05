@@ -24,7 +24,7 @@ void ising_sim::update() {
 }
 
 void ising_sim::measure() {
-    *measurements.at("Magnetization") << alps::alea::make_adapter(state_);
+    *measurement("Magnetization") << alps::alea::make_adapter(state_);
 }
 
 double ising_sim::fraction_completed() const {
