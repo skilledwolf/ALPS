@@ -1352,3 +1352,90 @@ def test_qwl_conversion_rejects_missing_or_ambiguous_evidence(converter, tmp_pat
         converter.convert(source, output, qwl_sites=5 if fault == "sites" else 4)
     assert source.read_bytes() == before
     assert not output.exists()
+
+
+def spinmc_pair(tmp_path, model):
+    """HDF5 framework reconstruction + independently compiled XDR protocol fixture."""
+    fixtures = Path(__file__).with_name('fixtures')
+    stem = 'O4' if model == 'O(4)' else model
+    xdr = fixtures / ('spinmc-' + stem + '.xdr')
+    provenance = json.loads((fixtures / 'spinmc-state.json').read_text())
+    assert hashlib.sha256(xdr.read_bytes()).hexdigest() == provenance['sha256'][xdr.name]
+    source = tmp_path / 'worker.h5'
+    with h5py.File(source, 'w') as ar:
+        ar['parameters/MODEL'] = model
+        if model == 'Potts':
+            ar['parameters/q'] = 3
+        ar['rng'] = 'opaque released RNG state'
+        ar['rng'].attrs['name'] = 'mt19937'
+        ar.create_group('simulation/realizations/0/clones/0/results')
+    return source, xdr
+
+
+@pytest.mark.parametrize('model', ['Ising', 'Potts', 'XY', 'Heisenberg', 'O(4)'])
+def test_recover_released_spin_state(converter, tmp_path, model):
+    source, xdr = spinmc_pair(tmp_path, model)
+    original = source.read_bytes(), xdr.read_bytes()
+    output = tmp_path / 'converted.h5'
+    converter.convert(source, output, spinmc_state=xdr, parameter_groups=['/parameters'])
+    with h5py.File(output, 'r') as ar:
+        state = ar['migration/spinmc']
+        assert state['model'].asstr()[()] == model
+        assert state['sweeps_done'][()] == 0x100000005
+        assert state['thermalization_sweeps'][()] == 0x100000003
+        assert state['thermalization_fraction'][()] == 1.125
+        assert bytes(state['source_xdr'][...]) == xdr.read_bytes()
+        assert ar['rng'].asstr()[()] == 'opaque released RNG state'
+        assert ar['rng'].attrs['name'] == 'mt19937'
+        if model == 'Ising':
+            expected = [[-1.], [1.]]
+        elif model == 'Potts':
+            expected = [[0.], [2.]]
+        else:
+            expected = np.zeros((2, {'XY':2, 'Heisenberg':3, 'O(4)':4}[model]))
+            expected[0, 0] = 1.
+            expected[1, 1] = -1.
+        np.testing.assert_array_equal(state['spins'], expected)
+        assert ar['parameters/format'].asstr()[()] == 'alps.params.v2'
+    assert (source.read_bytes(), xdr.read_bytes()) == original
+
+
+@pytest.mark.parametrize('fault', ['version', 'truncated', 'trailing', 'sites', 'boolean',
+                                  'fraction', 'counters', 'vector', 'potts', 'rng', 'results'])
+def test_spin_state_rejects_invalid_input_atomically(converter, tmp_path, fault):
+    import struct
+    model = 'XY' if fault == 'vector' else 'Potts' if fault == 'potts' else 'Ising'
+    source, fixture = spinmc_pair(tmp_path, model)
+    data = bytearray(fixture.read_bytes())
+    if fault == 'version': struct.pack_into('>i', data, 8, 310)
+    elif fault == 'truncated': del data[-1]
+    elif fault == 'trailing': data.append(0)
+    elif fault == 'sites': struct.pack_into('>I', data, 36, 0xffffffff)
+    elif fault == 'boolean': struct.pack_into('>I', data, 40, 2)
+    elif fault == 'fraction': struct.pack_into('>d', data, 20, float('nan'))
+    elif fault == 'counters': struct.pack_into('>Q', data, 28, 0xffffffffffffffff)
+    elif fault == 'vector': struct.pack_into('>d', data, 40, 2.)
+    elif fault == 'potts': struct.pack_into('>I', data, 40, 3)
+    else:
+        with h5py.File(source, 'a') as ar:
+            del ar['rng' if fault == 'rng' else 'simulation/realizations/0/clones/0/results']
+    xdr = tmp_path / 'bad.xdr'
+    xdr.write_bytes(data)
+    before = {path.name:path.read_bytes() for path in tmp_path.iterdir()}
+    with pytest.raises((ValueError, KeyError)):
+        converter.convert(source, tmp_path / 'output.h5', spinmc_state=xdr)
+    assert before == {path.name:path.read_bytes() for path in tmp_path.iterdir()}
+
+
+def test_spin_state_cli_accepts_released_numeric_text(tmp_path):
+    source, xdr = spinmc_pair(tmp_path, 'Potts')
+    with h5py.File(source, 'a') as ar:
+        del ar['parameters/q']
+        ar['parameters/q'] = '3.0'
+    output = tmp_path / 'recovered.h5'
+    run = subprocess.run([sys.executable, str(SCRIPT), str(source), str(output),
+                          '--spinmc-state', str(xdr)], capture_output=True, text=True)
+    assert run.returncode == 0, run.stdout + run.stderr
+    assert 'native restart conversion remains pending' in run.stdout
+    with h5py.File(output, 'r') as ar:
+        np.testing.assert_array_equal(ar['migration/spinmc/spins'], [[0.], [2.]])

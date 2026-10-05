@@ -16,6 +16,7 @@ import os
 from pathlib import Path
 import posixpath
 import sys
+import struct
 import tempfile
 
 import h5py
@@ -918,11 +919,74 @@ def _qwl(source, target, sites):
     return "ALPS 3.0.0 QWL final per-run estimates -> native analysis; no solver restart state inferred"
 
 
+def _spinmc_state(source, target, filename):
+    """Recover the released version-400 physical payload without legacy libraries."""
+    if "migration/spinmc" in source:
+        raise ValueError("Archive already contains recovered spinmc state")
+    model = source["parameters/MODEL"].asstr()[()]
+    dimensions = {"Ising": 1, "Potts": 1, "XY": 2, "Heisenberg": 3, "O(4)": 4}
+    if model not in dimensions:
+        raise ValueError("Unsupported released spinmc model")
+    # No shared checkpoint identifier was written into these companion files.
+    # Requiring RNG and measurements catches results-only inputs, not mismatches
+    # between otherwise valid runs; callers must supply the matching pair.
+    if source["rng"].shape != () or "name" not in source["rng"].attrs:
+        raise ValueError("Expected a released worker RNG")
+    if not isinstance(source["simulation/realizations/0/clones/0/results"], h5py.Group):
+        raise ValueError("Expected released worker measurements")
+    with open(filename, "rb") as stream:
+        header = stream.read(40)
+        if len(header) != 40:
+            raise ValueError("Truncated spinmc XDR header")
+        marker, reserved, version, sweeps, fraction, thermal, sites = struct.unpack(">iiiQdQI", header)
+        if (marker, reserved, version) != (3, 0, 400):
+            raise ValueError("Expected spinmc worker XDR version 400; version 310 is not yet supported")
+        if not sites or thermal > sweeps or not math.isfinite(fraction) or fraction < 0:
+            raise ValueError("Invalid spinmc counters or lattice size")
+        dtype = np.dtype(">u4" if model in ("Ising", "Potts") else ">f8")
+        count = sites * dimensions[model]
+        # Check length before allocating from an untrusted site count.
+        size = os.fstat(stream.fileno()).st_size
+        if size != 40 + count * dtype.itemsize:
+            raise ValueError("Wrong spinmc XDR payload length")
+        payload = stream.read()
+    spins = np.frombuffer(payload, dtype=dtype).reshape(sites, dimensions[model])
+    if model == "Ising":
+        if np.any(spins > 1):
+            raise ValueError("Invalid released Ising spin")
+        spins = 2 * spins.astype(np.float64) - 1
+    elif model == "Potts":
+        raw_q = source["parameters/q"][()]
+        if isinstance(raw_q, bytes):
+            raw_q = raw_q.decode("utf-8")
+        try:
+            q = float(raw_q)
+        except (ValueError, TypeError, OverflowError) as error:
+            raise ValueError("Potts q must be an explicit supported integer") from error
+        if q not in (3, 4, 10) or np.any(spins >= q):
+            raise ValueError("Invalid released Potts spin or q")
+    elif not np.isfinite(spins).all() or not np.allclose(np.sum(spins * spins, axis=1), 1., rtol=0, atol=1e-10):
+        raise ValueError("Invalid released unit-vector spin")
+    group = target.create_group("migration/spinmc")
+    group.attrs["source_version"] = np.uint32(version)
+    group["model"] = model
+    group["sweeps_done"] = np.uint64(sweeps)
+    group["thermalization_fraction"] = fraction
+    group["thermalization_sweeps"] = np.uint64(thermal)
+    group["spins"] = spins.astype(np.float64)
+    # Retain exact bytes as well as the decoded fields, including original
+    # integer representations. This extraction does not create a restart file.
+    group["source_xdr"] = np.frombuffer(header + payload, dtype=np.uint8)
+    return "Recovered released spinmc physical state; native restart conversion remains pending"
+
+
 def convert(source, destination, *, boolean_datasets=(), boolean_attributes=(),
             pair_groups=(), matrix_groups=(), parameter_groups=(), alea_groups=(), core_alea_groups=(),
-            alea_batch_groups=(), qwl_sites=None):
+            alea_batch_groups=(), qwl_sites=None, spinmc_state=None):
     """Write a new file; leave the source and any existing destination untouched."""
     if qwl_sites is not None:
+        if spinmc_state is not None:
+            raise ValueError("Select one application profile")
         if any((boolean_datasets, boolean_attributes, pair_groups, matrix_groups, parameter_groups,
                 alea_groups, core_alea_groups, alea_batch_groups)):
             raise ValueError("QWL is a whole-file profile; select it separately")
@@ -945,6 +1009,8 @@ def convert(source, destination, *, boolean_datasets=(), boolean_attributes=(),
                                alea_batch_groups)
                 if qwl_sites is not None:
                     report.append(_qwl(src, dst, qwl_sites))
+                if spinmc_state is not None:
+                    report.append(_spinmc_state(src, dst, spinmc_state))
         # A sibling hard link publishes the complete file atomically and refuses
         # to overwrite a destination created by another process in the meantime.
         os.link(temporary, destination)
@@ -980,13 +1046,16 @@ def main(argv=None):
                              + ", ".join(CORE_ALEA_KINDS) + " (repeatable)")
     parser.add_argument("--qwl-sites", type=int, metavar="N",
                         help="migrate released per-run QWL final estimates with an explicit lattice site count")
+    parser.add_argument("--spinmc-state", type=Path, metavar="XDR",
+                        help="recover the matching released spinmc version-400 XDR physical state; not a native restart")
     args = parser.parse_args(argv)
     try:
         report = convert(args.source, args.destination, boolean_datasets=args.boolean,
                          boolean_attributes=args.boolean_attribute,
                          pair_groups=args.pair, matrix_groups=args.matrix,
                          parameter_groups=args.parameters, alea_groups=args.alea,
-                         core_alea_groups=args.core_alea, alea_batch_groups=args.alea_batches, qwl_sites=args.qwl_sites)
+                         core_alea_groups=args.core_alea, alea_batch_groups=args.alea_batches, qwl_sites=args.qwl_sites,
+                         spinmc_state=args.spinmc_state)
     except (OSError, ValueError, KeyError, TypeError) as error:
         parser.exit(1, f"{parser.prog}: {error}\n")
     for line in report:

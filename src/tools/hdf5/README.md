@@ -210,7 +210,7 @@ its `.out.runN.h5` archive and companion `.out.runN` XDR file:
 | --- | --- |
 | Parameters and RNG name/state | `Worker::save(hdf5::archive&)`: `/parameters`, `/rng` and `/rng/@name` |
 | Measurements | `MCRun::save(hdf5::archive&)`: `/simulation/realizations/0/clones/0/results` |
-| Production sweeps and fractional cluster thermalization | `AbstractSpinSim::save(ODump&)`: XDR payload |
+| Total updates and fractional cluster thermalization | `AbstractSpinSim::save(ODump&)`: XDR payload |
 | Physical spins | `SpinSim::save(ODump&)`: XDR payload, with model-specific moment representation |
 
 This follows the pinned release sources in `src/alps/scheduler/worker.C`,
@@ -222,6 +222,31 @@ stream starts with the run marker, reserved integer and format version. Version
 400 moves framework state to HDF5; version 310 additionally embeds parameters,
 RNG, task information and measurements in XDR. These layouts must not be mixed.
 
+The `--spinmc-state` profile recovers the version-400 physical payload into
+ordinary HDF5 datasets while copying the companion HDF5 archive:
+
+```sh
+alps-hdf5-convert task.out.run1.h5 recovered.h5 \
+  --spinmc-state task.out.run1 --parameters /parameters
+```
+
+`/migration/spinmc` contains the model, spins (site × component), total-update
+counter, fractional thermalization counter, thermalization sweep counter, and
+exact source XDR bytes. Ising Boolean states become ±1; Potts states retain their
+color indices; XY, Heisenberg and O(4) retain their vector components. The reader
+checks the header, exact payload length and physical spin constraints before
+publication. Potts requires a numeric `q` of 3, 4 or 10; unresolved expressions
+are rejected. Version 310 is not yet supported. RNG and measurement data remain
+in their original archive locations; statistical profiles can be selected in the
+same invocation. The source files remain untouched.
+
+The released pair has no shared identifier: callers must supply companions
+from the same saved run. Presence and payload checks cannot authenticate that
+pairing. The fixtures are compiled C++ protocol reconstructions using OSIRIS,
+with source references and hashes in `tests/cli/fixtures/spinmc-state.json`;
+they are not represented as complete released application checkpoints.
+
+This profile is state recovery, not native solver restart conversion.
 No existing profile translates these physical checkpoints into native solver
 checkpoints. Keep both companion files. A complete offline translator must
 validate the pair and model representation, carry physical state and RNG into
