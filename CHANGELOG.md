@@ -6,6 +6,10 @@ User-facing changes and migration notes are recorded here, starting with the bui
 
 ### Changed
 
+- Validate native ALEA checkpoints by replaying the shared batch merge algorithm.
+  Reject inconsistent cursors, counts, offsets and nonzero empty bins before
+  replacement; remove manual modular cursor reconstruction and duplicate
+  application validation. Keep batch sampling explicitly unit-weighted.
 - Correct native ALEA Hotelling mean tests: retain full covariance and fractional
   effective counts, pool two-sample degrees of freedom correctly, and test complex
   batches as joint real/imaginary data. Reject missing covariance and insufficient

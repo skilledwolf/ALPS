@@ -524,8 +524,8 @@ template<class T> std::vector<T> sample(size_t i, size_t size) {
     }
     return value;
 }
-template<class T> void resume(std::string const& filename, size_t components, size_t boundary) {
-    aa::batch_acc<T> uninterrupted(components, 8, 3);
+template<class T> void resume(std::string const& filename, size_t components, size_t boundary, uint64_t base) {
+    aa::batch_acc<T> uninterrupted(components, 8, base);
     for (size_t i=0; i<boundary; ++i) uninterrupted << sample<T>(i, components);
     {
         alps::hdf5::archive ar(filename, "w");
@@ -1071,6 +1071,43 @@ void failed_loads(std::string const& filename) {
          && before_cursor.cycle() == acc.cursor().cycle()
          && before_cursor.level() == acc.cursor().level(),
             "failed accumulator load changed continuation state");
+    aa::batch_acc<double> sparse(2,8,3);
+    sparse << sample<double>(0,2);
+    for (int corruption : {0,1,2,3}) {
+        auto const& source = corruption == 3 ? sparse : acc;
+        {
+            alps::hdf5::archive ar(filename, "a");
+            aa::hdf5_serializer codec(ar, "/");
+            serialize(codec, "bad-layout", source);
+            if (corruption == 0) {
+                auto offset = source.offset().eval();
+                ++offset(0);
+                ar.write("/bad-layout/batch/offset", offset.data(), {8});
+            } else if (corruption == 1) {
+                auto count = source.store().count().eval();
+                size_t different = 1;
+                while (count(different) == count(0)) ++different;
+                std::swap(count(0), count(different)); // Same total, wrong native layout.
+                ar.write("/bad-layout/batch/count", count.data(), {8});
+            } else if (corruption == 2) {
+                ar.write("/bad-layout/cursor/level_position", uint64_t(2)); // In bounds, inconsistent with counts.
+            } else {
+                auto sums = source.store().batch().eval();
+                sums(0,1) = 1.; // Unoccupied slot must remain zero.
+                ar.write("/bad-layout/batch/sum", sums.data(), {8,2});
+            }
+        }
+        {
+            alps::hdf5::archive ar(filename, "r");
+            aa::hdf5_serializer codec(ar, "/");
+            rejects([&] { deserialize(codec, "bad-layout", acc); });
+        }
+        require(before == acc.result() && before_offsets == acc.offset()
+             && before_cursor.current() == acc.cursor().current()
+             && before_cursor.cycle() == acc.cursor().cycle()
+             && before_cursor.level() == acc.cursor().level(),
+                "corrupt checkpoint layout changed continuation state");
+    }
     aa::batch_acc<double> initial_merge(2,8,3);
     for (size_t i=0; i<25; ++i) initial_merge << sample<double>(i,2);
     {
@@ -1123,10 +1160,13 @@ void failed_loads(std::string const& filename) {
 int main() {
     auto const filename = boost::filesystem::unique_path("statistics.%%%%-%%%%.h5").string();
     try {
-        for (auto split : {size_t(0), size_t(23), size_t(137)}) {
-            resume<double>(filename,1,split);
-            resume<double>(filename,3,split);
-            resume<std::complex<double>>(filename,2,split);
+        for (auto split : {size_t(0), size_t(1), size_t(3), size_t(8), size_t(23), size_t(24),
+                           size_t(25), size_t(64), size_t(137)}) {
+            for (uint64_t base : {uint64_t(1), uint64_t(3)}) {
+                resume<double>(filename,1,split,base);
+                resume<double>(filename,3,split,base);
+                resume<std::complex<double>>(filename,2,split,base);
+            }
         }
         results(filename);
         mean_tests();

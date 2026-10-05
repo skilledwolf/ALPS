@@ -114,7 +114,7 @@ void batch_acc<T>::set_num_batches(size_t num_batches)
 }
 
 template <typename T>
-void batch_acc<T>::add(const computed<T> &source, uint64_t count)
+void batch_acc<T>::add(const computed<T> &source)
 {
     internal::check_valid(*this);
     if (source.size() != size()) throw size_mismatch();
@@ -126,7 +126,7 @@ void batch_acc<T>::add(const computed<T> &source, uint64_t count)
 
     // Since Eigen matrix are column-major, we can just pass the pointer
     source.add_to(view<T>(store_->batch().col(cursor_.current()).data(), size()));
-    store_->count()(cursor_.current()) += count;
+    ++store_->count()(cursor_.current());
 }
 
 template <typename T>

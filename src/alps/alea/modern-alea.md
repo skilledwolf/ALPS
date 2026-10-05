@@ -23,7 +23,10 @@ error fields remain available for inspection and are validated when reading.
 `serialize`/`deserialize` overloads, kind 6. Checkpoints retain sums, per-batch
 counts, offsets, base batch size and the complete merge cursor; loads stage and
 validate that state before replacement. Only the cursor's level and position
-are stored; its other fields are derived. Merging unrelated time series into a
+are stored; its other fields are derived. The codec replays native batch merges
+from the sample count to validate every count, offset and cursor together;
+empty bins must have zero sums. Samples are unit observations; result bins retain
+their accumulated sample weights. Merging unrelated time series into a
 resumable batch accumulator is unsupported; variance and covariance estimators
 retain weighted result merging. Other accumulator types have no
 checkpoint overload: saving a result is not a resumable checkpoint. Autocorrelation

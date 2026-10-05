@@ -115,7 +115,7 @@ public:
     size_t num_batches() const { return num_batches_; }
 
     /** Add computed vector to the accumulator */
-    batch_acc& operator<<(const computed<T>& src){ add(src, 1); return *this; }
+    batch_acc& operator<<(const computed<T>& src){ add(src); return *this; }
 
     /** Returns sample size, i.e., total number of accumulated data points */
     uint64_t count() const { return store_->count().sum(); }
@@ -136,7 +136,7 @@ public:
     uint64_t current_batch_size() const { return base_size_ * cursor_.factor(); }
 
 protected:
-    void add(const computed<T> &source, uint64_t count);
+    void add(const computed<T> &source);
 
     void next_batch();
 
