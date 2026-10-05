@@ -25,6 +25,11 @@ int main() {
     p["INITIAL_SITE"]=1;
     measurements sim(p,true);
     require(sim.sample({0,1,2,1},-1.),"Valid sample rejected");
+    sim.record_measurements(false);
+    sim.sample({1,1,1,1},1.);
+    require(sim.measurement("nn")->count()==1 && sim.measurement("Centered Density Moments")->count()==1,
+            "Warmup sample leaked into measurements or density moments");
+    sim.record_measurements(true);
     auto corr=sim.measurement("nn")->result().mean();
     auto builtin=sim.measurement("Density Correlations")->result().mean();
     for (size_t i=0;i<4;++i) {

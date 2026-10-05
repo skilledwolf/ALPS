@@ -19,7 +19,7 @@
 #include <alps/mcbase.hpp>
 #include <alps/model.h>
 #include <alps/ngs/make_deprecated_parameters.hpp>
-#include "../mc/measurements.hpp"
+#include "simulation.hpp"
 #include <alps/scheduler/measurement_operators.h>
 #include <set>
 
@@ -27,7 +27,7 @@
 #include <boost/assert.hpp>
 
 template <class G=typename alps::graph_helper<>::graph_type, class StateType = boost::uint8_t>
-class QMCRun : public alps::mcbase, public alps::graph_helper<G>, public alps::model_helper<>
+class QMCRun : public native_qmc::simulation, public alps::graph_helper<G>, public alps::model_helper<>
              , public alps::MeasurementOperators
 {
 public :
@@ -36,8 +36,6 @@ public :
   typedef typename super_type::site_iterator site_iterator;
 
   QMCRun(alps::params const&,size_t,size_t,bool=false);
-  static alps::params checkpoint_parameters(alps::params p) { p.erase("SWEEPS"); return p; }
-  alps::params sampling_parameters() const { return parameters; }
   unsigned winding_dimension() const { return winding_dimension_; }
   double density_reference() const { return density_reference_; }
   void save(alps::hdf5::archive& ar) const override {
@@ -57,51 +55,21 @@ public :
     alps::mcbase::load(ar);
     density_reference_=reference;
   }
-  auto const& measurement_labels() const { return labels_; }
-  auto const& signed_measurements() const { return signed_names_; }
-  void add_measurement(std::string const& name,size_t size=1,bool sign=true) {
-    if (is_signed_ && sign) signed_names_.insert(name);
-    native_mc::add_measurement(*this,name,size+signed_names_.count(name),bins_);
-  }
-  void add_measurement(std::string const& name,std::vector<std::string> const& labels) {
-    if (labels.empty()) throw std::invalid_argument("Empty QMC measurement labels: "+name);
-    labels_[name]=labels;
-    add_measurement(name,labels.size());
-  }
   template<class T> void record(std::string const& name,T const& value,double sign) {
-    auto adapter=alps::alea::make_adapter(value);
-    alps::alea::column<double> sample(adapter.size()+signed_names_.count(name));
-    sample.setZero();
-    adapter.add_to(alps::alea::view<double>(sample.data(),adapter.size()));
-    if (signed_names_.count(name)) sample[sample.size()-1]=sign;
+    if (!recording_) return;
     if (name=="Density") {
+      auto adapter=alps::alea::make_adapter(value);
+      alps::alea::column<double> sample=alps::alea::column<double>::Zero(adapter.size());
+      adapter.add_to(alps::alea::view<double>(sample.data(),adapter.size()));
       double density=sample[0]*sign;
       if (std::isnan(density_reference_)) density_reference_=density;
       double delta=density-density_reference_;
       native_mc::record(*this,"Centered Density Moments",alps::alea::column<double>{delta*sign,delta*delta*sign,sign});
     }
-    native_mc::record(*this,name,sample);
+    native_qmc::simulation::record(name,value,sign);
   }
   void record(std::string const& name,std::valarray<double> const& value,double sign) {
     record(name,std::vector<double>(std::begin(value),std::end(value)),sign);
-  }
-  void validate_measurements(alps::hdf5::archive& ar,uint64_t samples) const {
-    if (ar.list_children("measurements").size()!=measurements.size())
-      throw std::invalid_argument("Unexpected QMC checkpoint measurements");
-    alps::alea::hdf5_serializer codec(ar,"measurements");
-    for (auto const& [name,handle]:measurements) {
-      if (!std::holds_alternative<std::shared_ptr<native_mc::batch>>(handle)) continue;
-      native_mc::batch batch;
-      native_mc::autocorr diagnostic;
-      alps::alea::deserialize(codec,ar.encode_segment(name),batch);
-      alps::alea::deserialize(codec,ar.encode_segment(native_mc::diagnostic(name)),diagnostic);
-      if (batch.size()!=std::get<std::shared_ptr<native_mc::batch>>(handle)->size() ||
-          batch.num_batches()!=bins_ || batch.current_batch_size()!=batch.cursor().factor() ||
-          batch.count()>samples || !batch.store().batch().allFinite() ||
-          diagnostic.size()!=batch.size() || diagnostic.count()!=batch.count() ||
-          diagnostic.batch_size()!=1 || diagnostic.granularity()!=2)
-        throw std::invalid_argument("Invalid QMC checkpoint measurement state");
-    }
   }
   int random_int(int n) { return int(random()*n); }
   double random_real() const { return random(); }
@@ -116,13 +84,9 @@ protected:
   }
   unsigned winding_dimension_=0;
   alps::Parameters parms;
-  size_t bins_;
   double density_reference_=std::numeric_limits<double>::quiet_NaN();
-  std::map<std::string,std::vector<std::string>> labels_;
-  std::set<std::string> signed_names_;
 protected:
   double beta;
-  bool is_signed_;
   bool is_spin_model_;
   bool is_charge_model_;
   bool measure_local_density_;
@@ -164,21 +128,20 @@ private:
 
 template <class G, class StateType>
 QMCRun<G,StateType>::QMCRun(alps::params const& p,size_t bins,size_t chain,bool issymbolic)
-  : alps::mcbase(p,chain), super_type(graph_parameters(p)),
+  : native_qmc::simulation(p,bins,chain), super_type(graph_parameters(p)),
     alps::model_helper<>(static_cast<super_type const&>(*this),alps::make_deprecated_parameters(p),issymbolic),
     alps::MeasurementOperators(alps::make_deprecated_parameters(p)),
     parms([&] {
       auto values=alps::make_deprecated_parameters(p);
       values.copy_undefined(this->model().default_parameters());
       return values;
-    }()), bins_(bins)
+    }())
   , beta(parms.defined("Beta") ? alps::evaluate<double>(parms["Beta"],parms)
       :  (parms.defined("beta") ? alps::evaluate<double>(parms["beta"],parms)
         : (parms.defined("BETA") ? alps::evaluate<double>(parms["BETA"],parms)
            : (parms.defined("T") ? 1./alps::evaluate<double>(parms["T"],parms)
               : (parms.defined("TEMPERATURE") ? 1./alps::evaluate<double>(parms["TEMPERATURE"],parms)
                  : 1./alps::evaluate<double>(parms["temperature"],parms)))))),
-    is_signed_(has_sign_problem()),
     is_spin_model_(false),
     is_charge_model_(false),
     measure_local_density_(false),
@@ -195,6 +158,7 @@ QMCRun<G,StateType>::QMCRun(alps::params const& p,size_t bins,size_t chain,bool 
     num_bond_types_(alps::maximum_edge_type(this->graph())+1)
 
 {
+  is_signed_=has_sign_problem();
   if (!this->num_sites() || !this->num_bonds() || bins<2 || bins%2)
     throw std::invalid_argument("QMC requires a nonempty lattice and even batch capacity >= 2");
   for (auto [it,end]=this->bonds();it!=end;++it)
