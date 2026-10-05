@@ -31,5 +31,5 @@ int main(int argc, char** argv) {
                 p["ERROR_VARIABLE"] = e["error_variable"]; p["ERROR_LIMIT"] = e["error_limit"];
             }
             p["PRINT_SWEEPS"] = e["print_sweeps"];
-        }, spinmc::derive);
+        }, native_mc::spin_output(spinmc::derive));
 }

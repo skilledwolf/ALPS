@@ -13,6 +13,6 @@ int main(int argc, char** argv) {
             if (!p.exists("THERMALIZATION")) p["THERMALIZATION"] = p["SWEEPS"].as<std::int64_t>() / 8;
             if (p.exists("T") && p["T"].as<double>() <= 0.)
                 throw std::invalid_argument("parameters.T must be positive; omit it for infinite temperature");
-        }, simplemc::simulation::derive,
+        }, native_mc::spin_output(simplemc::simulation::derive),
         [](simplemc::simulation const& simulation, std::filesystem::path const& path) { simulation.snapshot(path); });
 }

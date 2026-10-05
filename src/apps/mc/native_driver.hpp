@@ -60,7 +60,7 @@ inline std::string schema(std::filesystem::path const& file, char const* base, p
                 const auto key = std::string(name.str());
                 if (definitions["parameters"].as_table()->contains(key)) continue;
                 if (key == "NUM_CLONES" || key == "SEED" || key == "RNG" || key == "SNAPSHOT_INTERVAL" ||
-                    key == "LATTICE_LIBRARY" || key == "WORKER" || key == "WORKER_SEED" ||
+                    key == "LATTICE_LIBRARY" || key == "MODEL_LIBRARY" || key == "WORKER" || key == "WORKER_SEED" ||
                     key == "DISORDER_SEED" || key == "DISORDERSEED" || key == "ERROR_VARIABLE" ||
                     key == "ERROR_LIMIT" || key == "PRINT_SWEEPS")
                     throw std::invalid_argument("Retired parameter " + key + "; use typed input/output/execution fields");
@@ -83,6 +83,7 @@ alps::params parameters(alps::run_configuration const& run, Prepare const& prepa
     p["RNG"] = run.execution["rng"];
     p["DISORDER_SEED"] = run.execution.value_or<std::uint64_t>("disorder_seed", run.execution["seed"].as<std::uint64_t>());
     p["LATTICE_LIBRARY"] = run.input["lattice_library"];
+    if (run.input.exists("model_library")) p["MODEL_LIBRARY"] = run.input["model_library"];
     prepare(p, run);
     return p;
 }
@@ -110,7 +111,8 @@ chains_type<Simulation> prepare_chains(alps::run_configuration const& run, Prepa
             throw std::invalid_argument("output." + key + " must name a file in an existing directory");
     }
     const alps::params p = parameters(run, prepare);
-    if (p["SWEEPS"].as<std::uint64_t>() > std::numeric_limits<std::uint64_t>::max() - p["THERMALIZATION"].as<std::uint64_t>())
+    if (p.exists("SWEEPS") && p.exists("THERMALIZATION") &&
+        p["SWEEPS"].as<std::uint64_t>() > std::numeric_limits<std::uint64_t>::max() - p["THERMALIZATION"].as<std::uint64_t>())
         throw std::invalid_argument("Total sweep count exceeds the counter range");
     chains_type<Simulation> simulations;
     for (std::size_t id = 0; id < chains; ++id)
@@ -152,9 +154,36 @@ void checkpoint(alps::run_configuration const& run, chains_type<Simulation> cons
 }
 
 template<class Simulation> using snapshot_type = std::function<void(Simulation const&, std::filesystem::path const&)>;
-template<class Simulation, class Prepare, class Derive>
+// Statistical publication is application-owned; scheduling and restart are shared.
+template<class Derive> auto spin_output(Derive derive) {
+    return [derive](alps::run_configuration const& run, auto const& chains, alps::params const& p) {
+    std::vector<batch_results> raw;
+    for (auto const& chain : chains) raw.push_back(chain->collect_results());
+    moment_results moments;
+    for (auto const& chain:chains) {
+        auto bins=chain->moments().results();
+        moments.insert(moments.end(),bins.begin(),bins.end());
+    }
+    unavailable_results unavailable;
+    const auto results = derive(pool(raw), p, moments, &unavailable);
+    alps::hdf5::save_checkpoint(run.output["results"].as<std::string>(), [&](alps::hdf5::archive& archive) {
+        alps::save_results(results, run.parameters, archive, "/simulation/results");
+        archive["/run_config"] << run;
+        for (auto const& [name,reason]:unavailable) archive["/simulation/unavailable/"+archive.encode_segment(name)]<<reason;
+        for (std::size_t id = 0; id < chains.size(); ++id) {
+            chains[id]->moments().save(archive,"/simulation/realizations/0/clones/"+std::to_string(id)+"/physical_moments");
+            archive["/simulation/realizations/0/clones/" + std::to_string(id) + "/completed_sweeps"] << chains[id]->completed_sweeps();
+            archive["/simulation/realizations/0/clones/" + std::to_string(id) + "/measurements"] << chains[id]->measurement_count();
+            save_diagnostics(*chains[id],archive,"/simulation/realizations/0/clones/"+std::to_string(id),
+                             native_mc::batch_names(chains[id]->get_measurements()));
+        }
+    });
+    };
+}
+
+template<class Simulation, class Prepare, class Publish>
 void execute(alps::run_configuration const& run, chains_type<Simulation>& chains,
-             Prepare const& prepare, Derive const& derive, snapshot_type<Simulation> const& snapshot, parallel const& group) {
+             Prepare const& prepare, Publish const& publish, snapshot_type<Simulation> const& snapshot, parallel const& group) {
     using clock = std::chrono::steady_clock;
     const auto started = clock::now();
     auto last_checkpoint = started;
@@ -196,33 +225,13 @@ void execute(alps::run_configuration const& run, chains_type<Simulation>& chains
     group.checked([&] {
     if (group.rank()!=0) return;
     checkpoint(run,chains);
-    std::vector<batch_results> raw;
-    for (auto const& chain : chains) raw.push_back(chain->collect_results());
-    moment_results moments;
-    for (auto const& chain:chains) {
-        auto bins=chain->moments().results();
-        moments.insert(moments.end(),bins.begin(),bins.end());
-    }
-    unavailable_results unavailable;
-    const auto results = derive(pool(raw), parameters(run, prepare), moments, &unavailable);
-    alps::hdf5::save_checkpoint(run.output["results"].as<std::string>(), [&](alps::hdf5::archive& archive) {
-        alps::save_results(results, run.parameters, archive, "/simulation/results");
-        archive["/run_config"] << run;
-        for (auto const& [name,reason]:unavailable) archive["/simulation/unavailable/"+archive.encode_segment(name)]<<reason;
-        for (std::size_t id = 0; id < chains.size(); ++id) {
-            chains[id]->moments().save(archive,"/simulation/realizations/0/clones/"+std::to_string(id)+"/physical_moments");
-            archive["/simulation/realizations/0/clones/" + std::to_string(id) + "/completed_sweeps"] << chains[id]->completed_sweeps();
-            archive["/simulation/realizations/0/clones/" + std::to_string(id) + "/measurements"] << chains[id]->measurement_count();
-            save_diagnostics(*chains[id],archive,"/simulation/realizations/0/clones/"+std::to_string(id),
-                             native_mc::batch_names(chains[id]->get_measurements()));
-        }
-    });
+    publish(run,chains,parameters(run,prepare));
     });
 }
 
-template<class Simulation, class Prepare, class Derive>
+template<class Simulation, class Prepare, class Publish>
 int main(int argc, char** argv, char const* application, char const* base_schema,
-         parameter_type type, Prepare prepare, Derive derive, snapshot_type<Simulation> snapshot = {}) {
+         parameter_type type, Prepare prepare, Publish publish, snapshot_type<Simulation> snapshot = {}) {
     try {
         bool validate = false, show_schema = false;
         std::vector<std::filesystem::path> files;
@@ -258,6 +267,9 @@ int main(int argc, char** argv, char const* application, char const* base_schema
             runs.push_back(alps::load_run_configuration(file, schema(file, base_schema, type)));
             runs.back().input["lattice_library"] = std::filesystem::weakly_canonical(
                 alps::search_xml_library_path(runs.back().input.value_or<std::string>("lattice_library", "lattices.xml"))).string();
+            if (toml::parse(base_schema)["input"]["model_library"])
+                runs.back().input["model_library"] = std::filesystem::weakly_canonical(
+                    alps::search_xml_library_path(runs.back().input.value_or<std::string>("model_library", "models.xml"))).string();
             simulations.push_back(prepare_chains<Simulation>(runs.back(), prepare, group));
             for (auto const& [key, value] : runs.back().input) protected_paths.insert(std::filesystem::weakly_canonical(value.as<std::string>()));
         }
@@ -280,7 +292,7 @@ int main(int argc, char** argv, char const* application, char const* base_schema
         });
         for (std::size_t index = 0; index < runs.size(); ++index) {
             if (validate) { if (group.rank()==0) std::cout << "Valid " << application << " configuration: " << files[index].string() << '\n'; }
-            else execute(runs[index], simulations[index], prepare, derive, snapshot, group);
+            else execute(runs[index], simulations[index], prepare, publish, snapshot, group);
         }
         return 0;
     } catch (std::exception const& error) {
