@@ -29,6 +29,124 @@ template<class E, class F> void throws_estimate(F operation) {
     throw std::runtime_error("statistics accessor did not report its estimate limitation");
 }
 
+void mean_tests() {
+    // Independent analytic oracles: scalar pooled t^2 and the inverse of a
+    // two-dimensional covariance. Neither uses ALEA's diagonalization.
+    aa::cov_result<double> left(aa::cov_data<double>(2)), right(aa::cov_data<double>(2));
+    left.store().count()=5; left.store().count2()=5;
+    left.store().data() << 2,1; left.store().data2() << 4,1,1,2;
+    right.store().count()=8; right.store().count2()=8;
+    right.store().data() << -1,3; right.store().data2() << 3,-.5,-.5,5;
+    aa::column<double> zero(2); zero.setZero();
+    auto one = aa::test_mean(left, zero);
+    require(std::abs(one.score()-15./7) < 1e-12 &&
+            one.dist().degrees_of_freedom1()==2 && one.dist().degrees_of_freedom2()==3,
+            "one-sample covariance test disagrees with inverse-matrix oracle");
+    auto two = aa::test_mean(left, right);
+    double expected = 10./22 * 40./13 * 5951./1590.75;
+    require(std::abs(two.score()-expected) < 1e-12 &&
+            two.dist().degrees_of_freedom1()==2 && two.dist().degrees_of_freedom2()==10,
+            "two-sample covariance pooling or degrees of freedom are incorrect");
+    Eigen::Matrix2d rotation; rotation << .6,-.8,.8,.6;
+    auto rotated = left;
+    rotated.store().data() = rotation*left.mean();
+    rotated.store().data2() = rotation*left.cov()*rotation.transpose();
+    require(std::abs(aa::test_mean(rotated,zero).score()-one.score()) < 1e-12,
+            "mean test is not invariant under orthogonal basis changes");
+    auto mixed_units = left;
+    Eigen::Matrix2d units = Eigen::Matrix2d::Zero(); units(0,0)=1e5; units(1,1)=1e-5;
+    mixed_units.store().data() = units*left.mean();
+    mixed_units.store().data2() = units*left.cov()*units;
+    require(std::abs(aa::test_mean(mixed_units,zero).score()-one.score()) < 1e-12,
+            "different component units changed covariance rank or significance");
+    aa::column<double> diff_units(2), variance_units(2);
+    diff_units << 1e5,1e-5; variance_units << 1e10,1e-10;
+    require(std::abs(aa::t2_test(diff_units,variance_units,10).score()-.9) < 1e-12,
+            "different component units changed a diagonal mean test");
+    aa::var_result<double> a(aa::var_data<double>(1)), b(aa::var_data<double>(1));
+    a.store().count()=5; a.store().count2()=5; a.store().data()(0)=2; a.store().data2()(0)=4;
+    b.store().count()=8; b.store().count2()=8; b.store().data()(0)=-1; b.store().data2()(0)=3;
+    auto scalar = aa::test_mean(a,b);
+    require(std::abs(scalar.score()-3960./481) < 1e-12 &&
+            scalar.dist().degrees_of_freedom2()==11,
+            "two-sample scalar test disagrees with pooled Student t squared");
+    // Fractional effective sample counts must remain doubles.
+    a.store().count2()=10;
+    aa::column<double> scalar_zero(1); scalar_zero.setZero();
+    auto weighted = aa::test_mean(a,scalar_zero);
+    require(std::abs(weighted.score()-2.5) < 1e-12 &&
+            weighted.dist().degrees_of_freedom2()==1.5,
+            "weighted mean test truncated the effective sample count");
+    auto scaled = a;
+    scaled.store().data() *= 1e-8;
+    scaled.store().data2() *= 1e-16;
+    require(std::abs(aa::test_mean(scaled,scalar_zero).score()-weighted.score()) < 1e-12,
+            "small nonzero variance was mistaken for a deterministic result");
+    aa::column<double> huge(1), huge_variance(1);
+    huge(0)=1e155; huge_variance(0)=1e308;
+    require(std::abs(aa::t2_test(huge,huge_variance,10).score()-100) < 1e-12,
+            "finite standardized mean test overflowed while squaring its difference");
+    // Noncircular complex data must match a joint real/imaginary test.
+    aa::batch_acc<std::complex<double>> complex(1,8,1);
+    aa::batch_acc<double> real(2,8,1);
+    for (size_t i=0; i<7; ++i) {
+        double x=double(i)-2, y=double((i*i)%5)+.2*x;
+        complex << std::vector<std::complex<double>>{{x,y}};
+        real << std::vector<double>{x,y};
+    }
+    aa::column<std::complex<double>> complex_zero(1); complex_zero.setZero();
+    auto complex_test = aa::test_mean(complex.result(),complex_zero);
+    auto real_test = aa::test_mean(real.result(),zero);
+    require(std::abs(complex_test.score()-real_test.score()) < 1e-12 &&
+            complex_test.dist().degrees_of_freedom1()==2,
+            "complex mean test lost real/imaginary covariance or dimension");
+    aa::cov_acc<std::complex<double>,aa::elliptic_var> elliptic(1);
+    aa::var_acc<std::complex<double>,aa::elliptic_var> elliptic_var(1);
+    aa::cov_acc<std::complex<double>> circular(1);
+    for (size_t i=0; i<7; ++i) {
+        auto value=std::vector<std::complex<double>>{{double(i)-2,double((i*i)%5)+.2*(double(i)-2)}};
+        elliptic << value; elliptic_var << value; circular << value;
+    }
+    require(std::abs(aa::test_mean(elliptic.result(),complex_zero).score()-real_test.score()) < 1e-12 &&
+            std::abs(aa::test_mean(elliptic_var.result(),complex_zero).score()-real_test.score()) < 1e-12,
+            "elliptic result mean test differs from joint real/imaginary oracle");
+    rejects([&] { aa::test_mean(circular.result(),complex_zero); });
+    aa::var_acc<double> missing_covariance(2);
+    for (size_t i=0; i<7; ++i) missing_covariance << std::vector<double>{double(i),double(i*i)};
+    rejects([&] { aa::test_mean(missing_covariance.result(),zero); });
+    a.store().data2()(0)=0;
+    require(aa::test_mean(a,a.mean()).pvalue()==1 && aa::test_mean(a,scalar_zero).pvalue()==0,
+            "deterministic equality or mismatch produced an undefined probability");
+    a.store().data2()(0)=-1;
+    rejects([&] { aa::test_mean(a,scalar_zero); });
+    a.store().data2()(0)=NAN;
+    rejects([&] { aa::test_mean(a,scalar_zero); });
+    rejects([&] { aa::test_mean(aa::var_result<double>(),scalar_zero); });
+    a.store().count2()=.25;
+    rejects([&] { aa::test_mean(a,scalar_zero); });
+    rejects([&] { aa::t2_test(aa::column<double>{},aa::column<double>{},10); });
+    auto asymmetric = left; asymmetric.store().data2()(0,1)=.5;
+    rejects([&] { aa::test_mean(asymmetric,zero); });
+    asymmetric = mixed_units; asymmetric.store().data2()(0,1)*=2;
+    rejects([&] { aa::test_mean(asymmetric,zero); });
+    rejects([&] { aa::test_mean(left,scalar_zero); });
+    rejects([&] { aa::t2_test(zero,aa::column<double>::Ones(2),.5); });
+    aa::cov_acc<double> undersampled(2);
+    undersampled << std::vector<double>{1,0} << std::vector<double>{0,1};
+    rejects([&] { aa::test_mean(undersampled.result(),zero); });
+    aa::fisher_f_distribution f(1,1);
+    double lower = 2/std::acos(-1.)*std::atan(std::sqrt(3.));
+    require(std::abs(f.cdf(3)-lower) < 1e-14 && std::abs(f.ccdf(3)-(1-lower)) < 1e-14 &&
+            f.ccdf(INFINITY)==0 && f.cdf(INFINITY)==1 &&
+            std::isnan(aa::fisher_f_distribution(0,1).cdf(1)),
+            "F distribution tails disagree with the analytic F(1,1) law");
+    require(aa::t2_result(0,4,10).pvalue()==1,
+            "standard mean-test p-value incorrectly counts lower-tail variance anomalies");
+    auto tiny_tail = aa::fisher_f_distribution(2,2).ccdf(1e308);
+    require(tiny_tail > 0 && std::abs(tiny_tail/1e-308-1) < 1e-13,
+            "F distribution overflow discarded a representable extreme upper tail");
+}
+
 // A two-participant sum reducer that deliberately defers writes until commit.
 // The peer's primitive contributions are recorded separately from the target.
 struct test_reducer : aa::reducer {
@@ -1011,6 +1129,7 @@ int main() {
             resume<std::complex<double>>(filename,2,split);
         }
         results(filename);
+        mean_tests();
         unequal_merge(filename);
         independent_reductions<double>();
         independent_reductions<std::complex<double>>();

@@ -6,6 +6,11 @@ User-facing changes and migration notes are recorded here, starting with the bui
 
 ### Changed
 
+- Correct native ALEA Hotelling mean tests: retain full covariance and fractional
+  effective counts, pool two-sample degrees of freedom correctly, and test complex
+  batches as joint real/imaginary data. Reject missing covariance and insufficient
+  observations. Use Boost.Math F tails and standard upper-tail p-values; remove
+  synthetic pooled-result state and the custom special-function implementation.
 - Remove unbuilt spin-fitting code, unused TCP/ULFM scheduler remnants and dead
   checkpoint branches. Correct scalar summary pooling and empty-simulation
   measurement collection while the remaining scheduler applications migrate.

@@ -85,7 +85,6 @@ target_sources(alps_statistics PUBLIC
     include/alps/alea/internal/galois.hpp
     include/alps/alea/internal/joined.hpp
     include/alps/alea/internal/outer.hpp
-    include/alps/alea/internal/pooling.hpp
     include/alps/alea/internal/util.hpp
     include/alps/alea/mean.hpp
     include/alps/alea/mpi.hpp

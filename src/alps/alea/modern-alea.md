@@ -85,6 +85,21 @@ and invalid ratio domains fail without changing the source result.
 The heterogeneous `result` facade also exposes `count2()` and `stderror<T>()`;
 mean-only results cannot provide either estimate.
 
+`test_mean` evaluates Hotelling's mean comparison after diagonalizing the full
+covariance. The two-sample test assumes independent Gaussian samples with equal
+population covariance; it pools covariance with `n1+n2-2` degrees of freedom.
+Effective observation counts remain floating point and provide an approximation
+for weighted bins or correlated samples. See the
+[one- and two-sample formulas](https://online.stat.psu.edu/stat505/Lesson07).
+Complex batches and elliptic results are expanded into joint real/imaginary
+vectors. Circular-only results lack the covariance needed for this test and
+are rejected; componentwise variance results are supported only for one scalar
+or one elliptic complex value. Deterministic equal/mismatched directions produce probabilities
+one/zero; invalid covariance and insufficient observations are rejected.
+The low-level `t2_test(diff, variance_of_mean, covariance_dof, atol)` takes
+diagonalized real data explicitly, without encoding degrees of freedom in a
+synthetic result. F-distribution tails use Boost.Math.
+
 The standalone CT-INT solver stores sign-weighted physical measurements as
 joint native batches. It reduces those batches across MPI ranks before taking
 ratios, keeping independent partial bins and their counts. Unsigned diagnostics
