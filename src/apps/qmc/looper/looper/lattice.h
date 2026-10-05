@@ -307,7 +307,7 @@ protected:
 
   double calc_volume(alps::Parameters const& p) {
     double vol;
-    if (helper_.has_lattice(p["LATTICE"])) {
+    if (p.defined("LATTICE") && helper_.has_lattice(p["LATTICE"])) {
       vol = helper_.volume();
       std::vector<std::vector<double> > vecs;
       BOOST_FOREACH(std::vector<double> const& v, helper_.basis_vectors()) vecs.push_back(v);

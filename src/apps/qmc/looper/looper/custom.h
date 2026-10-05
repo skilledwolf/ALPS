@@ -143,7 +143,7 @@ struct custom_measurement {
             st += (1 - spins[vs]);
           v += boost::get<1>(elms)[get(site_type_t(), lat.rg(), rs)][st];
         }
-        m[boost::get<0>(elms)] << sign * v / lat.volume();
+        m.record(boost::get<0>(elms), sign * v / lat.volume(), sign);
       }
 
       // local
@@ -157,7 +157,7 @@ struct custom_measurement {
             st += (1 - spins[vs]);
           local[rs] = sign * boost::get<1>(elms)[get(site_type_t(), lat.rg(), rs)][st];
         }
-        m[boost::get<0>(elms)] << local;
+        m.record(boost::get<0>(elms), local, sign);
       }
 
       // correlation
@@ -199,7 +199,7 @@ struct custom_measurement {
           }
           corr *= sign * mltplcty;
         }
-        m[boost::get<0>(elms)] << corr;
+        m.record(boost::get<0>(elms), corr, sign);
       }
 
       // structure factor
@@ -224,7 +224,7 @@ struct custom_measurement {
           sfac[k] = std::real(std::conj(v0) * v1);
         }
         sfac *= (sign / lat.volume());
-        m[boost::get<0>(elms)] << sfac;
+        m.record(boost::get<0>(elms), sfac, sign);
       }
     }
   };

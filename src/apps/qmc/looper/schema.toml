@@ -1,0 +1,60 @@
+# Copyright (C) 2026 ALPS Collaboration. SPDX-License-Identifier: MIT
+[parameters.ALGORITHM]
+type = "string"
+default = "loop"
+choices = ["loop", "loop; path integral", "loop; sse", "loop; exchange", "loop; path integral; exchange", "loop; sse; exchange"]
+[parameters.DISABLE_IMPROVED_ESTIMATOR]
+type = "bool"
+default = false
+[parameters.NUM_REPLICAS]
+type = "int64"
+min = 2
+[parameters.TEMPERATURE_SET]
+type = "float64[]"
+[parameters.INVERSE_TEMPERATURE_SET]
+type = "float64[]"
+[parameters.T_MIN]
+type = "float64"
+min = 0.0
+[parameters.T_MAX]
+type = "float64"
+min = 0.0
+[parameters.BETA_MIN]
+type = "float64"
+min = 0.0
+[parameters.BETA_MAX]
+type = "float64"
+min = 0.0
+[parameters.TEMPERATURE_DISTRIBUTION_TYPE]
+type = "int64"
+min = 0
+max = 3
+[parameters.NO_EXCHANGE]
+type = "bool"
+default = false
+[parameters.RANDOM_EXCHANGE]
+type = "bool"
+default = false
+[parameters.EXCHANGE_INTERVAL]
+type = "int64"
+default = 1
+min = 1
+[parameters.OPTIMIZE_TEMPERATURE]
+type = "bool"
+default = false
+[parameters.TEMPERATURE_OPTIMIZATION]
+type = "bool"
+default = false
+[parameters.OPTIMIZATION_TYPE]
+type = "string"
+default = "rate"
+choices = ["rate", "population"]
+[parameters.INITIAL_BLOCK_SWEEPS]
+type = "int64"
+min = 1
+[parameters.OPTIMIZATION_ITERATIONS]
+type = "int64"
+min = 0
+[parameters.BLOCK_SWEEP_FACTOR]
+type = "float64"
+min = 1.0

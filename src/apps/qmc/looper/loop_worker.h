@@ -13,19 +13,20 @@
 #include <type_traits>
 #include "loop_config.h"
 #include <looper/cluster.h>
-#include <looper/montecarlo.h>
 #include <looper/operator.h>
 #include <looper/permutation.h>
 #include <looper/temperature.h>
 #include <looper/type.h>
 #include <looper/union_find.h>
-#include <alps/parapack/worker.h>
+#include "../simulation.hpp"
+#include <alps/ngs/make_deprecated_parameters.hpp>
+#include <alps/hdf5/stdarray.hpp>
 
 
 namespace looper {
 
 template<class MC>
-class loop_worker : public alps::parapack::mc_worker, private loop_config {
+class loop_worker : public native_qmc::simulation, private loop_config {
 public:
   typedef MC mc_type;
   static constexpr bool continuous_time = std::is_same_v<MC, looper::path_integral>;
@@ -39,30 +40,58 @@ public:
   typedef looper::cluster_info cluster_info_t;
 
   typedef typename looper::estimator<measurement_set, mc_type, lattice_t, time_t>::type estimator_t;
-  typedef double weight_parameter_type;
+  using weight_parameter_type=Eigen::Vector2d;
 
-  loop_worker(alps::Parameters const& p);
-  void init_observables(alps::Parameters const& params, alps::ObservableSet& obs);
+  loop_worker(alps::params const& p,size_t bins,size_t chain,double initial_beta=0.);
+  void init_observables(native_qmc::simulation& obs);
 
-  bool is_thermalized() const { return mcs.is_thermalized(); }
-  double progress() const { return mcs.progress(); }
+  bool is_thermalized() const { return steps_>=parameters["THERMALIZATION"].template as<uint64_t>(); }
+  double fraction_completed() const override {
+    return is_thermalized() ? double(steps_-parameters["THERMALIZATION"].template as<uint64_t>())/parameters["SWEEPS"].template as<uint64_t>() : 0.;
+  }
+  uint64_t completed_sweeps() const { return steps_; }
+  size_t site_count() const { return num_sites(lattice.rg()); }
+  double volume() const { return lattice.volume(); }
+  void update() override {
+    record_measurements(is_thermalized());
+    run(*this,1./temperature(steps_+1));
+  }
+  void measure() override {}
+  void run(native_qmc::simulation& obs,double inverse_temperature);
 
-  void run(alps::ObservableSet& obs);
+  // Called after a completed sweep; field_energy_ is reconstructed each update.
+  weight_parameter_type weight_parameter() const { return {double(operators.size()),field_energy_}; }
+  static double log_weight(weight_parameter_type const& weight,double inverse_temperature) {
+    return std::log(inverse_temperature)*weight[0]-inverse_temperature*weight[1];
+  }
+  void save(alps::hdf5::archive& ar) const override;
+  void load(alps::hdf5::archive& ar) override;
 
-  // for exchange Monte Carlo
-  void set_beta(double beta) { temperature.set_beta(beta); }
-  double weight_parameter() const { return operators.size(); }
-  static double log_weight(double gw, double beta) { return std::log(beta) * gw; }
-
-  void save(alps::ODump& dp) const { dp << mcs << spins << operators; }
-  void load(alps::IDump& dp) { dp >> mcs >> spins >> operators; }
 
 protected:
+  static alps::Parameters graph_parameters(alps::params const& p) {
+    alps::Disorder::seed(p.value_or<uint32_t>("DISORDER_SEED",p.value_or<uint32_t>("SEED",42)));
+    return alps::make_deprecated_parameters(p);
+  }
+  std::vector<double> model_state() const {
+    std::vector<double> result{model.graph_weight(),model.energy_offset(),lattice.volume()};
+    for (double value:model.graph_weights()) result.push_back(value);
+    for (double value:model.field()) result.push_back(value);
+    for (int value:model.site_sign()) result.push_back(value);
+    for (int value:model.bond_sign()) result.push_back(value);
+    for (auto [it,end]=sites(lattice.rg());it!=end;++it) {
+      auto [first,last]=sites(lattice,*it); result.push_back(std::distance(first,last));
+    }
+    for (auto [it,end]=bonds(lattice.vg());it!=end;++it) {
+      result.push_back(source(*it,lattice.vg())); result.push_back(target(*it,lattice.vg()));
+    }
+    return result;
+  }
   void build();
   void connect(local_operator_t&);
 
   template<typename FIELD, typename SIGN, typename IMPROVE>
-  void flip(alps::ObservableSet& obs);
+  void flip(native_qmc::simulation& obs);
 
 private:
   // helpers
@@ -75,12 +104,14 @@ private:
   bool use_improved_estimator;
 
   // configuration (checkpoint)
-  looper::mc_steps mcs;
+  uint64_t steps_=0;
+  size_t chain_;
   std::vector<int> spins;
   std::vector<local_operator_t> operators;
 
   // observables
   double sign;
+  double field_energy_=0;
   estimator_t estimator;
 
   // working vectors
@@ -100,16 +131,27 @@ private:
 //
 
 template<class MC>
-loop_worker<MC>::loop_worker(alps::Parameters const& p)
-  : alps::parapack::mc_worker(p), lattice(p), model(p, lattice, continuous_time),
-    temperature(p), mcs(p) {
+loop_worker<MC>::loop_worker(alps::params const& p,size_t bins,size_t chain,double initial_beta)
+  : native_qmc::simulation(p,bins,chain), lattice(graph_parameters(p)),
+    model(alps::make_deprecated_parameters(p), lattice, continuous_time),
+    temperature([&] {
+      auto values=alps::make_deprecated_parameters(p);
+      if (initial_beta>0) values["T"]=1/initial_beta;
+      return values;
+    }()), chain_(chain) {
 
-  if (temperature.annealing_steps() > mcs.thermalization())
+  if (initial_beta>0 && temperature.annealing_steps())
+    throw std::invalid_argument("Annealing and replica exchange cannot be combined");
+
+  if (!site_count() || bins<2 || bins%2 || !std::isfinite(temperature.final()) ||
+      temperature.final()<=0 || !std::isfinite(temperature.initial()) || temperature.initial()<=0)
+    throw std::invalid_argument("Loop requires a nonempty lattice, positive finite temperature and even batch capacity >= 2");
+  if (temperature.annealing_steps() > p["THERMALIZATION"].as<uint64_t>())
     boost::throw_exception(std::invalid_argument("longer annealing steps than thermalization"));
 
   model.check_parameter(continuous_time && support_longitudinal_field, support_negative_sign);
 
-  use_improved_estimator = (!model.has_field()) && (!p.defined("DISABLE_IMPROVED_ESTIMATOR"));
+  use_improved_estimator = (!model.has_field()) && (!p.value_or("DISABLE_IMPROVED_ESTIMATOR",false));
   if (!use_improved_estimator) std::cout << "WARNING: improved estimator is disabled\n";
 
   // configuration
@@ -120,21 +162,23 @@ loop_worker<MC>::loop_worker(alps::Parameters const& p)
   perm.resize(max_virtual_sites(lattice));
 
   // initialize estimators
-  estimator.initialize(p, lattice, model.is_signed(), use_improved_estimator);
+  estimator.initialize(alps::make_deprecated_parameters(p), lattice, model.is_signed(), use_improved_estimator);
+  is_signed_=model.is_signed();
+  init_observables(*this);
 }
 
 template<class MC>
-void loop_worker<MC>::init_observables(alps::Parameters const&, alps::ObservableSet& obs) {
-  obs << make_observable(alps::SimpleRealObservable("Temperature"));
-  obs << make_observable(alps::SimpleRealObservable("Inverse Temperature"));
-  obs << make_observable(alps::SimpleRealObservable("Volume"));
-  obs << make_observable(alps::SimpleRealObservable("Number of Sites"));
-  obs << make_observable(alps::SimpleRealObservable("Number of Clusters"));
+void loop_worker<MC>::init_observables(native_qmc::simulation& obs) {
+  obs.add_measurement("Temperature",1,false);
+  obs.add_measurement("Inverse Temperature",1,false);
+  obs.add_measurement("Volume",1,false);
+  obs.add_measurement("Number of Sites",1,false);
+  obs.add_measurement("Number of Clusters",1,false);
   if (model.is_signed()) {
-    obs << alps::RealObservable("Sign");
+    obs.add_measurement("Sign",1,false);
     if (use_improved_estimator) {
-      obs << alps::RealObservable("Weight of Zero-Meron Sector");
-      obs << alps::RealObservable("Sign in Zero-Meron Sector");
+      obs.add_measurement("Weight of Zero-Meron Sector",1,false);
+      obs.add_measurement("Sign in Zero-Meron Sector",1,false);
     }
   }
   looper::energy_estimator::init_observables(obs, model.is_signed());
@@ -142,10 +186,9 @@ void loop_worker<MC>::init_observables(alps::Parameters const&, alps::Observable
 }
 
 template<class MC>
-void loop_worker<MC>::run(alps::ObservableSet& obs) {
-  // if (!mcs.can_work()) return;
-  ++mcs;
-  beta = 1.0 / temperature(mcs());
+void loop_worker<MC>::run(native_qmc::simulation& obs,double inverse_temperature) {
+  ++steps_;
+  beta = inverse_temperature;
 
   build();
 
@@ -177,14 +220,16 @@ void loop_worker<MC>::build() {
   for (int s = 0; s < nvs; ++s) current[s] = s;
 
   if constexpr (continuous_time) {
-    boost::variate_generator<engine_type&, boost::exponential_distribution<> >
-      r_time(engine(), boost::exponential_distribution<>(beta * model.graph_weight()));
+    auto r_time=[&] {
+      double rate=beta*model.graph_weight();
+      return rate>0 ? -std::log1p(-random())/rate : std::numeric_limits<double>::infinity();
+    };
     double t = r_time();
     for (operator_iterator opi = operators_p.begin(); t < 1 || opi != operators_p.end();) {
 
       // diagonal update & labeling
       if (opi == operators_p.end() || t < opi->time()) {
-        loop_graph_t g = model.choose_graph(generator_01());
+        loop_graph_t g = model.choose_graph(random);
         if ((is_bond(g) && is_compatible(g, spins_c[source(pos(g), lattice.vg())],
                                             spins_c[target(pos(g), lattice.vg())])) ||
             (is_site(g) && is_compatible(g, spins_c[pos(g)]))) {
@@ -214,8 +259,8 @@ void loop_worker<MC>::build() {
 
       // diagonal update & labeling
       if (try_gap) {
-        if ((nop+1) * uniform_01() < bw) {
-          loop_graph_t g = model.choose_graph(generator_01());
+        if ((nop+1) * random() < bw) {
+          loop_graph_t g = model.choose_graph(random);
           if ((is_bond(g) && is_compatible(g, spins_c[source(pos(g), lattice.vg())],
                                               spins_c[target(pos(g), lattice.vg())])) ||
               (is_site(g) && is_compatible(g, spins_c[pos(g)]))) {
@@ -231,23 +276,23 @@ void loop_worker<MC>::build() {
         }
       } else {
         if (opi->is_diagonal()) {
-          if (bw * uniform_01() < nop) {
+          if (bw * random() < nop) {
             --nop;
             ++opi;
             continue;
           } else {
             if (opi->is_site()) {
-              opi->assign_graph(model.choose_diagonal(generator_01(), opi->loc(),
+              opi->assign_graph(model.choose_diagonal(random, opi->loc(),
                 spins_c[opi->pos()]));
             } else {
-              opi->assign_graph(model.choose_diagonal(generator_01(), opi->loc(),
+              opi->assign_graph(model.choose_diagonal(random, opi->loc(),
                 spins_c[source(opi->pos(), lattice.vg())],
                 spins_c[target(opi->pos(), lattice.vg())]));
             }
           }
         } else {
           if (opi->is_bond())
-            opi->assign_graph(model.choose_offdiagonal(generator_01(), opi->loc(),
+            opi->assign_graph(model.choose_offdiagonal(random, opi->loc(),
               spins_c[source(opi->pos(), lattice.vg())],
               spins_c[target(opi->pos(), lattice.vg())]));
         }
@@ -271,7 +316,7 @@ void loop_worker<MC>::build() {
       int s2 = *vsi_end - *vsi;
       for (int i = 0; i < s2; ++i) perm[i] = i;
       looper::partitioned_random_shuffle(perm.begin(), perm.begin() + s2,
-        spins.begin() + offset, spins_c.begin() + offset, generator_01());
+        spins.begin() + offset, spins_c.begin() + offset, random);
       for (int i = 0; i < s2; ++i) unify(fragments, offset+i, current[offset+perm[i]]);
     }
   }
@@ -285,7 +330,7 @@ void loop_worker<MC>::connect(local_operator_t& op) {
     int s1 = target(op.pos(), lattice.vg());
     if (op.is_offdiagonal()) {
       if constexpr (continuous_time)
-        op.assign_graph(model.choose_offdiagonal(generator_01(), op.loc(),
+        op.assign_graph(model.choose_offdiagonal(random, op.loc(),
         spins_c[s0], spins_c[s1]));
       spins_c[s0] ^= 1;
       spins_c[s1] ^= 1;
@@ -305,7 +350,7 @@ void loop_worker<MC>::connect(local_operator_t& op) {
 
 template<class MC>
 template<typename FIELD, typename SIGN, typename IMPROVE>
-void loop_worker<MC>::flip(alps::ObservableSet& obs) {
+void loop_worker<MC>::flip(native_qmc::simulation& obs) {
   if (model.has_field() != FIELD() ||
       model.is_signed() != SIGN() ||
       use_improved_estimator != IMPROVE()) return;
@@ -379,7 +424,7 @@ void loop_worker<MC>::flip(alps::ObservableSet& obs) {
   // determine whether clusters are flipped or not
   double improved_sign = sign;
   for (unsigned int c = 0; c < clusters.size(); ++c) {
-    to_flip[c] = ((2*uniform_01()-1) < (FIELD() ? std::tanh(beta * clusters[c].weight) : 0));
+    to_flip[c] = ((2*random()-1) < (FIELD() ? std::tanh(beta * clusters[c].weight) : 0));
     if (SIGN() && IMPROVE() && (clusters[c].sign & 1) == 1) improved_sign = 0;
   }
 
@@ -388,46 +433,124 @@ void loop_worker<MC>::flip(alps::ObservableSet& obs) {
     estimator.improved_measurement(obs, lattice, beta, improved_sign, spins, operators,
       spins_c, fragments, coll);
 
-  // flip operators & spins
+  // Normal estimators below observe the flipped configuration, so carry its
+  // sign too. Improved estimators above retain their pre-flip cluster sign.
   BOOST_FOREACH(local_operator_t& op, operators)
-    if (to_flip[fragments[op.loop_0()].id()] ^ to_flip[fragments[op.loop_1()].id()]) op.flip();
+    if (to_flip[fragments[op.loop_0()].id()] ^ to_flip[fragments[op.loop_1()].id()]) {
+      op.flip();
+      if (SIGN() && (op.is_bond() ? model.bond_sign(op.pos()) : model.site_sign(op.pos()))) sign=-sign;
+    }
   for (int s = 0; s < nvs; ++s) if (to_flip[fragments[s].id()]) spins[s] ^= 1;
 
   //
   // measurement
   //
 
-  obs["Temperature"] << 1/beta;
-  obs["Inverse Temperature"] << beta;
-  obs["Volume"] << (double)lattice.volume();
-  obs["Number of Sites"] << (double)num_sites(lattice.rg());
-  obs["Number of Clusters"] << coll.num_clusters();
+  obs.record("Temperature", 1/beta, 1.);
+  obs.record("Inverse Temperature", beta, 1.);
+  obs.record("Volume", (double)lattice.volume(), 1.);
+  obs.record("Number of Sites", (double)num_sites(lattice.rg()), 1.);
+  obs.record("Number of Clusters", coll.num_clusters(), 1.);
 
   // sign
   if (SIGN()) {
     if (IMPROVE()) {
-      obs["Sign"] << improved_sign;
+      obs.record("Sign", improved_sign, 1.);
       if (alps::numeric::is_zero(improved_sign)) {
-        obs["Weight of Zero-Meron Sector"] << 0.;
+        obs.record("Weight of Zero-Meron Sector", 0., 1.);
       } else {
-        obs["Weight of Zero-Meron Sector"] << 1.;
-        obs["Sign in Zero-Meron Sector"] << improved_sign;
+        obs.record("Weight of Zero-Meron Sector", 1., 1.);
+        obs.record("Sign in Zero-Meron Sector", improved_sign, 1.);
       }
     } else {
-      obs["Sign"] << sign;
+      obs.record("Sign", sign, 1.);
     }
   }
 
   // energy
   double nop = coll.num_operators();
+  field_energy_=0;
   double ene = model.energy_offset() - nop / beta;
   if (FIELD())
     for (unsigned int c = 0; c < clusters.size(); ++c)
-      ene += (to_flip[c] ? -clusters[c].weight : clusters[c].weight);
+      field_energy_ += (to_flip[c] ? -clusters[c].weight : clusters[c].weight);
+  ene+=field_energy_;
   looper::energy_estimator::measurement(obs, lattice, beta, nop, sign, ene);
 
   // normal measurement
   estimator.normal_measurement(obs, lattice, beta, sign, spins, operators, spins_c);
+}
+
+template<class MC>
+void loop_worker<MC>::save(alps::hdf5::archive& ar) const {
+  alps::mcbase::save(ar);
+  ar["checkpoint/version"] << uint64_t(1);
+  ar["checkpoint/steps"] << steps_;
+  ar["checkpoint/chain"] << uint64_t(chain_);
+  ar["checkpoint/model"] << model_state();
+  ar["checkpoint/spins"] << spins;
+  std::vector<std::array<int,3>> ops;
+  std::vector<double> times;
+  for (auto const& op:operators) {
+    ops.push_back({op.type()|(op.graph_type()<<2),op.is_bond()?1:0,op.pos()});
+    if constexpr (continuous_time) times.push_back(op.time());
+  }
+  ar["checkpoint/operators"] << ops;
+  if constexpr (continuous_time) ar["checkpoint/times"] << times;
+}
+
+template<class MC>
+void loop_worker<MC>::load(alps::hdf5::archive& ar) {
+  uint64_t version,steps,chain;
+  std::vector<double> fingerprint,times;
+  std::vector<int> state;
+  std::vector<std::array<int,3>> ops;
+  ar["checkpoint/version"] >> version;
+  ar["checkpoint/steps"] >> steps;
+  ar["checkpoint/chain"] >> chain;
+  ar["checkpoint/model"] >> fingerprint;
+  ar["checkpoint/spins"] >> state;
+  ar["checkpoint/operators"] >> ops;
+  if constexpr (continuous_time) ar["checkpoint/times"] >> times;
+  if (version!=1 || chain!=chain_ || fingerprint!=model_state() || state.size()!=spins.size() ||
+      !std::all_of(state.begin(),state.end(),[](int spin){return spin==0 || spin==1;}) ||
+      (continuous_time && times.size()!=ops.size()))
+    throw std::invalid_argument("Invalid loop checkpoint model or shape");
+  operator_string_t restored;
+  auto propagated=state;
+  for (size_t i=0;i<ops.size();++i) {
+    auto [type,bond,pos]=ops[i];
+    int graph=type>>2;
+    if (type<0 || (type&3)>1 || (bond!=0 && bond!=1) || pos<0 ||
+        (bond && (pos>=num_bonds(lattice.vg()) || !loop_graph_t::bond_graph_t::is_valid_gid(graph))) ||
+        (!bond && (pos>=state.size() || !loop_graph_t::site_graph_t::is_valid_gid(graph))))
+      throw std::invalid_argument("Invalid loop checkpoint operator");
+    auto location=bond ? loop_graph_t::location_t::bond_location(pos) : loop_graph_t::location_t::site_location(pos);
+    if constexpr (continuous_time) {
+      if (!std::isfinite(times[i]) || times[i]<0 || times[i]>=1 || (i && times[i]<=times[i-1]))
+        throw std::invalid_argument("Invalid loop checkpoint time ordering");
+      restored.emplace_back(type,location,times[i]);
+    } else restored.emplace_back(type,location);
+    auto const g=restored.back().graph();
+    if ((bond && !is_compatible(g,propagated[source(pos,lattice.vg())],propagated[target(pos,lattice.vg())])) ||
+        (!bond && !is_compatible(g,propagated[pos])))
+      throw std::invalid_argument("Loop checkpoint operator incompatible with worldline spins");
+    if (type&1) {
+      if (bond) { propagated[source(pos,lattice.vg())]^=1; propagated[target(pos,lattice.vg())]^=1; }
+      else propagated[pos]^=1;
+    }
+  }
+  for (auto [it,end]=sites(lattice.rg());it!=end;++it) {
+    auto [first,last]=sites(lattice,*it);
+    int difference=0;
+    for (;first!=last;++first) difference+=state[*first]-propagated[*first];
+    if (difference) throw std::invalid_argument("Nonperiodic loop checkpoint worldlines");
+  }
+  validate_measurements(ar,steps);
+  auto requested=parameters;
+  alps::mcbase::load(ar);
+  parameters=std::move(requested); // retain the requested extended SWEEPS limit
+  steps_=steps; spins=std::move(state); operators=std::move(restored);
 }
 
 } // namespace looper

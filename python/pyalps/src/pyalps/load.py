@@ -73,6 +73,20 @@ class Hdf5Missing(Exception):
 
 class Hdf5Loader:
     """The Hdf5Loader class loads simulation parameters and observables from hdf5-files and returns them as hierarchical datasets"""
+    def _read_replicas(self, filename, reader, suffix, measurements, verbose):
+        replicas = sorted(self.h5f.list_children('/simulation/replicas'), key=int)
+        self.h5f.close()
+        result = []
+        for replica in replicas:
+            base = '/simulation/replicas/' + replica
+            loaded = reader([filename], proppath=base + '/parameters', respath=base + suffix,
+                            measurements=measurements, verbose=verbose)
+            for group in loaded:
+                for dataset in group:
+                    dataset.props['replica'] = int(replica)
+            result.extend(loaded)
+        return result
+
     def GetFileNames(self, flist):
         files = []
         for f in flist:
@@ -346,6 +360,10 @@ class Hdf5Loader:
                 self.h5f = h5.archive(f, 'r')
                 self.h5fname = f
                 base=respath or "/simulation/results"
+                if base == '/simulation/results' and self.h5f.is_group('/simulation/replicas'):
+                    sets.extend(self._read_replicas(f, self.ReadBinningAnalysis,
+                        '/realizations/0/clones/0/autocorrelation', measurements, verbose))
+                    continue
                 diagnostics="/simulation/realizations/0/clones/0/autocorrelation"
                 if base=="/simulation/results" and self.h5f.is_group(diagnostics):
                     base=diagnostics
@@ -411,6 +429,11 @@ class Hdf5Loader:
                 self.h5f = h5.archive(f, 'r')
                 self.h5fname = f
                 if verbose: log("Loading from file " + f)
+                # Each replica temperature is a separate statistical ensemble.
+                if respath == '/simulation/results' and self.h5f.is_group('/simulation/replicas'):
+                    sets.extend(self._read_replicas(f, self.ReadMeasurementFromFile,
+                        '/results', measurements, verbose))
+                    continue
                 list_ = self.GetObservableList(respath)
                 params = self.ReadParameters(proppath)
                 obslist = []

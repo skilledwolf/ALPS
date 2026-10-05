@@ -23,8 +23,7 @@
 
 namespace looper {
 
-struct susceptibility :
-  public has_evaluator_tag {
+struct susceptibility {
   template<typename MC, typename LAT, typename TIME>
   struct estimator {
     typedef MC   mc_type;
@@ -188,56 +187,43 @@ struct susceptibility :
       template<typename M>
       void commit(M& m, lattice_t const& lat, double beta, int nop, double sign) const {
         double vol = lat.volume();
-        m["Magnetization"] << 0.0;
-        m["Magnetization Density"] << 0.0;
-        m["|Magnetization|"] << sign * std::abs(umag0);
-        m["|Magnetization Density|"] << sign * std::abs(umag0) / vol;
-        m["Magnetization^2"] << sign * umag2;
-        m["Magnetization Density^2"] << sign * umag2 / power2(vol);
-        m["Magnetization^4"] << sign * (3 * power2(umag2) - 2 * umag4);
-        m["Magnetization Density^4"]
-          << sign * (3 * power2(umag2) - 2 * umag4) / power4(vol);
-        m["Susceptibility"]
-          << (typename is_sse<mc_type>::type() ?
+        m.record("Magnetization", 0.0, sign);
+        m.record("Magnetization Density", 0.0, sign);
+        m.record("|Magnetization|", sign * std::abs(umag0), sign);
+        m.record("|Magnetization Density|", sign * std::abs(umag0) / vol, sign);
+        m.record("Magnetization^2", sign * umag2, sign);
+        m.record("Magnetization Density^2", sign * umag2 / power2(vol), sign);
+        m.record("Magnetization^4", sign * (3 * power2(umag2) - 2 * umag4), sign);
+        m.record("Magnetization Density^4", sign * (3 * power2(umag2) - 2 * umag4) / power4(vol), sign);
+        m.record("Susceptibility", (typename is_sse<mc_type>::type() ?
               sign * beta * (dip(umag, nop) + umag2) / (nop + 1) / vol :
-              sign * beta * umag / vol);
-        m["Generalized Magnetization^2"] << sign * usize2;
-        m["Generalized Magnetization Density^2"]
-          << sign * usize2 / power2(vol);
-        m["Generalized Magnetization^4"]
-          << sign * (3 * power2(usize2) - 2 * usize4);
-        m["Generalized Magnetization Density^4"]
-          << sign * (3 * power2(usize2) - 2 * usize4) / power4(vol);
-        m["Generalized Susceptibility"]
-          << (typename is_sse<mc_type>::type() ?
+              sign * beta * umag / vol), sign);
+        m.record("Generalized Magnetization^2", sign * usize2, sign);
+        m.record("Generalized Magnetization Density^2", sign * usize2 / power2(vol), sign);
+        m.record("Generalized Magnetization^4", sign * (3 * power2(usize2) - 2 * usize4), sign);
+        m.record("Generalized Magnetization Density^4", sign * (3 * power2(usize2) - 2 * usize4) / power4(vol), sign);
+        m.record("Generalized Susceptibility", (typename is_sse<mc_type>::type() ?
               sign * beta * (dip(usize, nop) + usize2) / (nop + 1) / vol :
-              sign * beta * usize / vol);
+              sign * beta * usize / vol), sign);
         if (is_bipartite(lat)) {
-          m["Staggered Magnetization"] << 0.0;
-          m["Staggered Magnetization Density"] << 0.0;
-          m["|Staggered Magnetization|"] << sign * std::abs(smag0);
-          m["|Staggered Magnetization Density|"] << sign * std::abs(smag0) / vol;
-          m["Staggered Magnetization^2"] << sign * smag2;
-          m["Staggered Magnetization Density^2"] << sign * smag2 / power2(vol);
-          m["Staggered Magnetization^4"]
-            << sign * (3 * power2(smag2) - 2 * smag4);
-          m["Staggered Magnetization Density^4"]
-            << sign * (3 * power2(smag2) - 2 * smag4) / power4(vol);
-          m["Staggered Susceptibility"]
-            << (typename is_sse<mc_type>::type() ?
+          m.record("Staggered Magnetization", 0.0, sign);
+          m.record("Staggered Magnetization Density", 0.0, sign);
+          m.record("|Staggered Magnetization|", sign * std::abs(smag0), sign);
+          m.record("|Staggered Magnetization Density|", sign * std::abs(smag0) / vol, sign);
+          m.record("Staggered Magnetization^2", sign * smag2, sign);
+          m.record("Staggered Magnetization Density^2", sign * smag2 / power2(vol), sign);
+          m.record("Staggered Magnetization^4", sign * (3 * power2(smag2) - 2 * smag4), sign);
+          m.record("Staggered Magnetization Density^4", sign * (3 * power2(smag2) - 2 * smag4) / power4(vol), sign);
+          m.record("Staggered Susceptibility", (typename is_sse<mc_type>::type() ?
                 sign * beta * (dip(smag, nop) + smag2) / (nop + 1) / vol :
-                sign * beta * smag / vol);
-          m["Generalized Staggered Magnetization^2"] << sign * ssize2;
-          m["Generalized Staggered Magnetization Density^2"]
-            << sign * ssize2 / power2(vol);
-          m["Generalized Staggered Magnetization^4"]
-            << sign * (3 * power2(ssize2) - 2 * ssize4);
-          m["Generalized Staggered Magnetization Density^4"]
-            << sign * (3 * power2(ssize2) - 2 * ssize4) / power4(vol);
-          m["Generalized Staggered Susceptibility"]
-            << (typename is_sse<mc_type>::type() ?
+                sign * beta * smag / vol), sign);
+          m.record("Generalized Staggered Magnetization^2", sign * ssize2, sign);
+          m.record("Generalized Staggered Magnetization Density^2", sign * ssize2 / power2(vol), sign);
+          m.record("Generalized Staggered Magnetization^4", sign * (3 * power2(ssize2) - 2 * ssize4), sign);
+          m.record("Generalized Staggered Magnetization Density^4", sign * (3 * power2(ssize2) - 2 * ssize4) / power4(vol), sign);
+          m.record("Generalized Staggered Susceptibility", (typename is_sse<mc_type>::type() ?
                 sign * beta * (dip(ssize, nop) + ssize2) / (nop + 1) / vol :
-                sign * beta * ssize / vol);
+                sign * beta * ssize / vol), sign);
         }
       }
     };
@@ -266,23 +252,23 @@ struct susceptibility :
         umag += 0.5-spins[*si];
         smag += (0.5-spins[*si]) * gauge[*si];
       }
-      m["Magnetization"] << sign * umag;
-      m["Magnetization Density"] << sign * umag / vol;
-      m["|Magnetization|"] << sign * std::abs(umag);
-      m["|Magnetization Density|"] << sign * std::abs(umag) / vol;
-      m["Magnetization^2"] << sign * power2(umag);
-      m["Magnetization Density^2"] << sign * power2(umag / vol);
-      m["Magnetization^4"] << sign * power4(umag);
-      m["Magnetization Density^4"] << sign * power4(umag / vol);
+      m.record("Magnetization", sign * umag, sign);
+      m.record("Magnetization Density", sign * umag / vol, sign);
+      m.record("|Magnetization|", sign * std::abs(umag), sign);
+      m.record("|Magnetization Density|", sign * std::abs(umag) / vol, sign);
+      m.record("Magnetization^2", sign * power2(umag), sign);
+      m.record("Magnetization Density^2", sign * power2(umag / vol), sign);
+      m.record("Magnetization^4", sign * power4(umag), sign);
+      m.record("Magnetization Density^4", sign * power4(umag / vol), sign);
       if (is_bipartite(lat)) {
-        m["Staggered Magnetization"] << sign * smag;
-        m["Staggered Magnetization Density"] << sign * smag / vol;
-        m["|Staggered Magnetization|"] << sign * std::abs(smag);
-        m["|Staggered Magnetization Density|"] << sign * std::abs(smag) / vol;
-        m["Staggered Magnetization^2"] << sign * power2(smag);
-        m["Staggered Magnetization Density^2"] << sign * power2(smag / vol);
-        m["Staggered Magnetization^4"] << sign * power4(smag);
-        m["Staggered Magnetization Density^4"] << sign * power4(smag / vol);
+        m.record("Staggered Magnetization", sign * smag, sign);
+        m.record("Staggered Magnetization Density", sign * smag / vol, sign);
+        m.record("|Staggered Magnetization|", sign * std::abs(smag), sign);
+        m.record("|Staggered Magnetization Density|", sign * std::abs(smag) / vol, sign);
+        m.record("Staggered Magnetization^2", sign * power2(smag), sign);
+        m.record("Staggered Magnetization Density^2", sign * power2(smag / vol), sign);
+        m.record("Staggered Magnetization^4", sign * power4(smag), sign);
+        m.record("Staggered Magnetization Density^4", sign * power4(smag / vol), sign);
       }
       double umag_a = 0; /* 0 * umag; */
       double smag_a = 0; /* 0 * smag; */
@@ -315,68 +301,21 @@ struct susceptibility :
       }
       if (typename is_path_integral<mc_type>::type()) {
         umag_a += umag;
-        m["Susceptibility"] << sign * beta * power2(umag_a) / vol;
+        m.record("Susceptibility", sign * beta * power2(umag_a) / vol, sign);
         smag_a += smag;
         if (bipartite)
-          m["Staggered Susceptibility"] << sign * beta * power2(smag_a) / vol;
+          m.record("Staggered Susceptibility", sign * beta * power2(smag_a) / vol, sign);
       } else {
         umag_a += nop * umag;
-        m["Susceptibility"]
-          << sign * beta * (dip(power2(umag_a), nop) + power2(umag)) / (nop + 1) / vol;
+        m.record("Susceptibility", sign * beta * (dip(power2(umag_a), nop) + power2(umag)) / (nop + 1) / vol, sign);
         smag_a += nop * smag;
         if (bipartite)
-          m["Staggered Susceptibility"]
-            << sign * beta * (dip(power2(smag_a), nop) + power2(smag)) / (nop + 1) / vol;
+          m.record("Staggered Susceptibility", sign * beta * (dip(power2(smag_a), nop) + power2(smag)) / (nop + 1) / vol, sign);
       }
     }
   };
 
-  struct evaluator {
-    static void evaluate(alps::ObservableSet& m, alps::Parameters const& /* params */,
-      alps::ObservableSet const& m_in) {
-      if (m_in.has("Magnetization^2") && m_in.has("Magnetization^4")) {
-        alps::RealObsevaluator obse_m2 = m_in["Magnetization^2"];
-        alps::RealObsevaluator obse_m4 = m_in["Magnetization^4"];
-        if (obse_m2.count() && obse_m4.count()) {
-          alps::RealObsevaluator eval("Binder Ratio of Magnetization");
-          eval = power2(obse_m2) / obse_m4;
-          m.addObservable(eval);
-        }
-      }
-      if (m_in.has("Staggered Magnetization^2") &&
-          m_in.has("Staggered Magnetization^4")) {
-        alps::RealObsevaluator obse_m2 = m_in["Staggered Magnetization^2"];
-        alps::RealObsevaluator obse_m4 = m_in["Staggered Magnetization^4"];
-        if (obse_m2.count() && obse_m4.count()) {
-          alps::RealObsevaluator eval("Binder Ratio of Staggered Magnetization");
-          eval = power2(obse_m2) / obse_m4;
-          m.addObservable(eval);
-        }
-      }
-      if (m_in.has("Generalized Magnetization^2") &&
-          m_in.has("Generalized Magnetization^4")) {
-        alps::RealObsevaluator obse_m2 = m_in["Generalized Magnetization^2"];
-        alps::RealObsevaluator obse_m4 = m_in["Generalized Magnetization^4"];
-        if (obse_m2.count() && obse_m4.count()) {
-          alps::RealObsevaluator eval("Binder Ratio of Generalized Magnetization");
-          eval = power2(obse_m2) / obse_m4;
-          m.addObservable(eval);
-        }
-      }
-      if (m_in.has("Generalized Staggered Magnetization^2") &&
-          m_in.has("Generalized Staggered Magnetization^4")) {
-        alps::RealObsevaluator obse_m2 =
-          m_in["Generalized Staggered Magnetization^2"];
-        alps::RealObsevaluator obse_m4 =
-          m_in["Generalized Staggered Magnetization^4"];
-        if (obse_m2.count() && obse_m4.count()) {
-          alps::RealObsevaluator eval("Binder Ratio of Generalized Staggered Magnetization");
-          eval = power2(obse_m2) / obse_m4;
-          m.addObservable(eval);
-        }
-      }
-    }
-  };
+
 };
 
 } // end namespace looper

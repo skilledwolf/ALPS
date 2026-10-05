@@ -41,7 +41,7 @@ def compare(left, right):
         a["simulation"].visititems(check)
 
 
-@pytest.mark.parametrize("app", ["simplemc", "spinmc", "qwl", "worm", "dirloop_sse"])
+@pytest.mark.parametrize("app", ["simplemc", "spinmc", "qwl", "worm", "dirloop_sse", "loop"])
 @pytest.mark.parametrize("rng", ["mt19937", "lagged_fibonacci607"])
 @pytest.mark.parametrize("chains", [1, 3])
 def test_mpi_native_chains_and_cross_process_restart(launcher, tmp_path, app, rng, chains):
@@ -50,7 +50,7 @@ def test_mpi_native_chains_and_cross_process_restart(launcher, tmp_path, app, rn
     if app == "qwl":
         p = dict(LATTICE="chain lattice", L=4, J=1., CUTOFF=12, SWEEPS=3000,
                  NUMBER_OF_WANG_LANDAU_STEPS=3)
-    elif app in ("worm", "dirloop_sse"):
+    elif app in ("worm", "dirloop_sse", "loop"):
         p = dict(LATTICE="chain lattice", MODEL="spin", L=4, J=1., T=1.,
                  SWEEPS=300, THERMALIZATION=100, SKIP=3)
         if app == "dirloop_sse":

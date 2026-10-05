@@ -118,7 +118,7 @@ struct stiffness
       }
       template<typename M>
       void commit(M& m, lattice_t const&, double beta, int, double sign) const {
-        if (dim > 0) m["Stiffness"] << sign * w2 / (beta * dim);
+        if (dim > 0) m.record("Stiffness", sign * w2 / (beta * dim), sign);
       }
     };
     void init_collector(collector& coll) const { coll.init(dim); }
@@ -165,7 +165,7 @@ struct stiffness
 
       double w2 = 0;
       for (int i = 0; i < dim; ++i) w2 += power2(winding[i]);
-      m["Stiffness"] << sign * w2 / (beta * dim);
+      m.record("Stiffness", sign * w2 / (beta * dim), sign);
     }
   };
 };

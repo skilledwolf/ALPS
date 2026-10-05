@@ -89,8 +89,10 @@ public:
     return chooser_.offdiagonal(rng, loc, c0, c1);
   }
   double graph_weight() const { return chooser_.weight(); }
+  std::vector<double> const& graph_weights() const { return graph_weights_; }
 
 private:
+  std::vector<double> graph_weights_;
   bool quantal_;
   bool frustrated_;
   double site_offset_;

@@ -16,7 +16,7 @@
 
 #include "lattice.h"
 #include "power.h"
-#include <alps/alea.h>
+#include "../../simulation.hpp"
 #include <boost/call_traits.hpp>
 #include <boost/mpl/bool.hpp>
 #include <boost/type_traits/is_base_of.hpp>
@@ -39,20 +39,12 @@ struct has_evaluator_tag {};
 // helper functions
 //
 
-inline
-void add_scalar_obs(alps::ObservableSet& m, std::string const& name, bool is_signed = false) {
-  if (!m.has(name)) m << make_observable(alps::RealObservable(name), is_signed);
+inline void add_scalar_obs(native_qmc::simulation& m, std::string const& name, bool is_signed=false) {
+  m.add_measurement(name,1,is_signed);
 }
-
-inline
-void add_vector_obs(alps::ObservableSet& m, std::string const& name, bool is_signed = false) {
-  if (!m.has(name)) m << make_observable(alps::RealVectorObservable(name), is_signed);
-}
-
-inline
-void add_vector_obs(alps::ObservableSet& m, std::string const& name,
-  alps::RealVectorObservable::label_type const& label, bool is_signed = false) {
-  if (!m.has(name)) m << make_observable(alps::RealVectorObservable(name, label), is_signed);
+inline void add_vector_obs(native_qmc::simulation& m, std::string const& name,
+                           std::vector<std::string> const& labels, bool is_signed=false) {
+  m.add_measurement(name,labels,is_signed);
 }
 
 // for path integral
@@ -223,53 +215,6 @@ struct collector {
   typedef basic_collector<ESTIMATOR> type;
 };
 
-template<typename MEASUREMENT>
-struct pre_evaluator_selector {
-private:
-  template<bool, typename M>
-  struct impl {
-    static void pre_evaluate(alps::ObservableSet&, alps::Parameters const&,
-    alps::ObservableSet const&) {}
-  };
-  template<typename M>
-  struct impl<true, M> {
-    static void pre_evaluate(alps::ObservableSet& m, alps::Parameters const& params,
-      alps::ObservableSet const& m_in) {
-      M::pre_evaluator::pre_evaluate(m, params, m_in);
-    }
-  };
-public:
-  static void pre_evaluate(alps::ObservableSet& m, alps::Parameters const& params,
-    alps::ObservableSet const& m_in) {
-    impl<boost::is_base_of<has_pre_evaluator_tag, MEASUREMENT>::value, MEASUREMENT>::
-      pre_evaluate(m, params, m_in);
-  }
-};
-
-template<typename MEASUREMENT>
-struct evaluator_selector {
-private:
-  template<bool, typename M>
-  struct impl {
-    static void evaluate(alps::ObservableSet&, alps::Parameters const&,
-    alps::ObservableSet const&) {}
-  };
-  template<typename M>
-  struct impl<true, M> {
-    static void evaluate(alps::ObservableSet& m, alps::Parameters const& params,
-      alps::ObservableSet const& m_in) {
-      M::evaluator::evaluate(m, params, m_in);
-    }
-  };
-public:
-  static void evaluate(alps::ObservableSet& m, alps::Parameters const& params,
-    alps::ObservableSet const& m_in) {
-    impl<boost::is_base_of<has_evaluator_tag, MEASUREMENT>::value, MEASUREMENT>::
-      evaluate(m, params, m_in);
-  }
-};
-
-
 //
 // free functions
 //
@@ -374,31 +319,13 @@ struct energy_estimator {
   // normal estimator
 
   template<typename RG>
-  static void measurement(alps::ObservableSet& m, lattice_helper<RG> const& lat, double beta,
+  static void measurement(native_qmc::simulation& m, lattice_helper<RG> const& lat, double beta,
     double nop, double sign, double ene) {
-    m["Energy"] << sign * ene;
-    m["Energy Density"] << sign * ene / lat.volume();
-    m["Energy^2"] << sign * (power2(ene) - nop / power2(beta));
+    m.record("Energy", sign * ene, sign);
+    m.record("Energy Density", sign * ene / lat.volume(), sign);
+    m.record("Energy^2", sign * (power2(ene) - nop / power2(beta)), sign);
   }
 };
-
-struct energy_evaluator {
-  static void evaluate(alps::ObservableSet& m, alps::ObservableSet const& m_in) {
-    if (m_in.has("Inverse Temperature") && m_in.has("Volume") &&
-        m_in.has("Energy") && m_in.has("Energy^2")) {
-      alps::RealObsevaluator beta = m_in["Inverse Temperature"];
-      alps::RealObsevaluator vol = m_in["Volume"];
-      alps::RealObsevaluator ene = m_in["Energy"];
-      alps::RealObsevaluator ene2 = m_in["Energy^2"];
-      if (beta.count() && vol.count() && ene.count() && ene2.count()) {
-        alps::RealObsevaluator c("Specific Heat");
-        c = beta.mean() * beta.mean() * (ene2 - ene * ene) / vol.mean();
-        m.addObservable(c);
-      }
-    }
-  }
-};
-
 
 //
 // dumb measurement
@@ -595,20 +522,7 @@ struct composite_measurement :
     }
   };
 
-  struct pre_evaluator {
-    static void pre_evaluate(alps::ObservableSet& m, alps::Parameters const& params,
-      alps::ObservableSet const& m_in) {
-      pre_evaluator_selector<measurement1>::pre_evaluate(m, params, m_in);
-      pre_evaluator_selector<measurement2>::pre_evaluate(m, params, m_in);
-    }
-  };
-  struct evaluator {
-    static void evaluate(alps::ObservableSet& m, alps::Parameters const& params,
-      alps::ObservableSet const& m_in) {
-      evaluator_selector<measurement1>::evaluate(m, params, m_in);
-      evaluator_selector<measurement2>::evaluate(m, params, m_in);
-    }
-  };
+
 };
 
 } // end namespace looper

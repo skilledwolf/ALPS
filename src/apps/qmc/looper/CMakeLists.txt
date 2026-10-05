@@ -20,6 +20,7 @@
 add_executable(loop loop.C loop_custom.C loop_model.C)
 target_include_directories(loop PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(loop PRIVATE ALPS::alps)
+alps_native_qmc(loop)
 alps_install_applications(loop)
 
 if(ALPS_BUILD_TESTING)

@@ -16,7 +16,7 @@ inline void add_measurement(alps::mcbase& sim, std::string const& name, size_t s
 template<class T> void record(alps::mcbase& sim, std::string const& name, T const& value) {
     auto sample=alps::alea::make_adapter(value);
     *sim.measurement(name)<<sample;
-    *sim.measurement<autocorr>(diagnostic(name))<<sample;
+    *sim.template measurement<autocorr>(diagnostic(name))<<sample;
 }
 inline auto batch_names(alps::mcbase::observable_collection_type const& values) {
     alps::mcbase::result_names_type names;
@@ -50,13 +50,14 @@ inline batch validate_measurements(alps::mcbase::observable_collection_type cons
     return energy;
 }
 // Retain each chain's chronology independently; pooling bins creates no chronology.
-inline void save_diagnostics(alps::mcbase const& sim, alps::hdf5::archive& ar, std::string const& path,
+template<class Simulation>
+void save_diagnostics(Simulation const& sim, alps::hdf5::archive& ar, std::string const& path,
                              alps::mcbase::result_names_type const& names) {
     alps::alea::hdf5_serializer series(ar,path+"/series"), analysis(ar,path+"/autocorrelation");
     for (auto const& name:names) {
         auto key=ar.encode_segment(name);
         alps::alea::serialize(series,key,*sim.measurement(name));
-        alps::alea::serialize(analysis,key,sim.measurement<autocorr>(diagnostic(name))->result());
+        alps::alea::serialize(analysis,key,sim.template measurement<autocorr>(diagnostic(name))->result());
     }
 }
 }

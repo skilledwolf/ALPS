@@ -9,27 +9,37 @@
 *
 *****************************************************************************/
 
-#include "loop_worker.h"
-#include <looper/evaluator_impl.h>
-#include <looper/version.h>
-#include <alps/parapack/parapack.h>
-#include <alps/parapack/exchange.h>
+#include "application.hpp"
+#include "analysis.hpp"
+#include "../native_driver.hpp"
+#include "schema.hpp"
 
-int main(int argc, char** argv) { return alps::parapack::start(argc, argv); }
-
-PARAPACK_SET_COPYRIGHT(LOOPER_COPYRIGHT)
-PARAPACK_SET_VERSION(LOOPER_VERSION_STRING)
-
-namespace {
-using continuous_time_worker = looper::loop_worker<looper::path_integral>;
-using sse_worker = looper::loop_worker<looper::sse>;
-using loop_evaluator = looper::evaluator<loop_config::measurement_set>;
-
-PARAPACK_REGISTER_ALGORITHM(continuous_time_worker, "loop");
-PARAPACK_REGISTER_ALGORITHM(continuous_time_worker, "loop; path integral");
-PARAPACK_REGISTER_ALGORITHM(sse_worker, "loop; sse");
-PARAPACK_REGISTER_ALGORITHM(alps::parapack::single_exchange_worker<continuous_time_worker>, "loop; exchange");
-PARAPACK_REGISTER_ALGORITHM(alps::parapack::single_exchange_worker<continuous_time_worker>, "loop; path integral; exchange");
-PARAPACK_REGISTER_ALGORITHM(alps::parapack::single_exchange_worker<sse_worker>, "loop; sse; exchange");
-PARAPACK_REGISTER_EVALUATOR(loop_evaluator, "loop");
-} // namespace
+int main(int argc,char** argv) {
+  auto schema=native_qmc::schema("loop",qmc_common_schema,qmc_application_schema);
+  return native_mc::main<looper::application>(argc,argv,"loop",schema.c_str(),
+    [](std::string const&,toml::node const&)->char const*{return nullptr;},
+    [](alps::params& p,alps::run_configuration const& run) {
+      if (!p.exists("THERMALIZATION")) p["THERMALIZATION"]=p["SWEEPS"].as<uint64_t>()/10;
+      if ((p.value_or("OPTIMIZE_TEMPERATURE",false) || p.value_or("TEMPERATURE_OPTIMIZATION",false)) && run.execution["chains"].as<size_t>()!=1)
+        throw std::invalid_argument("Temperature optimization requires one replica ladder (execution.chains = 1)");
+    }, [](auto const& run,auto const& chains,auto const&) {
+      alps::hdf5::save_checkpoint(run.output["results"].template as<std::string>(),[&](alps::hdf5::archive& ar) {
+        for (size_t i=0;i<chains.front()->replicas();++i) {
+          std::vector<looper::application::replica_view> views;
+          for (auto const& chain:chains) views.push_back({*chain,i});
+          std::vector<looper::application::replica_view const*> pointers;
+          for (auto const& view:views) pointers.push_back(&view);
+          auto replica_run=run;
+          if (chains.front()->ladder()) {
+            replica_run.parameters["T"]=1/chains.front()->temperatures()[i];
+            replica_run.parameters.erase("BETA");
+          }
+          auto path=chains.front()->ladder() ? "/simulation/replicas/"+std::to_string(i) : "/simulation";
+          native_qmc::publish_into(ar,replica_run,pointers,path,looper::derive);
+          ar[path+"/parameters"] << replica_run.parameters;
+        }
+        ar["/parameters"] << run.parameters;
+        ar["/run_config"] << run;
+      });
+    });
+}

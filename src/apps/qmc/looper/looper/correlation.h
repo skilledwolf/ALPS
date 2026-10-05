@@ -194,11 +194,11 @@ struct correlation {
           gscorr *= (0.25 * sign * mltplcty);
         }
         if (measure_correlation) {
-          m["Spin Correlations"] << ucorr;
-          m["Generalized Spin Correlations"] << gucorr;
+          m.record("Spin Correlations", ucorr, sign);
+          m.record("Generalized Spin Correlations", gucorr, sign);
           if (bipartite) {
-            m["Staggered Spin Correlations"] << scorr;
-            m["Generalized Staggered Spin Correlations"] << gscorr;
+            m.record("Staggered Spin Correlations", scorr, sign);
+            m.record("Generalized Staggered Spin Correlations", gscorr, sign);
           }
         }
       }
@@ -246,9 +246,9 @@ struct correlation {
           ucorr *= 0.25 * sign * mltplcty;
           scorr *= 0.25 * sign * mltplcty;
         }
-        m["Spin Correlations"] << ucorr;
+        m.record("Spin Correlations", ucorr, sign);
         if (bipartite)
-          m["Staggered Spin Correlations"] << scorr;
+          m.record("Staggered Spin Correlations", scorr, sign);
       }
 
       if (measure_structure_factor) {
@@ -265,7 +265,7 @@ struct correlation {
           }
           sfac[k] = sign * power2(val) / lat.volume();
         }
-        m["Spin Structure Factor"] << sfac;
+        m.record("Spin Structure Factor", sfac, sign);
       }
     }
   };

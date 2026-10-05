@@ -6,6 +6,15 @@ User-facing changes and migration notes are recorded here, starting with the bui
 
 ### Changed
 
+- Port `loop` to native ALEA and the TOML CLI, retaining continuous-time/SSE,
+  annealing, signed/improved/custom estimators, replica exchange and both
+  temperature-feedback methods. Checkpoint physical walkers, exchange state,
+  feedback and unfinished batches; keep results separate by temperature.
+  Correct normal-estimator sign tracking after cluster flips and include
+  longitudinal-field energy in replica exchange weights. Retain one common
+  Hamiltonian across the ladder, including parameter-dependent XML couplings.
+  Released scheduler-checkpoint conversion remains pending.
+
 - Port `worm` and `dirloop_sse` to native ALEA and the established TOML CLI,
   retaining executable names, update kernels and both RNGs. Checkpoint complete
   worldline/operator state, tuning and unfinished batches; retain per-chain

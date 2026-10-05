@@ -220,10 +220,10 @@ The imported `sampling_prop` and `bootstrap_prop` were declarations marked
 unimplemented, with no transform implementation. They have been removed from the
 API and capability table; this removes no working propagation algorithm.
 
-The remaining production measurement client using legacy ALEA is `loop`. Its
-estimators and checkpoint state must be migrated and validated before removing
-legacy ALEA. `mcbase`, CT-INT, CT-HYB, Hirsch-Fye, `simplemc`, `spinmc`, `qwl`,
-`dirloop_sse`, and `worm` use native estimators. See the [quantum solver run guide](../../apps/qmc/README.md)
+`mcbase`, CT-INT, CT-HYB, Hirsch-Fye, `simplemc`, `spinmc`, `qwl`,
+`dirloop_sse`, `worm`, and `loop` use native estimators. Loop replica ladders
+retain separate per-temperature results and checkpoint temperature feedback,
+walker permutations, and every physical configuration. See the [quantum solver run guide](../../apps/qmc/README.md)
 for checkpoint state, signed correlations and particle-number tuning. The impurity solver analysis files
 still lack complete physical solver state and do not provide restart. These
 boundaries are explicit; consolidation is not complete until the remaining

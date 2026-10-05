@@ -38,6 +38,17 @@ void spinmodel_helper<RG, LG, WH>::init(alps::Parameters const& p, lattice_helpe
   if (frustrated_ && !params.defined("FORCE_SCATTER")) params["FORCE_SCATTER"] = 0.1;
   weight_helper_t wt(mp, lat, params);
   chooser_.init(wt, is_path_integral);
+  // Checkpoints must distinguish redistributed couplings with the same total
+  // graph weight and energy offset, including changes to external XML models.
+  graph_weights_.clear();
+  BOOST_FOREACH(typename weight_helper_t::site_weight_t const& weight, wt.site_weights()) {
+    graph_weights_.push_back(weight.first);
+    graph_weights_.insert(graph_weights_.end(),weight.second.v.begin(),weight.second.v.end());
+  }
+  BOOST_FOREACH(typename weight_helper_t::bond_weight_t const& weight, wt.bond_weights()) {
+    graph_weights_.push_back(weight.first);
+    graph_weights_.insert(graph_weights_.end(),weight.second.v.begin(),weight.second.v.end());
+  }
 
   // signs
   site_sign_.clear();
