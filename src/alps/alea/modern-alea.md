@@ -199,3 +199,31 @@ The diagnostic tutorials use these native records directly. Keeping the batch
 capacity at least the production length retains the complete individual sample
 stream for arbitrary lag analysis or NumPy histograms; the default bounded
 capacity retains bin averages, which cannot reconstruct within-bin fluctuations.
+
+## Consolidation coverage and remaining migration
+
+| Capability | Current path |
+| --- | --- |
+| Real/complex mean, variance, covariance, autocorrelation and batches | Native C++ and Python; circular and elliptic complex strategies |
+| Exact accumulator restart, including partial batches/hierarchies | Native codecs kinds 6–10; staged validation |
+| Weighted independent-run combination and MPI reduction | Native centered moment algebra; individual chain bins retained |
+| Correlated nonlinear estimates and signed ratios | Joint evidence with jackknife or covariance propagation |
+| Thermodynamic variances and energy cross-responses | Centered physical moments within spin-engine batches; explicit unavailable reasons |
+| Ordered samples, blocking and autocorrelation diagnostics | Separate per-chain native records; full samples when batch capacity permits |
+| Histogram analysis | NumPy on retained individual samples; released histograms preserved by conversion |
+| Mixed-family C++ joins | Preserve the common available evidence; summary joins assume independence |
+| Spin application restart and MPI | Both supported RNGs; extend production; change process count on restart |
+| Released statistical files | Offline profile conversion; recoverable histories can become native analysis batches |
+| Released scheduler/Parapack application checkpoints | Conversion into the new spin engine state is **not implemented**; retain originals and released readers |
+
+The imported `sampling_prop` and `bootstrap_prop` were declarations marked
+unimplemented, with no transform implementation. They have been removed from the
+API and capability table; this removes no working propagation algorithm.
+
+Four production measurement clients still use legacy ALEA: `loop`, `qwl`,
+`dirloop_sse`, and `worm`. Their estimators and checkpoint state must be migrated
+and validated before removing legacy ALEA. `mcbase`, CT-INT, CT-HYB, Hirsch-Fye,
+`simplemc`, and `spinmc` use native estimators. The impurity solver analysis files
+still lack complete physical solver state and do not provide restart. These
+boundaries are explicit; consolidation is not complete until the remaining
+clients and released application-checkpoint conversion are handled.
