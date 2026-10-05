@@ -40,6 +40,21 @@ and still writes a resumable checkpoint.
 
 Old scheduler flags, parameter expressions and XML input are replaced by typed
 TOML. Released scheduler/XDR physical checkpoints are not native checkpoints;
-conversion and continuation support remains outstanding. The unbuilt
-`evaluate.C` and `evaluate2.C` sources still use legacy ALEA and remain to be
-migrated; their Binder definitions differ from the Wolff lesson's convention.
+conversion and continuation support remains outstanding. The `evaluate` and `evaluate2` commands now build from one native postprocessor:
+
+```sh
+build/scheduler/evaluate --validate scheduler/evaluate.toml
+build/scheduler/evaluate scheduler/evaluate.toml
+```
+
+`input.results` names a native chain results file from `ising1` or `ising3`;
+`output.results` is a separate analysis file. Input is never modified. The
+output retains joint batch evidence and includes correlations plus the original
+`Binder cumulant of Magnetization` label. Despite that historical label, the
+formulas are ratios: `evaluate` computes `<m^4>/<m^2>^2`; `evaluate2` computes
+three times that ratio. They intentionally differ from the Wolff lesson.
+Both use joint weighted jackknife propagation, including partial batches.
+`--validate` checks the archive and propagation without writing. Insufficient
+batches or nonpositive second moments in any jackknife sample reject analysis
+before replacing output. Released separate-observable summaries do not establish
+joint covariance and are not accepted as native joint evidence.

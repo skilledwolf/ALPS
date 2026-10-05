@@ -1,0 +1,4 @@
+[input]
+results = "ising.h5"
+[output]
+results = "binder.h5"

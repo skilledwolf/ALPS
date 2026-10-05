@@ -105,3 +105,55 @@ def test_lattice_square_and_validation(tmp_path):
     process = subprocess.run([str(executable), '--validate', str(path)], capture_output=True)
     assert process.returncode != 0
     assert (tmp_path/'square.h5').read_bytes() == before
+
+
+@pytest.mark.parametrize('command,factor', [('evaluate', 1), ('evaluate2', 3)])
+def test_native_binder_analysis(executable, tmp_path, command, factor):
+    from pyalps import alea, hdf5
+    source, _ = run(executable, tmp_path, 'source')
+    original = source.read_bytes()
+    path = tmp_path/'analysis.toml'
+    output = tmp_path/'analysis.h5'
+    write_run_file(path, input={'results': str(source)}, output={'results': str(output)})
+    evaluator = executable.parent/command
+    process = subprocess.run([str(evaluator), '--validate', str(path)], capture_output=True)
+    if executable.name == 'ising2':
+        assert process.returncode != 0  # This variant has no m²/m⁴ joint samples.
+        assert not output.exists() and source.read_bytes() == original
+        return
+    assert process.returncode == 0, process.stderr
+    assert not output.exists()
+    process = subprocess.run([str(evaluator), str(path)], capture_output=True)
+    assert process.returncode == 0, process.stderr
+    assert source.read_bytes() == original
+    with hdf5.archive(str(source)) as archive:
+        joint = alea.read_result(archive, '/simulation/joint')
+    data = {d.props['observable']: d.native_result for d in pyalps.loadMeasurements([str(output)])[0]}
+    result = data['Binder cumulant of Magnetization']
+    keep = joint.batch_counts > 0
+    weights, sums = joint.batch_counts[keep].astype(float), joint.batch_sums[keep]
+    total = sums.sum(axis=0)
+    count = weights.sum()
+    mean = total/count
+    leave = (total-sums)/(count-weights[:, None])
+    pseudo = factor*(count*mean[3]/mean[2]**2-(count-weights)*leave[:, 3]/leave[:, 2]**2)
+    expected = pseudo.sum()/count
+    variance = np.sum(weights*(pseudo/weights-expected)**2)/(count-np.sum(weights**2)/count)
+    np.testing.assert_allclose(result.batch_sums[keep, 0], pseudo, rtol=1e-10)
+    np.testing.assert_allclose(result.mean, [expected], rtol=1e-12)
+    np.testing.assert_allclose(result.error, [np.sqrt(variance*np.sum(weights**2)/count**2)], rtol=1e-10)
+    np.testing.assert_allclose(data['Correlations'].mean, joint.mean[4:], atol=1e-14)
+    with hdf5.archive(str(output)) as archive:
+        saved = alea.read_result(archive, '/simulation/joint')
+    np.testing.assert_array_equal(saved.batch_counts, joint.batch_counts)
+    np.testing.assert_array_equal(saved.batch_sums, joint.batch_sums)
+    # Archive alias protection happens before publication.
+    path.write_text('[input]\nresults = '+repr(str(source))+'\n[output]\nresults = '+repr(str(source))+'\n')
+    assert subprocess.run([str(evaluator), str(path)], capture_output=True).returncode != 0
+    assert source.read_bytes() == original
+    # An interrupted warmup has no analysable batches; keep existing output.
+    empty, _ = run(executable, tmp_path, 'warmup', budget=9)
+    before = output.read_bytes()
+    write_run_file(path, input={'results': str(empty)}, output={'results': str(output)}, overwrite=True)
+    assert subprocess.run([str(evaluator), str(path)], capture_output=True).returncode != 0
+    assert output.read_bytes() == before
