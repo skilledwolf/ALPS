@@ -49,7 +49,6 @@ EXPECTED_BUNDLED_PROGRAMS = {
     "simplemc",
     "sparsediag",
     "spinmc",
-    "spinmc_evaluate",
     "worm",
     "worm_evaluate",
 }

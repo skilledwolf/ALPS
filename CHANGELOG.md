@@ -6,6 +6,16 @@ User-facing changes and migration notes are recorded here, starting with the bui
 
 ### Changed
 
+- Port `spinmc` to typed TOML runs and native ALEA for Ising, XY, Heisenberg,
+  O(4) and Potts models, preserving local and legal cluster updates, matrix
+  couplings, onsite interactions and fields. Retain exact spin/RNG/progress and
+  partial-bin checkpoints; pool independent raw chains before joint nonlinear
+  analysis. Keep direct moments separate from improved cluster estimators.
+  Correct field-aware cluster selection, signed/mixed matrix handling,
+  asymmetric-bond and self-loop local deltas, onsite constants and staggered
+  cluster projections. Remove the old scheduler/factory/matrix kernels and
+  separate evaluator; migrate classical tutorials and notebooks. Chains run
+  serially with `mt19937`; legacy XML runs and multi-process launches reject.
 - Share private native Monte Carlo run orchestration and vector-aware raw-chain
   pooling across applications. Keep exact restart and output validation in one
   path. Omit optional thermodynamic estimates when moment subtraction cannot

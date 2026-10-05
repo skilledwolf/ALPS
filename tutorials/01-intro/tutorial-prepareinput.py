@@ -12,6 +12,7 @@
 # ****************************************************************************
 
 import pyalps
+from pyalps.run_io import execute, write_run_files
 
 #prepare the input parameters
 parms = []
@@ -20,7 +21,7 @@ for t in [1.5,2,2.5]:
         { 
           'LATTICE'        : "square lattice", 
           'T'              : t,
-          'J'              : 1 ,
+          'J'              : [1] ,
           'THERMALIZATION' : 1000,
           'SWEEPS'         : 100000,
           'UPDATE'         : "cluster",
@@ -30,7 +31,9 @@ for t in [1.5,2,2.5]:
     )
 
 #write the input file
-input_file = pyalps.writeInputFiles('parm1',parms)
+input_file = write_run_files('parm1', [{"parameters": p,
+    "output": {"results": f"parm1.task{i + 1}.out.h5"}}
+    for i, p in enumerate(parms)], baseseed=42, overwrite=True)
 print("The job input file is prepared in", input_file)
 
 

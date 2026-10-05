@@ -12,6 +12,7 @@
 # ****************************************************************************
 
 import pyalps
+from pyalps.run_io import execute, write_run_files
 import matplotlib.pyplot as plt
 import pyalps.plot
 import numpy as np
@@ -25,7 +26,7 @@ for l in [32,48,64]:
             { 
               'LATTICE'        : "square lattice", 
               'T'              : t,
-              'J'              : 1 ,
+              'J'              : [1] ,
               'THERMALIZATION' : 5000,
               'SWEEPS'         : 150000,
               'UPDATE'         : "cluster",
@@ -34,13 +35,12 @@ for l in [32,48,64]:
             }
     )
 
-#write the input file and run the simulation
-input_file = pyalps.writeInputFiles('mc07b',parms)
-pyalps.runApplication('spinmc',input_file,Tmin=5)
-# use the following instead if you have MPI
-#pyalps.runApplication('spinmc',input_file,Tmin=5,MPI=4)
+# Write typed task files and execute the job manifest.
+input_file = write_run_files('mc07b', [{"parameters": p,
+    "output": {"results": f"mc07b.task{i + 1}.out.h5"}}
+    for i, p in enumerate(parms)], baseseed=42, overwrite=True)
+execute('spinmc', input_file)
 
-pyalps.evaluateSpinMC(pyalps.getResultFiles(prefix='mc07b'))
 
 #load the susceptibility and collect it as function of temperature T
 # data = pyalps.loadMeasurements(pyalps.getResultFiles(prefix='mc07b'),['|Magnetization|', 'Connected Susceptibility', 'Specific Heat', 'Binder Cumulant', 'Binder Cumulant U2'])

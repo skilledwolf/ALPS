@@ -158,21 +158,6 @@ def evaluateLoop(infiles, appname='loop', write_xml=False):
     cmdline += make_list(infiles)
     return executeCommand(cmdline)
 
-def evaluateSpinMC(infiles, appname='spinmc_evaluate', write_xml=False):
-    """ evaluate results of the spinmc application 
-    
-        this function calls the evaluate tool of the spinmc application. Additionally evaluated results are written back into the files. Besides a list of result files it takes one optional argument:
-        
-        write_xml: if this optional argument is set to True, the results will also bw written to the XML files
-        
-        
-    """
-    cmdline = [appname]
-    if write_xml:
-      cmdline += ['--write-xml']
-    cmdline += make_list(infiles)
-    return executeCommand(cmdline)
-
 def evaluateQWL(infiles, appname='qwl_evaluate', DELTA_T=None, T_MIN=None, T_MAX=None):
     """ evaluate results of the quantum Wang-Landau application 
     

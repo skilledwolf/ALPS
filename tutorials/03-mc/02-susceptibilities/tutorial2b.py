@@ -12,6 +12,7 @@
 # ****************************************************************************
 
 import pyalps
+from pyalps.run_io import execute, write_run_files
 import matplotlib.pyplot as plt
 import pyalps.plot
 
@@ -22,8 +23,8 @@ for t in [0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.25, 1.5, 1.7
         { 
           'LATTICE'        : "ladder", 
           'T'              : t,
-          'J0'             : -1 ,
-          'J1'             : -1 ,
+          'J0'             : [-1] ,
+          'J1'             : [-1] ,
           'THERMALIZATION' : 10000,
           'SWEEPS'         : 500000,
           'UPDATE'         : "cluster",
@@ -32,9 +33,11 @@ for t in [0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.25, 1.5, 1.7
         }
     )
 
-#write the input file and run the simulation
-input_file = pyalps.writeInputFiles('parm2b',parms)
-pyalps.runApplication('spinmc',input_file,Tmin=5)
+# Write typed task files and execute the job manifest.
+input_file = write_run_files('parm2b', [{"parameters": p,
+    "output": {"results": f"parm2b.task{i + 1}.out.h5"}}
+    for i, p in enumerate(parms)], baseseed=42, overwrite=True)
+execute('spinmc', input_file)
 
 #load the susceptibility and collect it as function of temperature T
 data = pyalps.loadMeasurements(pyalps.getResultFiles(prefix='parm2b'),'Susceptibility')

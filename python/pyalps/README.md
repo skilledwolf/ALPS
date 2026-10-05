@@ -229,6 +229,10 @@ scheduler/parapack fronts remains pending migration for their remaining
 applications. `simplemc` now uses this native TOML workflow for all three
 classical spin models, independent chains, exact HDF5 restart and direct VTK
 snapshots; see the [simplemc guide](../../src/apps/mc/simple/README.md).
+`spinmc` uses the same driver for Ising, XY, Heisenberg, O(4) and Potts models,
+typed matrix arrays, local/cluster updates and native joint jackknife estimates;
+see the [spinmc guide](../../src/apps/mc/spins/README.md). Its HDF5 results include
+the derived statistics directly, so the separate spin evaluator is removed.
 See the [CT-HYB guide](../../src/apps/dmft/qmc/hybridization/README.md)
 for numerical formats and supported measurements.
 

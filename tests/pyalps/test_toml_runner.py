@@ -253,8 +253,8 @@ def test_existing_scheduler_xml_path_is_preserved(monkeypatch):
     recorded = []
     monkeypatch.setattr(tools, "check_existence", lambda _: None)
     monkeypatch.setattr(tools, "executeCommand", lambda args: recorded.append(args) or 0)
-    assert tools.runApplication("spinmc", "legacy.in.xml", MPI=2, T=10) == (0, "legacy.out.xml")
-    assert recorded == [["mpirun", "-np", "2", "spinmc", "--mpi", "legacy.in.xml", "-T", "10"]]
+    assert tools.runApplication("loop", "legacy.in.xml", MPI=2, T=10) == (0, "legacy.out.xml")
+    assert recorded == [["mpirun", "-np", "2", "loop", "--mpi", "legacy.in.xml", "-T", "10"]]
 
 
 def test_native_cthyb_launcher_roundtrip_when_cli_available(tmp_path, monkeypatch):

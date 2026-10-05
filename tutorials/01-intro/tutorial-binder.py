@@ -12,9 +12,9 @@
 # ****************************************************************************
 
 import pyalps
+from pyalps.run_io import execute, write_run_files
 import matplotlib.pyplot as plt
 import pyalps.plot
-import numpy as np
 
 #prepare the input parameters
 parms = []
@@ -23,7 +23,7 @@ for t in [1.5,2,2.5]:
         { 
           'LATTICE'        : "square lattice", 
           'T'              : t,
-          'J'              : 1 ,
+          'J'              : [1] ,
           'THERMALIZATION' : 1000,
           'SWEEPS'         : 100000,
           'UPDATE'         : "cluster",
@@ -32,9 +32,11 @@ for t in [1.5,2,2.5]:
         }
     )
 
-#write the input file and run the simulation
-input_file = pyalps.writeInputFiles('parm1',parms)
-pyalps.runApplication('spinmc',input_file,Tmin=5,writexml=True)
+# Write typed task files and execute the job manifest.
+input_file = write_run_files('parm1', [{"parameters": p,
+    "output": {"results": f"parm1.task{i + 1}.out.h5"}}
+    for i, p in enumerate(parms)], baseseed=42, overwrite=True)
+execute('spinmc', input_file)
 
 #get the list of result files
 result_files = pyalps.getResultFiles(prefix='parm1')
@@ -44,23 +46,9 @@ print("Loading results from the files: ", result_files)
 print("The files contain the following mesurements:", end=' ')
 print(pyalps.loadObservableList(result_files))
 
-#load a selection of measurements:
-data = pyalps.loadMeasurements(result_files,['|Magnetization|','Magnetization^2'])
-
-obschoose = lambda d, o: np.array(d)[np.nonzero([xx.props['observable'] == o for xx in d])]
-binder = []
-for dd in data:
-    magn2 = obschoose(dd, 'Magnetization^2')[0]
-    magnabs = obschoose(dd, '|Magnetization|')[0]
-    
-    res = pyalps.DataSet()
-    res.props = pyalps.dict_intersect([d.props for d in dd])
-    res.x = np.array([magnabs.props['T']])
-    res.y = np.array([magn2.y[0]/(magnabs.y[0]*magnabs.y[0])])
-    res.props['observable'] = 'Binder cumulant'
-    binder.append(res)
-
-binder = pyalps.collectXY(binder, 'T', 'Binder cumulant')
+# The native joint jackknife retains covariance between the moments.
+data = pyalps.loadMeasurements(result_files, 'Binder Cumulant U2')
+binder = pyalps.collectXY(data, 'T', 'Binder Cumulant U2')
 
 # ... and plot them
 plt.figure()

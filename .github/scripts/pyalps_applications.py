@@ -29,12 +29,11 @@ cases = {
         "LATTICE": "square lattice",
         "MODEL": "Ising",
         "L": 4,
-        "J": 1,
+        "J": [1.0],
         "T": 2.0,
         "UPDATE": "cluster",
         "THERMALIZATION": 32,
         "SWEEPS": 256,
-        "SEED": 42,
     },
     "sparsediag": {
         **common,
@@ -59,10 +58,17 @@ cases = {
         "NUMBER_EIGENVALUES": 1,
     },
 }
-input_file = pyalps.writeInputFiles("test", [cases[app]])
-status = pyalps.runApplication(app, input_file, Tmin=1, T=45, writexml=True)
-assert status[0] == 0, (app, status)
-files = pyalps.getResultFiles(prefix="test")
+if app == "spinmc":
+    from pyalps.run_io import execute, write_run_files
+    manifest = write_run_files("test", [{"parameters": cases[app],
+        "execution": {"seed": 42, "time_limit": 45.0},
+        "output": {"results": "test.task1.out.h5"}}])
+    files = execute(app, manifest)
+else:
+    input_file = pyalps.writeInputFiles("test", [cases[app]])
+    status = pyalps.runApplication(app, input_file, Tmin=1, T=45, writexml=True)
+    assert status[0] == 0, (app, status)
+    files = pyalps.getResultFiles(prefix="test")
 assert files
 if app in ("loop", "spinmc", "dirloop_sse"):
     data = pyalps.loadMeasurements(files, ["Energy"])

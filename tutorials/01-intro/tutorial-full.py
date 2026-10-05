@@ -12,6 +12,7 @@
 # ****************************************************************************
 
 import pyalps
+from pyalps.run_io import execute, write_run_files
 import matplotlib.pyplot as plt
 import pyalps.plot
 
@@ -24,7 +25,7 @@ for t in [1.5,2,2.5]:
         { 
           'LATTICE'        : "square lattice", 
           'T'              : t,
-          'J'              : 1 ,
+          'J'              : [1] ,
           'THERMALIZATION' : 1000,
           'SWEEPS'         : 100000,
           'UPDATE'         : "cluster",
@@ -33,9 +34,11 @@ for t in [1.5,2,2.5]:
         }
     )
 
-#write the input file and run the simulation
-input_file = pyalps.writeInputFiles('parm1',parms)
-pyalps.runApplication('spinmc',input_file,Tmin=5,writexml=True)
+# Write typed task files and execute the job manifest.
+input_file = write_run_files('parm1', [{"parameters": p,
+    "output": {"results": f"parm1.task{i + 1}.out.h5"}}
+    for i, p in enumerate(parms)], baseseed=42, overwrite=True)
+execute('spinmc', input_file)
 
 #get the list of result files
 result_files = pyalps.getResultFiles(prefix='parm1')
@@ -66,11 +69,9 @@ print(pyalps.plot.makeGracePlot(plotdata))
 # convert the data to gnuplot file for plotting using gnuplot
 print(pyalps.plot.makeGnuplotPlot(plotdata))
 
-#calculate the Binder cumulants using jackknife-analysis
-binder = pyalps.DataSet()
-binder.props = pyalps.dict_intersect([d[0].props for d in data])
-binder.x = [d[0].props['T'] for d in data]
-binder.y = [d[1].y[0]/(d[0].y[0]*d[0].y[0]) for d in data]
+# The native joint jackknife retains covariance between the moments.
+binder_data = pyalps.loadMeasurements(result_files, 'Binder Cumulant U2')
+binder = pyalps.collectXY(binder_data, 'T', 'Binder Cumulant U2')
 print(binder)
 
 # ... and plot them

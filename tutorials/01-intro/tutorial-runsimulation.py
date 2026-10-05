@@ -12,11 +12,11 @@
 # ****************************************************************************
 
 import pyalps
+from pyalps.run_io import execute, write_run_files
 
 # set the input file 
-input_file = 'parm1.in.xml'
+input_file = 'parm1.job.toml'
 
 # and run the simulation
-result_files = pyalps.runApplication('spinmc',input_file,Tmin=5,writexml=True)
-print("The return value was", result_files[0])
-print("The results are stored in the file", result_files[1])
+result_files = execute('spinmc', input_file)
+print("The results are stored in", result_files)

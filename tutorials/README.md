@@ -17,6 +17,14 @@ python tutorial-full.py
 
 For an interactive presentation, browse the [English notebooks](11-notebook/en/) or [Japanese notebooks](11-notebook/ja/).
 
+The classical `spinmc` lessons write typed TOML tasks and native HDF5 results;
+see the [solver guide](../src/apps/mc/spins/README.md). Run the Python setup script
+to create each job manifest, or pass its generated task files directly to
+`spinmc`. Autocorrelation examples compare native uncertainties at different
+batch capacities on the same seeded trajectory. Equilibration examples follow
+running estimates by resuming complete checkpoints; correlated prefixes provide
+a visual diagnostic rather than a formal stationarity test.
+
 ## Running simulations
 
 Choose a method, then follow its numbered tutorial sequence.

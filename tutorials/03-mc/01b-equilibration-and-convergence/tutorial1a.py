@@ -1,56 +1,35 @@
-#############################################################################
-#
-# ALPS Project Applications: Directed Worm Algorithm  
-#
-# Copyright (C) 2013 by Lode Pollet      <pollet@phys.ethz.ch>  
-#                       Ping Nang Ma     <pingnang@phys.ethz.ch> 
-#                       Matthias Troyer  <troyer@phys.ethz.ch>    
-#
-# ALPS Project: https://alps.comp-phys.org/
-# SPDX-License-Identifier: MIT
-#
-#############################################################################
+# Copyright (C) 2026 ALPS Collaboration. SPDX-License-Identifier: MIT
+"""Follow running estimates by resuming complete native checkpoints.
 
-# The headers
-import pyalps
-
-# Set up a python list of parameters (python) dictionaries:
-parms = [{
-  'LATTICE'         : "square lattice",          
-  'MODEL'           : "Ising",
-  'L'               : 48,
-  'J'               : 1.,
-  'T'               : 2.269186,
-  'THERMALIZATION'  : 10000,
-  'SWEEPS'          : 50000,
-}]
-
-# Write into XML input file:
-input_file = pyalps.writeInputFiles('parm1a',parms)
-
-# and run the application spinmc:
-pyalps.runApplication('spinmc', input_file, Tmin=10, writexml=True)
-
-# We first get the list of all hdf5 result files via:
-files = pyalps.getResultFiles(prefix='parm1a')
-
-# and then extract, say the timeseries of the |Magnetization| measurements:
-ts_M = pyalps.loadTimeSeries(files[0], '|Magnetization|');
-
-# We can then visualize graphically:
+Prefixes share samples, so their error bars are correlated. This is a visual
+convergence diagnostic, not a stationarity test or a raw measurement series.
+Repeat with longer warm-up and independent seeds to assess equilibration.
+"""
 import matplotlib.pyplot as plt
-plt.plot(ts_M)
+from pyalps import alea, hdf5
+from pyalps.run_io import execute, write_run_file
+
+parameters = {"LATTICE": "square lattice", "MODEL": "Ising", "UPDATE": "local",
+              "L": 48, "J": [1.0], "T": 2.269186, "THERMALIZATION": 10000,
+              "SWEEPS": 50000}
+checkpoint = None
+points = []
+for segment in range(12):
+    prefix = f"parm1a.segment{segment + 1}"
+    run = write_run_file(prefix + ".toml", parameters=parameters,
+        execution={"seed": 42, "max_sweeps": 5000, "bins": 128},
+        input={} if checkpoint is None else {"checkpoint": checkpoint},
+        output={"checkpoint": prefix + ".checkpoint.h5", "results": prefix + ".out.h5"},
+        overwrite=True)
+    filename = execute("spinmc", run)[0]
+    checkpoint = prefix + ".checkpoint.h5"
+    with hdf5.archive(filename) as archive:
+        result = alea.BatchResult.read(archive, "/simulation/results/|Magnetization|")
+    if result.count:
+        points.append((result.count, result.mean[0], result.error[0]))
+
+counts, means, errors = zip(*points)
+plt.errorbar(counts, means, yerr=errors, marker="o")
+plt.xlabel("Accumulated production updates")
+plt.ylabel("Running mean of |Magnetization|")
 plt.show()
-
-# ALPS Python provides a convenient tool to check whether a measurement observable(s) has (have) reached steady state equilibrium.
-#
-# Here is one example:
-print(pyalps.checkSteadyState(outfile=files[0], observable='|Magnetization|', confidenceInterval=0.95))
-print()
-
-# and another one:
-observables = pyalps.loadMeasurements(files, ['|Magnetization|', 'Energy'])
-observables = pyalps.checkSteadyState(observables, confidenceInterval=0.95)
-for o in observables:
-    print('{}:\t{}'.format(o.props['observable'], o.props['checkSteadyState']))
-

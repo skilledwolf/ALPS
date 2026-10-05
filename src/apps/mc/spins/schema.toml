@@ -1,0 +1,102 @@
+# Copyright (C) 2026 ALPS Collaboration. SPDX-License-Identifier: MIT
+application = "spinmc"
+schema_version = 1
+[parameters.MODEL]
+type = "string"
+required = true
+choices = ["Ising", "XY", "Heisenberg", "O(4)", "Potts"]
+[parameters.LATTICE]
+type = "string"
+[parameters.GRAPH]
+type = "string"
+[parameters.UPDATE]
+type = "string"
+default = "auto"
+choices = ["auto", "local", "cluster"]
+[parameters.CONVENTION]
+type = "string"
+default = "classical"
+choices = ["classical", "quantum"]
+[parameters.T]
+type = "float64"
+min = 0.0
+[parameters.beta]
+type = "float64"
+min = 0.0
+[parameters.J]
+type = "float64[]"
+default = [1.0]
+[parameters.D]
+type = "float64[]"
+default = [0.0]
+[parameters.h]
+type = "float64[]"
+default = [0.0]
+[parameters.S]
+type = "float64"
+min = 0.0
+[parameters.g]
+type = "float64"
+default = 1.0
+[parameters.q]
+type = "int64"
+choices = [3, 4, 10]
+[parameters.SWEEPS]
+type = "int64"
+default = 65536
+min = 1
+[parameters.THERMALIZATION]
+type = "int64"
+min = 0
+[input.lattice_library]
+type = "path"
+[input.checkpoint]
+type = "path"
+[output.results]
+type = "path"
+required = true
+[output.checkpoint]
+type = "path"
+[execution.seed]
+type = "int64"
+default = 42
+min = 0
+max = 2147483647
+[execution.rng]
+type = "string"
+default = "mt19937"
+[execution.disorder_seed]
+type = "int64"
+min = 0
+max = 4294967295
+[execution.chains]
+type = "int64"
+default = 1
+min = 1
+max = 2147483647
+[execution.bins]
+type = "int64"
+default = 128
+min = 2
+max = 2147483647
+[execution.time_limit]
+type = "float64"
+default = 0.0
+min = 0.0
+[execution.checkpoint_interval]
+type = "float64"
+default = 3600.0
+min = 0.0
+[execution.max_sweeps]
+type = "int64"
+default = 0
+min = 0
+[execution.error_variable]
+type = "string"
+[execution.error_limit]
+type = "float64"
+min = 0.0
+[execution.print_sweeps]
+type = "int64"
+default = 0
+min = 0
