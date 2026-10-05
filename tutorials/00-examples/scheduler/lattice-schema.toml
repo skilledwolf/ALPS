@@ -1,0 +1,6 @@
+[parameters.LATTICE]
+type = "string"
+[parameters.GRAPH]
+type = "string"
+[input.lattice_library]
+type = "path"

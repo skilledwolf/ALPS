@@ -1,0 +1,8 @@
+[parameters]
+L = 100
+T = 0.5
+THERMALIZATION = 100
+SWEEPS = 10000
+[output]
+results = "ising.h5"
+checkpoint = "ising.checkpoint.h5"

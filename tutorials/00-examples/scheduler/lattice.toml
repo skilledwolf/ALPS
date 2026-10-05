@@ -1,0 +1,9 @@
+[parameters]
+LATTICE = "chain lattice"
+L = 100
+T = 0.5
+THERMALIZATION = 100
+SWEEPS = 10000
+[output]
+results = "lattice.h5"
+checkpoint = "lattice.checkpoint.h5"

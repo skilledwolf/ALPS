@@ -1,0 +1,2 @@
+#pragma once
+inline constexpr char ising_schema[] = R"toml(@ISING_SCHEMA@)toml";
