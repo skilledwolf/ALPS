@@ -21,9 +21,10 @@ The thin HDF5 adapter shares the canonical primitive mappings. Legacy
 Standalone CT-INT, CT-HYB and Hirsch-Fye use modern ALEA, pooling raw independent
 replicas before signed analysis and publishing canonical results atomically.
 CT-INT includes general multiband density interactions and their full density
-moments; DMFT uses only external solver processes. Other legacy measurement
-producers still need migration before their statistical interfaces can be deleted:
-`loop`, `dirloop_sse` and `worm`.
+moments; DMFT uses only external solver processes. The remaining legacy production measurement client is `loop`; `worm` and
+`dirloop_sse` now use native estimators and exact physical checkpoints. Legacy
+public interfaces and released checkpoint conversion still need work before
+the old statistical library can be deleted.
 The NGS `mcbase` framework and its MPI adapter support all native estimator
 families and real/complex strategies with the same checkpoint and result codecs.
 Python measurement maps share native accumulator

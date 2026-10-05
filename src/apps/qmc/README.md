@@ -76,5 +76,5 @@ compressibility, vanish in a fixed-number sector.
 
 Released scheduler checkpoints cannot yet be resumed by these executables.
 Keep originals and released readers until offline conversion is implemented.
-The `loop` migration, released checkpoint converters and tutorial migration remain
+The `loop` migration and released checkpoint converters remain
 part of the ALEA consolidation; the legacy library has not yet been removed.

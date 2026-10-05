@@ -105,3 +105,61 @@ def test_hybridization_tutorial_runs_are_prepared(script, tmp_path, monkeypatch)
     work = in_copy(script.parent, tmp_path, monkeypatch)
     with pytest.raises(Prepared):
         runpy.run_path(str(work / script.name), run_name="__main__")
+
+
+QMC_SCRIPTS = scripts(TUTORIALS / '03-mc', "execute('worm'", "execute('dirloop_sse'") + scripts(
+    TUTORIALS / '11-notebook' / 'ja', "execute('worm'", "execute('dirloop_sse'")
+QMC_NOTEBOOKS = sorted((TUTORIALS / '11-notebook').rglob('MC-0[345]*.ipynb'))
+
+
+@pytest.mark.parametrize('source', QMC_SCRIPTS + QMC_NOTEBOOKS,
+                         ids=lambda path: str(path.relative_to(TUTORIALS)))
+def test_native_qmc_tutorial_end_to_end(source, tmp_path, monkeypatch):
+    """Validate complete scans, then run representative points through analysis."""
+    import tomllib
+    import numpy as np
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+    import pyalps
+    from pyalps import run_io
+    executables = {app:os.environ.get('ALPS_' + app.upper() + '_EXECUTABLE')
+                   for app in ('worm', 'dirloop_sse')}
+    if not all(executables.values()):
+        pytest.skip('requires ALPS_WORM_EXECUTABLE and ALPS_DIRLOOP_SSE_EXECUTABLE')
+    original_execute = run_io.execute
+    outputs = []
+
+    def execute(app, job):
+        _, runs = run_io.read_job_manifest(job)
+        checked = subprocess.run([executables[app], '--validate', *map(str, runs)],
+                                 capture_output=True, text=True, timeout=120)
+        assert checked.returncode == 0, checked.stdout + checked.stderr
+        selected = [runs[i] for i in sorted({0, len(runs)//2, len(runs)-1})]
+        for path in selected:
+            document = tomllib.loads(path.read_text())
+            p = document['parameters']
+            p.update(L=4, THERMALIZATION=1000, SWEEPS=2000)
+            document.setdefault('execution', {})['bins'] = 16
+            run_io.write_run_file(path, overwrite=True,
+                **{key:document[key] for key in ('parameters', 'input', 'output', 'execution') if key in document})
+        files = original_execute(executables[app], selected)
+        outputs.extend(files)
+        return files
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(run_io, 'execute', execute)
+    monkeypatch.setattr(plt, 'show', lambda: None)
+    try:
+        if source.suffix == '.py':
+            runpy.run_path(str(source), run_name='__main__')
+        else:
+            namespace = {'__name__':'__main__'}
+            for code in code_cells(source):
+                exec(compile(code, str(source), 'exec'), namespace)
+        assert outputs
+        for data in pyalps.flatten(pyalps.loadMeasurements(outputs, 'Energy')):
+            assert np.isfinite(data.y[0].mean)
+            assert np.isfinite(data.y[0].error)
+    finally:
+        plt.close('all')

@@ -13,8 +13,9 @@ User-facing changes and migration notes are recorded here, starting with the bui
   interval normalization, custom correlation normalization, chain-density
   moments and centered compressibility. Fixed-number worm tuning preserves
   sector weights and reports energies for the requested Hamiltonian. Reject
-  unimplemented estimator combinations. Released checkpoint conversion and
-  tutorial migration remain pending; see the quantum solver run guide.
+  unimplemented estimator combinations. Migrate the Python tutorials and English/Japanese notebooks to TOML and native
+  results; remove obsolete XML input examples. Released checkpoint conversion
+  remains pending; see the quantum solver run guide.
 
 - Port `qwl` to native ALEA and typed TOML runs using the shared Monte Carlo
   runner. Preserve refinement modes, magnetic measurements, intermediate

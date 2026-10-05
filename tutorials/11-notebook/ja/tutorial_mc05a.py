@@ -27,7 +27,7 @@ for t in [0.01, 0.02, 0.03, 0.04, 0.05, 0.06, 0.07, 0.08, 0.09, 0.1]:
           't'              : t ,
           'mu'             : 0.5,
           'U'              : 1.0 ,
-          'NONLOCAL'       : 0 ,
+          'NONLOCAL'       : False ,
           'Nmax'           : 2 ,
           'THERMALIZATION' : 10000,
           'SWEEPS'         : 500000
@@ -35,16 +35,19 @@ for t in [0.01, 0.02, 0.03, 0.04, 0.05, 0.06, 0.07, 0.08, 0.09, 0.1]:
     )
 
 #write the input file and run the simulation
-input_file = pyalps.writeInputFiles('mc05a',parms)
-res = pyalps.runApplication('worm',input_file,Tmin=5)
+from pyalps.run_io import execute, write_run_files
+runs = [dict(parameters=p, output=dict(results=f'mc05a.task{i+1}.out.h5'))
+        for i, p in enumerate(parms)]
+files = execute('worm', write_run_files('mc05a', runs, baseseed=42, overwrite=True))
 
 #load the magnetization and collect it as function of field h
-data = pyalps.loadMeasurements(pyalps.getResultFiles(prefix='mc05a'),'Stiffness')
+data = pyalps.loadMeasurements(files,'Stiffness')
 rhos = pyalps.collectXY(data,x='t',y='Stiffness')
 
 #make plot
 plt.figure()
 pyalps.plot.plot(rhos)
 plt.xlabel('Hopping $t/U$')
-plt.ylabel('Superfluid density $\ho _s$')
+plt.ylabel('Superfluid density $\
+ho _s$')
 plt.show()

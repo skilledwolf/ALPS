@@ -33,11 +33,13 @@ for h in [0., 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.2, 1.4, 1.6, 1
     )
 
 #write the input file and run the simulation
-input_file = pyalps.writeInputFiles('parm3a',parms)
-res = pyalps.runApplication('dirloop_sse',input_file,Tmin=5)
+from pyalps.run_io import execute, write_run_files
+runs = [dict(parameters=p, output=dict(results=f'parm3a.task{i+1}.out.h5'))
+        for i, p in enumerate(parms)]
+files = execute('dirloop_sse', write_run_files('parm3a', runs, baseseed=42, overwrite=True))
 
 #load the magnetization and collect it as function of field h
-data = pyalps.loadMeasurements(pyalps.getResultFiles(prefix='parm3a'),'Magnetization Density')
+data = pyalps.loadMeasurements(files,'Magnetization Density')
 magnetization = pyalps.collectXY(data,x='h',y='Magnetization Density')
 
 #make plot

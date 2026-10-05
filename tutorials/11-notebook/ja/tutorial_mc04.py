@@ -30,11 +30,13 @@ parms = [{
         }]
 
 #write the input file and run the simulation
-input_file = pyalps.writeInputFiles('mc04',parms)
-res = pyalps.runApplication('dirloop_sse',input_file,Tmin=5)
+from pyalps.run_io import execute, write_run_files
+runs = [dict(parameters=p, output=dict(results=f'mc04.task{i+1}.out.h5'))
+        for i, p in enumerate(parms)]
+files = execute('dirloop_sse', write_run_files('mc04', runs, baseseed=42, overwrite=True))
 
 #load the magnetization and collect it as function of field h
-data = pyalps.loadMeasurements(pyalps.getResultFiles())
+data = pyalps.loadMeasurements(files)
 
 # print all measurements
 for s in pyalps.flatten(data):
