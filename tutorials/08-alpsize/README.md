@@ -44,3 +44,7 @@ hierarchy. These output files are analysis results, not physical restart states.
 The obsolete `.ip`/`.op` pairs have been replaced by `run.toml` and physics/error
 regression checks. Released statistical archives can be migrated with the
 appropriate offline `alps-hdf5-convert` ALEA profile.
+
+Lesson [09-scheduler](09-scheduler/README.md) adds native independent-chain
+scheduling and exact physical/statistical checkpoints to the same Wolff update.
+Its `hello` command introduces the typed TOML CLI without simulation machinery.

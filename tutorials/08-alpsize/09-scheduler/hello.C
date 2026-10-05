@@ -28,6 +28,43 @@
 *
 *****************************************************************************/
 
-#include <alps/parapack/parapack.h>
+#include <alps/run_config.hpp>
+#include <iostream>
 
-int main(int argc, char** argv) { return alps::parapack::start(argc, argv); }
+constexpr char hello_schema[] = R"toml(
+application = "hello"
+schema_version = 1
+[parameters.WORLD]
+type = "string"
+required = true
+[input]
+[output]
+[execution]
+)toml";
+
+int main(int argc, char** argv) {
+    try {
+        bool validate = false;
+        std::string file;
+        for (int i=1; i<argc; ++i) {
+            const std::string argument(argv[i]);
+            if (argument == "--schema") { std::cout << hello_schema; return 0; }
+            if (argument == "--help" || argument == "-h") {
+                std::cout << "Usage: hello [--validate] run.toml | hello --schema\n";
+                return 0;
+            }
+            if (argument == "--validate") { validate = true; continue; }
+            if (argument.empty() || argument.front() == '-' || !file.empty())
+                throw std::invalid_argument("Expected one TOML run file");
+            file = argument;
+        }
+        if (file.empty()) throw std::invalid_argument("Expected one TOML run file");
+        const auto run = alps::load_run_configuration(file, hello_schema);
+        if (validate) std::cout << "Valid hello configuration\n";
+        else std::cout << "hello, " << run.parameters["WORLD"].as<std::string>() << '\n';
+        return 0;
+    } catch (std::exception const& error) {
+        std::cerr << "hello: " << error.what() << '\n';
+        return 1;
+    }
+}

@@ -244,7 +244,7 @@ def test_tutorials_are_an_explicit_install_component(tmp_path):
     assert (tutorials / "00-examples/README.md").is_file()
     assert (tutorials / "00-examples/CMakeLists.txt").is_file()
     assert (tutorials / "00-examples/alea/generate_samples.py").is_file()
-    for name in ("wolff.hpp", "wolff-schema.toml", "wolff_schema.hpp.in", "Wolff.cmake", "07-alea/run.toml", "08-lattice/run.toml", "09-scheduler/run.toml", "09-scheduler/execution.toml", "09-scheduler/wolff_worker.h"):
+    for name in ("wolff.hpp", "wolff-schema.toml", "wolff_schema.hpp.in", "Wolff.cmake", "07-alea/run.toml", "08-lattice/run.toml", "09-scheduler/hello.toml", "09-scheduler/run.toml", "09-scheduler/execution.toml", "09-scheduler/wolff_worker.h"):
         assert (tutorials / "08-alpsize" / name).is_file()
     assert (tutorials / "00-examples/parapack/exchange/params-ising").is_file()
     assert (tutorials / "00-examples/parapack/loop/params_disorder").is_file()

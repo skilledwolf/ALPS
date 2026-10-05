@@ -38,5 +38,8 @@ retains the pooled batch evidence; per-chain diagnostics are under
 support exact continuation. Released Parapack/XDR checkpoints still require a
 physical-state converter; they are not accepted as native checkpoints.
 
-The separate `hello` example still demonstrates the old Parapack interface and
-has not yet been migrated. Build the `wolff` target for this lesson.
+The separate `hello` command introduces typed run input without simulation
+machinery: `build/hello hello.toml` prints `hello, world`. Change
+`parameters.WORLD` to select another greeting. It also supports `--schema` and
+`--validate`. Wolff then demonstrates native scheduling, measurements and
+continuation; neither command uses the legacy Parapack worker interface.
