@@ -139,7 +139,7 @@ struct joined<R1, R2,
         typename std::enable_if<joins_cov<traits<R1>, traits<R2> >()>::type>
 {
     typedef cov_result<typename traits<R1>::value_type,
-                       typename traits<R1>::strategy_type> result_type;
+                       typename std::conditional_t<traits<R1>::HAVE_BATCH,traits<R2>,traits<R1>>::strategy_type> result_type;
 };
 
 template <typename R1, typename R2>
@@ -147,7 +147,7 @@ struct joined<R1, R2,
         typename std::enable_if<joins_var<traits<R1>, traits<R2> >()>::type>
 {
     typedef var_result<typename traits<R1>::value_type,
-                       typename traits<R1>::strategy_type> result_type;
+                       typename std::conditional_t<traits<R1>::HAVE_BATCH,traits<R2>,traits<R1>>::strategy_type> result_type;
 };
 
 template <typename R1, typename R2>

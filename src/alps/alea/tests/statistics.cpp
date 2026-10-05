@@ -29,6 +29,42 @@ template<class E, class F> void throws_estimate(F operation) {
     throw std::runtime_error("statistics accessor did not report its estimate limitation");
 }
 
+void mixed_joins() {
+    aa::mean_acc<double> m;
+    aa::var_acc<double> v(1,3);
+    aa::cov_acc<double> c(1,3);
+    aa::autocorr_acc<double> a(1,3);
+    aa::batch_acc<double> b(1,4,3);
+    for (double x:{1.,2.,5.,3.,9.,4.}) {
+        auto sample=aa::make_adapter(x);
+        m<<sample; v<<sample; c<<sample; a<<sample; b<<sample;
+    }
+    auto check=[](auto const& first,auto const& second) {
+        auto result=aa::join(first,second);
+        require(result.count()==6 && result.mean()(0)==first.mean()(0) && result.mean()(1)==second.mean()(0),
+                "mixed join changed means or weights");
+        if constexpr (aa::traits<decltype(result)>::HAVE_VAR)
+            require(result.count2()==first.count2() && result.var()(0)==first.var()(0) && result.var()(1)==second.var()(0),
+                    "mixed join changed variance or squared weights");
+        if constexpr (aa::traits<decltype(result)>::HAVE_COV)
+            require(result.cov()(0,1)==0., "summary join invented cross covariance");
+    };
+    check(m.result(),b.result()); check(b.result(),m.result());
+    check(v.result(),c.result()); check(c.result(),v.result());
+    check(v.result(),b.result()); check(b.result(),v.result());
+    check(c.result(),b.result()); check(b.result(),c.result());
+    check(a.result(),v.result()); check(b.result(),a.result());
+    aa::batch_acc<std::complex<double>> z(1,4,3);
+    aa::cov_acc<std::complex<double>,aa::elliptic_var> e(1,3);
+    for (double x:{1.,2.,5.,3.,9.,4.}) {
+        std::vector<std::complex<double>> value{{x,2*x}};
+        z<<aa::make_adapter(value); e<<aa::make_adapter(value);
+    }
+    auto left=aa::join(z.result(),e.result()),right=aa::join(e.result(),z.result());
+    require(left.count2()==right.count2() && left.cov()(0,0)==right.cov()(1,1)
+            && left.cov()(1,1)==right.cov()(0,0), "batch/elliptic join lost its complex strategy");
+}
+
 void mean_tests() {
     // Independent analytic oracles: scalar pooled t^2 and the inverse of a
     // two-dimensional covariance. Neither uses ALEA's diagonalization.
@@ -1381,6 +1417,7 @@ int main() {
         bad_moment_checkpoints(filename);
         results(filename);
         mean_tests();
+        mixed_joins();
         unequal_merge(filename);
         independent_reductions<double>();
         independent_reductions<std::complex<double>>();

@@ -47,6 +47,7 @@ template <typename R1, typename R2,
           typename Result=typename internal::joined<R1, R2>::result_type>
 Result join(const R1 &first, const R2 &second)
 {
+    internal::check_valid(first); internal::check_valid(second);
     return joiner<Result>()(first, second);
 }
 
@@ -60,13 +61,13 @@ struct joiner<mean_result<T> >
     template <typename R1, typename R2>
     mean_result<T> operator()(const R1 &first, const R2 &second)
     {
-        if (first.store().count() != second.store().count())
+        if (first.count() != second.count())
             throw weight_mismatch();  // TODO
 
         mean_result<T> res(mean_data<T>(first.size() + second.size()));
-        res.store().data().topRows(first.size()) = first.store().data();
-        res.store().data().bottomRows(second.size()) = second.store().data();
-        res.store().count() = first.store().count();
+        res.store().data().topRows(first.size()) = first.mean();
+        res.store().data().bottomRows(second.size()) = second.mean();
+        res.store().count() = first.count();
         return res;
     }
 };
@@ -74,21 +75,28 @@ struct joiner<mean_result<T> >
 template <typename T, typename Str>
 struct joiner<var_result<T,Str> >
 {
+    template<class R> auto variance(R const& value) {
+        if constexpr (traits<R>::HAVE_BATCH) return value.template var<Str>();
+        else {
+            static_assert(std::is_same_v<Str,typename traits<R>::strategy_type>, "Joining summary moments requires matching complex strategies");
+            return value.var();
+        }
+    }
     template <typename R1, typename R2>
     var_result<T,Str> operator()(const R1 &first, const R2 &second)
     {
-        if (first.store().count() != second.store().count())
+        if (first.count() != second.count())
             throw weight_mismatch();
-        if (first.store().count2() != second.store().count2())
+        if (first.count2() != second.count2())
             throw weight_mismatch();
 
         var_result<T,Str> res(var_data<T,Str>(first.size() + second.size()));
-        res.store().data().topRows(first.size()) = first.store().data();
-        res.store().data().bottomRows(second.size()) = second.store().data();
-        res.store().data2().topRows(first.size()) = first.store().data2();
-        res.store().data2().bottomRows(second.size()) = second.store().data2();
-        res.store().count() = first.store().count();
-        res.store().count2() = first.store().count2();
+        res.store().data().topRows(first.size()) = first.mean();
+        res.store().data().bottomRows(second.size()) = second.mean();
+        res.store().data2().topRows(first.size()) = variance(first);
+        res.store().data2().bottomRows(second.size()) = variance(second);
+        res.store().count() = first.count();
+        res.store().count2() = first.count2();
         return res;
     }
 };
@@ -96,25 +104,32 @@ struct joiner<var_result<T,Str> >
 template <typename T, typename Str>
 struct joiner<cov_result<T,Str> >
 {
+    template<class R> auto covariance(R const& value) {
+        if constexpr (traits<R>::HAVE_BATCH) return value.template cov<Str>();
+        else {
+            static_assert(std::is_same_v<Str,typename traits<R>::strategy_type>, "Joining summary moments requires matching complex strategies");
+            return value.cov();
+        }
+    }
     template <typename R1, typename R2>
     cov_result<T,Str> operator()(const R1 &first, const R2 &second)
     {
-        if (first.store().count() != second.store().count())
+        if (first.count() != second.count())
             throw weight_mismatch();
-        if (first.store().count2() != second.store().count2())
+        if (first.count2() != second.count2())
             throw weight_mismatch();
 
         cov_result<T,Str> res(cov_data<T,Str>(first.size() + second.size()));
-        res.store().data().topRows(first.size()) = first.store().data();
-        res.store().data().bottomRows(second.size()) = second.store().data();
+        res.store().data().topRows(first.size()) = first.mean();
+        res.store().data().bottomRows(second.size()) = second.mean();
 
         // ignore cross correlation
         res.store().data2().topLeftCorner(first.size(), first.size())
-                                                = first.store().data2();
+                                                = covariance(first);
         res.store().data2().bottomRightCorner(second.size(), second.size())
-                                                = second.store().data2();
-        res.store().count() = first.store().count();
-        res.store().count2() = first.store().count2();
+                                                = covariance(second);
+        res.store().count() = first.count();
+        res.store().count2() = first.count2();
         return res;
     }
 };
