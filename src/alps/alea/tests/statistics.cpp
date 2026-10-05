@@ -188,6 +188,7 @@ struct test_reducer : aa::reducer {
     void reduce(aa::view<uint64_t> data) const override { sum(data); }
     void commit() const override {
         for (auto const& operation : pending) operation();
+        pending.clear();
         if (fail_commit) throw std::runtime_error("deferred reduction failed");
     }
 };
@@ -289,6 +290,10 @@ template<class T> void independent_reductions() {
     auto bins = raw_bins<T>(0,19,3), peer_bins = raw_bins<T>(1,53,3);
     bins.insert(bins.end(), peer_bins.begin(), peer_bins.end());
     bin_oracle<T> oracle(bins);
+    auto input_mean=mean_right.result(), saved_mean=input_mean;
+    aa::mean_acc<T> merged_mean(2);
+    merged_mean << input_mean;
+    require(input_mean == saved_mean, "mean merging mutated a const result");
     auto mean = reduced(mean_left.result(), mean_right.result(), dimensions(2));
     reduction_failure(mean_left.result(), mean_right.result(), dimensions(2));
     require(mean.count() == 72, "unequal-run mean lost samples");
@@ -657,6 +662,76 @@ void large_batch_weights() {
     require(result.mean()(0) == 2. && result.var()(0) == 2.
          && result.cov()(0,0) == 2. && result.stderror()(0) == 1.,
             "large integer batch weights overflowed squared-weight counts");
+}
+// Analytic covariance of alternating +/-1 samples, including a large DC
+// offset. This exercises the streaming kernels independently of batch_result.
+template<class T, class Strategy = aa::circular_var> void centered_moments() {
+    using V = aa::var_acc<T,Strategy>;
+    using C = aa::cov_acc<T,Strategy>;
+    constexpr size_t n = 10000;
+    for (bool constant : {false,true}) {
+        V variance(2), vl(2), vr(2);
+        C covariance(2), cl(2), cr(2);
+        aa::autocorr_acc<T> autocorr(2);
+        auto value = [&](double sign) {
+            aa::column<T> x(2);
+            for (int j=0; j<2; ++j) {
+                double real = constant ? .64*(j+1) : 1e12 + (j+1)*sign;
+                if constexpr (std::is_same_v<T,double>) x(j) = real;
+                else x(j) = T(real,constant ? -.17*(j+1) : -2e12 + (j+2)*sign);
+            }
+            return x;
+        };
+        for (size_t i=0; i<n; ++i) {
+            auto x = value(i%2 ? 1 : -1);
+            variance << x; covariance << x; autocorr << x;
+            (i<n/2 ? vl : vr) << x;
+            (i<n/2 ? cl : cr) << x;
+        }
+        auto check = [&](auto const& var, auto const& cov) {
+            require(var.count() == n && cov.count() == n, "centered moments lost samples");
+            auto close = [&](double actual,double expected) {
+                require(std::isfinite(actual) && std::abs(actual-expected) <= 1e-4*std::abs(expected),
+                        "streaming moments disagree with centered analytic covariance");
+            };
+            double scale = constant ? 0. : double(n)/(n-1);
+            for (int j=0;j<2;++j) {
+                double real = (j+1)*(j+1)*scale, imag = (j+2)*(j+2)*scale;
+                if constexpr (std::is_same_v<Strategy,aa::elliptic_var>) {
+                    auto v=var.var()(j);
+                    close(v.rere(),real); close(v.imim(),imag);
+                    close(v.reim(),(j+1)*(j+2)*scale);
+                } else close(var.var()(j),real + (std::is_same_v<T,double> ? 0. : imag));
+                for (int k=0;k<2;++k) {
+                    auto c = cov.cov()(j,k);
+                    if constexpr (std::is_same_v<T,double>) close(c,(j+1)*(k+1)*scale);
+                    else if constexpr (std::is_same_v<Strategy,aa::elliptic_var>) {
+                        close(c.rere(),(j+1)*(k+1)*scale); close(c.imim(),(j+2)*(k+2)*scale);
+                        close(c.reim(),(j+1)*(k+2)*scale); close(c.imre(),(j+2)*(k+1)*scale);
+                    } else {
+                        close(c.real(),((j+1)*(k+1)+(j+2)*(k+2))*scale);
+                        close(c.imag(),((j+2)*(k+1)-(j+1)*(k+2))*scale);
+                    }
+                }
+            }
+        };
+        check(variance.result(),covariance.result());
+        auto lv=vl.result(), rv=vr.result();
+        auto lc=cl.result(), rc=cr.result();
+        auto before_v=rv; auto before_c=rc;
+        vl << rv; cl << rc;
+        require(rv==before_v && rc==before_c, "moment merge mutated a const result");
+        check(vl.result(),cl.result());
+        auto maxima=dimensions(2); maxima.insert(maxima.end(),{0,0});
+        check(reduced(lv,rv,maxima),reduced(lc,rc,maxima));
+        auto a=autocorr.result();
+        require(a.stderror().allFinite(), "centered autocorrelation error is nonfinite");
+        if (constant) require(a.stderror().isZero(0), "constant autocorrelation acquired noise");
+        if constexpr (std::is_same_v<Strategy,aa::elliptic_var>) {
+            if (constant) require(aa::ratio_real_imag(variance.result()).stderror().isZero(0),
+                                  "constant paired ratio acquired noise");
+        }
+    }
 }
 template<class T> void centered_batch_statistics() {
     using wide = std::complex<long double>;
@@ -1253,6 +1328,9 @@ int main() {
         elliptic_reduction();
         batch_reset_and_equality();
         large_batch_weights();
+        centered_moments<double>();
+        centered_moments<std::complex<double>>();
+        centered_moments<std::complex<double>,aa::elliptic_var>();
         centered_batch_statistics<double>();
         centered_batch_statistics<std::complex<double>>();
         wrong_sized_append();

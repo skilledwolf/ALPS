@@ -119,6 +119,22 @@ void elliptic_signed_ratio(int rank, aa::reducer const& reducer) {
     } catch (...) { ok = false; }
     require(ok, "elliptic signed ratio lost pooled means, cross-sign covariance or partial-bin weights");
 }
+void centered_reduction(int rank, aa::reducer const& reducer) {
+    aa::var_acc<double> v;
+    aa::cov_acc<double> c;
+    // Each rank is constant; all pooled variance is between the ranks.
+    for (int i=0;i<10000;++i) { v << 1e12 + (rank ? 1. : -1.); c << 1e12 + (rank ? 1. : -1.); }
+    auto vr=v.result(); auto cr=c.result();
+    vr.reduce(reducer); cr.reduce(reducer);
+    require(rank != 1 || (std::abs(vr.var()(0)-20000./19999.) < 1e-14
+                          && std::abs(cr.cov()(0,0)-20000./19999.) < 1e-14),
+            "MPI moment reduction lost variance around a large mean");
+    aa::var_acc<std::complex<double>,aa::elliptic_var> pair;
+    for (int i=0;i<10000;++i) pair << std::complex<double>(.64,1.);
+    auto result=pair.result(); result.reduce(reducer);
+    require(rank != 1 || aa::ratio_real_imag(result).stderror()(0) == 0.,
+            "constant MPI paired ratio acquired uncertainty");
+}
 void contract(int rank) {
     aa::mpi_reducer reducer(MPI_COMM_WORLD, 1);
     auto setup = reducer.get_setup();
@@ -201,6 +217,7 @@ void contract(int rank) {
     require(rank != 1 || (levels.count() == 10 && levels.mean()(0) == 5.5
                          && levels.nlevel() == size_t(common)),
             "unequal runs invented autocorrelation levels or lost samples");
+    centered_reduction(rank, reducer);
     empty_autocorrelation(rank, reducer);
     elliptic_signed_ratio(rank, reducer);
 }

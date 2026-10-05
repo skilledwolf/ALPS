@@ -4,6 +4,7 @@
  * For use in publications, see ACKNOWLEDGE.TXT
  */
 #include <alps/alea/variance.hpp>
+#include "moments.hpp"
 #include <limits>
 #include <cmath>
 #include <alps/alea/util.hpp>
@@ -32,11 +33,10 @@ void var_data<T,Str>::reset()
 }
 
 template <typename T, typename Str>
-void var_data<T,Str>::convert_to_mean()
+void var_data<T,Str>::normalize()
 {
     // This also works for count_ == 0
-    data_ /= count_;
-    data2_ -= count_ * data_.unaryExpr(typename bind<Str,T>::abs2_op());
+    if (!count_) data_.fill(std::numeric_limits<double>::quiet_NaN());
 
     // In case of zero unbiased information, the variance is infinite.
     // However, data2_ is 0 in this case as well, so we need to handle it
@@ -51,7 +51,7 @@ void var_data<T,Str>::convert_to_mean()
 }
 
 template <typename T, typename Str>
-void var_data<T,Str>::convert_to_sum()
+void var_data<T,Str>::unnormalize()
 {
     // "empty" sets must be handled specially here because of NaNs
     if (count_ == 0) {
@@ -66,8 +66,6 @@ void var_data<T,Str>::convert_to_sum()
     else
         data2_ = data2_ * nunbiased;
 
-    data2_ += count_ * data_.unaryExpr(typename bind<Str,T>::abs2_op());
-    data_ *= count_;
 }
 
 template class var_data<double>;
@@ -127,6 +125,7 @@ void var_acc<T,Str>::add(const computed<T> &source, uint64_t count,
                          var_acc<T,Str> *cascade)
 {
     internal::check_valid(*this);
+    if (source.size() != size()) throw size_mismatch();
     source.add_to(view<T>(current_.sum().data(), current_.size()));
     current_.count() += count;
 
@@ -141,15 +140,12 @@ var_acc<T,Str> &var_acc<T,Str>::operator<<(const var_result<T,Str> &other)
     if (size() != other.size())
         throw size_mismatch();
 
-    // NOTE partial sums are unchanged
-    // HACK we need this for "outwardly constant" manipulation
-    var_data<T,Str> &other_store = const_cast<var_data<T,Str> &>(other.store());
-    other_store.convert_to_sum();
-    store_->data() += other_store.data();
-    store_->data2() += other_store.data2();
-    store_->count() += other_store.count();
-    store_->count2() += other_store.count2();
-    other_store.convert_to_mean();
+    // Leave partial bins in place and never mutate a const input result.
+    auto incoming = other.store();
+    incoming.unnormalize();
+    internal::merge_moments(*store_, incoming, [](auto const& delta) {
+        return delta.unaryExpr(typename bind<Str,T>::abs2_op()).eval();
+    });
     return *this;
 }
 
@@ -185,19 +181,15 @@ void var_acc<T,Str>::finalize_to(var_result<T,Str> &result, var_acc<T,Str> *casc
     result.store_.swap(store_);
 
     // post-processing to result
-    result.store_->convert_to_mean();
+    result.store_->normalize();
 }
 
 template <typename T, typename Str>
 void var_acc<T,Str>::add_bundle(var_acc<T,Str> *cascade)
 {
-    typename bind<Str, T>::abs2_op abs2;
-
-    // add batch to average and squared
-    store_->data().noalias() += current_.sum();
-    store_->data2().noalias() += current_.sum().unaryExpr(abs2) / current_.count();
-    store_->count() += current_.count();
-    store_->count2() += double(current_.count()) * current_.count();
+    internal::add_mean(*store_, (current_.sum() / current_.count()).eval(),
+                       current_.count(), double(current_.count()) * current_.count(),
+                       [](auto const& delta) { return delta.unaryExpr(typename bind<Str,T>::abs2_op()).eval(); });
 
     // add batch mean also to uplevel
     if (cascade != nullptr)
@@ -253,36 +245,15 @@ void var_result<T,Str>::reduce(const reducer &r)
 {
     internal::check_reduction(r, valid(), valid() ? size() : 0);
     var_result staged(*this);
-    staged.reduce(r, true, true);
+    staged.reduce_unchecked(r);
     store_.swap(staged.store_);
 }
 
 template <typename T, typename Str>
-void var_result<T,Str>::reduce(const reducer &r, bool pre_commit, bool post_commit)
+void var_result<T,Str>::reduce_unchecked(const reducer &r)
 {
-    internal::check_valid(*this);
-    if (pre_commit) {
-        if (r.get_max(!internal::valid_weight_count(count(), count2())))
-            throw std::runtime_error("invalid ALEA squared-weight count");
-        store_->convert_to_sum();
-        r.reduce(view<T>(store_->data().data(), store_->data().rows()));
-        r.reduce(view<var_type>(store_->data2().data(), store_->data2().rows()));
-        r.reduce(view<uint64_t>(&store_->count(), 1));
-        r.reduce(view<double>(&store_->count2(), 1));
-    }
-    if (pre_commit && post_commit) {
-        r.commit();
-    }
-    if (post_commit) {
-        reducer_setup setup = r.get_setup();
-        if (r.get_max(setup.have_result && !internal::valid_weight_count(count(), count2())))
-            throw std::runtime_error("invalid ALEA squared-weight count");
-        if (setup.have_result) {
-            store_->convert_to_mean();
-        } else {
-            store_.reset();   // free data
-        }
-    }
+    internal::reduce_moments(*store_, r, [](auto const& delta) { return delta.unaryExpr(typename bind<Str,T>::abs2_op()).eval(); });
+    if (!r.get_setup().have_result) store_.reset();
 }
 
 template class var_result<double>;

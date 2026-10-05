@@ -40,10 +40,8 @@ namespace alps { namespace alea {
 /**
  * Data for covariance accumulation.
  *
- * As with `mean_acc`, this class is basically a "union"-like structure,
- * which for a data series `(X[0], ... X[count_-1])` either represents the sum
- * of X[i] and the sum of X[i]*X[j] (sum state) or the sample mean and sample
- * covariance of X (mean state).
+ * data() holds the mean; data2() holds either the centered sum of weighted
+ * outer products (accumulator state) or the unbiased covariance (result).
  */
 template <typename T, typename Strategy=circular_var>
 class cov_data
@@ -82,9 +80,9 @@ public:
 
     cov_matrix_type &data2() { return data2_; }
 
-    void convert_to_mean();
+    void normalize();
 
-    void convert_to_sum();
+    void unnormalize();
 
 private:
     column<T> data_;

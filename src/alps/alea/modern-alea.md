@@ -51,6 +51,15 @@ override archive-reference hooks for their application state.
 variance results through the same native codec; they expose means, errors,
 variance, counts and squared weights without introducing another accumulator API.
 
+Variance and covariance accumulate centered weighted moments using Chan/Welford
+updates. Merging never modifies its input result. MPI reductions sum local
+centered moments and combine the gathered run means and weights, avoiding raw
+second-moment cancellation. This applies to real, circular complex and elliptic
+complex estimators, including the variance hierarchy used for autocorrelation.
+The extra reduction storage is linear in ranks times components, even when the
+estimator holds a full covariance matrix. Constant unit streams have zero error;
+empty and single-observation streams still have unavailable variance estimates.
+
 Independent-run result reduction retains every batch and its weight, including
 unfinished batches. Runs with different slot counts use disjoint blocks padded
 with empty slots; their bins are never summed together. Autocorrelation reduction

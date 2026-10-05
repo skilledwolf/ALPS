@@ -43,10 +43,8 @@ namespace alps { namespace alea {
 /**
  * Data for variance accumulation.
  *
- * As with `mean_acc`, this class is basically a "union"-like structure,
- * which for a data series `(X[0], ... X[count_-1])` either represents the sum
- * of X[i] and the sum of X[i]*X[i] (sum state) or the sample mean and sample
- * variance of X (mean state).
+ * data() holds the mean; data2() holds either the centered sum of weighted
+ * squared deviations (accumulator state) or the unbiased variance (result).
  */
 template <typename T, typename Strategy=circular_var>
 class var_data
@@ -84,9 +82,9 @@ public:
 
     column<var_type> &data2() { return data2_; }
 
-    void convert_to_mean();
+    void normalize();
 
-    void convert_to_sum();
+    void unnormalize();
 
 private:
     column<T> data_;
@@ -275,7 +273,7 @@ public:
     friend std::ostream &operator<< <>(std::ostream &, const var_result &);
 
 protected:
-    void reduce(const reducer &, bool do_pre_commit, bool do_post_commit);
+    void reduce_unchecked(const reducer &);
 
 private:
     std::unique_ptr< var_data<T,Strategy> > store_;

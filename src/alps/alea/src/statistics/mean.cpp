@@ -73,12 +73,10 @@ mean_acc<T> &mean_acc<T>::operator<<(const mean_result<T> &other)
     if (size() != other.size())
         throw size_mismatch();
 
-    // HACK we need this for "outwardly constant" manipulation
-    mean_data<T> &other_store = const_cast<mean_data<T> &>(other.store());
-    other_store.convert_to_sum();
-    store_->data() += other_store.data();
-    store_->count() += other_store.count();
-    other_store.convert_to_mean();
+    if (other.count()) {
+        store_->data() += double(other.count()) * other.mean();
+        store_->count() += other.count();
+    }
     return *this;
 }
 

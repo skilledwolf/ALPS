@@ -220,9 +220,7 @@ void autocorr_result<T>::reduce(const reducer &r)
         throw size_mismatch();
     autocorr_result staged(*this);
     staged.level_.resize(shared_levels, level_result_type(var_data<T>(size())));
-    for (auto &level : staged.level_) level.reduce(r, true, false);
-    r.commit();
-    for (auto &level : staged.level_) level.reduce(r, false, true);
+    for (auto &level : staged.level_) level.reduce_unchecked(r);
     if (!setup.have_result) staged.level_.clear();
     level_.swap(staged.level_);
 }

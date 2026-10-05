@@ -4,6 +4,7 @@
  * For use in publications, see ACKNOWLEDGE.TXT
  */
 #include <alps/alea/covariance.hpp>
+#include "moments.hpp"
 #include <limits>
 #include <cmath>
 #include <alps/alea/serialize.hpp>
@@ -32,10 +33,9 @@ void cov_data<T,Str>::reset()
 }
 
 template <typename T, typename Str>
-void cov_data<T,Str>::convert_to_mean()
+void cov_data<T,Str>::normalize()
 {
-    data_ /= count_;
-    data2_ -= count_ * internal::outer<bind<Str, T> >(data_, data_);
+    if (!count_) data_.fill(std::numeric_limits<double>::quiet_NaN());
 
     // In case of zero unbiased information, the variance is infinite.
     // However, data2_ is 0 in this case as well, so we need to handle it
@@ -49,7 +49,7 @@ void cov_data<T,Str>::convert_to_mean()
 }
 
 template <typename T, typename Str>
-void cov_data<T,Str>::convert_to_sum()
+void cov_data<T,Str>::unnormalize()
 {
     // "empty" sets must be handled specially here because of NaNs
     if (count_ == 0) {
@@ -64,8 +64,6 @@ void cov_data<T,Str>::convert_to_sum()
     else
         data2_ = data2_ * nunbiased;
 
-    data2_ += count_ * internal::outer<bind<Str, T> >(data_, data_);
-    data_ *= count_;
 }
 
 template class cov_data<double>;
@@ -124,6 +122,7 @@ template <typename T, typename Str>
 void cov_acc<T,Str>::add(const computed<value_type> &source, uint64_t count)
 {
     internal::check_valid(*this);
+    if (source.size() != size()) throw size_mismatch();
     source.add_to(view<T>(current_.sum().data(), current_.size()));
     current_.count() += count;
 
@@ -138,15 +137,12 @@ cov_acc<T,Str> &cov_acc<T,Str>::operator<<(const cov_result<T,Str> &other)
     if (size() != other.size())
         throw size_mismatch();
 
-    // NOTE partial sums are unchanged
-    // HACK we need this for "outwardly constant" manipulation
-    cov_data<T,Str> &other_store = const_cast<cov_data<T,Str> &>(other.store());
-    other_store.convert_to_sum();
-    store_->data() += other_store.data();
-    store_->data2() += other_store.data2();
-    store_->count() += other_store.count();
-    store_->count2() += other_store.count2();
-    other_store.convert_to_mean();
+    // Leave partial bins in place and never mutate a const input result.
+    auto incoming = other.store();
+    incoming.unnormalize();
+    internal::merge_moments(*store_, incoming, [](auto const& delta) {
+        return internal::outer<bind<Str,T>>(delta, delta).eval();
+    });
     return *this;
 }
 
@@ -181,19 +177,15 @@ void cov_acc<T,Str>::finalize_to(cov_result<T,Str> &result)
     result.store_.swap(store_);
 
     // post-process data
-    result.store_->convert_to_mean();
+    result.store_->normalize();
 }
 
 template <typename T, typename Str>
 void cov_acc<T,Str>::add_bundle()
 {
-    // add batch to average and squared
-    store_->data().noalias() += current_.sum();
-    store_->data2().noalias() +=
-                internal::outer<bind<Str, T> >(current_.sum(), current_.sum())
-                / current_.count();
-    store_->count() += current_.count();
-    store_->count2() += double(current_.count()) * current_.count();
+    internal::add_mean(*store_, (current_.sum() / current_.count()).eval(),
+                       current_.count(), double(current_.count()) * current_.count(),
+                       [](auto const& delta) { return internal::outer<bind<Str,T>>(delta, delta).eval(); });
 
     // TODO: add possibility for uplevel also here
     current_.reset();
@@ -246,22 +238,9 @@ template <typename T, typename Str>
 void cov_result<T,Str>::reduce(const reducer &r)
 {
     auto setup = internal::check_reduction(r, valid(), valid() ? size() : 0);
-    if (r.get_max(!internal::valid_weight_count(count(), count2())))
-        throw std::runtime_error("invalid ALEA squared-weight count");
     cov_result staged(*this);
-    staged.store_->convert_to_sum();
-    r.reduce(view<T>(staged.store_->data().data(), staged.size()));
-    r.reduce(view<cov_type>(staged.store_->data2().data(), staged.store_->data2().size()));
-    r.reduce(view<uint64_t>(&staged.store_->count(), 1));
-    r.reduce(view<double>(&staged.store_->count2(), 1));
-    r.commit();
-    if (r.get_max(setup.have_result && !internal::valid_weight_count(staged.count(), staged.count2())))
-        throw std::runtime_error("invalid ALEA squared-weight count");
-    if (setup.have_result) {
-        staged.store_->convert_to_mean();
-    } else {
-        staged.store_.reset();
-    }
+    internal::reduce_moments(*staged.store_, r, [](auto const& delta) { return internal::outer<bind<Str,T>>(delta, delta).eval(); });
+    if (!setup.have_result) staged.store_.reset();
     store_.swap(staged.store_);
 }
 
