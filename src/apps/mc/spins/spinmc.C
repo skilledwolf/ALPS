@@ -17,11 +17,6 @@
 #include <stdexcept>
 #include "factory.h"
 
-/**
- * Main function to be called to start the fitting process.
- * Starting from a parameter file, the scheduler is started.
- */
-
 int main(int argc, char** argv)
 {
 #ifndef BOOST_NO_EXCEPTIONS

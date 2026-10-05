@@ -15,8 +15,6 @@
 #ifndef ALPS_CONFIG_H
 #define ALPS_CONFIG_H
 
-#cmakedefine ALPS_NGS_OPENMPI_ULFM
-
 //
 // use boost filesystem version 2 (nessesary from boost 1.46 upwards)
 //

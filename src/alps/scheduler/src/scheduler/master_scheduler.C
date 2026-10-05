@@ -46,14 +46,10 @@ MasterScheduler::MasterScheduler(const Options& opt,const Factory& p)
 }
 
 /**
- * Registers a new job file and updates everything that is related to the job
- * files - namely the task files are parsed and the tasks are created
- * accordingly.
- * This function is used for the fitting and allows to start another simulation
- * based on newly created files. Deleting and re-creating the schedulers yields
- * to problems with syncronisation and integrity of the message space.
+ * Registers a job file, parses its task files and creates the tasks while
+ * retaining the scheduler's communication state.
  *
- * @params jobfilename The name of the new job file
+ * @param jobfilename The name of the new job file
  */
 void MasterScheduler::set_new_jobfile(const boost::filesystem::path& jobfilename)
 {

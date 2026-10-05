@@ -250,7 +250,6 @@ void Task::checkpoint(const boost::filesystem::path& fn, bool writeallxml) const
   
 #endif
 
-#ifndef ALPS_ONE_CHECKPOINT_FILE_ONLY
   boost::filesystem::path filename = (make_backup ? dir/(fn.filename().string()+".bak") : fn);
   {
     alps::oxstream out (filename);
@@ -259,14 +258,11 @@ void Task::checkpoint(const boost::filesystem::path& fn, bool writeallxml) const
     write_xml_body(out,fn,writeallxml);
     write_xml_trailer(out);
   } // close file
-#endif
 
   if(make_backup) {
     if (boost::filesystem::exists(fn))
       boost::filesystem::remove(fn);
-#ifndef ALPS_ONE_CHECKPOINT_FILE_ONLY
     boost::filesystem::rename(filename,fn);
-#endif
 #ifdef ALPS_HAVE_HDF5
     boost::filesystem::rename(task_backup, task_path);
 #endif
@@ -289,7 +285,6 @@ void Task::checkpoint_xml(const boost::filesystem::path& fn, bool writeallxml) c
   boost::filesystem::path dir=fn.parent_path();
   bool make_backup = boost::filesystem::exists(fn);
 
-#ifndef ALPS_ONE_CHECKPOINT_FILE_ONLY
   boost::filesystem::path filename = (make_backup ? dir/(fn.filename().string()+".bak") : fn);
   {
     alps::oxstream out (filename);
@@ -298,14 +293,11 @@ void Task::checkpoint_xml(const boost::filesystem::path& fn, bool writeallxml) c
     write_xml_body(out,fn,writeallxml);
     write_xml_trailer(out);
   } // close file
-#endif
 
   if(make_backup) {
     if (boost::filesystem::exists(fn))
       boost::filesystem::remove(fn);
-#ifndef ALPS_ONE_CHECKPOINT_FILE_ONLY
     boost::filesystem::rename(filename,fn);
-#endif
   }
 }
 

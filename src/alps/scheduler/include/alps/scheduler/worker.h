@@ -36,19 +36,21 @@ namespace alps {
 namespace scheduler {
 
 typedef struct rt {
-  double T;
-  double mean;
-  double error;
-  double count;
+  double T = 0.;
+  double mean = 0.;
+  double error = 0.;
+  double count = 0.;
 
-  rt operator+=(const rt c) {
+  rt& operator+=(const rt& c) {
     using std::sqrt;
-    if (T != c.T) 
-      std::cerr << "\nname or temperature of summaries to add don't match!!\n";
-    if (count == 0)
-      return c;
     if (c.count == 0)
       return (*this);
+    if (count == 0) {
+      *this = c;
+      return (*this);
+    }
+    if (T != c.T)
+      std::cerr << "\nname or temperature of summaries to add don't match!!\n";
     double newCount = count+c.count;
     mean = (mean*count+c.mean*c.count)/newCount;
     double tmp1 = error*count;

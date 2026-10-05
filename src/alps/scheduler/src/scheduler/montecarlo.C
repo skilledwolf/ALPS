@@ -36,11 +36,14 @@ ResultType MCSimulation::get_summary(const std::string name) const
 {
   ResultType res;
   ObservableSet mySet = get_measurements(true);
-  RealObservable* myObs = ((RealObservable*)&mySet[name]);
+  auto const* scalar = dynamic_cast<AbstractSimpleObservable<double> const*>(&mySet[name]);
+  if (!scalar)
+    throw std::invalid_argument("summary observable must be a real scalar: " + name);
+  RealObsevaluator myObs(*scalar);
   res.T = parms["T"];
-  res.mean = myObs->mean();
-  res.error = myObs->error();
-  res.count = myObs->count();
+  res.mean = myObs.mean();
+  res.error = myObs.error();
+  res.count = myObs.count();
   return res;
 }
 
@@ -75,8 +78,6 @@ void MCSimulation::accumulate_measurements(std::vector<std::pair<std::size_t, Ob
 // collect all measurements
 ObservableSet MCSimulation::get_measurements(bool compactit) const
 {
-  if (runs.empty())
-    return ObservableSet();
   std::vector<std::pair<std::size_t, ObservableSet> > all_measurements;
   ProcessList where_master;
   int remote_runs=0;
@@ -109,6 +110,11 @@ ObservableSet MCSimulation::get_measurements(bool compactit) const
       receive >> m;
       accumulate_measurements(all_measurements, m);
     }
+  }
+  if (all_measurements.empty()) {
+    ObservableSet result(measurements);
+    if (compactit) result.compact();
+    return result;
   }
   for (std::size_t i = all_measurements.size() - 1; i > 0; --i)
       all_measurements[i - 1].second << all_measurements[i].second;
@@ -303,13 +309,6 @@ bool MCRun::handle_message(const Process& runmaster,int32_t tag)
       dump << get_measurements();
     dump.send(runmaster,MCMP_measurements);
     return true;
-  case MCMP_get_measurements_and_infos:
-    message.receive(runmaster, MCMP_get_measurements_and_infos);
-//TODO:    std::ostringstream rngstream;
-//TODO:    rngstream << *(runs[i]->engine_ptr);
-    dump << get_measurements() << get_info() /*<< rngstream.str() << rng_name()*/;
-    dump.send(runmaster, MCMP_measurements_and_infos);
-    return true;
   case MCMP_get_observable:
     message.receive(runmaster, MCMP_get_observable);
     message >> compactit;
@@ -376,68 +375,7 @@ void MCSimulation::load(hdf5::archive & ar) {
 }
 void MCSimulation::save(hdf5::archive & ar) const {
     WorkerTask::save(ar);
-    #ifdef ALPS_ONE_CHECKPOINT_FILE_ONLY
-        std::vector<std::pair<std::size_t, ObservableSet> > all_measurements;
-        ProcessList remote_runs;
-        std::size_t index = 0;
-        for (std::size_t i = 0; i < runs.size(); ++i)
-            if(runs[i] && workerstatus[i]==RemoteRun)
-                remote_runs.push_back( Process(dynamic_cast<const RemoteWorker*>(runs[i])->process()));
-            else if(runs[i]) {
-                ObservableSet measurements = dynamic_cast<const MCRun*>(runs[i])->get_measurements();
-                all_measurements.push_back(make_pair(1, measurements));
-                while (all_measurements.size() > 1 && all_measurements.back().first == (all_measurements.rbegin() + 1)->first) {
-                    (all_measurements.rbegin() + 1)->first *= 2;
-                    (all_measurements.rbegin() + 1)->second << all_measurements.back().second;
-                    all_measurements.pop_back();
-                }
-//TODO:         std::ostringstream rngstream;
-//TODO:         rngstream << *(runs[i]->engine_ptr);
-                ar
-                    << make_pvp("/simulation/realizations/0/clones/" + boost::lexical_cast<std::string>(index) + "/results", measurements)
-                    << make_pvp("/log/realizations/0/clones/" + boost::lexical_cast<std::string>(index) + "/alps", runs[i]->get_info())
-//TODO:             << make_pvp("/rng/realizations/0/clones/" + boost::lexical_cast<std::string>(index++), rngstream.str())
-//TODO:             << make_pvp("/rng/realizations/0/clones/" + boost::lexical_cast<std::string>(index++) + "/@name", runs[i]->rng_name())
-                ;
-                ++index;
-            }
-        if(remote_runs.size()) {
-            OMPDump send;
-            send.send(remote_runs, MCMP_get_measurements_and_infos);
-            for (unsigned int i = 0; i < remote_runs.size(); ++i) {
-                IMPDump receive(MCMP_measurements_and_infos);
-                ObservableSet measurements;
-                receive >> measurements;
-                all_measurements.push_back(make_pair(1, measurements));
-                while (all_measurements.size() > 1 && all_measurements.back().first == (all_measurements.rbegin() + 1)->first) {
-                    (all_measurements.rbegin() + 1)->first *= 2;
-                    (all_measurements.rbegin() + 1)->second << all_measurements.back().second;
-                    all_measurements.pop_back();
-                }
-                TaskInfo infos;
-                receive >> infos;
-//TODO:         std::string rng_engine;
-//TODO:         receive >> rng_engine;
-//TODO:         std::string rng_name;
-//TODO:         receive >> rng_name;
-                ar
-                    << make_pvp("/simulation/realizations/0/clones/" + boost::lexical_cast<std::string>(index) + "/results", measurements)
-                    << make_pvp("/log/realizations/0/clones/" + boost::lexical_cast<std::string>(index) + "/alps", infos)
-//TODO:             << make_pvp("/rng/realizations/0/clones/" + boost::lexical_cast<std::string>(index++), rng_engine)
-//TODO:             << make_pvp("/rng/realizations/0/clones/" + boost::lexical_cast<std::string>(index++) + "/@name", rng_name)
-                ;
-                ++index;
-            }
-        }
-        for (std::size_t i = all_measurements.size() - 1; i > 0; --i)
-            all_measurements[i - 1].second << all_measurements[i].second;
-        for (ObservableSet::const_iterator it = measurements.begin(); it != measurements.end(); ++it)
-            if (!all_measurements[0].second.has(it->first))
-                all_measurements[0].second << *(it->second);
-        ar << make_pvp("/simulation/results", all_measurements[0].second);
-    #else
-        ar << make_pvp("/simulation/results", get_measurements(false));
-    #endif
+    ar << make_pvp("/simulation/results", get_measurements(false));
 }
 #endif
 

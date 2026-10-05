@@ -1,14 +1,18 @@
 // SPDX-License-Identifier: MIT
 #include <alps/scheduler/task.h>
+#include <alps/scheduler/montecarlo.h>
+#include <alps/alea.h>
 #include <alps/osiris/xdrdump.h>
 
 #include <boost/filesystem.hpp>
 
+#include <cmath>
 #include <fstream>
 #include <iostream>
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <valarray>
 
 namespace {
 void require(bool condition, char const* message) {
@@ -18,6 +22,7 @@ void require(bool condition, char const* message) {
 alps::Parameters parameters() {
     alps::Parameters result;
     result["SEED"] = 17;
+    result["T"] = 2.;
     return result;
 }
 
@@ -52,6 +57,78 @@ protected:
         if (fail_xml) throw std::runtime_error("XML hook failure");
     }
 };
+
+class mc_run : public alps::scheduler::MCRun {
+public:
+    mc_run() : MCRun(alps::ProcessList{}, parameters(), 0) {
+        measurements << alps::RealObservable("Energy") << alps::RealVectorObservable("Vector");
+    }
+    void dostep() override {}
+    double work_done() const override { return 1.; }
+    bool is_thermalized() const override { return true; }
+    void sample(double value) {
+        measurements["Energy"] << value;
+        measurements["Vector"] << std::valarray<double>(value, 2);
+    }
+    alps::scheduler::ResultType get_summary() const override {
+        alps::RealObsevaluator energy(measurements["Energy"]);
+        return {2., energy.mean(), energy.error(), double(energy.count())};
+    }
+};
+
+class mc_simulation : public alps::scheduler::MCSimulation {
+public:
+    mc_simulation() : MCSimulation(alps::ProcessList{}, parameters()) {}
+    void add(mc_run* run) {
+        runs.push_back(run);
+        workerstatus.push_back(run ? LocalRun : RunNotExisting);
+    }
+};
+
+void check_measurements(boost::filesystem::path const& directory) {
+    alps::scheduler::ResultType pooled;
+    require(pooled.T == 0. && pooled.mean == 0. && pooled.error == 0. && pooled.count == 0.,
+            "empty summary contains uninitialized values");
+    alps::scheduler::ResultType first{2., 3., .5, 4.}, second{2., 9., 1., 2.};
+    require(&(pooled += first) == &pooled && pooled.mean == 3. && pooled.count == 4.,
+            "first nonempty summary was not retained");
+    pooled += alps::scheduler::ResultType{};
+    pooled += second;
+    require(pooled.T == 2. && pooled.count == 6. && pooled.mean == 5. &&
+            std::abs(pooled.error - std::sqrt(8.) / 6.) < 1e-14,
+            "summaries lost count weighting or independent uncertainty");
+
+    mc_simulation empty;
+    require(empty.get_measurements().empty(), "empty simulation produced measurements");
+    empty.add(nullptr);
+    require(empty.get_measurements(true).empty(), "missing runs produced measurements");
+    empty.checkpoint_hdf5(directory / "empty.xml");
+
+    alps::RealObservable cached("Cached");
+    for (int i = 0; i != 8; ++i) cached << double(i);
+    empty << alps::RealObsevaluator(cached);
+    require(empty.get_summary("Cached").mean == 3.5 && empty.get_summary("Cached").count == 8.,
+            "simulation discarded an evaluator without active runs");
+
+    mc_simulation simulation;
+    auto left = new mc_run;
+    auto right = new mc_run;
+    simulation.add(left);
+    simulation.add(nullptr);
+    simulation.add(right);
+    left->sample(1.); left->sample(3.);
+    for (int i = 0; i != 6; ++i) right->sample(4. + 2. * i);
+    auto const summary = simulation.get_summary("Energy");
+    require(summary.T == 2. && summary.count == 8. && summary.mean == 7.25,
+            "real scalar run pooling produced an incorrect summary");
+    auto const worker_summary = simulation.alps::scheduler::WorkerTask::get_summary();
+    require(worker_summary.count == 8. && worker_summary.mean == 7.25,
+            "worker summaries were lost during pooling");
+    bool rejected = false;
+    try { simulation.get_summary("Vector"); }
+    catch (std::invalid_argument const&) { rejected = true; }
+    require(rejected, "vector observable was accepted as a scalar summary");
+}
 
 int hdf5_state(boost::filesystem::path const& filename) {
     alps::hdf5::archive ar(filename);
@@ -90,6 +167,7 @@ int main() {
     auto const directory = boost::filesystem::unique_path("test_scheduler_checkpoint.%%%%-%%%%");
     boost::filesystem::create_directory(directory);
     try {
+        check_measurements(directory);
         worker run;
         auto const worker_xdr = directory / "worker.xdr";
         auto const worker_h5 = directory / "worker.h5";

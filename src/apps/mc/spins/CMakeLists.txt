@@ -17,8 +17,7 @@
 #   FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 #   DEALINGS IN THE SOFTWARE.
 
-add_library(spinmc_impl STATIC abstract_fitter.C base_incr_fitter.C dummy_fitter.C
-                               est_grad_fitter.C fitting_scheduler.C spinmc_factory.C)
+add_library(spinmc_impl STATIC spinmc_factory.C)
 target_link_libraries(spinmc_impl PUBLIC ALPS::alps)
 add_executable(spinmc spinmc.C)
 add_executable(spinmc_evaluate spinmc_evaluate.C)

@@ -20,20 +20,10 @@ target_sources(alps PRIVATE
   src/scheduler/worker.C
   src/scheduler/workertask.C)
 
-if(ALPS_NGS_OPENMPI_ULFM)
-  if(NOT ALPS_ENABLE_MPI)
-    message(FATAL_ERROR "ALPS_NGS_OPENMPI_ULFM requires ALPS_ENABLE_MPI=ON")
-  endif()
-  target_sources(alps PRIVATE src/ngs/ulfm.cpp)
-endif()
-
 target_sources(alps_headers INTERFACE
   FILE_SET scheduler_headers TYPE HEADERS
   BASE_DIRS "${CMAKE_CURRENT_SOURCE_DIR}/include"
   FILES
-    include/alps/ngs/detail/tcpsession.hpp
-    include/alps/ngs/scheduler/tcpserver.hpp
-    include/alps/ngs/ulfm.hpp
     include/alps/scheduler.h
     include/alps/scheduler/convert.h
     include/alps/scheduler/diag.hpp
@@ -54,7 +44,5 @@ endif()
 
 alps_register_module(NAME scheduler HEADER_SET scheduler_headers
   TARGETS alps
-  DEPENDS numeric_io alea configuration expression hdf5 lattice legacy_parameters mc model numerics osiris params random utilities xml
-  PRIVATE_FILES
-    src/ngs/ulfm.cpp
+  DEPENDS numeric_io alea configuration expression hdf5 lattice legacy_parameters model numerics osiris params random utilities xml
 )

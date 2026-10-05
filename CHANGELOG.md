@@ -6,6 +6,9 @@ User-facing changes and migration notes are recorded here, starting with the bui
 
 ### Changed
 
+- Remove unbuilt spin-fitting code, unused TCP/ULFM scheduler remnants and dead
+  checkpoint branches. Correct scalar summary pooling and empty-simulation
+  measurement collection while the remaining scheduler applications migrate.
 - Move NGS `mcbase`, its MPI adapter and Python simulation bindings to native ALEA
   batches. Use explicit component dimensions and owning result snapshots; retain
   complete RNG and unfinished-bin checkpoint state, with staged base loads.

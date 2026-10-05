@@ -300,9 +300,6 @@ void WorkerTask::halt()
 ResultType WorkerTask::get_summary() const
 {
   ResultType res;
-  res.mean=0.;
-  res.error=0.;
-  res.count=0.;
 
   ProcessList where_master;
 
