@@ -110,3 +110,19 @@ job = write_run_files("temperatures", [
 ], baseseed=42)
 results = execute("simplemc", job)
 ```
+
+Each output also retains diagnostics for each independent chain under
+`/simulation/realizations/0/clones/<id>`: `autocorrelation/<observable>` holds a
+native logarithmic variance hierarchy (kind 4); `series/<observable>` holds
+batch sums, weights and chronological offsets in the native accumulator codec.
+These measurement states alone are not simulation checkpoints. Sort occupied
+bins by offset before plotting; different widths are intentional. Set
+`execution.bins` at least as large as `SWEEPS` (and even) to retain every sample
+individually, at a proportional memory/disk cost. Histograms of individual
+samples require this choice; histograms of coarse bin means describe a different
+distribution. Python can use NumPy histogram routines on the retained samples.
+
+`pyalps.loadBinningAnalysis` reads the first chain by default; pass `respath` for
+another chain. Its datasets retain `native_result` for level counts, uncertainties
+and `tau`. A finite autocorrelation estimate does not prove convergence. Never
+join independent chains into one chronological series.

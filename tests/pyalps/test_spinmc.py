@@ -170,3 +170,41 @@ def test_spinmc_extend_completed_run(executable, tmp_path, parameters):
     assert rejected.returncode != 0
     assert (tmp_path / "extended.h5").read_bytes() == before
     assert not (tmp_path / "too-short.h5").exists()
+
+
+def test_native_diagnostics_retain_chronology_and_exact_hierarchy(executable, tmp_path):
+    full = run_file(tmp_path, "diagnostics", execution={"bins": 64})
+    stopped = run_file(tmp_path, "stopped", execution={"bins": 64, "max_sweeps": 14},
+                       output={"checkpoint": "partial.h5"})
+    execute(executable, [full, stopped])
+    resumed = run_file(tmp_path, "resumed", execution={"bins": 64},
+                       input={"checkpoint": "partial.h5"})
+    execute(executable, resumed)
+    for chain in range(2):
+        base = f"/simulation/realizations/0/clones/{chain}"
+        with hdf5.archive(tmp_path / "diagnostics.h5") as archive:
+            series = alea.BatchAccumulator.read(archive, base + "/series/Energy")
+            reference = alea.AutocorrelationResult.read(archive, base + "/autocorrelation/Energy")
+        with hdf5.archive(tmp_path / "resumed.h5") as archive:
+            restarted = alea.AutocorrelationResult.read(archive, base + "/autocorrelation/Energy")
+        bins = series.result()
+        order = np.argsort(series.batch_offsets)
+        order = order[bins.batch_counts[order] > 0]
+        np.testing.assert_array_equal(series.batch_offsets[order], np.arange(37))
+        np.testing.assert_array_equal(bins.batch_counts[order], 1)
+        oracle = alea.AutocorrelationAccumulator()
+        for sample in bins.batch_sums[order]:
+            oracle << sample
+        expected = oracle.result()
+        for i in range(reference.levels):
+            for field in ("mean", "variance", "error"):
+                np.testing.assert_array_equal(getattr(reference.level(i), field),
+                                              getattr(restarted.level(i), field))
+                np.testing.assert_array_equal(getattr(reference.level(i), field),
+                                              getattr(expected.level(i), field))
+    curves = pyalps.loadBinningAnalysis([str(tmp_path / "diagnostics.h5")], "Energy")[0]
+    assert len(curves) == 1
+    assert curves[0].native_result.levels == reference.levels
+    assert curves[0].y.shape == (reference.levels,)
+    assert len(pyalps.loadBinningAnalysis([str(tmp_path / "diagnostics.h5")], "Energy",
+        respath="/simulation/realizations/0/clones/1/autocorrelation")[0]) == 1

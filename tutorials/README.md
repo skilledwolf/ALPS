@@ -20,10 +20,10 @@ For an interactive presentation, browse the [English notebooks](11-notebook/en/)
 The classical `spinmc` lessons write typed TOML tasks and native HDF5 results;
 see the [solver guide](../src/apps/mc/spins/README.md). Run the Python setup script
 to create each job manifest, or pass its generated task files directly to
-`spinmc`. Autocorrelation examples compare native uncertainties at different
-batch capacities on the same seeded trajectory. Equilibration examples follow
-running estimates by resuming complete checkpoints; correlated prefixes provide
-a visual diagnostic rather than a formal stationarity test.
+`spinmc`. Autocorrelation examples use each chain’s native logarithmic blocking
+hierarchy. Equilibration examples order retained bin averages by their sample
+offsets and plot weighted running means. These are visual diagnostics; inspect
+each chain separately and repeat with longer warm-up and independent seeds.
 
 ## Running simulations
 

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 #include "../moment_difference.hpp"
+#include "../measurements.hpp"
 
 #include <alps/mcbase.hpp>
 #include <alps/lattice.h>
@@ -29,7 +30,7 @@ class simulation : public alps::mcbase, private alps::graph_helper<> {
 public:
     using results_type = std::map<std::string,alps::alea::batch_result<double>>;
     results_type collect_results(result_names_type const& names={}) const {
-        return collect_results_as<alps::alea::batch_result<double>>(names);
+        return collect_results_as<alps::alea::batch_result<double>>(names.empty() ? native_mc::batch_names(measurements) : names);
     }
     simulation(alps::params const& p, std::size_t bins = 128, std::size_t chain = 0)
         : mcbase(p, chain), graph_helper<>(graph_parameters(p)), bins_(bins), chain_(chain),
@@ -159,20 +160,7 @@ public:
                     || (dimensions_ < 3 && s[2] != 0.) || (dimensions_ == 1 && s[1] != 0.))
                 throw std::invalid_argument("invalid simplemc checkpoint spin");
         }
-        // The shared codec checks the complete native layout before commit.
-        alps::alea::hdf5_serializer serializer(ar, "measurements");
-        if (ar.list_children("measurements").size() != measurements.size())
-            throw std::invalid_argument("unexpected simplemc checkpoint measurements");
-        for (auto const& entry : measurements) {
-            auto name = ar.encode_segment(entry.first);
-            alps::alea::batch_acc<double> value;
-            alps::alea::deserialize(serializer, name, value);
-            if (value.size() != 1 || value.num_batches() != bins_
-                    || value.current_batch_size() != value.cursor().factor()
-                    || value.count() != (sweeps > thermalization_ ? sweeps - thermalization_ : 0)
-                    || !value.store().batch().allFinite())
-                throw std::invalid_argument("invalid simplemc checkpoint measurement state");
-        }
+        native_mc::validate_measurements(measurements,ar,sweeps>thermalization_ ? sweeps-thermalization_ : 0,bins_);
         auto current_parameters = parameters;
         mcbase::load(ar);
         parameters = std::move(current_parameters);
@@ -284,10 +272,10 @@ private:
         return {radius * std::cos(angle), radius * std::sin(angle), z};
     }
     void add_measurement(std::string const& name) {
-        measurements.emplace(name, std::make_shared<alps::alea::batch_acc<double>>(1, bins_));
+        native_mc::add_measurement(*this,name,1,bins_);
     }
     void record(std::string const& name, double value) {
-        *measurement(name) << alps::alea::make_adapter(value);
+        native_mc::record(*this,name,value);
     }
     std::vector<std::array<uint64_t, 3>> topology() const {
         std::vector<std::array<uint64_t, 3>> result;

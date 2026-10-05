@@ -345,9 +345,11 @@ class Hdf5Loader:
                 if verbose: log( 'loading from file ' +f)
                 self.h5f = h5.archive(f, 'r')
                 self.h5fname = f
-                if respath is None:
-                  respath="/simulation/results"
-                list_ = self.GetObservableList(respath)
+                base=respath or "/simulation/results"
+                diagnostics="/simulation/realizations/0/clones/0/autocorrelation"
+                if base=="/simulation/results" and self.h5f.is_group(diagnostics):
+                    base=diagnostics
+                list_ = self.GetObservableList(base)
                 # this is exception-safe in the sense that it's also required in the line above
                 #grp = self.h5f.require_group(respath)
                 params = self.ReadParameters(proppath)
@@ -359,13 +361,24 @@ class Hdf5Loader:
                 for m in obslist:
                     try:
                         d = DataSet()
-                        if "timeseries" in  self.h5f.list_children(respath+'/'+m):
-                            k = self.h5f.list_children(respath+'/'+m+'/timeseries')
+                        path=base+'/'+m
+                        if self.h5f.is_attribute(path+'/@kind') and self.h5f[path+'/@kind']==4:
+                            mean=self.h5f[path+'/mean/value']
+                            result_type=pa.ComplexAutocorrelationResult if np.iscomplexobj(mean) else pa.AutocorrelationResult
+                            result=result_type.read(self.h5f,path)
+                            d.x=np.arange(result.levels)
+                            d.y=np.array([result.level(i).error for i in d.x]).squeeze(axis=1) if len(mean)==1 else np.array([result.level(i).error for i in d.x])
+                            d.native_result=result
+                            d.props.update(params)
+                            d.props.update(hdf5_path=path,observable='binning analysis of '+pt.hdf5_name_decode(m))
+                            fileset.append(d)
+                        elif "timeseries" in  self.h5f.list_children(base+'/'+m):
+                            k = self.h5f.list_children(base+'/'+m+'/timeseries')
                             if "logbinning" in k and "logbinning2" in k and "logbinning_counts" in k:
                                 if verbose: log("Loading"+ m)
-                                bins = self.h5f[respath+'/'+m+'/timeseries/logbinning'][0:-7]
-                                bins2 = self.h5f[respath+'/'+m+'/timeseries/logbinning2'][0:-7]
-                                counts = self.h5f[respath+'/'+m+'/timeseries/logbinning_counts'][0:-7]
+                                bins = self.h5f[base+'/'+m+'/timeseries/logbinning'][0:-7]
+                                bins2 = self.h5f[base+'/'+m+'/timeseries/logbinning2'][0:-7]
+                                counts = self.h5f[base+'/'+m+'/timeseries/logbinning_counts'][0:-7]
                                 scale = 1
                                 for i in range(len(counts)):
                                     mean = bins[i]/(counts[i]*scale)
@@ -374,7 +387,7 @@ class Hdf5Loader:
                                     scale *=2
                                 d.y = bins2
                                 d.x = np.arange(0,len(d.y))
-                                d.props['hdf5_path'] = respath + m
+                                d.props['hdf5_path'] = base + m
                                 d.props['observable'] = 'binning analysis of ' + pt.hdf5_name_decode(m)
                                 d.props.update(params)
                                 if verbose: log( '  loaded binnig analysis for '+m)
@@ -576,7 +589,7 @@ def loadBinningAnalysis(files,what=None,verbose=False,respath='/simulation/resul
     ll = Hdf5Loader()
     if isinstance(what,str):
       what = [what]
-    return ll.ReadBinningAnalysis(files,measurements=what,verbose=verbose)
+    return ll.ReadBinningAnalysis(files,measurements=what,verbose=verbose,respath=respath)
 
 def loadMeasurements(files,what=None,verbose=False,respath='/simulation/results'):
     """ loads ALPS measurements from ALPS HDF5 result files

@@ -163,6 +163,7 @@ int main() {
             alps::hdf5::archive ar(checkpoint, "a");
             auto path = std::string("/simulation/realizations/0/clones/0/measurements");
             for (auto const& name : ar.list_children(path)) {
+                if (!ar.is_group(path + "/" + name + "/cursor")) continue;
                 uint64_t position;
                 ar[path + "/" + name + "/cursor/level_position"] >> position;
                 ar[path + "/" + name + "/cursor/level_position"] << (position + 1) % 8;

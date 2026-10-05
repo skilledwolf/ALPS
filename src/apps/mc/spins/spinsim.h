@@ -2,6 +2,7 @@
 // modifications (C) 2026 ALPS Collaboration. SPDX-License-Identifier: MIT
 #pragma once
 #include "../moment_difference.hpp"
+#include "../measurements.hpp"
 #include <alps/mcbase.hpp>
 #include <alps/lattice.h>
 #include <alps/ngs/make_deprecated_parameters.hpp>
@@ -58,7 +59,7 @@ class simulation : public alps::mcbase, private alps::graph_helper<> {
 public:
     using results_type = std::map<std::string,alps::alea::batch_result<double>>;
     results_type collect_results(result_names_type const& names={}) const {
-        return collect_results_as<alps::alea::batch_result<double>>(names);
+        return collect_results_as<alps::alea::batch_result<double>>(names.empty() ? native_mc::batch_names(measurements) : names);
     }
     simulation(alps::params const& p, std::size_t bins=128, std::size_t chain=0)
         : mcbase(p,chain), graph_helper<>(graph_parameters(p)), bins_(bins), chain_(chain),
@@ -149,6 +150,7 @@ public:
         if (p.exists("ERROR_VARIABLE")) {
             error_variable_=p["ERROR_VARIABLE"].as<std::string>(); error_limit_=p["ERROR_LIMIT"].as<double>();
             if (!(error_limit_>0) || !std::isfinite(error_limit_) || !measurements.count(error_variable_)
+                    || !std::holds_alternative<std::shared_ptr<native_mc::batch>>(measurements.at(error_variable_))
                     || measurement(error_variable_)->size()!=1) throw std::invalid_argument("invalid spinmc scalar error stopping criterion");
         }
     }
@@ -260,15 +262,7 @@ public:
                              : std::abs(spins.col(site).squaredNorm()-1.)<=1e-10;
             if (!valid || (!potts_ && dim_==1 && std::abs(spins(0,site))!=1.)) throw std::invalid_argument("invalid spinmc checkpoint state");
         }
-        if (ar.list_children("measurements").size()!=measurements.size()) throw std::invalid_argument("unexpected spinmc checkpoint observables");
-        alps::alea::hdf5_serializer measurements_codec(ar,"measurements");
-        for (auto const& entry:measurements) {
-            alps::alea::batch_acc<double> value;
-            alps::alea::deserialize(measurements_codec,ar.encode_segment(entry.first),value);
-            if (value.size()!=measurement(entry.first)->size() || value.num_batches()!=bins_
-                    || value.current_batch_size()!=value.cursor().factor() || value.count()!=updates-warmup_updates
-                    || !value.store().batch().allFinite()) throw std::invalid_argument("invalid spinmc checkpoint measurement state");
-        }
+        native_mc::validate_measurements(measurements,ar,updates-warmup_updates,bins_);
         auto current_parameters=parameters;
         mcbase::load(ar); parameters=std::move(current_parameters);
         spins_=std::move(spins); updates_=updates; warmup_updates_=warmup_updates; warmup_sites_=warmup_sites;
@@ -366,9 +360,9 @@ private:
         return true;
     }
     void add(std::string const& name,std::size_t components=1) {
-        measurements.emplace(name,std::make_shared<alps::alea::batch_acc<double>>(components,bins_));
+        native_mc::add_measurement(*this,name,components,bins_);
     }
-    template<class T> void record(std::string const& name,T const& value) { *measurement(name)<<alps::alea::make_adapter(value); }
+    template<class T> void record(std::string const& name,T const& value) { native_mc::record(*this,name,value); }
     std::vector<std::array<uint64_t,3>> topology() const {
         std::vector<std::array<uint64_t,3>> result;
         for (auto const& edge:edges_) result.push_back({edge.source,edge.target,edge.type});

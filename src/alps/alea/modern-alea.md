@@ -191,3 +191,11 @@ Released recoverable ALPS 3.0.0 linear bin histories migrate offline using
 keeps original bin sums and weights, including partial bins, and recomputes native
 analysis uncertainty. Summary-only or nonlinear results cannot recover missing
 joint covariance; analysis bins cannot reconstruct an accumulator's merge cursor.
+
+Native `simplemc`/`spinmc` record the blocking hierarchy alongside batch evidence
+for every raw measurement, and checkpoint both exactly. Their result files retain
+each chain's ordered-series evidence and autocorrelation result independently.
+The diagnostic tutorials use these native records directly. Keeping the batch
+capacity at least the production length retains the complete individual sample
+stream for arbitrary lag analysis or NumPy histograms; the default bounded
+capacity retains bin averages, which cannot reconstruct within-bin fluctuations.

@@ -1,6 +1,7 @@
 // Copyright (C) 2026 ALPS Collaboration. SPDX-License-Identifier: MIT
 #pragma once
-#include <alps/mcbase.hpp>
+#include "measurements.hpp"
+#include <alps/alea/convert.hpp>
 #include <alps/alea/batch.hpp>
 #include <alps/ngs/signal.hpp>
 #include <alps/ngs/api.hpp>
@@ -26,16 +27,10 @@ namespace native_mc {
 using batch_results = std::map<std::string,alps::alea::batch_result<double>>;
 inline batch_results pool(std::vector<batch_results> const& chains) {
     if (chains.empty()) return {};
-    std::size_t slots = 0;
-    uint64_t samples = 0;
     for (auto const& chain : chains) {
         if (chain.empty() || chain.size() != chains.front().size())
             throw std::invalid_argument("Inconsistent chain result names");
         auto const& reference = chain.begin()->second;
-        if (!reference.valid() || slots > std::size_t(std::numeric_limits<Eigen::Index>::max()) - reference.num_batches()
-                || samples > UINT64_MAX - reference.count())
-            throw std::overflow_error("Pooled chain result size overflows");
-        slots += reference.num_batches(); samples += reference.count();
         for (auto const& [name, first] : chains.front()) {
             auto const& result = chain.at(name);
             if (!result.valid() || !result.size() || result.size() != first.size()
@@ -49,17 +44,9 @@ inline batch_results pool(std::vector<batch_results> const& chains) {
     }
     batch_results merged;
     for (auto const& [name, first] : chains.front()) {
-        if (slots > std::size_t(std::numeric_limits<Eigen::Index>::max()) / first.size())
-            throw std::overflow_error("Pooled chain components overflow");
-        alps::alea::batch_data<double> data(first.size(), slots);
-        std::size_t offset = 0;
-        for (auto const& chain : chains) {
-            auto const& result = chain.at(name);
-            data.batch().middleCols(offset, result.num_batches()) = result.store().batch();
-            data.count().segment(offset, result.num_batches()) = result.store().count();
-            offset += result.num_batches();
-        }
-        merged.emplace(name, alps::alea::batch_result<double>(std::move(data)));
+        std::vector<alps::alea::batch_result<double>> runs;
+        for (auto const& chain:chains) runs.push_back(chain.at(name));
+        merged.emplace(name,alps::alea::merge(runs));
     }
     return merged;
 }
@@ -205,6 +192,8 @@ void execute(alps::run_configuration const& run, chains_type<Simulation>& chains
         for (std::size_t id = 0; id < chains.size(); ++id) {
             archive["/simulation/realizations/0/clones/" + std::to_string(id) + "/completed_sweeps"] << chains[id]->completed_sweeps();
             archive["/simulation/realizations/0/clones/" + std::to_string(id) + "/measurements"] << chains[id]->measurement_count();
+            save_diagnostics(*chains[id],archive,"/simulation/realizations/0/clones/"+std::to_string(id),
+                             native_mc::batch_names(chains[id]->get_measurements()));
         }
     });
 }
