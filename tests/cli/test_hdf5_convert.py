@@ -1515,3 +1515,39 @@ def test_nonlinear_jackknife_rejects_missing_or_ambiguous_evidence(converter, tm
         converter.convert(source, output, alea_batch_groups=['/observable'])
     assert source.read_bytes() == before
     assert set(tmp_path.iterdir()) == {source}
+
+
+@pytest.mark.parametrize('fault', ['missing-mean', 'shape', 'complex-error', 'large-count', 'reserved', 'alias'])
+def test_reported_summary_conversion_rejects_invalid_records(converter, tmp_path, fault):
+    source, output = tmp_path/'source.h5', tmp_path/'reported.h5'
+    with h5py.File(source, 'w') as ar:
+        group = ar.create_group('summary')
+        group['count'] = 5.
+        group['mean/value'] = 1.
+        group['mean/error'] = .25
+        if fault == 'missing-mean': del group['mean/value']
+        if fault == 'shape': group['variance/value'] = [1., 2.]
+        if fault == 'complex-error':
+            del group['mean/error']
+            group['mean/error'] = .25 + .5j
+        if fault == 'large-count': group['count'][()] = float(2**64)
+        if fault == 'reserved': group['legacy/note'] = 'keep'
+        if fault == 'alias': ar['alias'] = group['mean/value']
+    before = source.read_bytes()
+    with pytest.raises(ValueError):
+        converter.convert(source, output, alea_summary_groups=['/summary'])
+    assert source.read_bytes() == before
+    assert set(tmp_path.iterdir()) == {source}
+
+
+def test_summary_keeps_missing_error_missing(converter, tmp_path):
+    source, output = tmp_path/'source.h5', tmp_path/'reported.h5'
+    with h5py.File(source, 'w') as ar:
+        ar['summary/count'], ar['summary/mean/value'] = np.uint64(1), 3.
+    converter.convert(source, output, alea_summary_groups=['/summary'])
+    with h5py.File(output) as ar:
+        group = ar['summary']
+        assert group.attrs['format'] == 'alps.reported-estimate.v1'
+        np.testing.assert_array_equal(group['mean/value'], [3.])
+        assert 'mean/error' not in group and 'variance' not in group
+        assert group['legacy/mean/value'][()] == 3.

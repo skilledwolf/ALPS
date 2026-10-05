@@ -165,6 +165,34 @@ simulation configuration needed to resume an old NGS checkpoint. New NGS
 simulations use native kind-6 batch checkpoints directly and never infer restart
 state from legacy results.
 
+## Reported estimates without recoverable histories
+
+Use `--alea-summary GROUP` when the recorded statistics must be retained without
+interpreting incomplete bins, or when only a published estimate remains:
+
+```sh
+alps-hdf5-convert old.h5 reported.h5 --alea-summary /simulation/results/Energy
+```
+
+The output has `format="alps.reported-estimate.v1"`, a uint64 `count`, and
+one-dimensional component arrays at `mean/value` and, when supplied, `mean/error`,
+`variance/value`, `tau/value` and `mean/error_convergence`. Floating statistics
+use float64 (complex128 means are supported); convergence flags use int64.
+Optional fields remain absent rather than becoming zero. Undefined numerical
+estimates remain as reported. Original statistical fields and histories remain
+under `legacy/`, using the same provenance preservation as `--alea-batches`.
+There is no native estimator `kind`, inferred covariance, effective sample count,
+reconstructed batch or resumable state.
+
+Python `alea.read_result` and `loadMeasurements` read this explicit format as a
+`ReportedEstimate`; `saveMeasurements` can save its reported fields again.
+The mean and variance commands also accept it, but variance requires an actual
+reported variance. A published standard error alone cannot determine it.
+Native pooling rejects these records: they lack the sampling evidence required
+by that algorithm. Use recoverable native batches when subsequent correlated
+analysis or native pooling is needed. When resaving reported estimates, the
+record's fields are saved; archive-level provenance stays in the converted file.
+
 ## Released ALPSCore ALEA results
 
 For modern ALEA results written by ALPSCore 2.3.3, select the estimator explicitly:

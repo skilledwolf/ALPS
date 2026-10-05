@@ -923,6 +923,8 @@ def mergeDataSets(dsets):
     if not dsets:
         raise ValueError("cannot merge an empty dataset collection")
     results = [_measurement_result(d) for d in dsets]
+    if any(isinstance(result, alea.ReportedEstimate) for result in results):
+        raise ValueError("reported estimates lack sampling evidence for native pooling; analyze their reported uncertainties explicitly")
     if any(not np.array_equal(d.x, dsets[0].x) for d in dsets[1:]):
         raise ValueError('cannot merge datasets: x values mismatch')
     if any(type(result) is not type(results[0]) for result in results[1:]):

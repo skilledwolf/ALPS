@@ -217,13 +217,74 @@ def error(timeseries, selector=uncorrelated):
     return result[0] if values.ndim == 1 else result
 
 
+class ReportedEstimate:
+    """Published statistics with no inferred weights, covariance or history.
+
+    Optional statistics are absent attributes when not reported. This record is
+    not an accumulator and cannot be treated as a set of independent samples.
+    """
+    _format = 'alps.reported-estimate.v1'
+    _fields = dict(mean='mean/value', error='mean/error', variance='variance/value',
+                   tau='tau/value', converged_errors='mean/error_convergence')
+
+    def __init__(self, *, count, mean, **statistics):
+        if isinstance(count, (bool, numpy.bool_)) or not isinstance(count, (int, numpy.integer)) or not 0 <= count <= numpy.iinfo('u8').max:
+            raise ValueError("reported count must be a uint64 integer")
+        if statistics.keys() - (self._fields.keys() - {'mean'}):
+            raise ValueError("unknown reported statistic")
+        self.count = int(count)
+        for name, value in dict(mean=mean, **statistics).items():
+            value = numpy.asarray(value)
+            kinds = 'iufc' if name == 'mean' else 'iu' if name == 'converged_errors' else 'iuf'
+            if value.ndim != 1 or not value.size or value.dtype.kind not in kinds:
+                raise ValueError(f"{name}: expected a nonempty numeric component vector")
+            dtype = 'c16' if value.dtype.kind == 'c' else 'i8' if name == 'converged_errors' else 'f8'
+            setattr(self, name, value.astype(dtype, copy=True))
+        if any(getattr(self, name).shape != self.mean.shape for name in statistics):
+            raise ValueError("reported statistics have different component counts")
+
+    @property
+    def size(self):
+        return self.mean.size
+
+    @classmethod
+    def read(cls, archive, path):
+        base = path.rstrip('/')+'/' if path else ''
+        if archive[base+'@format'] != cls._format or archive.is_attribute(base+'@kind'):
+            raise ValueError("expected a reported-estimate record")
+        return cls(count=archive[base+'count'], **{
+            name: archive[base+field] for name, field in cls._fields.items()
+            if archive.is_data(base+field)})
+
+    def save(self, archive, path=''):
+        # Validate mutable arrays before changing a previously saved record.
+        value = type(self)(**vars(self))
+        base = path.rstrip('/')+'/' if path else ''
+        if archive.is_attribute(base+'@kind'):
+            raise ValueError("cannot overwrite a native estimator with a reported estimate")
+        if archive.is_attribute(base+'@format') and archive[base+'@format'] != self._format:
+            raise ValueError("cannot overwrite a different statistical format")
+        archive.create_group(path or '.')
+        archive[base+'@format'] = self._format
+        archive[base+'count'] = numpy.uint64(value.count)
+        for name, field in self._fields.items():
+            if hasattr(value, name):
+                archive[base+field] = getattr(value, name)
+            elif archive.is_data(base+field):
+                archive.delete_data(base+field)
+
+
 def read_result(archive, path):
-  """Read a typed native ALEA result without discarding batches or covariance.
+  """Read a native ALEA result or an explicitly marked reported estimate.
 
   ``archive`` is a pyalps.hdf5 archive (or a borrowed native archive). Released
   legacy encodings must first pass through the offline archive converter.
   Accumulator checkpoints are deliberately not interpreted as analysis results.
   """
+  if archive.is_attribute(path + '/@format') and (
+      not archive.is_attribute(path + '/@kind') or
+      archive[path + '/@format'] == ReportedEstimate._format):
+    return ReportedEstimate.read(archive, path)
   if not archive.is_attribute(path + '/@kind'):
     raise ValueError(f"{path}: missing native ALEA result metadata; use alps-hdf5-convert first")
   kind = archive[path + '/@kind']

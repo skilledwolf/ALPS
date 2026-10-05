@@ -245,10 +245,11 @@ def _address(obj):
     return h5py.h5o.get_info(obj.id).addr
 
 
-def _schema_groups(source, pairs, matrices, parameters, alea, core_alea, alea_batches):
+def _schema_groups(source, pairs, matrices, parameters, alea, core_alea, alea_batches, alea_summaries):
     groups = {}
     for kind, paths in (("pair", pairs), ("matrix", matrices),
                         ("parameters", parameters), ("alea", alea), ("alea-batches", alea_batches),
+                        ("alea-summary", alea_summaries),
                         *(("core-alea:" + kind, [path]) for kind, path in core_alea)):
         for path in paths:
             path = posixpath.normpath("/" + str(path).lstrip("/"))
@@ -398,7 +399,7 @@ def _profiles(source, schemas, declared, report):
                     shape = (0,)
                 remember(dataset, conversion, dtype, shape)
             report.append(f"{path}: ALPS 3.0.0 flat parameters -> alps.params.v2")
-        elif kind in ("alea", "alea-batches"):
+        elif kind in ("alea", "alea-batches", "alea-summary"):
             if "count" not in group or not isinstance(group["count"], h5py.Dataset):
                 raise ValueError(f"{path}: ALEA profile requires a count dataset")
             count = group["count"]
@@ -569,6 +570,71 @@ def _core_alea(group, family):
     group.attrs["kind"] = np.uint32(CORE_ALEA_KINDS[family])
 
 
+def _preserve_alea(group):
+    # Owned legacy leaves change shape or disappear. Reject aliases to those
+    # objects so conversion cannot silently break a hard-link graph.
+    leaves = ("count", "sum", "sum2", "mean/value", "mean/error", "mean/error_convergence",
+              "variance/value", "tau/value", "jacknife/data", "timeseries/data",
+              "timeseries/data2", "timeseries/partialbin", "timeseries/partialbin2",
+              "timeseries/logbinning", "timeseries/logbinning2",
+              "timeseries/logbinning_lastbin", "timeseries/logbinning_counts")
+    for path in leaves:
+        if path not in group:
+            continue
+        current = group
+        for segment in path.split("/"):
+            if not isinstance(current.get(segment, getlink=True), h5py.HardLink):
+                raise ValueError(f"{group.name}/{path}: ALEA state must follow hard links")
+            current = current[segment]
+            if h5py.h5o.get_info(current.id).rc != 1:
+                raise ValueError(f"{current.name}: ALEA state has hard-link aliases")
+
+    # The reported error, raw variance, tau and transformed bin values need not
+    # be recoverable from the native result. Retain them as provenance, not as
+    # an alternative runtime estimator or restart state.
+    legacy = group.create_group("legacy")
+    legacy.attrs["format"] = "ALPS 3.0.0 ALEA"
+    for path in leaves:
+        if path in group:
+            if "/" in path:
+                legacy.require_group(posixpath.dirname(path))
+            group.move(path, "legacy/" + path)
+    for name in ("variance", "tau", "jacknife", "timeseries", "mean"):
+        if name in group and not len(group[name]) and not len(group[name].attrs):
+            del group[name]
+    for flag in ("cannotrebin", "changed", "nonlinearoperations"):
+        if flag in group.attrs:
+            legacy.attrs[flag] = group.attrs[flag]
+            del group.attrs[flag]
+    return legacy
+
+
+def _alea_summary(group):
+    """Preserve published statistics without asserting effective sample weights."""
+    if any(name in group.attrs for name in ("format", "version", "kind")) or "legacy" in group:
+        raise ValueError(f"{group.name}: expected an unversioned released ALEA result")
+    fields = {"mean": "mean/value", "error": "mean/error", "variance": "variance/value",
+              "tau": "tau/value", "converged_errors": "mean/error_convergence"}
+    count = int(group["count"][()])
+    if count > np.iinfo('u8').max or "mean/value" not in group:
+        raise ValueError(f"{group.name}: summary requires a uint64 count and a reported mean")
+    values = {}
+    for name, path in fields.items():
+        if path not in group:
+            continue
+        value = np.atleast_1d(group[path][()])
+        if value.ndim != 1 or value.dtype.kind not in ("fc" if name == "mean" else "iu" if name == "converged_errors" else "f"):
+            raise ValueError(f"{group.name}/{path}: invalid reported statistic")
+        values[path] = value.astype('c16' if value.dtype.kind == 'c' else 'i8' if name == 'converged_errors' else 'f8')
+    if not values['mean/value'].size or any(value.shape != values['mean/value'].shape for value in values.values()):
+        raise ValueError(f"{group.name}: reported statistics must have matching component counts")
+    _preserve_alea(group)
+    group['count'] = np.uint64(count)
+    for path, value in values.items():
+        group[path] = value
+    group.attrs['format'] = 'alps.reported-estimate.v1'
+
+
 def _alea_batches(group):
     """Recover linear bins or jackknife pseudovalues, never an accumulator cursor."""
     if "version" in group.attrs or "kind" in group.attrs or "batch" in group or "legacy" in group:
@@ -631,24 +697,6 @@ def _alea_batches(group):
         jack = group["jacknife/data"]
         if jack.shape != (full + 1,) + data.shape[1:] or jack.dtype.kind not in "fc":
             raise ValueError(f"{jack.name}: expected the full estimate followed by one leave-one-out estimate per bin")
-
-    # Owned legacy leaves change shape or disappear. Reject aliases to those
-    # objects so conversion cannot silently break a hard-link graph.
-    leaves = ("count", "sum", "sum2", "mean/value", "mean/error", "mean/error_convergence",
-              "variance/value", "tau/value", "jacknife/data", "timeseries/data",
-              "timeseries/data2", "timeseries/partialbin", "timeseries/partialbin2",
-              "timeseries/logbinning", "timeseries/logbinning2",
-              "timeseries/logbinning_lastbin", "timeseries/logbinning_counts")
-    for path in leaves:
-        if path not in group:
-            continue
-        current = group
-        for segment in path.split("/"):
-            if not isinstance(current.get(segment, getlink=True), h5py.HardLink):
-                raise ValueError(f"{group.name}/{path}: ALEA state must follow hard links")
-            current = current[segment]
-            if h5py.h5o.get_info(current.id).rc != 1:
-                raise ValueError(f"{current.name}: ALEA state has hard-link aliases")
 
     batches = max(2, full + bool(remainder))
     dtype = np.dtype("c16" if (jack if transformed else data).dtype.kind == "c" else "f8")
@@ -715,32 +763,16 @@ def _alea_batches(group):
         else:
             uncertainty = np.sqrt(variance * count2 / (count * (count**2 - count2)))
         mean[components], error[components] = average, uncertainty
-    # The reported error, raw variance, tau and transformed bin values need not
-    # be recoverable from the native result. Retain them as provenance, not as
-    # an alternative runtime estimator or restart state.
-    legacy = group.create_group("legacy")
-    legacy.attrs["format"] = "ALPS 3.0.0 ALEA"
-    for path in leaves:
-        if path in group:
-            if "/" in path:
-                legacy.require_group(posixpath.dirname(path))
-            group.move(path, "legacy/" + path)
-    for name in ("variance", "tau", "jacknife", "timeseries", "mean"):
-        if name in group and not len(group[name]) and not len(group[name].attrs):
-            del group[name]
+    _preserve_alea(group)
     group.require_group("mean")
     group.move("batch/mean", "mean/value")
     group.move("batch/error", "mean/error")
-    for flag in ("cannotrebin", "changed", "nonlinearoperations"):
-        if flag in group.attrs:
-            legacy.attrs[flag] = group.attrs[flag]
-            del group.attrs[flag]
     group.attrs["size"], group.attrs["num_batches"] = np.uint64(size), np.uint64(batches)
     _core_alea(group, "batch")
 
 
 def _copy(source, target, boolean_datasets, boolean_attributes, pair_groups, matrix_groups,
-          parameter_groups, alea_groups, core_alea_groups, alea_batch_groups):
+          parameter_groups, alea_groups, core_alea_groups, alea_batch_groups, alea_summary_groups):
     report = []
     declared = set()
     for path in boolean_datasets:
@@ -754,7 +786,7 @@ def _copy(source, target, boolean_datasets, boolean_attributes, pair_groups, mat
             raise ValueError(f"{path}@{name}: Boolean declaration must name an ordinary input attribute")
         declared.add((_address(obj), name))
     schemas = _schema_groups(source, pair_groups, matrix_groups, parameter_groups, alea_groups,
-                             core_alea_groups, alea_batch_groups)
+                             core_alea_groups, alea_batch_groups, alea_summary_groups)
     conversions = _profiles(source, schemas, declared, report)
     seen = {_address(source): target}
     softlinks = []
@@ -831,6 +863,9 @@ def _copy(source, target, boolean_datasets, boolean_attributes, pair_groups, mat
             seen[address] = converted
         elif kind == "parameters":
             _parameters(obj, target)
+        elif kind == "alea-summary":
+            _alea_summary(obj)
+            report.append(f"{path}: published ALEA statistics -> reported estimate; source retained in legacy/")
         elif kind == "alea-batches":
             _alea_batches(obj)
             report.append(f"{path}: ALPS 3.0.0 bins/jackknife -> native ALEA batch result; error recomputed, source statistics retained in legacy/")
@@ -1010,13 +1045,13 @@ def _spinmc_state(source, target, filename):
 
 def convert(source, destination, *, boolean_datasets=(), boolean_attributes=(),
             pair_groups=(), matrix_groups=(), parameter_groups=(), alea_groups=(), core_alea_groups=(),
-            alea_batch_groups=(), qwl_sites=None, spinmc_state=None):
+            alea_batch_groups=(), alea_summary_groups=(), qwl_sites=None, spinmc_state=None):
     """Write a new file; leave the source and any existing destination untouched."""
     if qwl_sites is not None:
         if spinmc_state is not None:
             raise ValueError("Select one application profile")
         if any((boolean_datasets, boolean_attributes, pair_groups, matrix_groups, parameter_groups,
-                alea_groups, core_alea_groups, alea_batch_groups)):
+                alea_groups, core_alea_groups, alea_batch_groups, alea_summary_groups)):
             raise ValueError("QWL is a whole-file profile; select it separately")
         parameter_groups = ("/parameters",)
     source, destination = Path(source), Path(destination)
@@ -1034,7 +1069,7 @@ def convert(source, destination, *, boolean_datasets=(), boolean_attributes=(),
             with h5py.File(temporary, "w", track_order=True) as dst:
                 report = _copy(src, dst, boolean_datasets, boolean_attributes,
                                pair_groups, matrix_groups, parameter_groups, alea_groups, core_alea_groups,
-                               alea_batch_groups)
+                               alea_batch_groups, alea_summary_groups)
                 if qwl_sites is not None:
                     report.append(_qwl(src, dst, qwl_sites))
                 if spinmc_state is not None:
@@ -1065,6 +1100,8 @@ def main(argv=None):
                         help="migrate ALPS 3.0.0 flat parameters to native typed checkpoints (repeatable)")
     parser.add_argument("--alea", action="append", default=[], metavar="GROUP",
                         help="normalize one ALPS 3.0.0 ALEA observable/result (repeatable)")
+    parser.add_argument("--alea-summary", action="append", default=[], metavar="GROUP",
+                        help="preserve reported ALEA statistics without inferring batches, covariance or weights (repeatable)")
     parser.add_argument("--alea-batches", action="append", default=[], metavar="GROUP",
                         help="recover ALPS 3.0.0 linear bins or equal-weight jackknife histories as native ALEA results; "
                              "recompute uncertainty, never invent restart state (repeatable)")
@@ -1082,7 +1119,8 @@ def main(argv=None):
                          boolean_attributes=args.boolean_attribute,
                          pair_groups=args.pair, matrix_groups=args.matrix,
                          parameter_groups=args.parameters, alea_groups=args.alea,
-                         core_alea_groups=args.core_alea, alea_batch_groups=args.alea_batches, qwl_sites=args.qwl_sites,
+                         core_alea_groups=args.core_alea, alea_batch_groups=args.alea_batches,
+                         alea_summary_groups=args.alea_summary, qwl_sites=args.qwl_sites,
                          spinmc_state=args.spinmc_state)
     except (OSError, ValueError, KeyError, TypeError) as error:
         parser.exit(1, f"{parser.prog}: {error}\n")

@@ -28,7 +28,7 @@ class DataSet(ResultProperties):
               by many functions operating on DataSets. However, for user-supplied functions,
               other ways of representing data may be used.
      * props - This is a dictionary of properties describing the dataset.
-     * native_result - When loaded from native ALEA, the owning statistical
+     * native_result - The retained ALEA result or ReportedEstimate. The statistical
        result retains covariance, batches or diagnostics beyond the plotting y.
        Editing x/y does not modify or reindex that original result.
     """

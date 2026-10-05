@@ -232,6 +232,17 @@ data = DataSet.from_result(ratio, props={"observable": "Ratio"})
 pyalps.saveMeasurements([data], "ratios.h5")
 ```
 
+`alea.ReportedEstimate` is an explicit record for published statistics that lack
+recoverable sampling evidence. Create it with `count=...`, a component-vector
+`mean`, and optional `error`, `variance`, `tau` and `converged_errors` vectors.
+Absent statistics remain absent attributes. It supports `read`/`save` and the
+same `DataSet.from_result` plotting projection, but has no accumulator, covariance,
+rebinning or native-pooling operations. `loadMeasurements` retains it in the
+existing `native_result` field; inspect its type before requesting native-only
+operations. Convert old files with `--alea-summary`; use `--alea-batches` instead
+when complete histories can support native statistical analysis. Archived source
+history remains in the converted file and is not copied into an in-memory report.
+
 ## Time-series analysis migration
 
 `alea.mean`, `variance`, `error`, `autocorrelation`, the running means, cuts and

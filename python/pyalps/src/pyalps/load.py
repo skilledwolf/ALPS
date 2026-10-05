@@ -438,7 +438,8 @@ class Hdf5Loader:
                         xstep = self.h5f[respath+'/'+m+'/@stepsize']
                         size = len(obs)
                         x = np.arange(xmin,xmin+xstep*size,xstep)
-                    elif self.h5f.is_attribute(respath+'/'+m+'/@kind'):
+                    elif (self.h5f.is_attribute(respath+'/'+m+'/@kind') or
+                          self.h5f.is_attribute(respath+'/'+m+'/@format')):
                         native_result = pa.read_result(self.h5f, respath+'/'+m)
                         size = native_result.size
                         obs = DataSet.from_result(native_result).y if native_result.count else None
