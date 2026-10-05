@@ -13,7 +13,7 @@
 /* $Id$ */
 
 #include "factory.h"
-#include <alps/scheduler.h>
+#include <alps/scheduler/scheduler.h>
 #include <complex>
 
 int main(int argc, char** argv)

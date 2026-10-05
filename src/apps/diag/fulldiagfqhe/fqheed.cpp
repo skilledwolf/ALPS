@@ -14,7 +14,7 @@
 #include <boost/numeric/bindings/ublas.hpp>
 #include <boost/numeric/bindings/upper.hpp>
 #include <alps/config.h>
-#include <alps/alea.h>
+#include <alps/hdf5/archive.hpp>
 
 /* Author: Vito Scarola Nov. 2012 scarola@vt.edu */
 

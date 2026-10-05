@@ -18,11 +18,10 @@
 
 #include <alps/model.h>
 #include <alps/lattice.h>
-#include <alps/scheduler.h>
+#include <alps/scheduler/task.h>
 #include <alps/scheduler/measurement_operators.h>
 #include <alps/numeric/real.hpp>
 #include <alps/utility/os.hpp>
-#include <alps/scheduler.h>
 
 #include <boost/tokenizer.hpp>
 #include <boost/algorithm/string/replace.hpp>

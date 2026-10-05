@@ -14,7 +14,7 @@
 
 
 #include "factory.h"
-#include <alps/scheduler.h>
+#include <alps/scheduler/scheduler.h>
 
 
 

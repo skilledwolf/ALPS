@@ -269,3 +269,34 @@ state; `FloatWithError` supports explicitly independent error arithmetic.
 Released archives use the offline `alps-hdf5-convert` profiles (`--alea-batches`,
 `--alea-autocorr`, `--alea-summary`). Original fields remain under `legacy/`.
 Converted analysis results do not constitute physical simulation checkpoints.
+
+## Remaining consumer boundary
+
+The deterministic DMRG and full/sparse diagonalization applications use generic
+scheduler `Task`/`DiagTask` and dispatch, not `MCRun`, `MCSimulation`, or
+`ObservableSet`. Their generic scheduler machinery can remain when the Monte
+Carlo statistics path is removed. Rewriting that task framework is not required
+by ALEA consolidation. The standalone FQHE kernel only needs the HDF5 archive.
+
+The native `loop` executable owns measurement evaluation in `analysis.hpp` and
+its current measurement implementation. The former `looper/evaluator.h` and
+`evaluator_impl.h` wrappers had no callers, referred to retired evaluator
+selectors, and have been removed. No measurement algorithm was removed with them.
+
+Two older source directories require separate decisions before deletion:
+
+- `src/apps/qmc/sse` was already excluded by the released v3.0.0 QMC CMake file
+  (`1950cc6f682d7c4c1deae8b816f283857b1819d1`). Its old local CMake file names
+  `dirloop_sse_v1` and `dirloop_sse_evaluate`. The built `dirloop_sse` is the
+  native `sse4` implementation. Being unbuilt is not a feature-parity proof.
+- `src/apps/qmc/sse2` has no CMake target in that release or this tree. Its
+  `SIMULATION_PHASE=2` workflow loads external `LOGG_FILENAME` weights, performs
+  optimized-ensemble sweeps, and records up-walker histograms for iterative
+  weight optimization. The current QWL implementation has Wang–Landau and
+  multicanonical sampling but does not implement that external-weight workflow.
+  Retain these sources until this unique capability is resolved; do not label
+  them a redundant QWL copy or claim complete optional-algorithm parity.
+
+The remaining migration work includes live Parapack/Monte Carlo scheduler
+consumers and released physical-checkpoint continuation. Removing dead wrappers
+or unused includes does not establish completion of those migrations.
