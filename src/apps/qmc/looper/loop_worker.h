@@ -532,8 +532,14 @@ void loop_worker<MC>::load(alps::hdf5::archive& ar) {
       restored.emplace_back(type,location,times[i]);
     } else restored.emplace_back(type,location);
     auto const g=restored.back().graph();
-    if ((bond && !is_compatible(g,propagated[source(pos,lattice.vg())],propagated[target(pos,lattice.vg())])) ||
-        (!bond && !is_compatible(g,propagated[pos])))
+    // Cluster flips retain the auxiliary graph label until the next build.
+    // Its diagonal compatibility predicate need not hold after an operator
+    // becomes offdiagonal; the XXZ matrix element exchanges antiparallel spins.
+    const bool compatible=bond && (type&1)
+      ? !restored.back().is_frozen_bond_graph() && propagated[source(pos,lattice.vg())]!=propagated[target(pos,lattice.vg())]
+      : bond ? is_compatible(g,propagated[source(pos,lattice.vg())],propagated[target(pos,lattice.vg())])
+             : is_compatible(g,propagated[pos]);
+    if (!compatible)
       throw std::invalid_argument("Loop checkpoint operator incompatible with worldline spins");
     if (type&1) {
       if (bond) { propagated[source(pos,lattice.vg())]^=1; propagated[target(pos,lattice.vg())]^=1; }

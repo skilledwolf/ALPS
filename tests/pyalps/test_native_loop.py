@@ -176,6 +176,56 @@ def test_replica_continuation_and_loader(executable, tmp_path, algorithm, rng, m
         assert 'results' not in ar['simulation']
 
 
+@pytest.mark.parametrize('algorithm', ['loop; exchange', 'loop; sse; exchange'])
+@pytest.mark.parametrize('rng', ['mt19937', 'lagged_fibonacci607'])
+def test_checkpoint_offdiagonal_validity(executable, tmp_path, algorithm, rng):
+    # Graph decorations are chosen before a cluster flip. For an offdiagonal
+    # XXZ vertex their diagonal predicate need not match the saved worldline.
+    # The SSE kernel has no longitudinal-field implementation.
+    p = dict(ALGORITHM=algorithm, L=3, h=0. if 'sse' in algorithm else .4, DISABLE_IMPROVED_ESTIMATOR=True,
+             NO_EXCHANGE=True, NUM_REPLICAS=3, T_MIN=.8, T_MAX=1.2,
+             SWEEPS=127, THERMALIZATION=17)
+    full = run(executable, tmp_path, 'full', p, bins=8, rng=rng)
+    partial = run(executable, tmp_path, 'partial', p, bins=8, rng=rng, budget=31)
+    resumed = run(executable, tmp_path, 'resumed', p, bins=8, rng=rng,
+                  checkpoint=partial.name)
+    compare(full, resumed)
+    compare(tmp_path / 'full.h5', tmp_path / 'resumed.h5')
+
+    with h5py.File(partial, 'a') as ar:
+        candidates = [replica['checkpoint']
+                      for clone in ar['simulation/realizations/0/clones'].values()
+                      for replica in clone['replicas'].values()]
+        for state in candidates:
+            operators = state['operators'][()]
+            offdiagonal = np.flatnonzero((operators[:, 0] & 1) & (operators[:, 1] == 1))
+            if not offdiagonal.size:
+                continue
+            # Two flips on the same parallel pair are periodic but have zero
+            # XXZ matrix element. Periodicity alone must not accept this state.
+            bad = operators[[offdiagonal[0], offdiagonal[0]]]
+            state['spins'][...] = 0
+            attributes = dict(state['operators'].attrs)
+            del state['operators']
+            dataset = state.create_dataset('operators', data=bad)
+            for key, value in attributes.items(): dataset.attrs[key] = value
+            if 'times' in state:
+                attributes = dict(state['times'].attrs)
+                del state['times']
+                dataset = state.create_dataset('times', data=[.25, .75])
+                for key, value in attributes.items(): dataset.attrs[key] = value
+            break
+        else:
+            pytest.fail('Checkpoint fixture needs a bond offdiagonal operator')
+    outputs = tmp_path / 'resumed.h5', resumed
+    before = [path.read_bytes() for path in outputs]
+    result = subprocess.run([executable, str(tmp_path / 'resumed.toml')],
+                            text=True, capture_output=True, timeout=60)
+    assert result.returncode != 0
+    assert 'operator incompatible with worldline spins' in result.stderr
+    assert before == [path.read_bytes() for path in outputs]
+
+
 @pytest.mark.parametrize('algorithm,sites,field,mode', [
     ('loop; exchange', 3, 0., {}),
     ('loop; sse; exchange', 3, 0., {'RANDOM_EXCHANGE': True}),
