@@ -168,21 +168,24 @@ def evaluateQWL(infiles, appname='qwl_evaluate', DELTA_T=None, T_MIN=None, T_MAX
         
         This function returns a list of lists of DataSet objects, for the various properties evaluated for each of the input files.
     """
+    infiles = [os.fspath(path) for path in make_list(infiles)]
     cmdline = [appname]
-    if DELTA_T:
+    if DELTA_T is not None:
       cmdline += ['--DELTA_T',str(DELTA_T)]
-    if T_MIN:
+    if T_MIN is not None:
       cmdline += ['--T_MIN',str(T_MIN)]
-    if T_MAX:
+    if T_MAX is not None:
       cmdline += ['--T_MAX',str(T_MAX)]
     cmdline += make_list(infiles)
-    res = executeCommand(cmdline)
+    log(list2cmdline(cmdline))
+    res = subprocess.call(cmdline)
     if res != 0:
       raise RuntimeError("Execution error in evaluateQWL: " + str(res))
     datasets = []
     for infile in infiles:
       datasets.append([])
-      ofname = infile.replace('.out.xml', '.plot.*.xml')
+      prefix = os.path.splitext(infile)[0].removesuffix('.out')
+      ofname = glob.escape(prefix) + '.plot.*.xml'
       for fn in glob.glob(ofname):
         dataset = readAlpsXMLPlot(fn)
         datasets[-1].append(dataset)

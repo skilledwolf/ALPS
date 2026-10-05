@@ -12,7 +12,8 @@
 #ifndef ALPS_QWL_HISTOGRAM_H
 #define ALPS_QWL_HISTOGRAM_H
 
-#include "alps/scheduler/montecarlo.h"
+#include <alps/hdf5/archive.hpp>
+#include <cmath>
 #include <vector>
 #include <algorithm>
 #include <valarray>
@@ -75,12 +76,14 @@ class histogram {
          min=data[i];
     return min;
   }  
-  void save(alps::ODump& dump) const {
-    dump << data << left_;
-  }
-  void load(alps::IDump& dump) {
-    dump >> data >> left_;
-    right_=left_+size()-1;
+  void save(alps::hdf5::archive& ar) const { ar["values"] << data; }
+  void load(alps::hdf5::archive& ar) {
+    std::vector<T> values;
+    ar["values"] >> values;
+    if (values.size()!=data.size() || !std::all_of(values.begin(),values.end(),
+        [](T value) { return std::isfinite(value); }))
+      throw std::invalid_argument("Invalid QWL histogram checkpoint");
+    data=std::move(values);
   }
  private:
   std::vector<T> data;

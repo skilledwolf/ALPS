@@ -41,13 +41,17 @@ def compare(left, right):
         a["simulation"].visititems(check)
 
 
-@pytest.mark.parametrize("app", ["simplemc", "spinmc"])
+@pytest.mark.parametrize("app", ["simplemc", "spinmc", "qwl"])
 @pytest.mark.parametrize("rng", ["mt19937", "lagged_fibonacci607"])
 @pytest.mark.parametrize("chains", [1, 3])
 def test_mpi_native_chains_and_cross_process_restart(launcher, tmp_path, app, rng, chains):
     executable = os.environ["ALPS_" + app.upper() + "_EXECUTABLE"]
     p = dict(LATTICE="chain lattice", L=5, T=1.8, SWEEPS=37, THERMALIZATION=3)
-    p.update(ALGORITHM="xy") if app == "simplemc" else p.update(MODEL="O(4)", UPDATE="cluster")
+    if app == "qwl":
+        p = dict(LATTICE="chain lattice", L=4, J=1., CUTOFF=12, SWEEPS=3000,
+                 NUMBER_OF_WANG_LANDAU_STEPS=3)
+    else:
+        p.update(ALGORITHM="xy") if app == "simplemc" else p.update(MODEL="O(4)", UPDATE="cluster")
     def run(name, **options):
         execution = dict(seed=2873, bins=8, chains=chains, rng=rng)
         execution.update(options.pop("execution", {}))

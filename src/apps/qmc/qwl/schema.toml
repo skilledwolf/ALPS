@@ -1,0 +1,114 @@
+# Copyright (C) 2026 ALPS Collaboration. SPDX-License-Identifier: MIT
+application = "qwl"
+schema_version = 1
+[parameters.LATTICE]
+type = "string"
+[parameters.GRAPH]
+type = "string"
+[parameters.MODEL]
+type = "string"
+default = "spin"
+[parameters.local_S]
+type = "float64"
+default = 0.5
+[parameters.J]
+type = "float64"
+default = 1.0
+[parameters.CUTOFF]
+type = "int64"
+default = 500
+min = 1
+max = 2147483646
+[parameters.EXPANSION_ORDER_MINIMUM]
+type = "int64"
+default = 0
+min = 0
+max = 2147483646
+[parameters.EXPANSION_ORDER_MAXIMUM]
+type = "int64"
+min = 0
+max = 2147483646
+[parameters.NUMBER_OF_WANG_LANDAU_STEPS]
+type = "int64"
+default = 16
+min = 1
+max = 64
+[parameters.START_STORING]
+type = "int64"
+min = 1
+max = 64
+[parameters.SWEEPS]
+type = "int64"
+min = 1
+max = 2147483646
+[parameters.BLOCK_SWEEPS]
+type = "int64"
+default = 10000
+min = 1
+max = 2147483646
+[parameters.INITIAL_MODIFICATION_FACTOR]
+type = "float64"
+min = 1.0
+[parameters.INITIAL_INCREASE_FACTOR]
+type = "float64"
+min = 1.0
+[parameters.FLATNESS_TRESHOLD]
+type = "float64"
+min = 0.0
+[parameters.USE_ZHOU_BHATT_METHOD]
+type = "bool"
+default = true
+[parameters.INCLUDE_COMBINATORICS_FACTORS]
+type = "bool"
+default = true
+[parameters.MEASURE_MAGNETIC_PROPERTIES]
+type = "bool"
+default = true
+[input.model_library]
+type = "path"
+[input.lattice_library]
+type = "path"
+[input.checkpoint]
+type = "path"
+[output.results]
+type = "path"
+required = true
+[output.checkpoint]
+type = "path"
+[execution.seed]
+type = "int64"
+default = 42
+min = 0
+max = 2147483647
+[execution.rng]
+type = "string"
+default = "mt19937"
+choices = ["mt19937", "lagged_fibonacci607"]
+[execution.disorder_seed]
+type = "int64"
+min = 0
+max = 4294967295
+[execution.chains]
+type = "int64"
+default = 1
+min = 1
+max = 2147483647
+[execution.bins]
+type = "int64"
+default = 128
+min = 2
+max = 2147483647
+[execution.time_limit]
+type = "float64"
+default = 0.0
+min = 0.0
+[execution.checkpoint_interval]
+type = "float64"
+default = 3600.0
+min = 0.0
+# Per-chain sweep budget for this invocation, including thermalization.
+# Zero runs to completion; input.checkpoint resumes with a fresh budget.
+[execution.max_sweeps]
+type = "int64"
+default = 0
+min = 0

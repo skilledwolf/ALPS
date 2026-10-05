@@ -1,0 +1,3 @@
+// Generated from the application-owned schema.
+#pragma once
+inline constexpr const char qwl_schema[] = R"ALPS_SCHEMA(@QWL_SCHEMA@)ALPS_SCHEMA";
