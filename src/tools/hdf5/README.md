@@ -200,6 +200,36 @@ schema; it contains no legacy file reader. The fixture
 output; its metadata records the producer and the comparison with released QWL
 measurement writers. It is not represented as output from a compiled v3.0.0 build.
 
+## Application checkpoint conversion boundary
+
+A released result file is not necessarily a complete application checkpoint.
+For example, the ALPS 3.0.0 `spinmc` HDF5-enabled writer splits a restart across
+its `.out.runN.h5` archive and companion `.out.runN` XDR file:
+
+| State | Released writer and location |
+| --- | --- |
+| Parameters and RNG name/state | `Worker::save(hdf5::archive&)`: `/parameters`, `/rng` and `/rng/@name` |
+| Measurements | `MCRun::save(hdf5::archive&)`: `/simulation/realizations/0/clones/0/results` |
+| Production sweeps and fractional cluster thermalization | `AbstractSpinSim::save(ODump&)`: XDR payload |
+| Physical spins | `SpinSim::save(ODump&)`: XDR payload, with model-specific moment representation |
+
+This follows the pinned release sources in `src/alps/scheduler/worker.C`,
+`src/alps/scheduler/montecarlo.C` and
+`applications/mc/spins/{abstractspinsim,spinsim,ising,potts,on}.h`.
+Despite the comment in the released `config.h.in` saying checkpoint data is
+HDF5-only, application `ODump` hooks still write physical state. The worker
+stream starts with the run marker, reserved integer and format version. Version
+400 moves framework state to HDF5; version 310 additionally embeds parameters,
+RNG, task information and measurements in XDR. These layouts must not be mixed.
+
+No existing profile translates these physical checkpoints into native solver
+checkpoints. Keep both companion files. A complete offline translator must
+validate the pair and model representation, carry physical state and RNG into
+the native engine, and explicitly preserve the available statistical history.
+Missing histories or changed estimator definitions must not become invented
+native batches or be silently discarded. A warm start with reset measurements
+would be a different operation, not complete checkpoint conversion.
+
 ## Older explicit container schema migration
 
 Old pair and numerical matrix groups require an explicit selection; their child
