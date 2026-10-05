@@ -658,6 +658,80 @@ void large_batch_weights() {
          && result.cov()(0,0) == 2. && result.stderror()(0) == 1.,
             "large integer batch weights overflowed squared-weight counts");
 }
+template<class T> void centered_batch_statistics() {
+    using wide = std::complex<long double>;
+    auto widen = [](T value) {
+        if constexpr (std::is_same_v<T,double>) return wide(value,0);
+        else return wide(value.real(),value.imag());
+    };
+    std::array<uint64_t,6> weights{1,3,5,0,7,11};
+    std::array<double,6> real{3,-1,1,0,4,-3}, imag{-2,2,-3,0,0,1};
+    for (bool constant : {true,false}) {
+        aa::batch_data<T> data(2,weights.size());
+        for (size_t i=0;i<weights.size();++i) {
+            data.count()(i)=weights[i];
+            if (!weights[i]) continue;
+            for (size_t j=0;j<2;++j) {
+                double r=constant ? .64*(j+1) : (j ? -std::ldexp(1.,38) : std::ldexp(1.,40))
+                    + (j ? real[i]+2*imag[i] : real[i]);
+                double im=constant ? -.17*(j+1) : (j ? -std::ldexp(1.,41) : std::ldexp(1.,42))
+                    + (j ? 3*real[i]-imag[i] : imag[i]);
+                if constexpr (std::is_same_v<T,double>) data.batch()(j,i)=double(weights[i])*r;
+                else data.batch()(j,i)=double(weights[i])*T(r,im);
+            }
+        }
+        // Two independent long-double passes over actual stored sums. Unequal
+        // bin weights use W-sum(w^2)/W, not an unweighted sample denominator.
+        long double weight=0, weight2=0;
+        std::array<wide,2> mean{};
+        for (size_t i=0;i<weights.size();++i) {
+            weight+=weights[i]; weight2+=static_cast<long double>(weights[i])*weights[i];
+            for (size_t j=0;j<2;++j) mean[j]+=widen(data.batch()(j,i));
+        }
+        for (auto& value:mean) value/=weight;
+        std::array<std::array<wide,2>,2> covariance{};
+        std::array<std::array<std::array<long double,4>,2>,2> ellipse{};
+        for (size_t i=0;i<weights.size();++i) if (weights[i])
+            for (size_t j=0;j<2;++j) for (size_t k=0;k<2;++k) {
+                auto x=widen(data.batch()(j,i))/static_cast<long double>(weights[i])-mean[j];
+                auto y=widen(data.batch()(k,i))/static_cast<long double>(weights[i])-mean[k];
+                long double scale=weights[i]/(weight-weight2/weight);
+                covariance[j][k]+=scale*x*std::conj(y);
+                auto& e=ellipse[j][k];
+                e[0]+=scale*x.real()*y.real(); e[1]+=scale*x.real()*y.imag();
+                e[2]+=scale*x.imag()*y.real(); e[3]+=scale*x.imag()*y.imag();
+            }
+        auto close=[&](double actual,long double expected) {
+            require(std::isfinite(actual) && std::abs(actual-expected)<
+                (constant ? 1e-28L : 1e-10L*(1+std::abs(expected))),
+                "centered batch variance/covariance disagrees with two-pass oracle");
+        };
+        aa::batch_result<T> result(data);
+        auto variance=result.var(); auto cov=result.cov(); auto error=result.stderror();
+        for (size_t j=0;j<2;++j) {
+            close(variance(j),covariance[j][j].real());
+            require(std::isfinite(error(j)) && std::abs(error(j)-std::sqrt(covariance[j][j].real()*weight2/(weight*weight)))
+                    <(constant ? 1e-14L : 1e-10L), "centered batch standard error is incorrect");
+            for (size_t k=0;k<2;++k) {
+                if constexpr (std::is_same_v<T,double>) close(cov(j,k),covariance[j][k].real());
+                else { close(cov(j,k).real(),covariance[j][k].real()); close(cov(j,k).imag(),covariance[j][k].imag()); }
+            }
+        }
+        if constexpr (!std::is_same_v<T,double>) {
+            auto variance_ellipse=result.template var<aa::elliptic_var>();
+            auto covariance_ellipse=result.template cov<aa::elliptic_var>();
+            for (size_t j=0;j<2;++j) for (size_t k=0;k<2;++k) {
+                auto const& e=covariance_ellipse(j,k); auto const& expected=ellipse[j][k];
+                close(e.rere(),expected[0]); close(e.reim(),expected[1]);
+                close(e.imre(),expected[2]); close(e.imim(),expected[3]);
+                if (j==k) { close(variance_ellipse(j).rere(),expected[0]); close(variance_ellipse(j).reim(),expected[1]);
+                            close(variance_ellipse(j).imre(),expected[2]); close(variance_ellipse(j).imim(),expected[3]); }
+            }
+        }
+        require(result.store().batch()==data.batch() && result.store().count()==data.count(),
+                "uncertainty accessors changed raw batch evidence");
+    }
+}
 void wrong_sized_append() {
     aa::batch_acc<double> batch(1,8,1);
     for (size_t i=0; i<8; ++i) batch << double(i);
@@ -1179,6 +1253,8 @@ int main() {
         elliptic_reduction();
         batch_reset_and_equality();
         large_batch_weights();
+        centered_batch_statistics<double>();
+        centered_batch_statistics<std::complex<double>>();
         wrong_sized_append();
         covariance_transform(filename);
         elliptic_signed_ratios(filename);

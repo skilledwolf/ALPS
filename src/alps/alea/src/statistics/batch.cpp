@@ -216,9 +216,14 @@ template <typename Str>
 column<typename bind<Str,T>::var_type> batch_result<T>::var() const
 {
     var_acc<T, Str> aux_acc(store_->size());
+    auto center = mean();
     for (size_t i = 0; i != store_->num_batches(); ++i) {
-        aux_acc.add(make_adapter(store_->batch().col(i)), store_->count()(i),
-                    nullptr);
+        auto weight = store_->count()(i);
+        if (!weight) continue;
+        // Center before squaring: subtracting raw second moments loses all
+        // precision for constant data or small fluctuations about a large mean.
+        column<T> residual = store_->batch().col(i) - double(weight) * center;
+        aux_acc.add(make_adapter(residual), weight, nullptr);
     }
     return aux_acc.finalize().var();
 }
@@ -228,20 +233,20 @@ template <typename Str>
 typename eigen<typename bind<Str,T>::cov_type>::matrix batch_result<T>::cov() const
 {
     cov_acc<T, Str> aux_acc(store_->size());
-    for (size_t i = 0; i != store_->num_batches(); ++i)
-        aux_acc.add(make_adapter(store_->batch().col(i)), store_->count()(i));
+    auto center = mean();
+    for (size_t i = 0; i != store_->num_batches(); ++i) {
+        auto weight = store_->count()(i);
+        if (!weight) continue;
+        column<T> residual = store_->batch().col(i) - double(weight) * center;
+        aux_acc.add(make_adapter(residual), weight);
+    }
     return aux_acc.finalize().cov();
 }
 
 template <typename T>
 column<typename bind<circular_var,T>::var_type> batch_result<T>::stderror() const
 {
-    var_acc<T, circular_var> aux_acc(store_->size());
-    for (size_t i = 0; i != store_->num_batches(); ++i) {
-        aux_acc.add(make_adapter(store_->batch().col(i)), store_->count()(i),
-                    nullptr);
-    }
-    return aux_acc.finalize().stderror();
+    return (var<circular_var>() / observations()).cwiseSqrt();
 }
 
 template <typename T>

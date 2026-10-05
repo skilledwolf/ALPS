@@ -6,6 +6,10 @@ User-facing changes and migration notes are recorded here, starting with the bui
 
 ### Changed
 
+- Center native ALEA batch sums before calculating variance and covariance.
+  Constant measurements and small fluctuations around large means now retain
+  finite uncertainties without subtracting nearly equal raw second moments.
+  Preserve unequal and partial batch weights and complex covariance conventions.
 - Port `simplemc` to typed TOML runs and native ALEA batches, sharing one local
   update engine for Ising, XY and Heisenberg models. Preserve custom lattices,
   graphs, bond couplings and magnetic fields; exclude thermalization and pool
