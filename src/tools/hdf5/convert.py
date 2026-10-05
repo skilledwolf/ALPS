@@ -243,10 +243,10 @@ def _address(obj):
     return h5py.h5o.get_info(obj.id).addr
 
 
-def _schema_groups(source, pairs, matrices, parameters, alea, core_alea):
+def _schema_groups(source, pairs, matrices, parameters, alea, core_alea, alea_batches):
     groups = {}
     for kind, paths in (("pair", pairs), ("matrix", matrices),
-                        ("parameters", parameters), ("alea", alea),
+                        ("parameters", parameters), ("alea", alea), ("alea-batches", alea_batches),
                         *(("core-alea:" + kind, [path]) for kind, path in core_alea)):
         for path in paths:
             path = posixpath.normpath("/" + str(path).lstrip("/"))
@@ -396,7 +396,7 @@ def _profiles(source, schemas, declared, report):
                     shape = (0,)
                 remember(dataset, conversion, dtype, shape)
             report.append(f"{path}: ALPS 3.0.0 flat parameters -> alps.params.v2")
-        elif kind == "alea":
+        elif kind in ("alea", "alea-batches"):
             if "count" not in group or not isinstance(group["count"], h5py.Dataset):
                 raise ValueError(f"{path}: ALEA profile requires a count dataset")
             count = group["count"]
@@ -567,8 +567,150 @@ def _core_alea(group, family):
     group.attrs["kind"] = np.uint32(CORE_ALEA_KINDS[family])
 
 
+def _alea_batches(group):
+    """Recover released linear bin sums/counts, never an accumulator cursor."""
+    if "version" in group.attrs or "kind" in group.attrs or "batch" in group:
+        raise ValueError(f"{group.name}: expected a released ALPS 3.0.0 ALEA group")
+
+    def integer(value, where):
+        value = np.asarray(value)
+        if (value.shape != () or value.dtype.kind not in "iuf" or not np.isfinite(value)
+                or value < 0 or value != int(value) or int(value) > np.iinfo("u8").max):
+            raise ValueError(f"{where}: expected a nonnegative uint64 count")
+        return int(value)
+
+    count = integer(group["count"][()], group.name + "/count")
+    # DetailedBinning and SimpleObservableData store sums; MCData stores means.
+    raw = "timeseries/logbinning" in group
+    mcdata = "cannotrebin" in group.attrs
+    evaluator = "changed" in group.attrs and "nonlinearoperations" in group.attrs
+    if sum((raw, mcdata, evaluator)) != 1:
+        raise ValueError(f"{group.name}: ambiguous or summary-only ALEA bin semantics")
+    if any(bool(group.attrs.get(flag, False))
+           for flag in ("cannotrebin", "changed", "nonlinearoperations")):
+        raise ValueError(f"{group.name}: nonlinear/transformed ALEA bins cannot be recovered")
+    if "timeseries/data" not in group:
+        raise ValueError(f"{group.name}: missing linear bin history")
+    data = group["timeseries/data"]
+    if (data.shape is None or len(data.shape) not in (1, 2)
+            or data.dtype.kind not in "fc" or data.dtype.itemsize > 16
+            or _text(data.attrs.get("binningtype", ""), data.name) != "linear"):
+        raise ValueError(f"{data.name}: expected scalar/vector floating-point linear bins")
+    size = data.shape[1] if len(data.shape) == 2 else 1
+    if not size:
+        raise ValueError(f"{group.name}: zero-component bins are unsupported")
+    binsize = integer(data.attrs.get("binsize", -1), data.name + "@binsize")
+    discarded = integer(data.attrs.get("discard", 0), data.name + "@discard")
+    if discarded:
+        raise ValueError(f"{data.name}: discarded bins cannot reconstruct the full sample count")
+    full = data.shape[0]
+    partial, remainder = None, 0
+    if raw and "timeseries/partialbin" in group:
+        partial = group["timeseries/partialbin"]
+        if partial.shape != data.shape[1:] or partial.dtype != data.dtype:
+            raise ValueError(f"{partial.name}: inconsistent partial-bin shape/datatype")
+        remainder = integer(partial.attrs.get("count", -1), partial.name + "@count")
+    # Evaluator/MCData writers include the final unfinished row in data itself;
+    # its weight is fixed by the recorded total count and preceding full bins.
+    last = count - (full - 1) * binsize if full and not raw else binsize
+    complete = count == full * binsize + remainder if raw else (
+        0 < last <= binsize if full else count == 0)
+    if not complete or (count or full) and not binsize or remainder > binsize:
+        raise ValueError(f"{group.name}: incomplete/inconsistent bin counts; missing samples cannot be invented")
+
+    # Owned legacy leaves change shape or disappear. Reject aliases to those
+    # objects so conversion cannot silently break a hard-link graph.
+    leaves = ("count", "sum", "sum2", "mean/value", "mean/error", "mean/error_convergence",
+              "variance/value", "tau/value", "jacknife/data", "timeseries/data",
+              "timeseries/data2", "timeseries/partialbin", "timeseries/partialbin2",
+              "timeseries/logbinning", "timeseries/logbinning2",
+              "timeseries/logbinning_lastbin", "timeseries/logbinning_counts")
+    for path in leaves:
+        if path not in group:
+            continue
+        current = group
+        for segment in path.split("/"):
+            if not isinstance(current.get(segment, getlink=True), h5py.HardLink):
+                raise ValueError(f"{group.name}/{path}: ALEA state must follow hard links")
+            current = current[segment]
+            if h5py.h5o.get_info(current.id).rc != 1:
+                raise ValueError(f"{current.name}: ALEA state has hard-link aliases")
+
+    batches = max(2, full + bool(remainder))
+    dtype = np.dtype("c16" if data.dtype.kind == "c" else "f8")
+    counts = group.create_dataset("batch/count", shape=(batches,), dtype="u8")
+    sums = group.create_dataset("batch/sum", shape=(batches, size), dtype=dtype)
+    counts[:full] = binsize
+    if full and not raw:
+        counts[full - 1] = last
+    if remainder:
+        counts[full] = remainder
+    # Tile both dimensions; this also bounds memory for unusually wide vectors.
+    for selection in _blocks(data.shape, dtype.itemsize):
+        values = data[selection].astype(dtype)
+        if mcdata:
+            values *= binsize
+        if not np.isfinite(values).all():
+            raise ValueError(f"{data.name}: bin sums must be finite")
+        target = selection if len(selection) == 2 else selection + (slice(0, 1),)
+        sums[target] = values if len(selection) == 2 else values[:, None]
+    if remainder:
+        for selection in _blocks(partial.shape, dtype.itemsize):
+            values = np.asarray(partial[selection], dtype=dtype)
+            if not np.isfinite(values).all():
+                raise ValueError(f"{partial.name}: partial-bin sums must be finite")
+            sums[(full,) + selection if selection else (full, 0)] = values
+
+    # Use the native weighted-bin estimator. Published legacy error estimates
+    # may differ; raw bins preserve the information for native joint analysis.
+    mean = group.create_dataset("batch/mean", shape=(size,), dtype=dtype)
+    error = group.create_dataset("batch/error", shape=(size,), dtype="f8")
+    count2 = full * binsize**2 + remainder**2 if raw else (
+        (full - 1) * binsize**2 + last**2 if full else 0)
+    for (components,) in _blocks((size,), dtype.itemsize * 3):
+        total = np.zeros(components.stop - components.start, dtype=dtype)
+        for rows, _ in _blocks((batches, len(total)), dtype.itemsize):
+            total += sums[rows, components].sum(axis=0)
+        average = total / count if count else np.full(total.shape, np.nan, dtype=dtype)
+        if raw and "sum" in group:
+            recorded = group["sum"]
+            if recorded.shape != data.shape[1:]:
+                raise ValueError(f"{recorded.name}: inconsistent total-sum shape")
+            expected = np.asarray(recorded[components] if recorded.shape else recorded[()]).reshape(-1)
+            precision = max(1e-12, 32 * np.finfo(data.dtype).eps)
+            if not np.isfinite(expected).all() or not np.allclose(total, expected, rtol=precision, atol=precision):
+                raise ValueError(f"{group.name}: bin sums disagree with the recorded total sum")
+        variance = np.zeros(total.shape, dtype="f8")
+        for rows, _ in _blocks((batches, len(total)), dtype.itemsize * 3):
+            weight = counts[rows]
+            occupied = weight != 0
+            values = sums[rows, components][occupied] / weight[occupied, None]
+            variance += (weight[occupied, None] * abs(values - average)**2).sum(axis=0)
+        if not count:
+            uncertainty = np.full(total.shape, np.nan)
+        elif count**2 == count2:
+            uncertainty = np.full(total.shape, np.inf)
+        else:
+            uncertainty = np.sqrt(variance * count2 / (count * (count**2 - count2)))
+        mean[components], error[components] = average, uncertainty
+    for path in leaves:
+        if path in group:
+            del group[path]
+    for name in ("variance", "tau", "jacknife", "timeseries", "mean"):
+        if name in group and not len(group[name]) and not len(group[name].attrs):
+            del group[name]
+    group.require_group("mean")
+    group.move("batch/mean", "mean/value")
+    group.move("batch/error", "mean/error")
+    for flag in ("cannotrebin", "changed", "nonlinearoperations"):
+        if flag in group.attrs:
+            del group.attrs[flag]
+    group.attrs["size"], group.attrs["num_batches"] = np.uint64(size), np.uint64(batches)
+    _core_alea(group, "batch")
+
+
 def _copy(source, target, boolean_datasets, boolean_attributes, pair_groups, matrix_groups,
-          parameter_groups, alea_groups, core_alea_groups):
+          parameter_groups, alea_groups, core_alea_groups, alea_batch_groups):
     report = []
     declared = set()
     for path in boolean_datasets:
@@ -581,7 +723,8 @@ def _copy(source, target, boolean_datasets, boolean_attributes, pair_groups, mat
         if name not in obj.attrs or _marker(name) or obj.file != source:
             raise ValueError(f"{path}@{name}: Boolean declaration must name an ordinary input attribute")
         declared.add((_address(obj), name))
-    schemas = _schema_groups(source, pair_groups, matrix_groups, parameter_groups, alea_groups, core_alea_groups)
+    schemas = _schema_groups(source, pair_groups, matrix_groups, parameter_groups, alea_groups,
+                             core_alea_groups, alea_batch_groups)
     conversions = _profiles(source, schemas, declared, report)
     seen = {_address(source): target}
     softlinks = []
@@ -658,6 +801,9 @@ def _copy(source, target, boolean_datasets, boolean_attributes, pair_groups, mat
             seen[address] = converted
         elif kind == "parameters":
             _parameters(obj, target)
+        elif kind == "alea-batches":
+            _alea_batches(obj)
+            report.append(f"{path}: ALPS 3.0.0 linear bins -> native ALEA batch result; error recomputed")
         elif kind.startswith("core-alea:"):
             _core_alea(obj, kind.split(":", 1)[1])
             report.append(f"{path}: ALPSCore 2.3.3 ALEA result -> versioned native result")
@@ -677,7 +823,8 @@ def _copy(source, target, boolean_datasets, boolean_attributes, pair_groups, mat
 
 
 def convert(source, destination, *, boolean_datasets=(), boolean_attributes=(),
-            pair_groups=(), matrix_groups=(), parameter_groups=(), alea_groups=(), core_alea_groups=()):
+            pair_groups=(), matrix_groups=(), parameter_groups=(), alea_groups=(), core_alea_groups=(),
+            alea_batch_groups=()):
     """Write a new file; leave the source and any existing destination untouched."""
     source, destination = Path(source), Path(destination)
     if os.path.lexists(destination):
@@ -693,7 +840,8 @@ def convert(source, destination, *, boolean_datasets=(), boolean_attributes=(),
             os.close(fd)
             with h5py.File(temporary, "w", track_order=True) as dst:
                 report = _copy(src, dst, boolean_datasets, boolean_attributes,
-                               pair_groups, matrix_groups, parameter_groups, alea_groups, core_alea_groups)
+                               pair_groups, matrix_groups, parameter_groups, alea_groups, core_alea_groups,
+                               alea_batch_groups)
         # A sibling hard link publishes the complete file atomically and refuses
         # to overwrite a destination created by another process in the meantime.
         os.link(temporary, destination)
@@ -720,6 +868,9 @@ def main(argv=None):
                         help="migrate ALPS 3.0.0 flat parameters to native typed checkpoints (repeatable)")
     parser.add_argument("--alea", action="append", default=[], metavar="GROUP",
                         help="normalize one ALPS 3.0.0 ALEA observable/result (repeatable)")
+    parser.add_argument("--alea-batches", action="append", default=[], metavar="GROUP",
+                        help="recover complete ALPS 3.0.0 linear bins as a native ALEA analysis result; "
+                             "recompute uncertainty, never invent restart state (repeatable)")
     parser.add_argument("--core-alea", action="append", nargs=2, default=[],
                         metavar=("KIND", "GROUP"),
                         help="migrate a released ALPSCore 2.3.3 ALEA result; KIND is "
@@ -730,7 +881,7 @@ def main(argv=None):
                          boolean_attributes=args.boolean_attribute,
                          pair_groups=args.pair, matrix_groups=args.matrix,
                          parameter_groups=args.parameters, alea_groups=args.alea,
-                         core_alea_groups=args.core_alea)
+                         core_alea_groups=args.core_alea, alea_batch_groups=args.alea_batches)
     except (OSError, ValueError, KeyError, TypeError) as error:
         parser.exit(1, f"{parser.prog}: {error}\n")
     for line in report:

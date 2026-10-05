@@ -1111,3 +1111,154 @@ def test_parameter_profile_respects_an_explicit_integer_byte_marker(converter, t
         dataset = parameter_values(archive["parameters"])["code"]
         assert dataset.dtype == np.dtype("i8") and dataset[()] == 1
         assert "__alps_type__" not in dataset.attrs
+
+
+def released_bins(archive, family, values, binsize=3, remainder=2):
+    group = archive.create_group("observable")
+    values = np.asarray(values)
+    partial = np.asarray(values[0] + 1)
+    group["count"] = np.uint64(len(values) * binsize + (remainder if family == "observable" else 0))
+    data = group.create_dataset("timeseries/data", data=values)
+    data.attrs.update(binsize=np.uint64(binsize), binningtype="linear", discard=np.uint32(0))
+    if family == "observable":
+        group["timeseries/logbinning"] = values[:1]
+        group["timeseries/partialbin"] = partial
+        group["timeseries/partialbin"].attrs["count"] = np.uint64(remainder)
+        group["sum"] = values.sum(axis=0) + (partial if remainder else 0)
+    elif family == "mcdata":
+        group.attrs["cannotrebin"] = np.int8(0)
+    else:
+        group.attrs.update(changed=np.int8(0), nonlinearoperations=np.int8(0))
+    group["mean/value"] = values.sum(axis=0) / max(1, int(group["count"][()]))
+    group["mean/error"] = np.ones(values.shape[1:])
+    group["user-note"] = "preserve me"
+    return group
+
+
+@pytest.mark.parametrize("family", ["observable", "evaluator", "mcdata"])
+@pytest.mark.parametrize("components", [1, 2])
+def test_released_linear_bins_recover_native_joint_analysis(converter, tmp_path, family, components):
+    source, output = tmp_path / "source.h5", tmp_path / "output.h5"
+    values = np.asarray([3., 9., 6.])
+    if components == 2:
+        values = np.column_stack((values, 2 * values))
+    with h5py.File(source, "w") as archive:
+        released_bins(archive, family, values)
+    converter.convert(source, output, alea_batch_groups=["/observable"])
+    sums = values * (3 if family == "mcdata" else 1)
+    counts = np.full(3, 3, dtype="u8")
+    if family == "observable":
+        sums = np.concatenate((sums, np.asarray(values[:1] + 1)))
+        counts = np.append(counts, 2).astype("u8")
+    sums = sums.reshape(-1, components)
+    average = sums.sum(axis=0) / counts.sum()
+    weight = counts.astype(float)
+    centered = (weight[:, None] * abs(sums / weight[:, None] - average)**2).sum(axis=0)
+    error = np.sqrt(centered * (weight**2).sum() /
+                    (weight.sum() * (weight.sum()**2 - (weight**2).sum())))
+    with h5py.File(output, "r") as archive:
+        group = archive["observable"]
+        assert group.attrs["version"] == 1 and group.attrs["kind"] == 5
+        assert group.attrs["size"] == components
+        assert "timeseries" not in group and "count" not in group
+        assert group["user-note"].asstr()[()] == "preserve me"
+        np.testing.assert_array_equal(group["batch/count"], counts)
+        np.testing.assert_array_equal(group["batch/sum"], sums)
+        np.testing.assert_allclose(group["mean/value"], average)
+        np.testing.assert_allclose(group["mean/error"], error)
+    if os.environ.get("ALPS_DIR"):
+        from pyalps import alea, hdf5
+        with hdf5.archive(str(output), "r") as archive:
+            native = alea.BatchResult.read(archive, "/observable")
+        assert native.count == int(counts.sum())
+        np.testing.assert_allclose(native.mean, average)
+        np.testing.assert_allclose(native.error, error)
+        if components == 2:
+            np.testing.assert_allclose(native.covariance[0, 1], 2 * native.variance[0])
+
+
+@pytest.mark.parametrize("fault", ["summary", "missing-tail", "discarded", "nonlinear", "changed",
+                                  "nan", "wrong-total", "zero-bin", "alias", "softlink", "unknown-flags"])
+def test_native_batch_conversion_rejects_unrecoverable_histories(converter, tmp_path, fault):
+    source, output = tmp_path / "source.h5", tmp_path / "output.h5"
+    with h5py.File(source, "w") as archive:
+        group = released_bins(archive, "observable", [3., 9., 6.])
+        if fault == "summary": del group["timeseries"]
+        elif fault == "missing-tail": del group["timeseries/partialbin"]
+        elif fault == "discarded": group["timeseries/data"].attrs["discard"] = np.uint32(1)
+        elif fault in ("changed", "nonlinear"):
+            del group["timeseries/logbinning"]
+            group.attrs.update(changed=np.int8(fault == "changed"), nonlinearoperations=np.int8(fault == "nonlinear"))
+        elif fault == "nan": group["timeseries/data"][0] = np.nan
+        elif fault == "wrong-total": group["sum"][()] += 1
+        elif fault == "zero-bin": group["timeseries/data"].attrs["binsize"] = np.uint64(0)
+        elif fault == "alias": archive["alias"] = group["timeseries/data"]
+        elif fault == "softlink": archive["view"] = h5py.SoftLink("/observable/count")
+        elif fault == "unknown-flags": del group["timeseries/logbinning"]
+    before = source.read_bytes()
+    with pytest.raises(ValueError):
+        converter.convert(source, output, alea_batch_groups=["/observable"])
+    assert source.read_bytes() == before
+    assert set(tmp_path.iterdir()) == {source}
+
+
+def test_released_partial_vector_and_empty_mcdata_migrate_to_native_batches(converter, tmp_path):
+    source = Path(__file__).with_name("fixtures") / "alps-v3.0.0-profiles.h5"
+    output = tmp_path / "converted.h5"
+    converter.convert(source, output, alea_batch_groups=["/vector-observable", "/scalar-mcdata"])
+    with h5py.File(output, "r") as archive:
+        group = archive["vector-observable"]
+        np.testing.assert_array_equal(group["batch/count"], [1, 0])
+        np.testing.assert_array_equal(group["batch/sum"], [[1., 2.], [0., 0.]])
+        np.testing.assert_array_equal(group["mean/value"], [1., 2.])
+        assert np.isinf(group["mean/error"][:]).all()
+        group = archive["scalar-mcdata"]
+        np.testing.assert_array_equal(group["batch/count"], [0, 0])
+        assert np.isnan(group["mean/value"][:]).all()
+        assert np.isnan(group["mean/error"][:]).all()
+
+
+@pytest.mark.parametrize("family", ["evaluator", "mcdata"])
+def test_released_result_final_row_retains_its_partial_weight(converter, tmp_path, family):
+    source, output = tmp_path / "source.h5", tmp_path / "output.h5"
+    with h5py.File(source, "w") as archive:
+        group = released_bins(archive, family, [3., 9., 6.])
+        group["count"][()] = np.uint64(8)
+    converter.convert(source, output, alea_batch_groups=["/observable"])
+    with h5py.File(output, "r") as archive:
+        group = archive["observable"]
+        np.testing.assert_array_equal(group["batch/count"], [3, 3, 2])
+        factor = 3 if family == "mcdata" else 1
+        np.testing.assert_array_equal(group["batch/sum"], np.array([[3.], [9.], [6.]]) * factor)
+        np.testing.assert_array_equal(group["mean/value"], [18. * factor / 8])
+
+
+def test_native_complex_bin_conversion_is_bounded_and_preserves_covariance(converter, tmp_path, monkeypatch):
+    source, output = tmp_path / "source.h5", tmp_path / "output.h5"
+    values = np.array([[3+2j, 6+4j], [9-2j, 18-4j], [6+1j, 12+2j]])
+    with h5py.File(source, "w") as archive:
+        released_bins(archive, "mcdata", values)
+    monkeypatch.setattr(converter, "BUFFER_BYTES", 64)
+    converter.convert(source, output, alea_batch_groups=["/observable"])
+    sums = 3 * values
+    with h5py.File(output, "r") as archive:
+        group = archive["observable"]
+        assert group["batch/sum"].dtype == np.dtype("c16")
+        np.testing.assert_array_equal(group["batch/sum"], sums)
+        np.testing.assert_allclose(group["mean/value"], sums.sum(axis=0) / 9)
+        np.testing.assert_allclose(group["mean/error"], np.sqrt((abs(values-values.mean(axis=0))**2).sum(axis=0) / 6))
+    if os.environ.get("ALPS_DIR"):
+        from pyalps import alea, hdf5
+        with hdf5.archive(str(output), "r") as archive:
+            native = alea.ComplexBatchResult.read(archive, "/observable")
+        np.testing.assert_array_equal(native.batch_sums, sums)
+        np.testing.assert_allclose(native.covariance[0, 1], 2 * native.variance[0])
+
+
+def test_native_conversion_rejects_nonempty_zero_weight_bins(converter, tmp_path):
+    source, output = tmp_path / "source.h5", tmp_path / "output.h5"
+    with h5py.File(source, "w") as archive:
+        group = released_bins(archive, "evaluator", [1., 2.], binsize=0)
+    with pytest.raises(ValueError, match="incomplete/inconsistent bin counts"):
+        converter.convert(source, output, alea_batch_groups=["/observable"])
+    assert not output.exists()

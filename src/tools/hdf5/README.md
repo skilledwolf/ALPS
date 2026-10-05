@@ -26,6 +26,7 @@ The destination filesystem must support hard links for atomic publication.
 | Signed bytes marked `__alps_type__ = "int8"` | Ordinary signed bytes |
 | Explicitly selected ALPS 3.0.0 flat parameter groups | Indexed `alps.params.v2` names and native values |
 | Explicitly selected ALPS 3.0.0 ALEA observable/result groups | Native Boolean flags and schema-established empty array extents |
+| Explicitly selected ALPS 3.0.0 complete linear bin histories | Native ALEA batch analysis results with original sums/counts and recomputed uncertainty |
 | Explicitly selected ALPSCore 2.3.3 ALEA result groups | Canonical primitives and versioned modern ALEA result metadata |
 | Other datasets and attributes | Their existing datatypes and values |
 
@@ -123,8 +124,29 @@ writer layout whose empty vector lost the necessary element evidence.
 
 Private `alps.params.v1` checkpoints created during development of this branch
 are not an official release schema and have no automatic upgrade profile.
-Other scientific result schemas and cross-schema statistical normalization
-remain the responsibility of their domain serializers/readers.
+Other scientific result schemas require an explicit converter profile.
+
+For analysis with native ALEA, use `--alea-batches GROUP` instead of `--alea`:
+
+```sh
+alps-hdf5-convert old.h5 converted.h5 \
+  --alea-batches /simulation/results/Energy
+```
+
+This profile recovers floating real/complex scalar or vector linear bins from
+released `DetailedBinning`, untransformed `SimpleObservableData` and `MCData`.
+It accounts for their distinct sum/mean conventions and retains the actual
+partial-bin weight. Vector bins preserve cross-component covariance. Native
+kind-5 means and errors are recalculated from these weighted bins; the uncertainty
+can differ from a published legacy estimate. Summary-only, nonlinear, discarded,
+missing or inconsistent histories are rejected, as are aliases to replaced
+statistical fields. Unrelated metadata remains intact. Separate scalar summaries
+cannot supply missing joint covariance.
+
+The output is an analysis result. It cannot supply the merge cursor, RNG or
+simulation configuration needed to resume an old NGS checkpoint. New NGS
+simulations use native kind-6 batch checkpoints directly and never infer restart
+state from legacy results.
 
 ## Released ALPSCore ALEA results
 
