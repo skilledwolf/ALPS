@@ -1306,3 +1306,49 @@ def test_released_summary_histogram_and_history_preservation(converter, tmp_path
     with pytest.raises(ValueError):
         converter.convert(source, rejected, alea_batch_groups=["/summary"])
     assert not rejected.exists()
+
+
+def test_released_qwl_per_run_conversion(converter, tmp_path):
+    source = Path(__file__).with_name("fixtures") / "alps-v3.0.0-qwl.h5"
+    output = tmp_path / "native.h5"
+    converter.convert(source, output, qwl_sites=4)
+    root = "simulation/realizations/0/clones/0"
+    with h5py.File(source) as old, h5py.File(output) as native:
+        assert native["parameters/format"][()] == b"alps.params.v2"
+        assert native["simulation/number_of_sites"][()] == 4
+        assert native[root + "/complete"][()]
+        for name in ("Coefficients", "Offset", "Histogram", "Fraction", "Uniform Structure Factor Coefficients"):
+            new = native[root + "/results/" + name]
+            assert new.attrs["version"] == 1 and new.attrs["kind"] == 1
+            np.testing.assert_array_equal(new["mean/value"], np.atleast_1d(old[new.name + "/mean/value"][()]))
+            assert new["count"].dtype == np.dtype("uint64")
+        # Generic conversion preserves the original physical evidence.
+        np.testing.assert_array_equal(native[root + "/results/Time Up/timeseries/data"],
+                                      old[root + "/results/Time Up/timeseries/data"])
+    executable = os.environ.get("ALPS_QWL_EXECUTABLE")
+    if executable:
+        evaluated = subprocess.run([str(Path(executable).with_name("qwl_evaluate")),
+            "--T_MIN", "1", "--T_MAX", "1", str(output)], text=True, capture_output=True)
+        assert evaluated.returncode == 0, evaluated.stderr
+        assert (tmp_path / "native.plot.energy.xml").exists()
+
+
+@pytest.mark.parametrize("fault", ["sites", "averaged", "incomplete", "aliases", "window", "shape"])
+def test_qwl_conversion_rejects_missing_or_ambiguous_evidence(converter, tmp_path, fault):
+    fixture = Path(__file__).with_name("fixtures") / "alps-v3.0.0-qwl.h5"
+    source, output = tmp_path / "old.h5", tmp_path / "new.h5"
+    shutil.copyfile(fixture, source)
+    with h5py.File(source, "a") as ar:
+        result = ar["simulation/realizations/0/clones/0/results"]
+        if fault in ("averaged", "incomplete"):
+            result["Coefficients/count"][()] = 2 if fault == "averaged" else 0
+        elif fault == "aliases": ar["alias"] = result
+        elif fault == "window": ar["parameters/EXPANSION_ORDER_MINIMUM"] = 3
+        elif fault == "shape":
+            del result["Offset/mean/value"]
+            result["Offset/mean/value"] = [1., 2.]
+    before = source.read_bytes()
+    with pytest.raises(ValueError):
+        converter.convert(source, output, qwl_sites=5 if fault == "sites" else 4)
+    assert source.read_bytes() == before
+    assert not output.exists()

@@ -11,6 +11,7 @@ schemas; unspecified solver checkpoint schemas are not changed.
 import argparse
 from contextlib import closing
 import itertools
+import math
 import os
 from pathlib import Path
 import posixpath
@@ -822,10 +823,110 @@ def _copy(source, target, boolean_datasets, boolean_attributes, pair_groups, mat
     return report
 
 
+def _qwl(source, target, sites):
+    """Released final, per-run QWL estimates; never manufacture missing chains."""
+    if isinstance(sites, bool) or not isinstance(sites, int) or sites <= 0:
+        raise ValueError("QWL requires an explicit positive site count")
+    def plain(_, obj):
+        if h5py.h5o.get_info(obj.id).rc != 1:
+            raise ValueError("QWL conversion requires unaliased released writer objects")
+        if isinstance(obj, h5py.Group) and any(not isinstance(obj.get(k, getlink=True), h5py.HardLink) for k in obj):
+            raise ValueError("QWL conversion requires hard links")
+    source.visititems(plain)
+    for field in ("number_of_sites", "bipartite"):
+        if field in target["simulation"]:
+            raise ValueError("QWL file already has native analysis metadata")
+    def parameter(name, fallback):
+        value = source["parameters/" + name][()] if name in source["parameters"] else fallback
+        if not np.isscalar(value) or not isinstance(value, (int, float, np.integer, np.floating)):
+            raise ValueError(f"QWL {name} must be a numeric released parameter")
+        return value
+    if parameter("EXPANSION_ORDER_MINIMUM", 0) != 0:
+        raise ValueError("Released nonzero QWL windows have no reliable normalization contract")
+    combinatorics = parameter("INCLUDE_COMBINATORICS_FACTORS", 1)
+    if combinatorics not in (0, 1):
+        raise ValueError("Invalid QWL combinatorial-factor flag")
+    cutoff = parameter("CUTOFF", 500)
+    if not np.isfinite(cutoff) or cutoff < 0 or cutoff != int(cutoff):
+        raise ValueError("Invalid QWL cutoff")
+    root = "/simulation/realizations/0/clones"
+    if root in target:
+        clones = list(target[root].values())
+    else:
+        clone = target.require_group(root + "/0")
+        # The released summary can stand for one chain only when its count is one.
+        clone["results"] = target["simulation/results"]
+        clones = [clone]
+    magnetic = set()
+    for clone in clones:
+        results = clone["results"]
+        required = {"Coefficients", "Offset", "Histogram", "Fraction", "Total Sweeps"}
+        if not required <= results.keys():
+            raise ValueError("Incomplete released QWL result")
+        magnetic.add(("Uniform Structure Factor Coefficients" in results,
+                      "Staggered Structure Factor Coefficients" in results))
+        size = results["Coefficients/mean/value"].size
+        if not size or size > cutoff + 1:
+            raise ValueError("Invalid QWL coefficient range")
+        for name in results:
+            if name in ("Time Up", "Time Down", "Time Total"):
+                continue  # Preserve released timing evidence for explicit ALEA conversion.
+            if (name not in required | {"Uniform Structure Factor Coefficients", "Staggered Structure Factor Coefficients"}
+                    and not any(name.startswith(prefix) and name[len(prefix):].isdigit()
+                                for prefix in ("Coefficients ", "Total Sweeps "))):
+                raise ValueError(f"Unexpected released QWL estimate: {name}")
+            group = results[name]
+            if "version" in group.attrs or "kind" in group.attrs:
+                raise ValueError("QWL result already versioned")
+            count = group["count"]
+            if count.shape != () or count.dtype.kind not in "iu" or count[()] != 1:
+                raise ValueError("QWL needs one final estimate per chain; use the individual .out.runN.h5 files")
+            value = group["mean/value"]
+            expected = 1 if name == "Offset" or name.startswith("Total Sweeps") else size
+            if value.dtype.kind != "f" or value.dtype.itemsize != 8 or value.shape not in ((), (expected,)) or value.size != expected:
+                raise ValueError(f"{value.name}: invalid QWL mean shape/type")
+            values = np.asarray(value[()], dtype=np.float64).reshape(expected)
+            if name.startswith("Coefficients"):
+                if not np.isfinite(values[0]) or np.isnan(values).any() or np.isposinf(values).any():
+                    raise ValueError("Invalid QWL coefficients")
+                if abs(values[0] - sites * math.log(2.)) > 1e-10 * max(1, sites):
+                    raise ValueError("QWL site count disagrees with the order-zero normalization")
+                if not combinatorics:
+                    correction = np.array([math.lgamma(cutoff-i+1)-math.lgamma(cutoff+1) for i in range(expected)])
+                    values += correction
+            if value.shape == (expected,):
+                if not combinatorics and name.startswith("Coefficients"):
+                    with closing(value.id.get_create_plist()) as props:
+                        if any(props.get_filter(i)[0] not in (1, 2, 3, 32000) for i in range(props.get_nfilters())):
+                            raise ValueError("Unsupported filter on corrected QWL coefficients")
+                    value[...] = values
+            else:
+                del group["mean/value"]
+                replacement = group["mean"].create_dataset("value", data=values)
+                for attribute in value.attrs:
+                    _copy_attribute(value, replacement, attribute)
+            group.attrs.update(version=np.uint64(1), kind=np.uint32(1), size=np.uint64(expected))
+            if count.dtype != np.dtype("uint64"):
+                del group["count"]
+                replacement = group.create_dataset("count", data=np.uint64(1))
+                for attribute in count.attrs:
+                    _copy_attribute(count, replacement, attribute)
+        clone.create_dataset("complete", data=True)
+    if len(magnetic) != 1:
+        raise ValueError("QWL chains disagree on magnetic measurements")
+    target["simulation/number_of_sites"] = np.uint64(sites)
+    return "ALPS 3.0.0 QWL final per-run estimates -> native analysis; no solver restart state inferred"
+
+
 def convert(source, destination, *, boolean_datasets=(), boolean_attributes=(),
             pair_groups=(), matrix_groups=(), parameter_groups=(), alea_groups=(), core_alea_groups=(),
-            alea_batch_groups=()):
+            alea_batch_groups=(), qwl_sites=None):
     """Write a new file; leave the source and any existing destination untouched."""
+    if qwl_sites is not None:
+        if any((boolean_datasets, boolean_attributes, pair_groups, matrix_groups, parameter_groups,
+                alea_groups, core_alea_groups, alea_batch_groups)):
+            raise ValueError("QWL is a whole-file profile; select it separately")
+        parameter_groups = ("/parameters",)
     source, destination = Path(source), Path(destination)
     if os.path.lexists(destination):
         raise FileExistsError(f"destination already exists: {destination}")
@@ -842,6 +943,8 @@ def convert(source, destination, *, boolean_datasets=(), boolean_attributes=(),
                 report = _copy(src, dst, boolean_datasets, boolean_attributes,
                                pair_groups, matrix_groups, parameter_groups, alea_groups, core_alea_groups,
                                alea_batch_groups)
+                if qwl_sites is not None:
+                    report.append(_qwl(src, dst, qwl_sites))
         # A sibling hard link publishes the complete file atomically and refuses
         # to overwrite a destination created by another process in the meantime.
         os.link(temporary, destination)
@@ -875,13 +978,15 @@ def main(argv=None):
                         metavar=("KIND", "GROUP"),
                         help="migrate a released ALPSCore 2.3.3 ALEA result; KIND is "
                              + ", ".join(CORE_ALEA_KINDS) + " (repeatable)")
+    parser.add_argument("--qwl-sites", type=int, metavar="N",
+                        help="migrate released per-run QWL final estimates with an explicit lattice site count")
     args = parser.parse_args(argv)
     try:
         report = convert(args.source, args.destination, boolean_datasets=args.boolean,
                          boolean_attributes=args.boolean_attribute,
                          pair_groups=args.pair, matrix_groups=args.matrix,
                          parameter_groups=args.parameters, alea_groups=args.alea,
-                         core_alea_groups=args.core_alea, alea_batch_groups=args.alea_batches)
+                         core_alea_groups=args.core_alea, alea_batch_groups=args.alea_batches, qwl_sites=args.qwl_sites)
     except (OSError, ValueError, KeyError, TypeError) as error:
         parser.exit(1, f"{parser.prog}: {error}\n")
     for line in report:

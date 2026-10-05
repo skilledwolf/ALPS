@@ -176,6 +176,30 @@ released statistical serializers are unchanged; `batch.cpp` has only an added
 estimators with the same known sample streams, including both complex covariance
 conventions.
 
+## Released QWL final results
+
+```sh
+alps-hdf5-convert old.out.run1.h5 native.h5 --qwl-sites 40
+qwl_evaluate native.h5
+```
+
+This whole-file profile converts ALPS 3.0.0 QWL coefficient/histogram means to
+native mean results and indexes parameters. Supply the lattice site count; the
+profile checks it against the order-zero normalization. Completed per-run files
+and single-run summaries are supported. Each final estimate must have count one;
+pooled logs cannot recover separate chains, so use individual `.out.runN.h5`
+files for multi-run work. Nonzero windows from the released writer are rejected.
+Coefficients produced without combinatorial factors receive the corresponding
+factorial correction. Other scientific fields, including timing bins and original
+sums, remain available. No solver restart state is inferred.
+
+The profile accepts unaliased hard-linked writer layouts and cannot be combined
+with other domain selections. The native evaluator consumes the ordinary native
+schema; it contains no legacy file reader. The fixture
+`tests/cli/fixtures/alps-v3.0.0-qwl.h5` contains actual pre-migration branch writer
+output; its metadata records the producer and the comparison with released QWL
+measurement writers. It is not represented as output from a compiled v3.0.0 build.
+
 ## Older explicit container schema migration
 
 Old pair and numerical matrix groups require an explicit selection; their child
