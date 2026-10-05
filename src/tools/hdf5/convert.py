@@ -245,11 +245,11 @@ def _address(obj):
     return h5py.h5o.get_info(obj.id).addr
 
 
-def _schema_groups(source, pairs, matrices, parameters, alea, core_alea, alea_batches, alea_summaries):
+def _schema_groups(source, pairs, matrices, parameters, alea, core_alea, alea_batches, alea_summaries, alea_autocorr):
     groups = {}
     for kind, paths in (("pair", pairs), ("matrix", matrices),
                         ("parameters", parameters), ("alea", alea), ("alea-batches", alea_batches),
-                        ("alea-summary", alea_summaries),
+                        ("alea-summary", alea_summaries), ("alea-autocorr", alea_autocorr),
                         *(("core-alea:" + kind, [path]) for kind, path in core_alea)):
         for path in paths:
             path = posixpath.normpath("/" + str(path).lstrip("/"))
@@ -399,7 +399,7 @@ def _profiles(source, schemas, declared, report):
                     shape = (0,)
                 remember(dataset, conversion, dtype, shape)
             report.append(f"{path}: ALPS 3.0.0 flat parameters -> alps.params.v2")
-        elif kind in ("alea", "alea-batches", "alea-summary"):
+        elif kind in ("alea", "alea-batches", "alea-summary", "alea-autocorr"):
             if "count" not in group or not isinstance(group["count"], h5py.Dataset):
                 raise ValueError(f"{path}: ALEA profile requires a count dataset")
             count = group["count"]
@@ -635,6 +635,70 @@ def _alea_summary(group):
     group.attrs['format'] = 'alps.reported-estimate.v1'
 
 
+def _alea_autocorr(group):
+    """Recover native levels from released real bin sums and squared bin means."""
+    if any(name in group.attrs for name in ('kind', 'version', 'format', 'cannotrebin', 'changed', 'nonlinearoperations')) or 'legacy' in group or 'level' in group:
+        raise ValueError(f"{group.name}: expected an untransformed released binning hierarchy")
+    count = int(group['count'][()])
+    if not 0 < count <= np.iinfo('u8').max:
+        raise ValueError(f"{group.name}: binning conversion requires a positive uint64 count")
+    sums = group['timeseries/logbinning']
+    squares = group['timeseries/logbinning2']
+    entries = group['timeseries/logbinning_counts']
+    depth = count.bit_length()
+    if (len(sums.shape) not in (1, 2) or sums.shape[0] != depth or squares.shape != sums.shape
+            or entries.shape != (depth,) or entries.dtype.kind not in 'iu'
+            or sums.dtype.kind != 'f' or squares.dtype.kind != 'f'):
+        raise ValueError(f"{group.name}: invalid real binning hierarchy shape/datatype")
+    bins = [int(value) for value in entries[()]]
+    if bins != [count >> i for i in range(depth)]:
+        raise ValueError(f"{group.name}: bin counts do not match the dyadic hierarchy")
+    size = sums.shape[1] if len(sums.shape) == 2 else 1
+    if not size:
+        raise ValueError(f"{group.name}: missing component shape")
+    selected = 0
+    for i, n in enumerate(bins):
+        width = 1 << i
+        remainder = count - n*width
+        count2 = n*width**2 + remainder**2
+        if count*count/count2 >= 1024:
+            selected = i
+        level = group.create_group(f'level/{i}')
+        level.attrs['size'] = np.uint64(size)
+        level['count'], level['count2'] = np.uint64(count), np.float64(count2)
+        mean = level.create_dataset('mean/value', (size,), dtype='f8')
+        variance = level.create_dataset('var', (size,), dtype='f8')
+        error = level.create_dataset('mean/error', (size,), dtype='f8')
+        for (components,) in _blocks((size,), 8*8):
+            def values(dataset, index):
+                value = dataset[index, components] if len(dataset.shape) == 2 else [dataset[index]]
+                return np.asarray(value, dtype=np.longdouble)
+            total, completed, second = values(sums, 0), values(sums, i), values(squares, i)
+            if not all(np.isfinite(value).all() for value in (total, completed, second)):
+                raise ValueError(f"{group.name}: bin moments must be finite")
+            average = completed/(n*width)
+            centered = width*(second - n*average**2)
+            tolerance = 32*max(np.finfo(sums.dtype).eps, np.finfo(squares.dtype).eps)*width*(abs(second)+n*average**2)
+            if np.any(centered < -tolerance) or (n == 1 and np.any(abs(centered) > tolerance)):
+                raise ValueError(f"{group.name}: inconsistent squared bin moments")
+            centered = np.maximum(centered, 0)
+            if remainder:
+                partial_mean = (total-completed)/remainder
+                centered += (partial_mean-average)**2 * (n*width*remainder/np.longdouble(count))
+            elif not np.allclose(total, completed, rtol=32*np.finfo(sums.dtype).eps, atol=0):
+                raise ValueError(f"{group.name}: completed bin sums disagree with the total")
+            denominator = np.longdouble(count) - np.longdouble(count2)/count
+            var = centered/denominator if denominator else np.full(centered.shape, np.inf)
+            mean[components], variance[components] = total/count, var
+            error[components] = np.sqrt(var*np.longdouble(count2)/(np.longdouble(count)**2))
+    _preserve_alea(group)
+    group.attrs.update(size=np.uint64(size), nlevel=np.uint64(depth))
+    group.require_group('mean')
+    group.copy('level/0/mean/value', 'mean/value')
+    group.copy(f'level/{selected}/mean/error', 'mean/error')
+    _core_alea(group, 'autocorr')
+
+
 def _alea_batches(group):
     """Recover linear bins or jackknife pseudovalues, never an accumulator cursor."""
     if "version" in group.attrs or "kind" in group.attrs or "batch" in group or "legacy" in group:
@@ -772,7 +836,7 @@ def _alea_batches(group):
 
 
 def _copy(source, target, boolean_datasets, boolean_attributes, pair_groups, matrix_groups,
-          parameter_groups, alea_groups, core_alea_groups, alea_batch_groups, alea_summary_groups):
+          parameter_groups, alea_groups, core_alea_groups, alea_batch_groups, alea_summary_groups, alea_autocorr_groups):
     report = []
     declared = set()
     for path in boolean_datasets:
@@ -786,7 +850,7 @@ def _copy(source, target, boolean_datasets, boolean_attributes, pair_groups, mat
             raise ValueError(f"{path}@{name}: Boolean declaration must name an ordinary input attribute")
         declared.add((_address(obj), name))
     schemas = _schema_groups(source, pair_groups, matrix_groups, parameter_groups, alea_groups,
-                             core_alea_groups, alea_batch_groups, alea_summary_groups)
+                             core_alea_groups, alea_batch_groups, alea_summary_groups, alea_autocorr_groups)
     conversions = _profiles(source, schemas, declared, report)
     seen = {_address(source): target}
     softlinks = []
@@ -863,6 +927,9 @@ def _copy(source, target, boolean_datasets, boolean_attributes, pair_groups, mat
             seen[address] = converted
         elif kind == "parameters":
             _parameters(obj, target)
+        elif kind == "alea-autocorr":
+            _alea_autocorr(obj)
+            report.append(f"{path}: released log-binning moments -> native autocorrelation levels, including partial bins")
         elif kind == "alea-summary":
             _alea_summary(obj)
             report.append(f"{path}: published ALEA statistics -> reported estimate; source retained in legacy/")
@@ -1045,13 +1112,13 @@ def _spinmc_state(source, target, filename):
 
 def convert(source, destination, *, boolean_datasets=(), boolean_attributes=(),
             pair_groups=(), matrix_groups=(), parameter_groups=(), alea_groups=(), core_alea_groups=(),
-            alea_batch_groups=(), alea_summary_groups=(), qwl_sites=None, spinmc_state=None):
+            alea_batch_groups=(), alea_summary_groups=(), alea_autocorr_groups=(), qwl_sites=None, spinmc_state=None):
     """Write a new file; leave the source and any existing destination untouched."""
     if qwl_sites is not None:
         if spinmc_state is not None:
             raise ValueError("Select one application profile")
         if any((boolean_datasets, boolean_attributes, pair_groups, matrix_groups, parameter_groups,
-                alea_groups, core_alea_groups, alea_batch_groups, alea_summary_groups)):
+                alea_groups, core_alea_groups, alea_batch_groups, alea_summary_groups, alea_autocorr_groups)):
             raise ValueError("QWL is a whole-file profile; select it separately")
         parameter_groups = ("/parameters",)
     source, destination = Path(source), Path(destination)
@@ -1069,7 +1136,7 @@ def convert(source, destination, *, boolean_datasets=(), boolean_attributes=(),
             with h5py.File(temporary, "w", track_order=True) as dst:
                 report = _copy(src, dst, boolean_datasets, boolean_attributes,
                                pair_groups, matrix_groups, parameter_groups, alea_groups, core_alea_groups,
-                               alea_batch_groups, alea_summary_groups)
+                               alea_batch_groups, alea_summary_groups, alea_autocorr_groups)
                 if qwl_sites is not None:
                     report.append(_qwl(src, dst, qwl_sites))
                 if spinmc_state is not None:
@@ -1100,6 +1167,8 @@ def main(argv=None):
                         help="migrate ALPS 3.0.0 flat parameters to native typed checkpoints (repeatable)")
     parser.add_argument("--alea", action="append", default=[], metavar="GROUP",
                         help="normalize one ALPS 3.0.0 ALEA observable/result (repeatable)")
+    parser.add_argument("--alea-autocorr", action="append", default=[], metavar="GROUP",
+                        help="recover native autocorrelation diagnostics from released real log-binning moments (repeatable)")
     parser.add_argument("--alea-summary", action="append", default=[], metavar="GROUP",
                         help="preserve reported ALEA statistics without inferring batches, covariance or weights (repeatable)")
     parser.add_argument("--alea-batches", action="append", default=[], metavar="GROUP",
@@ -1120,7 +1189,7 @@ def main(argv=None):
                          pair_groups=args.pair, matrix_groups=args.matrix,
                          parameter_groups=args.parameters, alea_groups=args.alea,
                          core_alea_groups=args.core_alea, alea_batch_groups=args.alea_batches,
-                         alea_summary_groups=args.alea_summary, qwl_sites=args.qwl_sites,
+                         alea_summary_groups=args.alea_summary, alea_autocorr_groups=args.alea_autocorr, qwl_sites=args.qwl_sites,
                          spinmc_state=args.spinmc_state)
     except (OSError, ValueError, KeyError, TypeError) as error:
         parser.exit(1, f"{parser.prog}: {error}\n")

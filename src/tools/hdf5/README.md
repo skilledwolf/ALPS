@@ -165,6 +165,36 @@ simulation configuration needed to resume an old NGS checkpoint. New NGS
 simulations use native kind-6 batch checkpoints directly and never infer restart
 state from legacy results.
 
+## Binning diagnostics
+
+`--alea-autocorr GROUP` converts a nonempty real scalar/vector `SimpleBinning`
+or `DetailedBinning` hierarchy to the existing native autocorrelation result:
+
+```sh
+alps-hdf5-convert old.h5 diagnostics.h5 --alea-autocorr /simulation/results/Energy
+```
+
+The released writer stores completed-sample sums, sums of squared **bin means**,
+and the number of complete bins at each power-of-two width. The difference
+between the total sum and a level's completed sum recovers the unfinished bin.
+Conversion therefore retains all samples at every level with their actual bin
+weights. Native unbiased weighted variances and errors are recomputed, including
+single-bin infinite uncertainty. Every stored level remains available; the old
+plotting reader's unconditional removal of the last seven levels is gone.
+Native error selection uses its usual 1024-observation threshold, so published
+legacy errors and convergence flags may differ. They remain archived under
+`legacy/`, alongside all original statistical fields.
+
+`loadBinningAnalysis` reads the converted native levels without decoding legacy
+moments at runtime. Missing/inconsistent counts, nonfinite moments, transformed
+histories and reserved-name collisions fail conversion. Complex squared moments
+cannot supply the circular variances required here and are rejected. Tiny negative
+centered moments within floating-point roundoff are clamped to zero; larger
+inconsistencies fail. Conversion cannot recover precision already lost when the
+old writer accumulated raw moments. This creates analysis diagnostics, not an
+accumulator cursor or simulation restart. Select `--alea-batches` instead when
+the desired output is a joint batch result; profile selections cannot overlap.
+
 ## Reported estimates without recoverable histories
 
 Use `--alea-summary GROUP` when the recorded statistics must be retained without

@@ -215,6 +215,11 @@ readable without statistical conversion. Lattice shape is no longer guessed
 from `L` when reading a statistical vector; reshape components explicitly when
 that matches the recorded geometry.
 
+`loadBinningAnalysis` also requires native diagnostics. Convert released log-binning
+hierarchies with `--alea-autocorr`; the converter recovers partial-bin weights and
+preserves the source moments. The plotting reader now exposes every native level
+and closes files on failure instead of logging an error and returning partial data.
+
 ## Merging and saving measurements
 
 `DataSet.from_result(result, x=None, props=None)` creates plotting values while

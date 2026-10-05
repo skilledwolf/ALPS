@@ -1548,3 +1548,102 @@ def test_summary_keeps_missing_error_missing(converter, tmp_path):
         np.testing.assert_array_equal(group['mean/value'], [3.])
         assert 'mean/error' not in group and 'variance' not in group
         assert group['legacy/mean/value'][()] == 3.
+
+
+def released_logbins(archive, samples):
+    # Reconstructed v3.0.0 SimpleBinning writer contract: logbinning is the
+    # completed-sample sum; logbinning2 is the sum of squared bin MEANS.
+    samples = np.asarray(samples, dtype=float)
+    count = len(samples)
+    sums, squares, entries, last = [], [], [], []
+    for i in range(count.bit_length()):
+        width = 1 << i
+        n = count // width
+        complete = samples[:n*width].reshape((n, width)+samples.shape[1:])
+        means = complete.mean(axis=1)
+        sums.append(complete.sum(axis=(0, 1)))
+        squares.append((means*means).sum(axis=0))
+        entries.append(n)
+        last.append(means[-1])
+    group = archive.create_group('simulation/results/E')
+    archive.create_group('parameters')
+    group['count'] = np.uint64(count)
+    group['mean/value'] = samples.mean(axis=0)
+    group['timeseries/logbinning'] = sums
+    group['timeseries/logbinning2'] = squares
+    group['timeseries/logbinning_counts'] = np.asarray(entries, dtype='u8')
+    group['timeseries/logbinning_lastbin'] = last
+    return group
+
+
+@pytest.mark.parametrize('count', [1, 2, 7, 2049])
+@pytest.mark.parametrize('vector', [False, True])
+def test_released_logbins_recover_partial_bins_and_native_diagnostics(converter, tmp_path, count, vector, monkeypatch):
+    samples = np.arange(count, dtype=float) % 11 - 4
+    if vector:
+        samples = np.column_stack((samples, 3*samples+2))
+    source, output = tmp_path/'source.h5', tmp_path/'native.h5'
+    with h5py.File(source, 'w') as ar:
+        released_logbins(ar, samples)
+    before = source.read_bytes()
+    monkeypatch.setattr(converter, 'BUFFER_BYTES', 64)
+    converter.convert(source, output, alea_autocorr_groups=['/simulation/results/E'])
+    assert source.read_bytes() == before
+    with h5py.File(output) as ar:
+        group = ar['simulation/results/E']
+        assert group.attrs['kind'] == 4 and group.attrs['nlevel'] == count.bit_length()
+        assert group['legacy/count'][()] == count
+        for i in range(count.bit_length()):
+            width = 1 << i
+            chunks = [samples[start:start+width] for start in range(0, count, width)]
+            weights = np.array([len(chunk) for chunk in chunks], dtype=float)
+            means = np.array([chunk.mean(axis=0) for chunk in chunks]).reshape(len(chunks), -1)
+            mean = np.atleast_1d(samples.mean(axis=0))
+            expected = (np.sum(weights[:, None]*(means-mean)**2, axis=0)/(count - weights@weights/count)
+                        if len(chunks) > 1 else np.full(mean.shape, np.inf))
+            level = group[f'level/{i}']
+            assert level['count'][()] == count
+            assert level['count2'][()] == weights@weights
+            np.testing.assert_allclose(level['mean/value'], mean)
+            np.testing.assert_allclose(level['var'], expected, atol=1e-12)
+            np.testing.assert_allclose(level['mean/error'], np.sqrt(expected*(weights@weights)/count**2), atol=1e-12)
+    if os.environ.get('ALPS_DIR'):
+        import pyalps
+        from pyalps import alea, hdf5
+        reference = alea.AutocorrelationAccumulator(2 if vector else 1)
+        for sample in samples:
+            reference << sample
+        with hdf5.archive(output) as ar:
+            native = alea.read_result(ar, '/simulation/results/E')
+        expected = reference.result()
+        for i in range(native.levels):
+            np.testing.assert_allclose(native.level(i).variance, expected.level(i).variance, atol=1e-12)
+            assert native.level(i).count == expected.level(i).count
+            assert native.level(i).count2 == expected.level(i).count2
+        np.testing.assert_allclose(native.error, expected.error, atol=1e-12)
+        data = pyalps.loadBinningAnalysis([str(output)])[0][0]
+        assert data.y.shape == ((count.bit_length(), 2) if vector else (count.bit_length(),))
+        assert data.native_result.count == count
+        with pytest.raises(ValueError, match='alea-autocorr'):
+            pyalps.loadBinningAnalysis([str(source)])
+
+
+@pytest.mark.parametrize('fault', ['counts', 'squares', 'nonfinite', 'shape', 'total', 'transformed', 'collision'])
+def test_logbin_conversion_rejects_inconsistent_evidence(converter, tmp_path, fault):
+    source, output = tmp_path/'source.h5', tmp_path/'native.h5'
+    with h5py.File(source, 'w') as ar:
+        group = released_logbins(ar, np.arange(8.))
+        if fault == 'counts': group['timeseries/logbinning_counts'][1] = 3
+        if fault == 'squares': group['timeseries/logbinning2'][0] = -1.
+        if fault == 'nonfinite': group['timeseries/logbinning'][0] = np.nan
+        if fault == 'shape':
+            del group['timeseries/logbinning2']
+            group['timeseries/logbinning2'] = [1., 2.]
+        if fault == 'total': group['timeseries/logbinning'][1] += 1
+        if fault == 'transformed': group.attrs['cannotrebin'] = True
+        if fault == 'collision': group['level/user'] = 1
+    before = source.read_bytes()
+    with pytest.raises(ValueError):
+        converter.convert(source, output, alea_autocorr_groups=['/simulation/results/E'])
+    assert source.read_bytes() == before
+    assert set(tmp_path.iterdir()) == {source}

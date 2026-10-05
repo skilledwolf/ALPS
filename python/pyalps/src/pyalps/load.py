@@ -337,71 +337,39 @@ class Hdf5Loader:
     # Pre: file is a hdf5 file descriptor
     # Post: returns DataSet with the evaluated binning analysis set
     def ReadBinningAnalysis(self,flist,measurements=None,proppath='/parameters',respath=None,verbose=False):
-        fs = self.GetFileNames(flist)
         sets = []
-        for f in fs:
-            try:
-                fileset = []
-                if verbose: log( 'loading from file ' +f)
-                self.h5f = h5.archive(f, 'r')
-                self.h5fname = f
-                base=respath or "/simulation/results"
-                if base == '/simulation/results' and self.h5f.is_group('/simulation/replicas'):
-                    sets.extend(self._read_replicas(f, self.ReadBinningAnalysis,
+        for filename in self.GetFileNames(flist):
+            with h5.archive(filename, 'r') as archive:
+                self.h5f, self.h5fname = archive, filename
+                if verbose: log('Loading from file ' + filename)
+                base = respath or '/simulation/results'
+                if base == '/simulation/results' and archive.is_group('/simulation/replicas'):
+                    sets.extend(self._read_replicas(filename, self.ReadBinningAnalysis,
                         '/realizations/0/clones/0/autocorrelation', measurements, verbose))
                     continue
-                diagnostics="/simulation/realizations/0/clones/0/autocorrelation"
-                if base=="/simulation/results" and self.h5f.is_group(diagnostics):
-                    base=diagnostics
-                list_ = self.GetObservableList(base)
-                # this is exception-safe in the sense that it's also required in the line above
-                #grp = self.h5f.require_group(respath)
-                params = self.ReadParameters(proppath)
-                obslist = []
-                if measurements is None:
-                    obslist = list_
-                else:
-                    obslist = [pt.hdf5_name_encode(obs) for obs in measurements if pt.hdf5_name_encode(obs) in list_]
-                for m in obslist:
-                    try:
-                        d = DataSet()
-                        path=base+'/'+m
-                        if self.h5f.is_attribute(path+'/@kind') and self.h5f[path+'/@kind']==4:
-                            result=pa.read_result(self.h5f,path)
-                            d.x=np.arange(result.levels)
-                            d.y=np.array([result.level(i).error for i in d.x]).squeeze(axis=1) if result.size==1 else np.array([result.level(i).error for i in d.x])
-                            d.native_result=result
-                            d.props.update(params)
-                            d.props.update(hdf5_path=path,observable='binning analysis of '+pt.hdf5_name_decode(m))
-                            fileset.append(d)
-                        elif "timeseries" in  self.h5f.list_children(base+'/'+m):
-                            k = self.h5f.list_children(base+'/'+m+'/timeseries')
-                            if "logbinning" in k and "logbinning2" in k and "logbinning_counts" in k:
-                                if verbose: log("Loading"+ m)
-                                bins = self.h5f[base+'/'+m+'/timeseries/logbinning'][0:-7]
-                                bins2 = self.h5f[base+'/'+m+'/timeseries/logbinning2'][0:-7]
-                                counts = self.h5f[base+'/'+m+'/timeseries/logbinning_counts'][0:-7]
-                                scale = 1
-                                for i in range(len(counts)):
-                                    mean = bins[i]/(counts[i]*scale)
-                                    mean2 = bins2[i]/counts[i]
-                                    bins2[i] = np.sqrt((mean2-mean*mean)/counts[i])
-                                    scale *=2
-                                d.y = bins2
-                                d.x = np.arange(0,len(d.y))
-                                d.props['hdf5_path'] = base + m
-                                d.props['observable'] = 'binning analysis of ' + pt.hdf5_name_decode(m)
-                                d.props.update(params)
-                                if verbose: log( '  loaded binnig analysis for '+m)
-                                fileset.append(d)
-                    except AttributeError:
-                        log( "Could not create DataSet")
+                diagnostics = '/simulation/realizations/0/clones/0/autocorrelation'
+                if base == '/simulation/results' and archive.is_group(diagnostics):
+                    base = diagnostics
+                names, params = self.GetObservableList(base), self.ReadParameters(proppath)
+                selected = names if measurements is None else [pt.hdf5_name_encode(name)
+                    for name in measurements if pt.hdf5_name_encode(name) in names]
+                fileset = []
+                for name in selected:
+                    path = base+'/'+name
+                    if archive.is_attribute(path+'/@kind') and archive[path+'/@kind'] == 4:
+                        result = pa.read_result(archive, path)
+                        levels = np.arange(result.levels)
+                        errors = np.array([result.level(i).error for i in levels])
+                        data = DataSet(levels, errors[:, 0] if result.size == 1 else errors)
+                        data.native_result = result
+                        data.props.update(params)
+                        data.props.update(hdf5_path=path, observable='binning analysis of '+pt.hdf5_name_decode(name))
+                        fileset.append(data)
+                    elif archive.is_data(path+'/timeseries/logbinning'):
+                        raise ValueError(f"{path}: legacy binning diagnostics require alps-hdf5-convert --alea-autocorr")
                 sets.append(fileset)
-            except Exception as e:
-                log( e)
-                log( traceback.format_exc())
         return sets
-    
+
     # Pre: file is a hdf5 file descriptor
     # Post: returns DataSet with all parameters set
     def ReadMeasurementFromFile(self,flist,proppath='/parameters',respath='/simulation/results',measurements=None,verbose=False):
