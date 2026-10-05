@@ -107,9 +107,9 @@ def test_hybridization_tutorial_runs_are_prepared(script, tmp_path, monkeypatch)
         runpy.run_path(str(work / script.name), run_name="__main__")
 
 
-QMC_SCRIPTS = scripts(TUTORIALS / '03-mc', "execute('worm'", "execute('dirloop_sse'") + scripts(
-    TUTORIALS / '11-notebook' / 'ja', "execute('worm'", "execute('dirloop_sse'")
-QMC_NOTEBOOKS = sorted((TUTORIALS / '11-notebook').rglob('MC-0[345]*.ipynb'))
+QMC_SCRIPTS = scripts(TUTORIALS / '03-mc', "execute('worm'", "execute('dirloop_sse'", "execute('loop'") + scripts(
+    TUTORIALS / '11-notebook' / 'ja', "execute('worm'", "execute('dirloop_sse'", "execute('loop'")
+QMC_NOTEBOOKS = sorted((TUTORIALS / '11-notebook').rglob('MC-0[23458]*.ipynb'))
 
 
 @pytest.mark.parametrize('source', QMC_SCRIPTS + QMC_NOTEBOOKS,
@@ -124,22 +124,34 @@ def test_native_qmc_tutorial_end_to_end(source, tmp_path, monkeypatch):
     import pyalps
     from pyalps import run_io
     executables = {app:os.environ.get('ALPS_' + app.upper() + '_EXECUTABLE')
-                   for app in ('worm', 'dirloop_sse')}
-    if not all(executables.values()):
-        pytest.skip('requires ALPS_WORM_EXECUTABLE and ALPS_DIRLOOP_SSE_EXECUTABLE')
+                   for app in ('worm', 'dirloop_sse', 'loop', 'spinmc')}
     original_execute = run_io.execute
     outputs = []
 
     def execute(app, job):
+        if not executables[app]:
+            pytest.skip('requires ALPS_' + app.upper() + '_EXECUTABLE')
         _, runs = run_io.read_job_manifest(job)
         checked = subprocess.run([executables[app], '--validate', *map(str, runs)],
                                  capture_output=True, text=True, timeout=120)
         assert checked.returncode == 0, checked.stdout + checked.stderr
         selected = [runs[i] for i in sorted({0, len(runs)//2, len(runs)-1})]
+        # The gap fit needs at least three temperatures in each coupling group.
+        documents = {path: tomllib.loads(path.read_text()) for path in runs}
+        if app == 'loop' and all('T' in d['parameters'] and 'J2' in d['parameters']
+                                 for d in documents.values()):
+            groups = {}
+            for path, document in documents.items():
+                groups.setdefault(document['parameters']['J2'], []).append(path)
+            selected = [path for group in groups.values() for path in group[:3]]
         for path in selected:
             document = tomllib.loads(path.read_text())
             p = document['parameters']
             p.update(L=4, THERMALIZATION=1000, SWEEPS=2000)
+            if 'W' in p:
+                p['W'] = 2
+            if 'BETA' in p:
+                p['BETA'] = 8.
             document.setdefault('execution', {})['bins'] = 16
             run_io.write_run_file(path, overwrite=True,
                 **{key:document[key] for key in ('parameters', 'input', 'output', 'execution') if key in document})

@@ -27,7 +27,6 @@ for j2 in [0.,1.]:
               'LATTICE'        : "coupled ladders", 
               'local_S'        : 0.5,
               'ALGORITHM'      : 'loop',
-              'SEED'           : 0,
               'T'              : t,
               'J0'             : 1 ,
               'J1'             : 1,
@@ -41,10 +40,12 @@ for j2 in [0.,1.]:
     )
     
 #write the input file and run the simulation
-input_file = pyalps.writeInputFiles('parm8a',parms)
-pyalps.runApplication('loop',input_file)
+from pyalps.run_io import execute, write_run_files
+runs = [dict(parameters=p, execution=dict(seed=0), output=dict(results=f'parm8a.task{i+1}.out.h5'))
+        for i, p in enumerate(parms)]
+files = execute('loop', write_run_files('parm8a', runs, overwrite=True))
 
-data = pyalps.loadMeasurements(pyalps.getResultFiles(pattern='parm8a.task*.out.h5'),['Staggered Susceptibility','Susceptibility'])
+data = pyalps.loadMeasurements(files,['Staggered Susceptibility','Susceptibility'])
 susc1=pyalps.collectXY(data,x='T',y='Susceptibility', foreach=['J2'])
 
 lines = []

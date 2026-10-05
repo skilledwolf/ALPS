@@ -27,7 +27,6 @@ for j2 in [0.,1.]:
               'LATTICE'        : "coupled ladders", 
               'local_S'        : 0.5,
               'ALGORITHM'      : 'loop',
-              'SEED'           : 0,
               'T'              : t,
               'J0'             : 1 ,
               'J1'             : 1,
@@ -41,10 +40,12 @@ for j2 in [0.,1.]:
     )
     
 #write the input file and run the simulation
-input_file = pyalps.writeInputFiles('mc08a',parms)
-pyalps.runApplication('loop',input_file)
+from pyalps.run_io import execute, write_run_files
+runs = [dict(parameters=p, execution=dict(seed=0), output=dict(results=f'mc08a.task{i+1}.out.h5'))
+        for i, p in enumerate(parms)]
+files = execute('loop', write_run_files('mc08a', runs, overwrite=True))
 
-data = pyalps.loadMeasurements(pyalps.getResultFiles(pattern='mc08a.task*.out.h5'),['Staggered Susceptibility','Susceptibility'])
+data = pyalps.loadMeasurements(files,['Staggered Susceptibility','Susceptibility'])
 susc1=pyalps.collectXY(data,x='T',y='Susceptibility', foreach=['J2'])
 
 lines = []
@@ -53,7 +54,7 @@ for data in susc1:
     data.y= data.y[data.x < 1]
     data.x= data.x[data.x < 1]
     f = lambda self, x, pars: (pars[0]()/np.sqrt(x))*np.exp(-pars[1]()/x)
-    fw.fit(None, f, pars, [v.mean for v in data.y], data.x)
+    fw.fit(None, f, pars, np.array([v.mean for v in data.y]), data.x)
     prefactor = pars[0].get()
     gap = pars[1].get()
     print(prefactor,gap)

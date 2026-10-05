@@ -30,7 +30,6 @@ for l in [16,32,64,128]:
               'LATTICE'        : "coupled ladders",
               'local_S'        : 0.5,
               'ALGORITHM'      : 'loop',
-              'SEED'           : 0,
               'BETA'           : 2*l,
               'J0'             : 1 ,
               'J1'             : 1,
@@ -44,10 +43,12 @@ for l in [16,32,64,128]:
     )
 
 #write the input file and run the simulation
-input_file = pyalps.writeInputFiles('parm8d',parms)
-pyalps.runApplication('loop',input_file)
+from pyalps.run_io import execute, write_run_files
+runs = [dict(parameters=p, execution=dict(seed=0), output=dict(results=f'parm8d.task{i+1}.out.h5'))
+        for i, p in enumerate(parms)]
+files = execute('loop', write_run_files('parm8d', runs, overwrite=True))
 
-data = pyalps.loadMeasurements(pyalps.getResultFiles(pattern='parm8d.task*.out.h5'),['Binder Ratio of Staggered Magnetization','Stiffness'])
+data = pyalps.loadMeasurements(files,['Binder Ratio of Staggered Magnetization','Stiffness'])
 
 binder=pyalps.collectXY(data,x='J2',y='Binder Ratio of Staggered Magnetization', foreach=['L'])
 stiffness =pyalps.collectXY(data,x='J2',y='Stiffness', foreach=['L'])

@@ -33,11 +33,13 @@ for t in [0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.25, 1.5, 1.7
     )
 
 #write the input file and run the simulation
-input_file = pyalps.writeInputFiles('parm2c',parms)
-pyalps.runApplication('loop',input_file)
+from pyalps.run_io import execute, write_run_files
+runs = [dict(parameters=p, output=dict(results=f'parm2c.task{i+1}.out.h5'))
+        for i, p in enumerate(parms)]
+files = execute('loop', write_run_files('parm2c', runs, baseseed=42, overwrite=True))
 
 #load the susceptibility and collect it as function of temperature T
-data = pyalps.loadMeasurements(pyalps.getResultFiles(prefix='parm2c'),'Susceptibility')
+data = pyalps.loadMeasurements(files,'Susceptibility')
 susceptibility = pyalps.collectXY(data,x='T',y='Susceptibility')
 
 #make plot
