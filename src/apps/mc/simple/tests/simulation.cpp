@@ -20,10 +20,62 @@ void step(simplemc::simulation& run, uint64_t count) {
 }
 void equal(simplemc::simulation const& expected, simplemc::simulation const& actual) {
     require(expected.completed_sweeps() == actual.completed_sweeps(), "restart changed progress");
+    require(expected.moments().results()==actual.moments().results(), "restart changed centered physical moments");
     auto reference = expected.collect_results(), resumed = actual.collect_results();
     require(reference.size() == resumed.size(), "restart changed result names");
     for (auto const& entry : reference)
         require(entry.second == resumed.at(entry.first), "restart changed native batch evidence");
+}
+// Compare retained physical bins and nonlinear analysis with a two-pass oracle.
+void physical_moment_oracle(std::filesystem::path const& directory) {
+    native_mc::moment_results bins;
+    std::vector<std::vector<long double>> evidence;
+    for (int length:{137,91}) {
+        alps::alea::batch_acc<double> layout(1,8);
+        native_mc::physical_moments moments(1,8);
+        std::vector<long double> samples;
+        for (int i=0;i<length;++i) {
+            double value=1e9+((7*i)%17-8)*.125;
+            moments.add(layout,alps::alea::column<double>{value});
+            layout << alps::alea::make_adapter(value);
+            samples.push_back(value-1e9L);
+        }
+        auto results=moments.results();
+        for (size_t b=0;b<results.size();++b) {
+            auto start=layout.offset()(b),count=layout.store().count()(b);
+            require(results[b].count()==count,"physical moment bins lost layout weights");
+            std::vector<long double> values(samples.begin()+start,samples.begin()+start+count);
+            long double mean=0,variance=0;
+            for (auto x:values) mean+=x/count;
+            for (auto x:values) variance+=(x-mean)*(x-mean)/(count-1);
+            require(std::abs(results[b].mean()(0)-1e9L-mean)<2e-7L,"physical bin mean disagrees with two-pass oracle");
+            require(std::abs(results[b].cov()(0,0)-variance)<2e-7L,"within-bin energy fluctuation was lost");
+            evidence.push_back(std::move(values));
+        }
+        auto path=(directory/"moments.h5").string();
+        { alps::hdf5::archive ar(path,"w"); moments.save(ar,"/moments"); }
+        native_mc::physical_moments restored(1,8);
+        { alps::hdf5::archive ar(path); restored.load(ar,"/moments",layout); }
+        require(restored.results()==results,"physical moments changed on checkpoint round trip");
+        bins.insert(bins.end(),results.begin(),results.end());
+    }
+    auto variance=[&](int excluded) {
+        long double mean=0,m2=0; size_t count=0;
+        for (size_t b=0;b<evidence.size();++b) if (int(b)!=excluded)
+            for (auto x:evidence[b]) { mean+=x; ++count; }
+        mean/=count;
+        for (size_t b=0;b<evidence.size();++b) if (int(b)!=excluded)
+            for (auto x:evidence[b]) m2+=(x-mean)*(x-mean);
+        return m2/count;
+    };
+    long double expected=0,full=variance(-1); size_t count=228;
+    for (size_t b=0;b<evidence.size();++b)
+        expected+=(count*full-(count-evidence[b].size())*variance(b))/count;
+    simplemc::simulation::results_type estimates;
+    native_mc::estimate(estimates,nullptr,"variance",native_mc::centered_batches(bins).first,
+                       [](auto const& x){return x(1)-x(0)*x(0);});
+    require(std::abs(estimates.at("variance").mean()(0)-expected)<2e-7L,
+            "weighted physical jackknife disagrees with independent large-offset oracle");
 }
 }
 
@@ -34,6 +86,7 @@ int main() {
         std::filesystem::path path;
         ~cleanup() { std::error_code ignored; std::filesystem::remove_all(path, ignored); }
     } remove{directory};
+    physical_moment_oracle(directory);
     auto library = directory / "graphs.xml";
     {
         std::ofstream xml(library);
@@ -119,7 +172,7 @@ int main() {
     }
     simplemc::simulation ising(p, 64);
     step(ising, 60500);
-    auto results = simplemc::simulation::derive(ising.collect_results(), p);
+    auto results = simplemc::simulation::derive(ising.collect_results(), p, ising.moments().results());
     agree(results.at("Energy"), e/partition, "Ising mixed-bond energy disagrees with enumeration");
     agree(results.at("Energy^2"), e2/partition, "Ising energy second moment disagrees with enumeration");
     agree(results.at("Specific Heat"), (e2/partition - std::pow(e/partition, 2))/(3*1.2*1.2), "specific heat lost joint moment covariance");
@@ -198,15 +251,15 @@ int main() {
     auto frozen = p; frozen["ALGORITHM"] = "ising"; frozen["GRAPH"] = "self";
     frozen["T"] = 1e-200; frozen["H"] = 1.; frozen["J0"] = 0.;
     simplemc::simulation cold(frozen, 8); step(cold, 29);
-    auto cold_results = simplemc::simulation::derive(cold.collect_results(), frozen);
-    require(!cold_results.count("Specific Heat"), "unresolved nonzero energy variance published a heat capacity");
+    auto cold_results = simplemc::simulation::derive(cold.collect_results(), frozen, cold.moments().results());
+    require(cold_results.at("Specific Heat").mean()(0)==0., "frozen field energy has nonzero heat capacity");
     frozen["H"] = 0.; frozen["J0"] = .7;
     simplemc::simulation nonbinary(frozen, 8); step(nonbinary, 29);
-    require(!simplemc::simulation::derive(nonbinary.collect_results(), frozen).count("Specific Heat"),
-            "nonbinary frozen energy published a cancellation-dominated heat capacity");
+    require(simplemc::simulation::derive(nonbinary.collect_results(), frozen, nonbinary.moments().results()).at("Specific Heat").mean()(0)==0.,
+            "nonbinary frozen energy has nonzero heat capacity");
     frozen["J0"] = 0.;
     simplemc::simulation zero(frozen, 8); step(zero, 29);
-    require(simplemc::simulation::derive(zero.collect_results(), frozen).at("Specific Heat").mean()(0) == 0.,
+    require(simplemc::simulation::derive(zero.collect_results(), frozen, zero.moments().results()).at("Specific Heat").mean()(0) == 0.,
             "exact zero energy heat capacity overflowed at finite inverse temperature");
     std::cout << "simplemc native physics, restart, covariance and chain contracts passed\n";
 }

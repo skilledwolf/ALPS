@@ -1,7 +1,7 @@
 // Copyright (C) 1999–2009 Matthias Troyer, Fabian Stoeckli;
 // modifications (C) 2026 ALPS Collaboration. SPDX-License-Identifier: MIT
 #pragma once
-#include "../moment_difference.hpp"
+#include "../physical_moments.hpp"
 #include "../measurements.hpp"
 #include <alps/mcbase.hpp>
 #include <alps/lattice.h>
@@ -62,7 +62,7 @@ public:
         return collect_results_as<alps::alea::batch_result<double>>(names.empty() ? native_mc::batch_names(measurements) : names);
     }
     simulation(alps::params const& p, std::size_t bins=128, std::size_t chain=0)
-        : mcbase(p,chain), graph_helper<>(graph_parameters(p)), bins_(bins), chain_(chain),
+        : mcbase(p,chain), graph_helper<>(graph_parameters(p)), bins_(bins), chain_(chain), moments_(4,bins),
           model_(p["MODEL"].as<std::string>()), dim_(model_dimension(model_)), potts_(model_=="Potts"),
           q_(potts_ ? p["q"].as<unsigned>() : 0), beta_(inverse_temperature(p)),
           production_(p["SWEEPS"].as<uint64_t>()),
@@ -206,6 +206,7 @@ public:
             field_projection+=potts_ ? moment(0)*direction_(dim_-1) : moment.dot(direction_);
         }
         double m2=magnetization.squaredNorm(), m4=m2*m2;
+        moments_.add(*measurement("Energy"),alps::alea::column<double>{energy,magnetization.norm(),m2,m4});
         record("Number of Sites",double(num_sites())); record("Energy",energy); record("Energy Density",energy/num_sites()); record("Energy^2",energy*energy);
         if (bond_types_) { record("Bond-type Energy",bond_energy); record("Bond-type Energy Density",Eigen::VectorXd(bond_energy/num_sites())); }
         record("|Magnetization|",magnetization.norm()); record("Magnetization along Field",field_projection);
@@ -229,9 +230,12 @@ public:
                 std::cout<<spins_.col(site).transpose()<<'\n';
             }
     }
+    native_mc::physical_moments const& moments() const { return moments_; }
+
     void save(alps::hdf5::archive& ar) const override {
         if (measurement_count()!=updates_-warmup_updates_) throw std::logic_error("measure spinmc before checkpointing");
         mcbase::save(ar);
+        moments_.save(ar,"checkpoint/physical_moments");
         ar["checkpoint/chain_id"]<<uint64_t(chain_); ar["checkpoint/updates"]<<updates_;
         ar["checkpoint/warmup_updates"]<<warmup_updates_; ar["checkpoint/warmup_sites"]<<warmup_sites_;
         ar["checkpoint/topology"]<<topology(); ar["checkpoint/hamiltonian"]<<hamiltonian();
@@ -262,9 +266,12 @@ public:
                              : std::abs(spins.col(site).squaredNorm()-1.)<=1e-10;
             if (!valid || (!potts_ && dim_==1 && std::abs(spins(0,site))!=1.)) throw std::invalid_argument("invalid spinmc checkpoint state");
         }
-        native_mc::validate_measurements(measurements,ar,updates-warmup_updates,bins_);
+        auto layout=native_mc::validate_measurements(measurements,ar,updates-warmup_updates,bins_);
+        auto moments=moments_;
+        moments.load(ar,"checkpoint/physical_moments",layout);
         auto current_parameters=parameters;
         mcbase::load(ar); parameters=std::move(current_parameters);
+        moments_=std::move(moments);
         spins_=std::move(spins); updates_=updates; warmup_updates_=warmup_updates; warmup_sites_=warmup_sites;
     }
 private:
@@ -375,6 +382,7 @@ private:
         return result;
     }
     std::size_t bins_,chain_;
+    native_mc::physical_moments moments_;
     std::string model_,error_variable_;
     std::size_t dim_,bond_types_=0;
     bool potts_,cluster_=false,ferro_=true,antiferro_=true;
@@ -391,7 +399,9 @@ private:
 
 // All nonlinear estimates use aligned direct physical moments and weighted
 // native jackknife propagation, including their cross-observable covariance.
-inline results_type derive(results_type const& raw,alps::params const& p) {
+inline results_type derive(results_type const& raw,alps::params const& p,
+                           native_mc::moment_results const& moments,
+                           native_mc::unavailable_results* unavailable=nullptr) {
     auto results=raw;
     for (auto const& entry:raw) {
         auto const& r=entry.second;
@@ -399,33 +409,24 @@ inline results_type derive(results_type const& raw,alps::params const& p) {
                 || ((r.store().count().array()>0).count()>1 && !r.stderror().allFinite()))
             throw std::overflow_error("spinmc moments or uncertainties are not representable");
     }
-    if (raw.empty() || (raw.at("Energy").store().count().array()>0).count()<2) return results;
-    double beta=inverse_temperature(p), n=raw.at("Number of Sites").mean()(0);
-    auto difference=native_mc::moment_difference(raw.at("Energy").count(),raw.at("Energy").num_batches());
-    struct function : alps::alea::transformer<double> {
-        std::size_t size; std::function<double(alps::alea::column<double> const&)> evaluate;
-        function(std::size_t n,decltype(evaluate) f):size(n),evaluate(std::move(f)){}
-        std::size_t in_size()const override{return size;} std::size_t out_size()const override{return 1;}
-        alps::alea::column<double> operator()(alps::alea::column<double> const& x)const override{return {evaluate(x)};}
-    };
-    auto transform=[&](std::string const& name,std::initializer_list<const char*> keys,auto fn) {
-        auto it=keys.begin(); auto inputs=raw.at(*it++);
-        for (;it!=keys.end();++it) inputs=alps::alea::join(inputs,raw.at(*it));
-        function tf(inputs.size(),fn);
-        auto result=alps::alea::transform(alps::alea::jackknife_prop{},tf,inputs);
-        if (result.store().batch().allFinite()) {
-            if (!result.mean().allFinite() || !result.stderror().allFinite()) throw std::overflow_error("spinmc derived uncertainty is not representable: "+name);
-            results.emplace(name,std::move(result));
-        }
-    };
-    transform("Specific Heat",{"Energy","Energy^2"},[=](auto const& x){return beta==0 ? 0. : beta*(beta*difference(x(1),x(0)*x(0)))/n;});
-    transform("Binder Cumulant U2",{"|Magnetization|","Magnetization^2"},[](auto const& x){return x(1)/(x(0)*x(0));});
-    transform("Binder Cumulant",{"Magnetization^2","Magnetization^4"},[](auto const& x){return x(1)/(x(0)*x(0));});
-    transform("Connected Susceptibility",{"|Magnetization|","Magnetization^2"},[=](auto const& x){return beta==0 ? 0. : beta*n*difference(x(1),x(0)*x(0));});
-    transform("Magnetization^2 slope",{"Energy","Magnetization^2","E.Magnetization^2"},[=](auto const& x){return beta==0 ? 0. : beta*(beta*difference(x(2),x(0)*x(1)));});
-    transform("Magnetization^4 slope",{"Energy","Magnetization^4","E.Magnetization^4"},[=](auto const& x){return beta==0 ? 0. : beta*(beta*difference(x(2),x(0)*x(1)));});
-    transform("Binder Cumulant slope",{"Energy","Magnetization^2","Magnetization^4","E.Magnetization^2","E.Magnetization^4"},
-        [=](auto const& x){return beta==0 && x(1)!=0 ? 0. : beta*(beta*difference(difference(x(4),x(0)*x(2))/(x(1)*x(1)),2*x(2)*difference(x(3),x(0)*x(1))/(x(1)*x(1)*x(1))));});
+    if (raw.empty()) return results;
+    double beta=inverse_temperature(p), n=raw.at("Number of Sites").count() ? raw.at("Number of Sites").mean()(0) : 1.;
+    auto [centered,reference]=native_mc::centered_batches(moments);
+    // x contains mean displacements followed by column-major centered products.
+    auto covariance=[](auto const& x,int i,int j){return x(4+i+4*j)-x(i)*x(j);};
+    auto transform=[&](std::string const& name,auto fn){native_mc::estimate(results,unavailable,name,centered,fn);};
+    transform("Specific Heat",[=](auto const& x){return beta==0 ? 0. : beta*(beta*covariance(x,0,0))/n;});
+    transform("Connected Susceptibility",[=](auto const& x){return beta==0 ? 0. : beta*n*covariance(x,1,1);});
+    transform("Magnetization^2 slope",[=](auto const& x){return beta==0 ? 0. : beta*(beta*covariance(x,0,2));});
+    transform("Magnetization^4 slope",[=](auto const& x){return beta==0 ? 0. : beta*(beta*covariance(x,0,3));});
+    transform("Binder Cumulant slope",[=](auto const& x){
+        double m2=reference(2)+x(2),m4=reference(3)+x(3);
+        return beta==0 && m2!=0 ? 0. : beta*(beta*(covariance(x,0,3)/(m2*m2)-2*m4*covariance(x,0,2)/(m2*m2*m2)));
+    });
+    native_mc::estimate(results,unavailable,"Binder Cumulant U2",alps::alea::join(raw.at("|Magnetization|"),raw.at("Magnetization^2")),
+        [](auto const& x){return x(1)/(x(0)*x(0));});
+    native_mc::estimate(results,unavailable,"Binder Cumulant",alps::alea::join(raw.at("Magnetization^2"),raw.at("Magnetization^4")),
+        [](auto const& x){return x(1)/(x(0)*x(0));});
     return results;
 }
 }

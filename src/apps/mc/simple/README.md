@@ -54,16 +54,17 @@ RNG choices are `mt19937` (default) and `lagged_fibonacci607`. Both retain
 exact native checkpoint continuation. Seeding uses Boost’s integer seed constructor;
 released scheduler seed expansion and buffered checkpoint layouts differ.
 
-Raw native batches are concatenated across chains before computing specific
-heat or Binder ratios, preserving sample weights and moment covariance. Errors
-use native weighted jackknife transformations of aligned batches. A single
-occupied batch has no independent error estimate; nonlinear derived observables
-are omitted until there are enough batches and a valid denominator. Specific
-heat is also omitted if its moment difference is below a conservative roundoff
-bound in the full estimate or any leave-one-out estimate; raw moments remain
-available. Zero inverse temperature gives an exact zero thermal prefactor. The Binder
-ratio is `<m²>² / <m⁴>`, including the X/Z projected variants for continuous
-spins. Results retain native batch sums and counts for later analysis.
+Raw native batches are concatenated across chains with their sample weights.
+Specific Heat uses centered energy moments retained within every batch, avoiding
+subtraction of large raw moments and preserving physical fluctuations within
+bins. Native weighted jackknife supplies its uncertainty. Constant energy gives
+exactly zero heat capacity, including at very low temperatures. Binder ratios
+use aligned magnetization batches: `<m²>² / <m⁴>`, including X/Z projections.
+Undefined denominators, insufficient occupied batches, or unrepresentable
+estimates produce explicit reasons under `/simulation/unavailable/<observable>`.
+Raw evidence remains available. Each chain's `physical_moments/<bin>` contains
+the native covariance accumulator needed to reproduce thermodynamic analysis;
+these moments also resume exactly from the application checkpoint.
 
 `execution.time_limit` stops after that many seconds, and
 `execution.max_sweeps` supplies a per-chain sweep budget for this invocation;

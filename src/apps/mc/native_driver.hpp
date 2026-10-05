@@ -1,6 +1,7 @@
 // Copyright (C) 2026 ALPS Collaboration. SPDX-License-Identifier: MIT
 #pragma once
 #include "measurements.hpp"
+#include "physical_moments.hpp"
 #include "parallel.hpp"
 #include <alps/alea/convert.hpp>
 #include <alps/alea/batch.hpp>
@@ -197,11 +198,19 @@ void execute(alps::run_configuration const& run, chains_type<Simulation>& chains
     checkpoint(run,chains);
     std::vector<batch_results> raw;
     for (auto const& chain : chains) raw.push_back(chain->collect_results());
-    const auto results = derive(pool(raw), parameters(run, prepare));
+    moment_results moments;
+    for (auto const& chain:chains) {
+        auto bins=chain->moments().results();
+        moments.insert(moments.end(),bins.begin(),bins.end());
+    }
+    unavailable_results unavailable;
+    const auto results = derive(pool(raw), parameters(run, prepare), moments, &unavailable);
     alps::hdf5::save_checkpoint(run.output["results"].as<std::string>(), [&](alps::hdf5::archive& archive) {
         alps::save_results(results, run.parameters, archive, "/simulation/results");
         archive["/run_config"] << run;
+        for (auto const& [name,reason]:unavailable) archive["/simulation/unavailable/"+archive.encode_segment(name)]<<reason;
         for (std::size_t id = 0; id < chains.size(); ++id) {
+            chains[id]->moments().save(archive,"/simulation/realizations/0/clones/"+std::to_string(id)+"/physical_moments");
             archive["/simulation/realizations/0/clones/" + std::to_string(id) + "/completed_sweeps"] << chains[id]->completed_sweeps();
             archive["/simulation/realizations/0/clones/" + std::to_string(id) + "/measurements"] << chains[id]->measurement_count();
             save_diagnostics(*chains[id],archive,"/simulation/realizations/0/clones/"+std::to_string(id),

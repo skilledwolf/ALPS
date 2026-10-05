@@ -83,12 +83,13 @@ def test_spinmc_restart_retains_every_native_result(executable, tmp_path, parame
             assert archive[f"simulation/realizations/0/clones/{chain}/measurements"][()] == 37
 
 
-def test_spinmc_later_chain_failure_preserves_outputs(executable, tmp_path):
+@pytest.mark.parametrize("broken_path", ["measurements/Energy", "checkpoint/physical_moments/0"] )
+def test_spinmc_later_chain_failure_preserves_outputs(executable, tmp_path, broken_path):
     stopped = run_file(tmp_path, "stopped", execution={"max_sweeps": 14},
                        output={"checkpoint": "broken.h5"})
     execute(executable, stopped)
     with h5py.File(tmp_path / "broken.h5", "a") as archive:
-        del archive["simulation/realizations/0/clones/1/measurements/Energy"]
+        del archive["simulation/realizations/0/clones/1/" + broken_path]
     resumed = run_file(tmp_path, "resumed", input={"checkpoint": "broken.h5"},
                        output={"checkpoint": "existing-checkpoint.h5"})
     (tmp_path / "resumed.h5").write_bytes(b"existing analysis")
@@ -208,3 +209,22 @@ def test_native_diagnostics_retain_chronology_and_exact_hierarchy(executable, tm
     assert curves[0].y.shape == (reference.levels,)
     assert len(pyalps.loadBinningAnalysis([str(tmp_path / "diagnostics.h5")], "Energy",
         respath="/simulation/realizations/0/clones/1/autocorrelation")[0]) == 1
+
+
+@pytest.mark.parametrize("parameters,unavailable", [
+    ({"SWEEPS": 1}, {"Specific Heat", "Connected Susceptibility", "Binder Cumulant U2",
+                     "Binder Cumulant", "Binder Cumulant slope", "Magnetization^2 slope", "Magnetization^4 slope"}),
+    ({"SWEEPS": 17, "S": 0.}, {"Binder Cumulant U2", "Binder Cumulant", "Binder Cumulant slope"}),
+])
+def test_undefined_estimates_have_explicit_reasons(executable, tmp_path, parameters, unavailable):
+    run = run_file(tmp_path, "undefined", parameters=parameters, execution={"chains": 1})
+    execute(executable, run)
+    with h5py.File(tmp_path / "undefined.h5") as archive:
+        reasons = {pyalps.hdf5_name_decode(name): value.asstr()[()]
+                   for name, value in archive["simulation/unavailable"].items()}
+        assert reasons.keys() == unavailable
+        assert all(reasons.values())
+        assert not unavailable.intersection(pyalps.hdf5_name_decode(name)
+                    for name in archive["simulation/results"])
+        if parameters.get("S") == 0.:
+            assert archive["simulation/results/Specific Heat/mean/value"][0] == 0.

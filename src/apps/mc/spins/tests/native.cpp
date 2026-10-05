@@ -46,10 +46,11 @@ alps::params parameters(std::filesystem::path const& library, std::string const&
     p["SWEEPS"] = 50000; p["T"] = 1.1; p["UPDATE"] = update; p["J"] = vector{.7};
     return p;
 }
-auto sample(alps::params const& p) {
+auto sample(alps::params const& p, native_mc::moment_results* moments=nullptr) {
     spinmc::simulation simulation(p, 64);
     finish(simulation);
     require(simulation.measurement_count() == p["SWEEPS"].as<uint64_t>(), "incorrect production sample count");
+    if (moments) *moments=simulation.moments().results();
     return simulation.collect_results();
 }
 vector diagonal(vector const& values) {
@@ -213,7 +214,9 @@ int main() {
             z += weight; e += weight*energy; e2 += weight*energy*energy; abs_m += weight*std::abs(m);
             m2 += weight*m*m; m4 += weight*std::pow(m,4); em2 += weight*energy*m*m; em4 += weight*energy*std::pow(m,4);
         }
-        auto measured = spinmc::derive(sample(p), p);
+        native_mc::moment_results moments;
+        auto raw=sample(p,&moments);
+        auto measured = spinmc::derive(raw, p, moments);
         agree(measured.at("Energy"), e/z, "Ising Hamiltonian disagrees with enumeration");
         agree(measured.at("Magnetization^2"), m2/z, "Ising spin factors are incorrect");
         agree(measured.at("Specific Heat"), (e2/z - std::pow(e/z,2))/(3*1.1*1.1), "heat capacity is incorrect");
@@ -323,34 +326,22 @@ int main() {
     // in one parity sector when every move accepts. Infinite-temperature local
     // updates must still sample all four pair states, not just ++ and --.
     auto hot = parameters(library, "Ising"); hot.erase("T"); hot["beta"] = 0.; hot["J"] = 0.;
-    auto hot_results = sample(hot);
+    native_mc::moment_results hot_moments;
+    auto hot_results = sample(hot,&hot_moments);
     agree(hot_results.at("Magnetization^2"), .5, "infinite-temperature Ising observations preserve a spurious parity sector");
     agree(hot_results.at("|Magnetization|"), .5, "infinite-temperature Ising states are not equiprobable");
 
-    // Raw moments cannot resolve a tiny variance around a nonzero energy.
-    // Keep the evidence, but do not amplify rounding into a heat capacity.
+    // Centered physical moments preserve exact zero even at extreme beta.
     auto cold = parameters(library, "Ising", "pair", "cluster");
     cold.erase("T"); cold["beta"] = 1e100; cold["THERMALIZATION"] = 0; cold["SWEEPS"] = 64;
-    auto frozen = sample(cold);
-    auto frozen_derived = spinmc::derive(frozen, cold);
-    require(!frozen_derived.count("Specific Heat"), "frozen energy published a cancellation-dominated heat capacity");
+    native_mc::moment_results cold_moments;
+    auto frozen = sample(cold,&cold_moments);
+    auto frozen_derived = spinmc::derive(frozen, cold, cold_moments);
+    for (auto const* name:{"Specific Heat","Connected Susceptibility","Magnetization^2 slope","Magnetization^4 slope","Binder Cumulant slope"})
+        require(frozen_derived.at(name).mean()(0)==0., "frozen physical moments have nonzero response");
     require(frozen_derived.at("Energy").store().batch() == frozen.at("Energy").store().batch(),
-            "conditioning rejection changed raw energy evidence");
-    auto energy = frozen.at("Energy").store(), energy2 = frozen.at("Energy^2").store();
-    for (Eigen::Index i = 0; i < energy.count().size(); ++i) {
-        double e = .7 + (i % 2 ? 1e-8 : -1e-8);
-        energy.batch()(0,i) = double(energy.count()(i)) * e;
-        energy2.batch()(0,i) = double(energy2.count()(i)) * e * e;
-    }
-    frozen["Energy"] = result(energy); frozen["Energy^2"] = result(energy2);
-    frozen["E.Magnetization^2"] = result(energy);
-    frozen["E.Magnetization^4"] = result(energy);
-    auto unresolved = spinmc::derive(frozen, cold);
-    require(!unresolved.count("Specific Heat"), "underresolved real energy variance was clamped or published");
-    require(unresolved.at("Energy").store().batch() == energy.batch()
-            && unresolved.at("Energy^2").store().batch() == energy2.batch(),
-            "conditioning rejection changed raw moments");
-    auto hot_derived = spinmc::derive(hot_results, hot);
+            "centered thermodynamics changed raw energy evidence");
+    auto hot_derived = spinmc::derive(hot_results, hot, hot_moments);
     require(hot_derived.at("Specific Heat").mean()(0) == 0., "beta zero heat capacity is not exactly zero");
     auto potts_field = parameters(library, "Potts", "isolated");
     potts_field["q"] = 3; potts_field["h"] = vector{.1, 0.};

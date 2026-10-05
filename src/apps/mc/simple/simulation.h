@@ -1,7 +1,7 @@
 // Copyright (C) 1997–2015 Synge Todo; 2026 ALPS Collaboration.
 // SPDX-License-Identifier: MIT
 #pragma once
-#include "../moment_difference.hpp"
+#include "../physical_moments.hpp"
 #include "../measurements.hpp"
 
 #include <alps/mcbase.hpp>
@@ -33,7 +33,7 @@ public:
         return collect_results_as<alps::alea::batch_result<double>>(names.empty() ? native_mc::batch_names(measurements) : names);
     }
     simulation(alps::params const& p, std::size_t bins = 128, std::size_t chain = 0)
-        : mcbase(p, chain), graph_helper<>(graph_parameters(p)), bins_(bins), chain_(chain),
+        : mcbase(p, chain), graph_helper<>(graph_parameters(p)), bins_(bins), chain_(chain), moments_(1,bins),
           model_(p["ALGORITHM"].as<std::string>()),
           dimensions_(model_ == "ising" ? 1 : model_ == "xy" ? 2 : 3),
           beta_(inverse_temperature(p)), field_(finite(p.value_or("H", 0.), "H")),
@@ -109,6 +109,7 @@ public:
             for (int d = 0; d != 3; ++d) magnetization[d] += s[d] / spins_.size();
         }
         double m2 = dot(magnetization, magnetization), component = magnetization[axis()];
+        moments_.add(*measurement("Energy"),alps::alea::column<double>{energy});
         record("Number of Sites", spins_.size());
         record("Energy", energy);
         record("Energy Density", energy / spins_.size());
@@ -127,10 +128,13 @@ public:
     uint64_t measurement_count() const { return measurement("Energy")->count(); }
     std::size_t chain_id() const { return chain_; }
 
+    native_mc::physical_moments const& moments() const { return moments_; }
+
     void save(alps::hdf5::archive& ar) const override {
         if (measurement_count() != (sweeps_ > thermalization_ ? sweeps_ - thermalization_ : 0))
             throw std::logic_error("measure simplemc before checkpointing");
         mcbase::save(ar);
+        moments_.save(ar,"checkpoint/physical_moments");
         ar["checkpoint/sweeps"] << sweeps_;
         ar["checkpoint/chain_id"] << uint64_t(chain_);
         ar["checkpoint/spins"] << spins_;
@@ -160,39 +164,32 @@ public:
                     || (dimensions_ < 3 && s[2] != 0.) || (dimensions_ == 1 && s[1] != 0.))
                 throw std::invalid_argument("invalid simplemc checkpoint spin");
         }
-        native_mc::validate_measurements(measurements,ar,sweeps>thermalization_ ? sweeps-thermalization_ : 0,bins_);
+        auto layout=native_mc::validate_measurements(measurements,ar,sweeps>thermalization_ ? sweeps-thermalization_ : 0,bins_);
+        auto moments=moments_;
+        moments.load(ar,"checkpoint/physical_moments",layout);
         auto current_parameters = parameters;
         mcbase::load(ar);
         parameters = std::move(current_parameters);
+        moments_=std::move(moments);
         spins_ = std::move(spins);
         sweeps_ = sweeps;
     }
 
-    static results_type derive(results_type const& raw, alps::params const& p) {
+    static results_type derive(results_type const& raw, alps::params const& p,
+                               native_mc::moment_results const& moments,
+                               native_mc::unavailable_results* unavailable=nullptr) {
         auto results = raw;
         for (auto const& entry : raw) validate_result(entry.second);
-        if (raw.empty() || (raw.at("Energy").store().count().array() > 0).count() < 2) return results;
-        double beta = inverse_temperature(p), n = raw.at("Number of Sites").mean()(0);
-        auto difference = native_mc::moment_difference(raw.at("Energy").count(), raw.at("Energy").num_batches());
-        auto transform = [&](std::string const& name, std::string const& first, std::string const& second,
-                             std::function<double(double, double)> function) {
-            auto inputs = alps::alea::join(raw.at(first), raw.at(second));
-            auto result = alps::alea::transform(alps::alea::jackknife_prop{},
-                alps::alea::make_transformer<double>(std::move(function)), inputs);
-            if (result.store().batch().allFinite()) {
-                validate_result(result);
-                results.emplace(name, std::move(result));
-            }
-        };
-        transform("Specific Heat", "Energy", "Energy^2",
-                  [=](double e, double e2) { return beta == 0 ? 0. : beta * (beta * difference(e2, e * e)) / n; });
+        if (raw.empty()) return results;
+        double beta = inverse_temperature(p), n = raw.at("Number of Sites").count() ? raw.at("Number of Sites").mean()(0) : 1.;
+        auto centered=native_mc::centered_batches(moments).first;
+        native_mc::estimate(results,unavailable,"Specific Heat",centered,
+            [=](auto const& x){return beta==0 ? 0. : beta*(beta*(x(1)-x(0)*x(0)))/n;});
         for (auto const& suffix : {"", " X", " Z"}) {
             auto first = std::string("Magnetization Density") + suffix + "^2", second = first.substr(0, first.size()-1) + "4";
-            auto it = raw.find(second);
-            // The full mean and every leave-one-out denominator must exist.
-            if (it != raw.end() && it->second.store().batch().sum() > it->second.store().batch().maxCoeff())
-                transform(std::string("Binder Ratio of Magnetization") + suffix, first, second,
-                          [](double m2, double m4) { return m2 * m2 / m4; });
+            if (raw.count(second))
+                native_mc::estimate(results,unavailable,std::string("Binder Ratio of Magnetization")+suffix,
+                    alps::alea::join(raw.at(first),raw.at(second)),[](auto const& x){return x(0)*x(0)/x(1);});
         }
         return results;
     }
@@ -289,6 +286,7 @@ private:
         return result;
     }
     std::size_t bins_, chain_;
+    native_mc::physical_moments moments_;
     std::string model_;
     int dimensions_;
     double beta_, field_;

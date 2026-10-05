@@ -24,11 +24,12 @@ inline auto batch_names(alps::mcbase::observable_collection_type const& values) 
         if (std::holds_alternative<std::shared_ptr<batch>>(value)) names.push_back(name);
     return names;
 }
-inline void validate_measurements(alps::mcbase::observable_collection_type const& values,
+inline batch validate_measurements(alps::mcbase::observable_collection_type const& values,
         alps::hdf5::archive& ar, uint64_t samples, size_t bins) {
     if (ar.list_children("measurements").size()!=values.size())
         throw std::invalid_argument("Unexpected checkpoint measurements");
     alps::alea::hdf5_serializer codec(ar,"measurements");
+    batch energy;
     for (auto const& [name,handle]:values) {
         if (auto original=std::get_if<std::shared_ptr<batch>>(&handle)) {
             batch value;
@@ -37,6 +38,7 @@ inline void validate_measurements(alps::mcbase::observable_collection_type const
                     || value.current_batch_size()!=value.cursor().factor()
                     || value.count()!=samples || !value.store().batch().allFinite())
                 throw std::invalid_argument("Invalid checkpoint batch measurements");
+            if (name=="Energy") energy=std::move(value);
         } else {
             autocorr value;
             alps::alea::deserialize(codec,ar.encode_segment(name),value);
@@ -45,6 +47,7 @@ inline void validate_measurements(alps::mcbase::observable_collection_type const
                 throw std::invalid_argument("Invalid checkpoint autocorrelation measurements");
         }
     }
+    return energy;
 }
 // Retain each chain's chronology independently; pooling bins creates no chronology.
 inline void save_diagnostics(alps::mcbase const& sim, alps::hdf5::archive& ar, std::string const& path,

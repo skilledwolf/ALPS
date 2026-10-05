@@ -95,15 +95,15 @@ there is no separate evaluator. Improved cluster estimators have explicit
 fluctuations of its magnitude. `Susceptibility` is the disconnected second
 moment `beta*N*<|M|^2>/d`, with `d` the spin dimension (one for Potts).
 
-Derived results require adequate occupied batches, nonzero denominators and
-numerically resolved moment differences. If a difference is within a
-conservative floating-point cancellation threshold in the full estimate or any
-leave-one-out estimate, the corresponding optional result is omitted. This
-prevents very low temperatures from amplifying unresolved cancellation into a
-large Specific Heat or slope; raw physical moments and checkpoints remain
-available. This screens the final subtraction; it cannot recover precision
-already lost inside signed sums. Zero inverse temperature gives exact zero thermal prefactors.
-Batch slots are adaptively permuted and result files do not retain chronology.
+Each batch retains centered physical covariance of `[Energy, |M|, M², M⁴]`.
+Specific Heat, Connected Susceptibility and thermal slopes use these moments
+with weighted native jackknife, preserving within-bin fluctuations and avoiding
+subtraction of large raw energy moments. Constant streams give exact zero
+responses, including at very low temperatures. The native covariance accumulators
+are saved under each chain's `physical_moments/<bin>` and in its checkpoint.
+Undefined denominators, insufficient occupied batches, or unrepresentable
+estimates produce reasons under `/simulation/unavailable/<observable>`; raw
+evidence remains available. Ordered diagnostics below retain chain chronology.
 
 Python uses `pyalps.run_io.write_run_files` and `execute`, then ordinary
 `pyalps.loadMeasurements`; see the [classical tutorials](../../../../tutorials/README.md).
