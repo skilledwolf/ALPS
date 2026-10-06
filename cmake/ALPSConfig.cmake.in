@@ -16,7 +16,12 @@ endif()
 # Keep dependency preferences local; preserve find_dependency failure diagnostics.
 block(SCOPE_FOR VARIABLES PROPAGATE ALPS_FOUND ALPS_NOT_FOUND_MESSAGE)
   find_dependency(Threads)
-  find_dependency(Eigen3 3.3...<6 CONFIG)
+  find_dependency(Eigen3 CONFIG)
+  if(Eigen3_VERSION VERSION_LESS 3.3 OR Eigen3_VERSION VERSION_GREATER_EQUAL 6)
+    set(ALPS_FOUND FALSE)
+    set(ALPS_NOT_FOUND_MESSAGE "ALPS requires Eigen 3.3 to 5.x; found ${Eigen3_VERSION}")
+    return()
+  endif()
   # Params serialization and public Boost types must match the SDK's ABI.
   find_dependency(Boost @Boost_VERSION_STRING@ EXACT CONFIG GLOBAL COMPONENTS @ALPS_BOOST_COMPONENTS@)
   set(HDF5_USE_STATIC_LIBRARIES "@HDF5_USE_STATIC_LIBRARIES@")

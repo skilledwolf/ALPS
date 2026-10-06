@@ -104,7 +104,12 @@ if(ALPS_ENABLE_MPI)
   set(ALPS_HAVE_BOOST_MPI 1)
 endif()
 find_package(Boost 1.76 CONFIG REQUIRED GLOBAL COMPONENTS ${ALPS_BOOST_COMPONENTS})
-find_package(Eigen3 3.3...<6 CONFIG REQUIRED)
+# Eigen 3 accepts only same-major version requests and Eigen 5 only exact
+# ranges, so no single request admits both; check the supported span here.
+find_package(Eigen3 CONFIG REQUIRED)
+if(Eigen3_VERSION VERSION_LESS 3.3 OR Eigen3_VERSION VERSION_GREATER_EQUAL 6)
+  message(FATAL_ERROR "ALPS requires Eigen 3.3 to 5.x; found ${Eigen3_VERSION} in ${Eigen3_DIR}")
+endif()
 
 # FindHDF5 supplies HDF5::HDF5 and preserves the provider's configurations.
 find_package(HDF5 2.0 MODULE REQUIRED COMPONENTS C)
