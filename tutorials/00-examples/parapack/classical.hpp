@@ -24,8 +24,7 @@ template<size_t Dimension> class classical_walker {
         }
     }
 public:
-    classical_walker(alps::params const& p,size_t offset,alps::mc::replica_parallel const& group):random_(p["SEED"].as<int>()+offset,p["RNG"].as<std::string>()) {
-        if (group.ranks_per_replica!=1) throw std::invalid_argument("This model requires ranks_per_replica = 1");
+    classical_walker(alps::params const& p,size_t offset):random_(p["SEED"].as<int>()+offset,p["RNG"].as<std::string>()) {
         alps::graph_helper<> graph(alps::make_deprecated_parameters(p));
         if (!graph.num_sites()) throw std::invalid_argument("The lattice must contain sites");
         neighbors_.resize(graph.num_sites());
@@ -39,8 +38,6 @@ public:
         }
         for (size_t i=0;i<neighbors_.size();++i) spins_.push_back(proposal());
     }
-    void initialize(alps::mc::replica_parallel const&) {}
-    void synchronize() {}
     static auto names() {
         std::vector<std::string> result{"Number of Sites","Energy","Energy^2",
             Dimension==1 ? "Magnetization" : "Magnetization Z","Magnetization^2","Magnetization^4"};
@@ -124,7 +121,7 @@ public:
         if (group_.distributed && !exchange_) throw std::invalid_argument("parallel = replicas requires an exchange algorithm");
         const size_t n=exchange_ ? exchange_->size() : 1;
         for (size_t i=0;i<n;++i) {
-            walkers_.emplace_back(p,exchange_ ? chain*(n+1)+i : chain,group_);
+            walkers_.emplace_back(p,exchange_ ? chain*(n+1)+i : chain);
             stats_.emplace_back(bins,names().size());
         }
         diagnostics_.resize(n);
@@ -139,17 +136,8 @@ public:
     auto const& diagnostics(size_t i) const {return diagnostics_.at(i);}
     uint64_t completed_sweeps() const {return exchange_ ? exchange_->completed_sweeps() : steps_;}
     double fraction_completed() const {return double(production())/parameters_["SWEEPS"].template as<uint64_t>();}
-    void initialize() {
-        group_.initialize();
-        for (size_t w=0;w<stages();++w) if (group_.owns_walker(w)) walkers_[w].initialize(group_);
-    }
-    void synchronize() {
-        initialize();
-        for (size_t w=0;w<stages();++w) if (group_.owns_walker(w)) walkers_[w].synchronize();
-        group_.synchronize_walkers(walkers_);
-    }
+    void synchronize() {group_.synchronize_walkers(walkers_);}
     void update() {
-        initialize();
         if (!exchange_) {
             walkers_[0].step(parameters_["BETA"].template as<double>());++steps_;
             if (production()) stats_[0].add(walkers_[0].sample());
@@ -165,7 +153,7 @@ public:
                 for (size_t i=0;i<stages();++i) if (group_.owns_walker(walkers[i])) {
                     auto& walker=walkers_[walkers[i]];walker.step(betas[i]);
                     auto sample=walker.sample();
-                    if (group_.head()) std::copy(sample.begin(),sample.end(),samples.begin()+i*components);
+                    std::copy(sample.begin(),sample.end(),samples.begin()+i*components);
                 }
             });
             group_.collect(samples);

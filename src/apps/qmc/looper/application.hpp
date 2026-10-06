@@ -2,6 +2,10 @@
 #pragma once
 #include "loop_worker.h"
 #include <alps/mc/replica_exchange.hpp>
+#include <alps/mc/replica_parallel.hpp>
+#ifdef ALPS_HAVE_MPI
+#include <boost/serialization/utility.hpp>
+#endif
 #include <optional>
 #include <variant>
 
@@ -15,6 +19,7 @@ class application {
   // each configuration's samples to the statistics at its current temperature.
   std::vector<worker> workers_;
   alps::params parameters_;
+  alps::mc::replica_parallel group_;
   size_t bins_,chain_;
   std::optional<alps::mc::replica_exchange<weight>> exchange_;
 
@@ -25,9 +30,10 @@ class application {
     return visit(i,[](auto& value)->native_qmc::simulation& {return value;});
   }
 public:
-  application(alps::params const& p,size_t bins,size_t chain):parameters_(p),bins_(bins),chain_(chain) {
+  application(alps::params const& p,size_t bins,size_t chain,alps::mc::replica_parallel group):parameters_(p),group_(std::move(group)),bins_(bins),chain_(chain) {
     auto algorithm=p.value_or<std::string>("ALGORITHM","loop");
     bool ladder=algorithm.find("exchange")!=std::string::npos;
+    if (group_.distributed && !ladder) throw std::invalid_argument("parallel = replicas requires an exchange algorithm");
     if (ladder) exchange_.emplace(p,chain,weight::Zero());
     size_t n=ladder ? exchange_->size() : 1;
     for (size_t i=0;i<n;++i) {
@@ -46,20 +52,44 @@ public:
   void update() {
     if (!exchange_) {visit(0,[](auto& value){value.update();});return;}
     exchange_->step([&](auto const& walkers,auto const& betas,bool sampling) {
+      std::vector<native_qmc::simulation::samples_type> samples(replicas());
+      group_.update([&] {
+        for (size_t i=0;i<replicas();++i) {
+          auto& stats=statistics(i);stats.record_measurements(sampling);
+          if (group_.owns_walker(walkers[i]))
+            samples[i]=stats.sample([&]{visit(walkers[i],[&](auto& value){value.run(stats,betas[i]);});});
+        }
+      });
       for (size_t i=0;i<replicas();++i) {
-        auto& stats=statistics(i);stats.record_measurements(sampling);
-        visit(walkers[i],[&](auto& value){value.run(stats,betas[i]);});
+        group_.broadcast(samples[i],walkers[i]);
+        statistics(i).record(samples[i]);
       }
     },[&] {
+      std::vector<double> values(replicas()*2);
+      for (size_t w=0;w<replicas();++w) if (group_.owns_walker(w)) {
+        auto weight=visit(w,[](auto const& value){return value.weight_parameter();});
+        values[2*w]=weight[0];values[2*w+1]=weight[1];
+      }
+      group_.collect(values);
       std::vector<weight> weights(replicas());
-      for (size_t w=0;w<replicas();++w) weights[w]=visit(w,[](auto const& value){return value.weight_parameter();});
+      for (size_t w=0;w<replicas();++w) weights[w]<<values[2*w],values[2*w+1];
       return weights;
     },ct_worker::log_weight,[&](size_t i,char const* name,double value){statistics(i).record(name,value,1.);});
   }
   void measure() {}
-  uint64_t completed_sweeps() const {return visit(0,[](auto const& value){return value.completed_sweeps();});}
+  uint64_t completed_sweeps() const {return exchange_ ? exchange_->completed_sweeps() : visit(0,[](auto const& value){return value.completed_sweeps();});}
   double fraction_completed() const {return exchange_ ? exchange_->fraction_completed() : visit(0,[](auto const& value){return value.fraction_completed();});}
   size_t num_sites() const {return visit(0,[](auto const& value){return value.site_count();});}
+  void synchronize() {
+    if (!group_.distributed) return;
+    group_.transport([&](auto& ar) {
+      for (size_t w=0;w<replicas();++w) if (group_.owns_walker(w))
+        visit(w,[&](auto const& value){ar["/replicas/"+std::to_string(w)]<<value;});
+    },[&](auto& ar,int owner) {
+      for (size_t w=0;w<replicas();++w) if (group_.owner(w)==owner)
+        visit(w,[&](auto& value){ar["/replicas/"+std::to_string(w)]>>value;});
+    });
+  }
   void save(alps::hdf5::archive& ar) const;
   void load(alps::hdf5::archive& ar);
 
@@ -92,7 +122,7 @@ inline void application::save(alps::hdf5::archive& ar) const {
   ar["/parameters"] << parameters_;
 }
 inline void application::load(alps::hdf5::archive& ar) {
-  application restored(parameters_,bins_,chain_);
+  application restored(parameters_,bins_,chain_,group_);
   if (!exchange_) restored.visit(0,[&](auto& value){value.load(ar);});
   else {
     auto& r=restored;

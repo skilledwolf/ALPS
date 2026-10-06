@@ -24,6 +24,19 @@ public:
     labels_[name]=labels;
     add_measurement(name,labels.size(),sign);
   }
+  using samples_type=std::vector<std::pair<std::string,std::vector<double>>>;
+  // Capture raw, signed observations for routing between replica ranks.
+  // Replay uses the same native accumulators in the original sample order.
+  template<class F> samples_type sample(F const& advance) {
+    samples_type samples;
+    pending_=&samples;
+    try {advance();} catch (...) {pending_=nullptr;throw;}
+    pending_=nullptr;
+    return samples;
+  }
+  void record(samples_type const& samples) {
+    for (auto const& [name,value]:samples) alps::mc::record(*this,name,value);
+  }
   template<class T> void record(std::string const& name,T const& value,double sign) {
     if (!recording_) return;
     auto adapter=alps::alea::make_adapter(value);
@@ -31,7 +44,8 @@ public:
     sample.setZero();
     adapter.add_to(alps::alea::view<double>(sample.data(),adapter.size()));
     if (signed_names_.count(name)) sample[sample.size()-1]=sign;
-    alps::mc::record(*this,name,sample);
+    if (pending_) pending_->emplace_back(name,std::vector<double>(sample.data(),sample.data()+sample.size()));
+    else alps::mc::record(*this,name,sample);
   }
   void record(std::string const& name,std::valarray<double> const& value,double sign) {
     record(name,std::vector<double>(std::begin(value),std::end(value)),sign);
@@ -60,5 +74,6 @@ protected:
   std::map<std::string,std::vector<std::string>> labels_;
   std::set<std::string> signed_names_;
   bool recording_=true;
+  samples_type* pending_=nullptr;
 };
 } // namespace native_qmc

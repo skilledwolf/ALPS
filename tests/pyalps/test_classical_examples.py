@@ -193,27 +193,15 @@ def test_mpi_distributed_replicas_preserve_chronology(model, tmp_path, launcher,
     compare(full, result); compare(full_state, restored)
 
 
-@pytest.mark.parametrize('fault', ['fixed', 'spatial', 'indivisible', 'chains'])
-def test_mpi_invalid_replica_layout_preserves_outputs(model, tmp_path, launcher, fault):
+def test_mpi_fixed_temperature_rejects_replica_layout(model, tmp_path, launcher):
     executable = str(tutorials_build()/f'00-examples/parapack/{model}/{model}')
-    p = dict(ALGORITHM=model+'; exchange', LATTICE='chain lattice', L=7,
-             INVERSE_TEMPERATURE_SET=[0., .3, .9], SWEEPS=31)
-    execution = dict(parallel='replicas', ranks_per_replica=1)
-    if fault == 'fixed':
-        del p['INVERSE_TEMPERATURE_SET']
-        p.update(ALGORITHM=model, BETA=.3)
-    else:
-        execution['ranks_per_replica'] = 3 if fault == 'indivisible' else 2
-        if fault == 'chains': execution['parallel'] = 'chains'
+    p = dict(ALGORITHM=model, LATTICE='chain lattice', L=7, BETA=.3, SWEEPS=31)
     output = tmp_path/'keep.h5'
     output.write_bytes(b'Existing scientific output')
-    path = write_run_file(tmp_path/'bad.toml', parameters=p, execution=execution,
-                          output=dict(results=output.name))
+    path = write_run_file(tmp_path/'bad.toml', parameters=p,
+                          execution=dict(parallel='replicas'), output=dict(results=output.name))
     failed = invoke(launcher, executable, path, processes=2, success=False)
-    message = ('parallel = replicas requires an exchange algorithm' if fault == 'fixed' else
-               'This model requires ranks_per_replica = 1' if fault == 'spatial' else
-               'ranks_per_replica must divide')
-    assert message in failed.stdout + failed.stderr
+    assert 'parallel = replicas requires an exchange algorithm' in failed.stdout + failed.stderr
     assert output.read_bytes() == b'Existing scientific output'
 
 
@@ -229,3 +217,22 @@ def test_mpi_replica_layout_requires_consensus(model, tmp_path, launcher):
     output.write_bytes(b'Existing scientific output')
     mpmd_failure(executable, launcher, [[path] for path in paths])
     assert output.read_bytes() == b'Existing scientific output'
+
+
+def test_mpi_multiple_runs_keep_separate_execution_layouts(tmp_path, launcher):
+    import os
+    import shlex
+    executable = str(tutorials_build()/'00-examples/parapack/ising/ising')
+    paths = []
+    for layout in ('chains', 'replicas'):
+        name = 'reference-'+layout
+        run(tmp_path, 'ising', name, parallel=layout)
+        path = tmp_path/(layout+'.toml')
+        path.write_text((tmp_path/(name+'.toml')).read_text().replace(name, layout))
+        paths.append(str(path))
+    result = subprocess.run([launcher, *shlex.split(os.environ.get('ALPS_MPIEXEC_ARGS', '')),
+                             '-n', '2', executable, *paths], capture_output=True, text=True, timeout=60)
+    assert result.returncode == 0, result.stdout+result.stderr
+    for layout in ('chains', 'replicas'):
+        for suffix in ('.h5', '.checkpoint.h5'):
+            compare(tmp_path/('reference-'+layout+suffix), tmp_path/(layout+suffix))

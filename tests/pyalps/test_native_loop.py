@@ -246,21 +246,23 @@ def test_replica_physics(executable, tmp_path, algorithm, sites, field, mode):
 @pytest.mark.parametrize('algorithm,rng,optimize', [
     ('loop; exchange', 'mt19937', False), ('loop; sse; exchange', 'lagged_fibonacci607', True),
 ])
-def test_replica_mpi_restart(executable, launcher, tmp_path, algorithm, rng, optimize):
+@pytest.mark.parametrize('parallel', ['chains', 'replicas'])
+def test_replica_mpi_restart(executable, launcher, tmp_path, algorithm, rng, optimize, parallel):
     p = dict(ALGORITHM=algorithm, LATTICE='chain lattice', MODEL='spin', local_S=.5,
         L=4, J=1., TEMPERATURE_SET=[.8, 1., 1.2], THERMALIZATION=100, SWEEPS=500,
         OPTIMIZE_TEMPERATURE=optimize, OPTIMIZATION_TYPE='population',
         INITIAL_BLOCK_SWEEPS=100, OPTIMIZATION_ITERATIONS=1)
-    def config(name, budget=0, checkpoint=None):
+    def config(name, budget=0, checkpoint=None, layout=parallel):
         return write_run_file(tmp_path / (name + '.toml'), parameters=p,
-            execution=dict(seed=137, bins=8, chains=1 if optimize else 3, rng=rng, max_sweeps=budget),
+            execution=dict(seed=137, bins=8, chains=1 if optimize else 3, rng=rng, max_sweeps=budget, parallel=layout),
             input=dict(checkpoint=checkpoint) if checkpoint else None,
             output=dict(results=name + '.h5', checkpoint=name + '.checkpoint.h5'))
-    invoke(launcher, executable, config('serial'))
+    invoke(launcher, executable, config('serial', layout='chains'))
     invoke(launcher, executable, config('mpi'), processes=2)
     invoke(launcher, executable, config('partial', 31), processes=2)
     invoke(launcher, executable, config('resumed', checkpoint='partial.checkpoint.h5'), processes=3)
-    for name in ('mpi', 'resumed'):
+    invoke(launcher, executable, config('serial-resumed', checkpoint='partial.checkpoint.h5', layout='chains'))
+    for name in ('mpi', 'resumed', 'serial-resumed'):
         for suffix in ('.h5', '.checkpoint.h5'):
             compare(tmp_path / ('serial' + suffix), tmp_path / (name + suffix))
 
@@ -296,3 +298,29 @@ def test_replica_corrupt_checkpoint(executable, tmp_path, fault):
     before = {p.name: p.read_bytes() for p in tmp_path.iterdir()}
     assert subprocess.run([executable, str(config)], capture_output=True, timeout=60).returncode != 0
     assert before == {p.name: p.read_bytes() for p in tmp_path.iterdir()}
+
+
+@pytest.mark.parametrize('algorithm,field,improved', [
+    ('loop; exchange', .4, False), ('loop; exchange', 0., True),
+    ('loop; sse; exchange', 0., False), ('loop; sse; exchange', 0., True),
+])
+def test_distributed_replica_signed_vectors(executable, launcher, tmp_path, algorithm, field, improved):
+    p = dict(ALGORITHM=algorithm, LATTICE='chain lattice', MODEL='spin', local_S=.5,
+             L=3, J=1., h=field, TEMPERATURE_SET=[.8, 1., 1.2], THERMALIZATION=17,
+             SWEEPS=127, RANDOM_EXCHANGE=True, EXCHANGE_INTERVAL=3,
+             DISABLE_IMPROVED_ESTIMATOR=not improved,
+             **{'MEASURE[Correlations]': True, 'MEASURE[Structure Factor]': True})
+    def config(name, layout, budget=0, checkpoint=None):
+        return write_run_file(tmp_path/(name+'.toml'), parameters=p,
+            execution=dict(seed=137, bins=16, chains=2, parallel=layout, max_sweeps=budget),
+            input=dict(checkpoint=checkpoint) if checkpoint else None,
+            output=dict(results=name+'.h5', checkpoint=name+'.checkpoint.h5'))
+    invoke(launcher, executable, config('serial', 'chains'))
+    invoke(launcher, executable, config('partial', 'replicas', 53), processes=2)
+    invoke(launcher, executable, config('resumed', 'replicas', checkpoint='partial.checkpoint.h5'), processes=4)
+    for suffix in ('.h5', '.checkpoint.h5'):
+        compare(tmp_path/('serial'+suffix), tmp_path/('resumed'+suffix))
+    with h5py.File(tmp_path/'resumed.checkpoint.h5') as ar:
+        moments = ar['simulation/realizations/0/clones/0/replicas/0/measurements']
+        assert moments['Spin Correlations/batch/sum'].shape[-1] > 2
+        assert moments['Sign/batch/count'][()].sum() == 127

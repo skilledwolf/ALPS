@@ -366,6 +366,14 @@ physical collectives; constructors and checkpoint loading stay local. The legacy
 MPI scheduler remains a separate validation task; its
 historical golden files were not scientific references and have been removed.
 
+The old scheduler's default clone disorder seed is clone-dependent
+(`parapack/clone_info.C`); explicit `DISORDER_SEED` fixes it across clones.
+Native `execution.chains` currently advances independent MC chains with the
+same `execution.disorder_seed`. Do not translate the old `params_disorder`
+workflow into more native chains: preserve distinct realizations as separate
+TOML runs and validate disorder averaging before retiring `loop_single`.
+All walkers within one exchange ladder must still share the same realization.
+
 The authoritative registrations are each directory's `.C` files; the behavior
 is in the worker headers and `alps/parapack/{temperature_scan,exchange,exchange_multi}.h`.
 The former `temperature_scan_adaptor` retains the worker's physical state
@@ -393,15 +401,21 @@ models. Classical models explicitly allow beta zero; temperature-coordinate
 grids and population feedback still require positive beta.
 The generic `alps::mc` runner supplies execution and transport; an application
 still has to implement its ensemble's physical state and measurements.
-`ising` and `heisenberg` support `execution.parallel = "replicas"` to distribute
+`ising`, `heisenberg` and `loop` support `execution.parallel = "replicas"` to distribute
 physical walkers across MPI ranks, while the default `"chains"` distributes
 independent ladders. Each temperature retains its chronological sample stream,
 including autocorrelation and partial batches; rank-local fragments are never
 merged as independent runs. Both layouts use the same native checkpoints and
 may be changed on restart. Replica execution currently retains a full ladder's
 storage on each rank, though only the owning rank advances each walker.
+Before deleting the old distributed worker, make physical-state storage scale
+with locally owned replicas and validate checkpoint transport for that layout.
 `replica_parallel.hpp` reuses the runner's native HDF5 transport and collective
 input validation; no additional exchange engine or wire-state schema is used.
+Quantum loop routes raw signed/vector observations through the same native
+measurement recorder; it does not combine fragments of a temperature's stream
+as independent runs. Both continuous-time and SSE kernels retain exact restart
+across layouts, including signed correlation and structure-factor measurements.
 Spatial teams remain a separate capability until the exchange worker is ported.
 
 Port and validate these behaviors before deleting their workers or the legacy

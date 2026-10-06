@@ -65,6 +65,15 @@ blocks extend when round trips or usable population gradients are missing.
 `execution.chains` counts independent ladders; optimization requires one ladder. Measurements start after feedback
 and the requested `THERMALIZATION`; `SWEEPS` counts production sweeps.
 
+An MPI build can distribute independent ladders (`execution.parallel="chains"`,
+the default), or distribute physical walkers within each ladder
+(`execution.parallel="replicas"`). Both layouts preserve each temperature's
+chronological measurement stream, including signed/vector estimators,
+autocorrelation and incomplete batches. The same checkpoint can resume with a
+different layout and process count. Spatial decomposition is a separate
+classical capability. Physical walker storage and temperature statistics
+currently remain replicated on every participating rank.
+
 Replica results live under `/simulation/replicas/<id>/results`, with their own
 parameters, raw per-chain data, and diagnostics. `pyalps.loadMeasurements` and
 `pyalps.loadBinningAnalysis` return a separate dataset group for each temperature,
