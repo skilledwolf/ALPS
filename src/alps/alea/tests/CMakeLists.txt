@@ -17,34 +17,6 @@
 #   FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 #   DEALINGS IN THE SOFTWARE.
 
-foreach(
-  name
-  checkpoint_contracts
-  complexobservable
-  detailedbinning
-  histogram
-  histogram2
-  signed
-  simpleobseval
-  testobservableset
-  observableset_hdf5
-  observableset_xml
-  vectorobseval
-  mergeobs_plus
-  mergeobs_plus2
-  mergeobs_times
-  mergeobs_times2
-  mergeobs_divide
-  mergeobs_log)
-  add_executable(${name} ${name}.C)
-
-  target_link_libraries(${name} PRIVATE ALPS::alps)
-  alps_add_test(${name})
-endforeach()
-
-add_executable(dumpbench dumpbench.C)
-target_link_libraries(dumpbench PRIVATE ALPS::alps)
-
 add_executable(alps_alea_statistics statistics.cpp)
 target_link_libraries(alps_alea_statistics PRIVATE ALPS::statistics ALPS::hdf5)
 alps_add_test(alps_alea_statistics)

@@ -12,8 +12,11 @@
 *****************************************************************************/
 
 #include "fleas.h"
-#include <alps/alea.h>
+#include <alps/alea/autocorr.hpp>
+#include <alps/alea/computed.hpp>
 #include <boost/random.hpp>
+#include <iostream>
+#include <vector>
 
 
 int main()
@@ -31,14 +34,14 @@ int main()
   typedef boost::mt19937 engine_type;
   typedef boost::uniform_int<> dist_type;
   
-  typedef boost::mt19937 engine_type;
   engine_type engine(seed);
   dist_type dist(1,N);
   boost::variate_generator<engine_type,dist_type> rng(engine,dist);
   
-  std::valarray<double> current_distribution(0.,N+1);
-  alps::RealVectorObservable histogram;
-  alps::RealObservable number;
+  // Successive hops are correlated; the autocorrelation accumulators
+  // estimate errors and integrated autocorrelation times by binning.
+  std::vector<double> current_distribution(N+1,0.);
+  alps::alea::autocorr_acc<double> histogram(N+1), number;
   
   // equilibration
   for (int i=0;i<M/5;++i) {
@@ -55,20 +58,26 @@ int main()
       ++n;
 
     current_distribution[n]=1;
-    histogram << current_distribution;
-    number << double(n);
+    histogram << alps::alea::make_adapter(current_distribution);
+    number << alps::alea::make_adapter(double(n));
     current_distribution[n]=0;  
   }
   
-  std::cout << "Mean number on Anik: " << number << "\n";
-  std::cout << "Distribution: " << histogram << "\n";
+  // Autocorrelation times need enough batches; short runs report none.
+  const auto count=number.finalize();
+  std::cout << "Mean number on Anik: " << count.mean()[0] << " +/- " << count.stderror()[0];
+  if (count.tau_available())
+    std::cout << " (tau = " << count.tau()[0] << ")";
+  std::cout << "\n";
 
-  for (int i=0;i<=N;++i)
-    std::cout << i << "\t" 
-              << probability(N,i) << "\t" 
-              << histogram.mean()[i] << "\t" 
-              << histogram.error()[i] << "\t" 
-              << histogram.tau()[i] << "\n";
+  const auto distribution=histogram.finalize();
+  const auto mean=distribution.mean(), error=distribution.stderror(), tau=distribution.tau();
+  for (int i=0;i<=N;++i) {
+    std::cout << i << "\t" << probability(N,i) << "\t" << mean[i] << "\t" << error[i];
+    if (distribution.tau_available())
+      std::cout << "\t" << tau[i];
+    std::cout << "\n";
+  }
   
   return 0;
 }

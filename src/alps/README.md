@@ -16,14 +16,12 @@ checkpoint layout still requires its scientific schema.
 The Eigen-based modern ALEA core is independently linkable as `ALPS::statistics`.
 Its [serialization contracts](alea/modern-alea.md) and the accumulator-only Ising
 pilot cover results, complex covariance and actual batch-accumulator continuation.
-The thin HDF5 adapter shares the canonical primitive mappings. Legacy
-`Observable`/`ObservableSet` APIs remain in `ALPS::alps` while active clients migrate.
+The thin HDF5 adapter shares the canonical primitive mappings. The legacy
+`Observable`/`ObservableSet` API has been removed, leaving one ALEA implementation.
 Standalone CT-INT, CT-HYB and Hirsch-Fye use modern ALEA, pooling raw independent
 replicas before signed analysis and publishing canonical results atomically.
 CT-INT includes general multiband density interactions and their full density
-moments; DMFT uses only external solver processes. `loop`, `worm`, and `dirloop_sse` now use native estimators and exact physical checkpoints. Legacy
-public interfaces still need work before
-the old statistical library can be deleted.
+moments; DMFT uses only external solver processes. `loop`, `worm`, and `dirloop_sse` now use native estimators and exact physical checkpoints.
 The NGS `mcbase` framework and its MPI adapter support all native estimator
 families and real/complex strategies with the same checkpoint and result codecs.
 The SDK also supplies `<alps/mc/driver.hpp>` (`alps::mc`) through `ALPS::alps`.
@@ -145,7 +143,7 @@ Each module uses `include/`, `src/` and `tests/` where applicable. Public includ
 | `legacy_parameters/`, `expression/` | Older `alps::Parameters` and expression evaluation | `ALPS::alps` |
 | `graph/`, `lattice/`, `model/` | Graph helpers, lattice definitions and physical models | `ALPS::headers`, `ALPS::alps` |
 | `random/` | Random generators and their factories | `ALPS::alps` |
-| `alea/` | Legacy observables and modern Eigen-based statistical estimators | `ALPS::alps`, `ALPS::statistics` |
+| `alea/` | Eigen-based statistical estimators | `ALPS::statistics` |
 | `mc/`, `scheduler/` | Simulation API, execution and scheduling | `ALPS::alps` |
 | `fortran/` | C++ bridge with public headers in `include/alps/fortran/` | `ALPS::fortran` |
 | `solvers/` | Shared `<alps/solvers.hpp>` declarations for MaxEnt and CT-QMC | `ALPS::solver_headers` |

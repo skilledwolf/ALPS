@@ -16,14 +16,14 @@ SPEC.loader.exec_module(policy)
 
 @pytest.mark.parametrize("paths,source,packaging", [
     (["README.md", "tutorials/README.md"], False, "none"),
-    (["src/alps/alea/src/alea/observable.C"], True, "none"),
+    (["src/alps/alea/src/statistics/batch.cpp"], True, "none"),
     (["src/alps/numerics/tests/vector_functions.C"], True, "none"),
     (["python/pyalps/src/pyalps/tools.py"], False, "quick"),
     (["tests/pyalps/test_binding_surface.py"], False, "quick"),
-    (["src/alps/alea/src/alea/observable.C", "python/pyalps/src/pyalps/tools.py"], True, "quick"),
-    (["README.md", "src/alps/alea/include/alps/alea/observable.h"], True, "full"),
+    (["src/alps/alea/src/statistics/batch.cpp", "python/pyalps/src/pyalps/tools.py"], True, "quick"),
+    (["README.md", "src/alps/alea/include/alps/alea/batch.hpp"], True, "full"),
     (["cmake/config/config.h.in"], True, "full"),
-    (["src/alps/alea/include/alps/alea/simpleobservable.ipp"], True, "full"),
+    (["src/alps/alea/include/alps/alea/internal/util.hpp"], True, "full"),
     (["python/pyalps/pyproject.toml"], True, "full"),
     (["src/apps/new/CMakeLists.txt"], True, "full"),
     (["cmake/ALPSConfig.cmake.in"], True, "full"),

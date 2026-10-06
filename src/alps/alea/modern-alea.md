@@ -4,8 +4,9 @@
 ALPSCore revision `7146b9e1f017938a94e5dae35d88467cc5ba7969`. The source and
 small `common::ndview` / serialization support headers retain their original
 ALPS Collaboration copyright notices and MIT licensing. Core's MPI and stream
-codec plugins and package build system are not imported. Existing legacy
-ALEA APIs remain with `ALPS::alps` while active clients migrate.
+codec plugins and package build system are not imported. The legacy
+`Observable`/`ObservableSet` ALEA has been removed; `ALPS::statistics` is the
+only statistics implementation.
 
 ## ALPSCore consolidation decisions
 
@@ -271,11 +272,10 @@ and the released per-run result converter.
 
 ## Removed post-processing APIs
 
-The retired `mcdata.hpp`, `mcanalyze.hpp` and `value_with_error.hpp` headers are
-no longer installed or included by `alea.h`. Their application and example
-consumers have migrated. The remaining legacy observable producers are still
-present until the scheduler/model clients are migrated; this is not completion
-of the whole ALEA consolidation.
+The legacy observable framework (`<alps/alea.h>`, `ObservableSet` and its
+observables, binning strategies and evaluators) has been removed together with
+the retired `mcdata.hpp`, `mcanalyze.hpp` and `value_with_error.hpp`
+post-processing headers. All application and example consumers migrated first.
 
 Use native result means, variances, covariance, errors and `merge` for statistical
 analysis. Arithmetic and component selection use `transform`; joint batch
@@ -329,8 +329,8 @@ Two older source directories require separate decisions before deletion:
   multicanonical sampling but does not implement that external-weight workflow.
   Retain these sources until this unique capability is resolved; do not label
   them a redundant QWL copy or claim complete optional-algorithm parity.
-  Both were written against the former scheduler-based `QMCRun` and legacy
-  ALEA observables.
+  Both were written against the former scheduler-based `QMCRun` and the
+  removed legacy ALEA observables, so they no longer compile in this tree.
 
 Released physical checkpoints remain with ALPS 3.0. Removing dead wrappers or
 unused includes does not by itself establish that a migration is complete.

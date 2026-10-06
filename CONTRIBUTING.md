@@ -187,11 +187,11 @@ For development questions, use [Discord](https://discord.gg/JRNWnnva9g); reprodu
 | Location | Contents |
 | --- | --- |
 | `src/alps/` | C++ component coordination; see the [source ownership map](src/alps/README.md) |
-| `src/alps/{utilities,hdf5,params,osiris,xml,cli}/` | Independently linkable components with public headers, sources and local tests |
+| `src/alps/{utilities,hdf5,params,osiris,xml,cli,alea}/` | Independently linkable components with public headers, sources and local tests |
 | `src/alps/{containers,numerics,numeric_io}/` | Separate interface targets for container storage, numerical algorithms and numerical HDF5 adapters |
 | `src/alps/{ietl,graph}/` | Eigensolver and graph headers and tests contributing to the aggregate interface |
 | `src/alps/plotting/` | `<alps/plot.h>` output helpers combining XML and older parameters; contributes headers, not a separate library |
-| `src/alps/{legacy_parameters,expression,lattice,model,random,alea,mc,scheduler}/` | Semantic source modules contributing to `ALPS::alps` and its compile interface |
+| `src/alps/{legacy_parameters,expression,lattice,model,random,mc,scheduler}/` | Semantic source modules contributing to `ALPS::alps` and its compile interface |
 | `src/alps/solvers/` | Public callable solver declarations shared by MaxEnt and CT-QMC |
 | `src/alps/fortran/` | Public headers and implementation of the `ALPS::fortran` bridge |
 | `src/apps/`, `src/tools/` | Simulation applications, shared solver implementations and [CLI tools grouped by responsibility](src/tools/README.md) |
