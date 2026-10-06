@@ -48,12 +48,14 @@ def test_matrix_event_selection(tmp_path, event, ref, tier, count):
         assert any(build["os"] == "macos-15" for build in builds)
         assert any(build["boost"] == "1.76.0" for build in builds)
     else:
-        assert builds[0]["python"] and builds[0]["mpi"] == "OFF"
+        assert builds[0]["python"] and builds[0]["mpi"] == "ON"
+        assert not builds[0]["physics"]
         assert not builds[0]["extras"]
     if count == 14:
         assert any(build["extensive"] for build in builds)
         sanitized = [build for build in builds if build["sanitizer"]]
         assert sanitized and all(build["mpi"] == "OFF" for build in sanitized)
+        assert [build["id"] for build in builds if build["physics"]] == ["gcc-extras"]
     assert f"{count} builds" in summary.read_text()
 
 

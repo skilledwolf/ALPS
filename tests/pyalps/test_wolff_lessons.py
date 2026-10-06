@@ -1,21 +1,17 @@
 """Native Wolff lessons preserve cluster physics and correlated Binder evidence."""
 import itertools
-import os
-from pathlib import Path
 import subprocess
 
 import numpy as np
 import pytest
 import pyalps
 from pyalps import alea, hdf5
+from conftest import tutorials_build
 
 
 @pytest.fixture(params=['07-alea', '08-lattice'])
 def lesson(request):
-    root = os.environ.get('ALPS_ALPSIZE_BUILD_DIR')
-    if not root:
-        pytest.skip('Set ALPS_ALPSIZE_BUILD_DIR to the built ALPSize lessons')
-    return request.param, str(Path(root).resolve()/request.param/'wolff')
+    return request.param, str(tutorials_build()/'08-alpsize'/request.param/'wolff')
 
 
 def config(path, lesson, extra='', output='result.h5', default=False):

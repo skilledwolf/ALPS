@@ -1,8 +1,5 @@
 # Copyright (C) 2026 ALPS Collaboration. SPDX-License-Identifier: MIT
 """The installed simplemc driver must preserve native statistics and restart."""
-import os
-from pathlib import Path
-import shutil
 import subprocess
 
 import h5py
@@ -10,20 +7,14 @@ import numpy as np
 import pytest
 
 import pyalps
-from pyalps import alea, hdf5, tools
+from pyalps import alea, hdf5
 from pyalps.run_io import execute, write_run_file
+from conftest import alps_program
 
 
 @pytest.fixture
 def executable():
-    explicit = os.environ.get("ALPS_SIMPLEMC_EXECUTABLE")
-    if explicit:
-        return str(Path(explicit).resolve(strict=True))
-    try:
-        tools.check_existence("simplemc")
-    except RuntimeError:
-        pytest.skip("native simplemc executable is not installed")
-    return shutil.which("simplemc")
+    return alps_program("simplemc")
 
 
 def run_file(directory, name, model="ising", *, execution=None, input=None, output=None, parameters=None):

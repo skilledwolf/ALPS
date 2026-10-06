@@ -1,7 +1,5 @@
 """The scheduler Wolff lesson uses native physical and statistical continuation."""
-import os
 import itertools
-from pathlib import Path
 import subprocess
 
 import h5py
@@ -10,14 +8,12 @@ import pytest
 import pyalps
 from pyalps.run_io import write_run_file
 from test_native_mpi import compare, invoke, launcher
+from conftest import tutorials_build
 
 
 @pytest.fixture
 def executable():
-    root = os.environ.get('ALPS_ALPSIZE_BUILD_DIR')
-    if not root:
-        pytest.skip('Set ALPS_ALPSIZE_BUILD_DIR to the built ALPSize lessons')
-    return str(Path(root).resolve()/'09-scheduler/wolff')
+    return str(tutorials_build()/'08-alpsize/09-scheduler/wolff')
 
 
 def run(executable, directory, name, *, budget=0, checkpoint=None, rng='mt19937', sweeps=101, processes=1, launcher=None):

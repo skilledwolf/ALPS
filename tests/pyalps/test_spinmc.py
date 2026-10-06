@@ -1,8 +1,5 @@
 # Copyright (C) 2026 ALPS Collaboration. SPDX-License-Identifier: MIT
 """Native spinmc must retain complete chains and aligned analysis evidence."""
-import os
-from pathlib import Path
-import shutil
 import subprocess
 
 import h5py
@@ -10,20 +7,14 @@ import numpy as np
 import pytest
 
 import pyalps
-from pyalps import alea, hdf5, tools
+from pyalps import alea, hdf5
 from pyalps.run_io import execute, write_run_file
+from conftest import alps_program
 
 
 @pytest.fixture
 def executable():
-    explicit = os.environ.get("ALPS_SPINMC_EXECUTABLE")
-    if explicit:
-        return str(Path(explicit).resolve(strict=True))
-    try:
-        tools.check_existence("spinmc")
-    except RuntimeError:
-        pytest.skip("native spinmc executable is not installed")
-    return shutil.which("spinmc")
+    return alps_program("spinmc")
 
 
 def run_file(directory, name, *, parameters=None, execution=None, input=None, output=None):

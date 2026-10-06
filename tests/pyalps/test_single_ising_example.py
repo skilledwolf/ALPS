@@ -1,7 +1,6 @@
 """Heat-bath Ising and warm-start scans preserve physics and exact continuation."""
 import itertools
 import os
-from pathlib import Path
 import subprocess
 
 import h5py
@@ -11,17 +10,12 @@ import pytest
 from pyalps import alea, hdf5
 from pyalps.run_io import write_run_file
 from test_native_mpi import compare, invoke, launcher
+from conftest import tutorials_build
 
 
 @pytest.fixture
 def executable():
-    explicit=os.environ.get('ALPS_SINGLE_ISING_EXECUTABLE')
-    if explicit:
-        return str(Path(explicit).resolve(strict=True))
-    root=os.environ.get('ALPS_EXAMPLES_BUILD_DIR')
-    if not root:
-        pytest.skip('Set ALPS_EXAMPLES_BUILD_DIR to the built C++ examples')
-    return str(Path(root).resolve()/'parapack/single/ising_single')
+    return str(tutorials_build()/'00-examples/parapack/single/ising_single')
 
 
 def run(executable, directory, name, *, scan=False, budget=0, checkpoint=None,

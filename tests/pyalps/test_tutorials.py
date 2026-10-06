@@ -14,6 +14,7 @@ import sys
 import types
 
 import pytest
+from conftest import alps_program
 
 TUTORIALS = Path(__file__).resolve().parents[2] / "tutorials"
 DMFT = TUTORIALS / "05-dmft"
@@ -44,13 +45,7 @@ NOTEBOOKS = [path for path in sorted((TUTORIALS / "11-notebook").rglob("DMFT-*.i
 
 @pytest.fixture
 def validate_dmft(monkeypatch):
-    executable = os.environ.get("ALPS_DMFT_EXECUTABLE")
-    if not executable and os.environ.get("ALPS_DIR"):
-        candidate = (Path(os.environ["ALPS_DIR"]).resolve().parents[1] / "bin" /
-                     ("dmft.exe" if os.name == "nt" else "dmft"))
-        executable = str(candidate) if candidate.is_file() else None
-    if not executable:
-        pytest.skip("requires ALPS_DMFT_EXECUTABLE or an SDK in ALPS_DIR")
+    executable = alps_program("dmft")
     from pyalps import run_io
 
     def execute(application, runs, **_):
@@ -123,16 +118,13 @@ def test_native_qmc_tutorial_end_to_end(source, tmp_path, monkeypatch):
     import matplotlib.pyplot as plt
     import pyalps
     from pyalps import run_io
-    executables = {app:os.environ.get('ALPS_' + app.upper() + '_EXECUTABLE')
-                   for app in ('worm', 'dirloop_sse', 'loop', 'spinmc')}
     original_execute = run_io.execute
     outputs = []
 
     def execute(app, job):
-        if not executables[app]:
-            pytest.skip('requires ALPS_' + app.upper() + '_EXECUTABLE')
+        executable = alps_program(app)
         _, runs = run_io.read_job_manifest(job)
-        checked = subprocess.run([executables[app], '--validate', *map(str, runs)],
+        checked = subprocess.run([executable, '--validate', *map(str, runs)],
                                  capture_output=True, text=True, timeout=120)
         assert checked.returncode == 0, checked.stdout + checked.stderr
         selected = [runs[i] for i in sorted({0, len(runs)//2, len(runs)-1})]
@@ -155,7 +147,7 @@ def test_native_qmc_tutorial_end_to_end(source, tmp_path, monkeypatch):
             document.setdefault('execution', {})['bins'] = 16
             run_io.write_run_file(path, overwrite=True,
                 **{key:document[key] for key in ('parameters', 'input', 'output', 'execution') if key in document})
-        files = original_execute(executables[app], selected)
+        files = original_execute(executable, selected)
         outputs.extend(files)
         return files
 

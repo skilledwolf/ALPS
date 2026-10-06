@@ -10,6 +10,7 @@ import numpy as np
 import pytest
 
 from pyalps import hdf5, ngs
+from conftest import alps_program
 
 
 CASES_FILE = (Path(__file__).resolve().parents[2] /
@@ -182,16 +183,7 @@ def test_maxent_covariance_and_normalization(reference_runs):
 
 
 def test_maxent_cli_matches_python(reference_runs):
-    # SDK integration jobs set ALPS_DIR. Wheel-only smoke jobs may lack the SDK.
-    executable = os.environ.get("ALPS_MAXENT_EXECUTABLE")
-    if executable:
-        executable = Path(executable).resolve()
-        assert executable.is_file(), f"ALPS_MAXENT_EXECUTABLE does not exist: {executable}"
-    if not executable and os.environ.get("ALPS_DIR"):
-        executable = (Path(os.environ["ALPS_DIR"]).resolve().parents[1] /
-                      "bin" / ("maxent.exe" if os.name == "nt" else "maxent"))
-    if not executable or not Path(executable).is_file():
-        pytest.skip("requires the MaxEnt CLI from an SDK or ALPS_MAXENT_EXECUTABLE")
+    executable = alps_program("maxent")
     defaults, runs = reference_runs
     for case, directory, expected, points, values, errors in runs.values():
         parameters, _, _, _ = prepare(defaults, case, directory)

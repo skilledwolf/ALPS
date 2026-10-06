@@ -1,7 +1,6 @@
 # Copyright (C) 2026 ALPS Collaboration. SPDX-License-Identifier: MIT
 """Serial/MPI native chains must retain identical evidence and continuation."""
 import os
-from pathlib import Path
 import subprocess
 import shlex
 
@@ -9,6 +8,7 @@ import h5py
 import numpy as np
 import pytest
 from pyalps.run_io import write_run_file
+from conftest import alps_program
 
 
 @pytest.fixture
@@ -45,7 +45,7 @@ def compare(left, right):
 @pytest.mark.parametrize("rng", ["mt19937", "lagged_fibonacci607"])
 @pytest.mark.parametrize("chains", [1, 3])
 def test_mpi_native_chains_and_cross_process_restart(launcher, tmp_path, app, rng, chains):
-    executable = os.environ["ALPS_" + app.upper() + "_EXECUTABLE"]
+    executable = alps_program(app)
     p = dict(LATTICE="chain lattice", L=5, T=1.8, SWEEPS=37, THERMALIZATION=3)
     if app == "qwl":
         p = dict(LATTICE="chain lattice", L=4, J=1., CUTOFF=12, SWEEPS=3000,
@@ -78,7 +78,7 @@ def test_mpi_native_chains_and_cross_process_restart(launcher, tmp_path, app, rn
 
 
 def test_mpi_nonroot_failure_preserves_scientific_output(launcher, tmp_path):
-    executable = os.environ["ALPS_SIMPLEMC_EXECUTABLE"]
+    executable = alps_program("simplemc")
     result = tmp_path / "result.h5"
     checkpoint = tmp_path / "checkpoint.h5"
     result.write_bytes(b"existing result")

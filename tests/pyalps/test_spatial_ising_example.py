@@ -13,35 +13,27 @@ from pyalps import alea, hdf5
 from pyalps.run_io import write_run_file
 from test_native_mpi import compare, invoke, launcher
 from test_single_ising_example import run
-
-
-def configured_executable(variable, relative=None):
-    value = os.environ.get(variable)
-    root = os.environ.get('ALPS_EXAMPLES_BUILD_DIR')
-    if not value and root and relative:
-        value = str(Path(root)/relative)
-    if not value:
-        pytest.skip('Set '+variable+' to the appropriate built executable')
-    path = Path(value).resolve()
-    assert path.is_file(), 'Missing configured executable: '+str(path)
-    return str(path)
+from conftest import tutorials_build
 
 
 @pytest.fixture
 def executable():
-    return configured_executable('ALPS_SPATIAL_ISING_EXECUTABLE', 'parapack/multiple/ising_multiple')
+    return str(tutorials_build()/'00-examples/parapack/multiple/ising_multiple')
 
 
 @pytest.fixture
 def mpi_executable():
     # Never infer this from the serial build: launching a serial program under
     # mpiexec could create several competing writers and conceal missing MPI.
-    return configured_executable('ALPS_SPATIAL_ISING_MPI_EXECUTABLE')
+    value = os.environ.get('ALPS_SPATIAL_ISING_MPI_EXECUTABLE')
+    if not value:
+        pytest.skip('set ALPS_SPATIAL_ISING_MPI_EXECUTABLE to an MPI-enabled build')
+    return str(Path(value).resolve(strict=True))
 
 
 @pytest.mark.parametrize('scan', [False, True])
 def test_serial_arbitrary_graph_fallback(executable, tmp_path, scan):
-    single = configured_executable('ALPS_SINGLE_ISING_EXECUTABLE', 'parapack/single/ising_single')
+    single = str(tutorials_build()/'00-examples/parapack/single/ising_single')
     reference, reference_state = run(single, tmp_path, 'single', scan=scan, lattice='square lattice', length=4)
     actual, actual_state = run(executable, tmp_path, 'spatial', scan=scan, lattice='square lattice', length=4)
     compare(reference, actual)

@@ -1,6 +1,5 @@
 # Copyright (C) 2026 ALPS Collaboration. SPDX-License-Identifier: MIT
 """Native Wang-Landau restart, independent-chain evaluation and exact physics."""
-import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -11,18 +10,12 @@ import pytest
 from pyalps import tools
 from pyalps.run_io import execute, write_run_file
 from test_native_mpi import compare
+from conftest import alps_program
 
 
 @pytest.fixture
 def executable():
-    explicit = os.environ.get("ALPS_QWL_EXECUTABLE")
-    if explicit:
-        return str(Path(explicit).resolve(strict=True))
-    try:
-        tools.check_existence("qwl")
-    except RuntimeError:
-        pytest.skip("native qwl executable is not installed")
-    return shutil.which("qwl")
+    return alps_program("qwl")
 
 
 def run_file(directory, name, *, parameters=None, execution=None, input=None):

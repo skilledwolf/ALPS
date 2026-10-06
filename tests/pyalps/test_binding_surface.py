@@ -955,26 +955,3 @@ def test_integer_arrays_keep_their_exact_numpy_dtype():
                     f"{value.dtype.char!r}")
                 assert repr(restored) == repr(value), key
 
-
-if __name__ == "__main__":
-    for test in (
-        test_extension_import_surface,
-        test_cross_module_parameter_archive_and_rng_roundtrip,
-        test_params_from_parameter_file,
-        test_alea_numpy_and_mcdata_operators,
-        test_alea_mcanalyze_surface,
-        test_packaged_xml_stylesheets,
-        test_name_encoding_roundtrip,
-        test_optional_application_extension_surface,
-        test_params_mapping_equality_and_value_ladder,
-        test_params_mapping_mixins,
-        test_mapping_views_are_set_like,
-        test_mcbase_save_load_overrides_reach_cpp_dispatch,
-        test_archive_setitem_saves_registered_alps_types,
-        test_archive_setitem_rejects_mcdata_with_actionable_advice,
-        test_numpy_arrays_are_writable_and_own_their_buffer,
-        test_archive_arrays_preserve_shape_dtype_and_outlive_the_archive,
-        test_integer_arrays_keep_their_exact_numpy_dtype,
-    ):
-        test()
-    print("pyalps binding surface: green")

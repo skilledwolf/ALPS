@@ -121,6 +121,7 @@ jobs:
       EXTRAS: ${{ matrix.extras }}
       EXTENSIVE: ${{ matrix.extensive }}
       SANITIZER: ${{ matrix.sanitizer }}
+      PHYSICS: ${{ matrix.physics }}
       CXX_STANDARD: ${{ matrix.standard }}
       CMAKE_PREFIX_PATH: ${{ github.workspace }}/_build/boost-install:${{ github.workspace }}/_build/tomlplusplus-install:${{ github.workspace }}/_build/highfive-install
       # Exercise the minimum in the primary SDK/Python job and the MPI job.
@@ -224,25 +225,6 @@ jobs:
           ASAN_OPTIONS: detect_leaks=0
           UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
         run: python .github/scripts/build_metrics.py run 'SDK tests' ctest --test-dir _build/ci --output-on-failure --output-junit ctest.xml --no-tests=error
-      - name: Test bindings and installed SDK with the primary build
-        if: matrix.python
-        env:
-          ALPS_DIR: ${{ github.workspace }}/_build/ci/install/share/alps
-          CMAKE_GENERATOR: Ninja
-          PYALPS_TEST_DOWNSTREAM_EXPORT: '1'
-          ALPS_ALEA_MIGRATION_READER: ${{ github.workspace }}/_build/ci/bin/alps_alea_migration
-        run: |
-          cmake --install _build/ci
-          python -m pip install build 'nanobind==2.15.0' 'scikit-build-core>=1.0' numpy scipy matplotlib h5py patchelf
-          python .github/scripts/build_metrics.py run 'Editable bindings' python -m pip install --no-build-isolation --no-deps -e python/pyalps \
-            --config-settings "build-dir=$PWD/_build/ci-python"
-          python .github/scripts/build_metrics.py run --timeout 900 'Bindings and SDK contracts' \
-            python -m pytest tests/pyalps tests/cmake tests/cli/test_hdf5_convert.py -q --junitxml=_build/ci/python.xml
-      - name: Test installed XML tools after relocation
-        if: matrix.extras
-        env:
-          ALPS_XML_BUILD: _build/ci
-        run: python -m pytest tests/cli/test_xml.py -q --junitxml=_build/ci/cli.xml
       - name: Build installed C, C++ and Fortran tutorials
         if: matrix.extras
         run: |
@@ -268,6 +250,38 @@ jobs:
             python .github/scripts/build_metrics.py run "Tutorial ${source#"$tutorials/"}" cmake --build "$output"
             ctest --test-dir "$output" --output-on-failure --output-junit ctest.xml
           done
+      - name: Test bindings and installed SDK with the primary build
+        if: matrix.python
+        env:
+          ALPS_DIR: ${{ github.workspace }}/_build/ci/install/share/alps
+          CMAKE_GENERATOR: Ninja
+          PYALPS_TEST_DOWNSTREAM_EXPORT: '1'
+          ALPS_ALEA_MIGRATION_READER: ${{ github.workspace }}/_build/ci/bin/alps_alea_migration
+          # Integration tests find programs in ALPS_DIR and tutorial programs in
+          # _build/consumers. When this job builds both, a test that skips for a
+          # missing program fails instead.
+          ALPS_REQUIRE_INTEGRATION: ${{ matrix.extras && '1' || '0' }}
+          ALPS_TUTORIALS_BUILD_DIR: ${{ matrix.extras && format('{0}/_build/consumers', github.workspace) || '' }}
+          ALPS_MPIEXEC: ${{ matrix.mpi == 'ON' && 'mpiexec' || '' }}
+          ALPS_MPIEXEC_ARGS: --oversubscribe
+          ALPS_SPATIAL_ISING_MPI_EXECUTABLE: ${{ matrix.extras && matrix.mpi == 'ON' && format('{0}/_build/consumers/00-examples/parapack/multiple/ising_multiple', github.workspace) || '' }}
+        run: |
+          cmake --install _build/ci
+          python -m pip install build 'nanobind==2.15.0' 'scikit-build-core>=1.0' numpy scipy matplotlib h5py patchelf
+          python .github/scripts/build_metrics.py run 'Editable bindings' python -m pip install --no-build-isolation --no-deps -e python/pyalps \
+            --config-settings "build-dir=$PWD/_build/ci-python"
+          python .github/scripts/build_metrics.py run --timeout 900 'Bindings and SDK contracts' \
+            python -m pytest tests/pyalps tests/cmake tests/cli/test_hdf5_convert.py -q --junitxml=_build/ci/python.xml
+          # Long comparisons with exact diagonalization and enumeration.
+          if [[ "$PHYSICS" == true ]]; then
+            ALPS_SLOW_TESTS=1 python .github/scripts/build_metrics.py run --timeout 3600 'Physics validation' \
+              python -m pytest tests/pyalps -m slow -q --junitxml=_build/ci/physics.xml
+          fi
+      - name: Test installed XML tools after relocation
+        if: matrix.extras
+        env:
+          ALPS_XML_BUILD: _build/ci
+        run: python -m pytest tests/cli/test_xml.py -q --junitxml=_build/ci/cli.xml
       - name: Check whether compiler cache changed
         id: cache-policy
         if: always()
@@ -285,7 +299,7 @@ jobs:
         run: python .github/scripts/build_metrics.py summary
       - name: Summarize test results
         if: always()
-        run: python .github/scripts/junit_summary.py '_build/**/ctest.xml' _build/ci/cli.xml _build/ci/python.xml
+        run: python .github/scripts/junit_summary.py '_build/**/ctest.xml' _build/ci/cli.xml _build/ci/python.xml _build/ci/physics.xml
       - name: Retain test and configure evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
@@ -295,6 +309,7 @@ jobs:
             _build/**/ctest.xml
             _build/ci/cli.xml
             _build/ci/python.xml
+            _build/ci/physics.xml
             _build/**/Testing/Temporary/**
             _build/**/CMakeFiles/CMakeConfigureLog.yaml
             _build/metrics/**

@@ -1,7 +1,5 @@
 """Native replacements for the three scheduler Ising examples."""
 import itertools
-import os
-from pathlib import Path
 import subprocess
 
 import h5py
@@ -10,14 +8,12 @@ import pyalps
 import pytest
 from pyalps.run_io import write_run_file
 from test_native_mpi import compare
+from conftest import tutorials_build
 
 
 @pytest.fixture(params=['ising1', 'ising2', 'ising3'])
 def executable(request):
-    root = os.environ.get('ALPS_EXAMPLES_BUILD_DIR')
-    if not root:
-        pytest.skip('Set ALPS_EXAMPLES_BUILD_DIR to the built C++ examples')
-    return Path(root).resolve()/'scheduler'/request.param
+    return tutorials_build()/'00-examples/scheduler'/request.param
 
 
 def run(executable, directory, name, *, sweeps=117, budget=0, checkpoint=None, rng='mt19937'):
@@ -82,10 +78,7 @@ def test_exact_chain_physics_and_correlations(executable, tmp_path):
 
 
 def test_lattice_square_and_validation(tmp_path):
-    root = os.environ.get('ALPS_EXAMPLES_BUILD_DIR')
-    if not root:
-        pytest.skip('Set ALPS_EXAMPLES_BUILD_DIR to the built C++ examples')
-    executable = Path(root).resolve()/'scheduler/ising2'
+    executable = tutorials_build()/'00-examples/scheduler/ising2'
     path = tmp_path/'square.toml'
     write_run_file(path, parameters=dict(LATTICE='square lattice', L=2, T=3.,
                                          SWEEPS=100000, THERMALIZATION=1000),

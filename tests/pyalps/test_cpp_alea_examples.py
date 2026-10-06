@@ -1,20 +1,16 @@
 """The C++ and Python analysis lessons consume the same raw chronological data."""
-import os
 from pathlib import Path
 import re
 import subprocess
 import sys
 
 import numpy as np
-import pytest
 from pyalps import alea, hdf5
+from conftest import tutorials_build
 
 
 def test_cpp_analysis_examples(tmp_path):
-    directory = os.environ.get('ALPS_ALEA_EXAMPLES_DIR')
-    if not directory:
-        pytest.skip('Set ALPS_ALEA_EXAMPLES_DIR to the built C++ ALEA examples')
-    directory = Path(directory).resolve()
+    directory = tutorials_build()/'00-examples/alea'
     generator = Path(__file__).resolve().parents[2]/'tutorials/00-examples/alea/generate_samples.py'
     subprocess.run([sys.executable, str(generator)], cwd=tmp_path, check=True)
     with hdf5.archive(str(tmp_path/'timeseries.h5')) as archive:

@@ -1,6 +1,5 @@
 # Copyright (C) 2026 ALPS Collaboration. SPDX-License-Identifier: MIT
 """Production quantum kernels: exact continuation and independent physics."""
-import os
 from pathlib import Path
 import subprocess
 
@@ -9,15 +8,12 @@ import numpy as np
 import pytest
 from pyalps.run_io import write_run_file
 from test_native_mpi import compare
+from conftest import alps_program
 
 
 @pytest.fixture
 def executables():
-    names = {app: os.environ.get('ALPS_' + app.upper() + '_EXECUTABLE')
-             for app in ('worm', 'dirloop_sse')}
-    if not all(names.values()):
-        pytest.skip('set ALPS_WORM_EXECUTABLE and ALPS_DIRLOOP_SSE_EXECUTABLE')
-    return names
+    return {app: alps_program(app) for app in ('worm', 'dirloop_sse')}
 
 
 def run(exe, directory, name, p, *, rng='mt19937', budget=0, checkpoint=None):

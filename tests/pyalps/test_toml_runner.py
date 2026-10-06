@@ -1,6 +1,5 @@
 # Copyright (C) 2026 ALPS Collaboration. SPDX-License-Identifier: MIT
 """Explicit jobs use the selected application's native schema and safe argv."""
-import os
 from pathlib import Path
 import subprocess
 
@@ -8,6 +7,7 @@ import pytest
 
 from pyalps import hdf5, run_config, tools
 from pyalps.run_io import execute, write_run_file, write_run_files
+from conftest import alps_program
 
 
 SCHEMA = '''
@@ -28,19 +28,6 @@ type="path"
 type="int64"
 default=42
 '''
-
-
-def solver_executable(variable, name):
-    explicit = os.environ.get(variable)
-    if explicit:
-        return explicit
-    sdk = os.environ.get("ALPS_DIR")
-    if sdk:
-        filename = name + (".exe" if os.name == "nt" else "")
-        candidate = Path(sdk).resolve().parents[1] / "bin" / filename
-        if candidate.is_file():
-            return str(candidate)
-    return None
 
 
 @pytest.fixture
@@ -267,11 +254,7 @@ def test_scheduler_launcher_refuses_toml_run_applications(monkeypatch, applicati
 
 
 def test_native_cthyb_launcher_roundtrip_when_cli_available(tmp_path, monkeypatch):
-    executable = solver_executable("ALPS_CTHYB_EXECUTABLE", "hybridization")
-    if not executable:
-        pytest.skip("requires ALPS_CTHYB_EXECUTABLE from the SDK integration job")
-    executable = Path(executable).resolve()
-    assert executable.is_file()
+    executable = Path(alps_program("hybridization"))
     from pyalps import cthyb
     directory = tmp_path.resolve() / "scientific data with spaces"
     directory.mkdir()
@@ -297,10 +280,7 @@ def test_native_hirschfye_launcher_and_modern_analysis_when_cli_available(tmp_pa
     import pyalps
     from pyalps import alea
 
-    executable = solver_executable("ALPS_HIRSCHFYE_EXECUTABLE", "hirschfye")
-    if not executable:
-        pytest.skip("requires the Hirsch-Fye executable from the SDK integration job")
-    executable = Path(executable).resolve(strict=True)
+    executable = Path(alps_program("hirschfye"))
     directory = tmp_path / "Hirsch-Fye data with spaces"
     directory.mkdir()
     with hdf5.archive(directory / "g0.h5", "w") as archive:
@@ -343,12 +323,7 @@ def test_native_hirschfye_launcher_and_modern_analysis_when_cli_available(tmp_pa
 
 def test_native_dmft_ctint_python_workflow_and_u0_reference(tmp_path, monkeypatch):
     """An explicit Python job remains analysable after two real impurity runs."""
-    executables = [solver_executable(variable, name) for variable, name in
-                   (("ALPS_DMFT_EXECUTABLE", "dmft"), ("ALPS_CTINT_EXECUTABLE", "interaction"))]
-    if not all(executables):
-        pytest.skip("requires ALPS_DMFT_EXECUTABLE and ALPS_CTINT_EXECUTABLE from the SDK integration job")
-    dmft, ctint = [Path(executable).resolve(strict=True) for executable in executables]
-    assert dmft.is_file() and ctint.is_file()
+    dmft, ctint = Path(alps_program("dmft")), Path(alps_program("interaction"))
     import numpy as np
     from pyalps.load import loadDMFTIterations
 

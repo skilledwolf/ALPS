@@ -1,7 +1,5 @@
 # Copyright (C) 2026 ALPS Collaboration. SPDX-License-Identifier: MIT
 """Native loop: physical checkpoints and signed estimator alignment."""
-import os
-from pathlib import Path
 import subprocess
 
 import h5py
@@ -9,14 +7,12 @@ import numpy as np
 import pytest
 from pyalps.run_io import write_run_file
 from test_native_mpi import compare, invoke, launcher
+from conftest import alps_program
 
 
 @pytest.fixture
 def executable():
-    value = os.environ.get('ALPS_LOOP_EXECUTABLE')
-    if not value:
-        pytest.skip('set ALPS_LOOP_EXECUTABLE')
-    return value
+    return alps_program('loop')
 
 
 def run(executable, directory, name, parameters, *, rng='mt19937', budget=0,

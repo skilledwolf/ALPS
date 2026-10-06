@@ -1,21 +1,17 @@
 """Installed C++ lesson: TOML CLI, native evidence and independent physics oracle."""
 import itertools
-import os
-from pathlib import Path
 import subprocess
 
 import numpy as np
 import pytest
 import pyalps
 from pyalps import alea, hdf5
+from conftest import tutorials_build
 
 
 @pytest.fixture
 def executable():
-    path = os.environ.get('ALPS_CPP_ISING_EXECUTABLE')
-    if not path:
-        pytest.skip('Set ALPS_CPP_ISING_EXECUTABLE to the built C++ tutorial')
-    return str(Path(path).resolve())
+    return str(tutorials_build()/'09-code/02-c++/ising')
 
 
 def run_file(tmp_path, parameters='', output='result.h5'):
