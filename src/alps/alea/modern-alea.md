@@ -304,11 +304,12 @@ Converted analysis results do not constitute physical simulation checkpoints.
 
 ## Remaining consumer boundary
 
-The deterministic DMRG and full/sparse diagonalization applications use generic
-scheduler `Task`/`DiagTask` and dispatch, not `MCRun`, `MCSimulation`, or
-`ObservableSet`. Their generic scheduler machinery can remain when the Monte
-Carlo statistics path is removed. Rewriting that task framework is not required
-by ALEA consolidation. The standalone FQHE kernel only needs the HDF5 archive.
+The scheduler's Monte Carlo layer (`MCRun`, `MCSimulation`) has been removed.
+The deterministic DMRG and full/sparse diagonalization applications use the
+generic scheduler `Task`/`DiagTask` and dispatch, which remain. Its `Worker`,
+`WorkerTask` and `RemoteWorker` classes no longer have subclasses in this
+repository; consolidating that task framework is scheduler work outside ALEA
+consolidation. The standalone FQHE kernel only needs the HDF5 archive.
 
 The native `loop` executable owns measurement evaluation in `analysis.hpp` and
 its current measurement implementation. The former `looper/evaluator.h` and
@@ -328,11 +329,11 @@ Two older source directories require separate decisions before deletion:
   multicanonical sampling but does not implement that external-weight workflow.
   Retain these sources until this unique capability is resolved; do not label
   them a redundant QWL copy or claim complete optional-algorithm parity.
-  They also depend on the scheduler's `QMCRun`.
+  Both were written against the former scheduler-based `QMCRun` and legacy
+  ALEA observables.
 
-The remaining migration work includes live Monte Carlo scheduler consumers.
 Released physical checkpoints remain with ALPS 3.0. Removing dead wrappers or
-unused includes does not establish completion of those migrations.
+unused includes does not by itself establish that a migration is complete.
 
 ### Parapack example migration requirements
 

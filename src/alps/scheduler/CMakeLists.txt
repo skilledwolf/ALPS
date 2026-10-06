@@ -6,7 +6,6 @@ target_sources(alps PRIVATE
   src/scheduler/info.C
   src/scheduler/master_scheduler.C
   src/scheduler/measurement_operators.C
-  src/scheduler/montecarlo.C
   src/scheduler/mpp_scheduler.C
   src/scheduler/options.C
   src/scheduler/remote_task.C
@@ -30,7 +29,6 @@ target_sources(alps_headers INTERFACE
     include/alps/scheduler/factory.h
     include/alps/scheduler/info.h
     include/alps/scheduler/measurement_operators.h
-    include/alps/scheduler/montecarlo.h
     include/alps/scheduler/options.h
     include/alps/scheduler/scheduler.h
     include/alps/scheduler/signal.hpp
@@ -44,5 +42,5 @@ endif()
 
 alps_register_module(NAME scheduler HEADER_SET scheduler_headers
   TARGETS alps
-  DEPENDS numeric_io alea configuration expression hdf5 lattice legacy_parameters model numerics osiris params random utilities xml
+  DEPENDS numeric_io configuration expression hdf5 lattice legacy_parameters model numerics osiris params random utilities xml
 )

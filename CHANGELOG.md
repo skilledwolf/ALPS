@@ -42,6 +42,12 @@ User-facing changes and migration notes are recorded here, starting with the bui
   only builds the OpenMP thread-safety tests, and the classical examples take
   their own `ALPS_ENABLE_OPENMP` option. See [migration](#removed-and-migration).
 
+- Remove the scheduler's Monte Carlo layer (`<alps/scheduler/montecarlo.h>`)
+  and the `compactrun` command for its run dumps. `convert2xml` keeps its
+  parameter-file and spectrum conversions and rejects Monte Carlo XDR
+  checkpoints and XML runs with the migration path instead of converting them.
+  The DMRG and diagonalization tasks keep the generic scheduler.
+
 - Port `loop` to native ALEA and the TOML CLI, retaining continuous-time/SSE,
   annealing, signed/improved/custom estimators, replica exchange and both
   temperature-feedback methods. Checkpoint physical walkers, exchange state,
@@ -245,7 +251,7 @@ Typed params no longer accept legacy text/XML files or old parameter checkpoints
 
 Python archive indexing reads primitive datasets or returns h5py groups; use explicit group/dataset operations rather than assigning nested dictionaries or inferring lists from numbered children. Native object `save`/`load` operations close h5py temporarily, invalidating previously borrowed h5py objects. Deprecated `h5ar`, `iArchive`, `oArchive` and XML-export aliases are removed.
 
-The unreferenced `alps::ngs_parapack` XML frontend is removed: all its references were internal to that frontend, and the project assumes no external consumers. The `alps::parapack` framework is also removed; write simulations against `alps::mc::main` as in the classical examples of `tutorials/00-examples`. Its `pevaluate` and `poutput` commands read released Parapack XDR and HDF5 results: convert results with `alps-hdf5-convert SOURCE DESTINATION --parameters /parameters --alea-results GROUP` and analyze them with pyalps, and finish released mid-run Parapack simulations with ALPS 3.0. Older `alps::Parameters` applications remain; migrating their application orchestration is separate work. The internal typed-to-`Parameters` adapter remains for live model and lattice callers.
+The unreferenced `alps::ngs_parapack` XML frontend is removed: all its references were internal to that frontend, and the project assumes no external consumers. The `alps::parapack` framework is also removed; write simulations against `alps::mc::main` as in the classical examples of `tutorials/00-examples`. Its `pevaluate` and `poutput` commands read released Parapack XDR and HDF5 results: convert results with `alps-hdf5-convert SOURCE DESTINATION --parameters /parameters --alea-results GROUP` and analyze them with pyalps, and finish released mid-run Parapack simulations with ALPS 3.0. The scheduler's Monte Carlo classes `MCRun`, `MCSimulation`, `LatticeMCRun`, `LatticeModelMCRun`, `DummyMCRun` and `SimpleMCFactory` are removed as well; `compactrun` and the Monte Carlo run and simulation conversions of `convert2xml` follow the same migration path. Older `alps::Parameters` applications remain; migrating their application orchestration is separate work. The internal typed-to-`Parameters` adapter remains for live model and lattice callers.
 
 The Python MaxEnt, CT-HYB and CT-INT modules expose `schema()`, `prepare(parameters, input, output, execution)` and `solve(run)`. CT-INT's `schema(parameters={})` expands its per-flavor settings. `solve` takes a run returned by `prepare` or loaded with `pyalps.run_config.load` instead of a combined parameter dictionary, and MaxEnt's `AnalyticContinuation` function is removed. `pyalps.runDMFT` is replaced by `pyalps.run_io.execute(application, runs)`, which validates every TOML run file or job manifest before running any; `write_run_file` and `write_run_files` take an optional schema. DMFT's in-process solvers and scheduler settings `NRUNS`, `CONVERGENCE_CHECK_PERIOD` and `SWEEP_MULTIPLICATOR` are removed.
 

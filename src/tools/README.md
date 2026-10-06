@@ -8,7 +8,7 @@ group; executable names and installation components remain stable.
 | --- | --- | --- |
 | `parameters/` | `parameter2xml`, `parameter2hdf5`, `p2h5` | None |
 | `lattice/` | `lattice2xml`, `printgraph` | `pltgraph.py` and historical local fixtures |
-| `scheduler/` | `convert2xml`, `compactrun`, `snap2vtk` | None |
+| `scheduler/` | `convert2xml`, `snap2vtk` | None |
 | `diagnostics/` | `pconfig` | None |
 | `hdf5/` | `alps-hdf5-convert` (Python, requires h5py and NumPy) | None |
 | `xml/` | `alps-xml` on Unix | `txt2archive.C` and all historical shell wrappers |

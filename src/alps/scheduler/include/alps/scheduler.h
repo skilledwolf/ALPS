@@ -14,7 +14,8 @@
 
 /* $Id$ */
 
-#include <alps/scheduler/montecarlo.h>
+#include <alps/scheduler/scheduler.h>
+#include <alps/scheduler/task.h>
 #include <alps/scheduler/measurement_operators.h>
 
 
