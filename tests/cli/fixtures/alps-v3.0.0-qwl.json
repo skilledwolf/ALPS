@@ -1,7 +1,7 @@
 {
   "release": "ALPS v3.0.0",
   "release_revision": "1950cc6f682d7c4c1deae8b816f283857b1819d1",
-  "producer_revision": "96f7530c7b51f20e96d878fe58c0cdc54a696f9e",
+  "producer_revision": "312b149003fd609452892138167b535c4c5758ab",
   "provenance": "Produced before the QWL native migration by the compiled legacy QWL writer on this branch, not a compiled v3.0.0 build. init_measurements/store_histograms match v3.0.0 ignoring whitespace; canonical leaf datatypes reflect the branch HDF5 migration. Fixture retains parameters and scientific results; machine logs and RNG state are omitted.",
   "sha256": "96995d260f898084f49c152bcc44979af485bacf33bca8634f958abf3bc5f484",
   "sites": 4,
