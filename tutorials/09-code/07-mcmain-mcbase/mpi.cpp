@@ -41,7 +41,7 @@ int main(int argc, char *argv[]) {
             /* do nothing */ ;
         else parameters = load_spin_parameters(options.input_file);
 
-        broadcast(comm, parameters);
+        parameters.broadcast(comm, 0);
 
         alps::mcmpiadapter<ising_sim> sim(parameters, comm, alps::check_schedule(options.tmin, options.tmax));
 

@@ -73,7 +73,7 @@ int main(int argc, char *argv[]) {
             if (comm_local.rank() > 0);
             else parameters = load_spin_parameters(infile);
 
-        broadcast(comm_local, parameters);
+        parameters.broadcast(comm_local, 0);
 
             alps::mcmpiadapter<ising_sim> sim(parameters, comm_local, alps::check_schedule(options.tmin, options.tmax));
 
