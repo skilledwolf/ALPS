@@ -99,6 +99,24 @@ def test_exact_restart_across_refinements_and_partial_bins(executable, tmp_path,
         compare(reference, extended)
 
 
+def test_empty_measurement_interval_cannot_refine(executable, tmp_path):
+    previous_stage,previous_visits=0,0
+    empty_intervals=0
+    for budget in range(1,25):
+        _,state=run(tmp_path,executable,'trace',
+            parameters=dict(CHECK_INTERVAL=1,ENERGY_MEASURE_RANGE=[-5,-5],
+                            VISIT_PENALTY=1.,INITIAL_UPDATE_FACTOR=1.01),
+            execution=dict(max_sweeps=budget))
+        with h5py.File(state) as ar:
+            clone=ar['simulation/realizations/0/clones/0']
+            stage,visits=int(clone['stage'][()]),int(clone['overall'][0])
+        if visits==previous_visits and previous_visits:
+            empty_intervals+=1
+            assert stage==previous_stage
+        previous_stage,previous_visits=stage,visits
+    assert empty_intervals
+
+
 @pytest.mark.parametrize('coupling', [1, -1, 0])
 def test_stitched_windows_and_canonical_physics(executable, tmp_path, coupling):
     energy, mag = spectrum(coupling)

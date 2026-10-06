@@ -123,7 +123,7 @@ class simulation {
             size_t i=e-walk_[0];
             if (overall_[i]) {minimum=std::min(minimum,histogram_[i]);total+=histogram_[i];++count;}
         }
-        if (!count || minimum<p_["FLATNESS_THRESHOLD"].as<double>()*total/count) return;
+        if (!total || minimum<p_["FLATNESS_THRESHOLD"].as<double>()*total/count) return;
         if (log_factor()<=std::log(p_["FINAL_UPDATE_FACTOR"].as<double>())) done_=true;
         else {++stage_;std::fill(histogram_.begin(),histogram_.end(),0);}
     }
