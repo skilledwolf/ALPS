@@ -37,17 +37,33 @@ public:
         for (auto& spin:global_) spin=random()<.5 ? 1 : -1;
         partition(1);
     }
+    void validate_partition(int ranks) const {
+        if (ranks<1) throw std::invalid_argument("Spatial Ising requires a positive rank count");
+        if (ranks>1 && (fallback_ || size_/size_t(ranks)<2))
+            throw std::invalid_argument("Spatial MPI Ising requires a periodic nearest-neighbor ring with at least two sites per rank");
+    }
 #ifdef ALPS_HAVE_MPI
     template<class Graph,class Random>
     spatial_ising_kernel(Graph const& graph,double coupling,Random&& random,boost::mpi::communicator const& comm)
         :spatial_ising_kernel(graph,coupling,std::forward<Random>(random)) {
-        rank_=comm.rank(); communicator_=comm; // Copy the explicit handle; no communicator duplication.
-        if (comm.size()>1) {
-            if (fallback_ || size_/comm.size()<2)
-                throw std::invalid_argument("Spatial MPI Ising requires a periodic nearest-neighbor ring with at least two sites per rank");
+        distribute(comm);
+    }
+    // Repartition the local full state without communication or random draws.
+    // Nested runners can construct and load before binding a worker subgroup.
+    void distribute(boost::mpi::communicator const& comm) {
+        validate_partition(comm.size());
+        if (communicator_) {
+            if (MPI_Comm(*communicator_)!=MPI_Comm(comm))
+                throw std::logic_error("Spatial Ising is already bound to another communicator");
+            return;
+        }
+        if (!fallback_) global_.assign(spins_.begin()+1,spins_.end()-1);
+        rank_=comm.rank(); communicator_=comm; // Share the handle; no communicator duplication.
+        if (!fallback_) {
             partition(comm.size());
             if (rank_!=0) global_=std::vector<int>{};
         }
+        synchronized_=true;
     }
 #endif
     template<class Random> void step(double beta,Random&& random) {
