@@ -11,17 +11,18 @@ namespace alps::mc {
 // Scientific temperature feedback formerly embedded in Parapack's scheduler.
 class temperature_grid {
   std::vector<double> beta_;
-  static void validate(std::vector<double> const& beta,bool ordered=true) {
+  bool allow_zero_;
+  void validate(std::vector<double> const& beta,bool ordered=true) const {
     if (beta.size()<2) throw std::invalid_argument("Replica exchange requires at least two temperatures");
     for (size_t i=0;i<beta.size();++i)
-      if (!std::isfinite(beta[i]) || beta[i]<=0 || (ordered && i && beta[i]<=beta[i-1]))
-        throw std::invalid_argument("Replica inverse temperatures must be positive, finite and distinct");
+      if (!std::isfinite(beta[i]) || beta[i]<0 || (!allow_zero_ && beta[i]==0) || (ordered && i && beta[i]<=beta[i-1]))
+        throw std::invalid_argument("Replica inverse temperatures must be finite, distinct and valid for the model");
   }
 public:
-  explicit temperature_grid(std::vector<double> beta):beta_(std::move(beta)) {
+  explicit temperature_grid(std::vector<double> beta,bool allow_zero=false):beta_(std::move(beta)),allow_zero_(allow_zero) {
     validate(beta_,false); std::sort(beta_.begin(),beta_.end()); validate(beta_);
   }
-  explicit temperature_grid(alps::params const& p) {
+  explicit temperature_grid(alps::params const& p,bool allow_zero=false):allow_zero_(allow_zero) {
     if (p.exists("INVERSE_TEMPERATURE_SET")) beta_=p["INVERSE_TEMPERATURE_SET"].as<std::vector<double>>();
     else if (p.exists("TEMPERATURE_SET")) {
       beta_=p["TEMPERATURE_SET"].as<std::vector<double>>();
@@ -32,10 +33,11 @@ public:
       bool inverse=p.exists("BETA_MIN") && p.exists("BETA_MAX");
       double low=inverse ? p["BETA_MIN"].as<double>() : 1/p["T_MAX"].as<double>();
       double high=inverse ? p["BETA_MAX"].as<double>() : 1/p["T_MIN"].as<double>();
-      if (!std::isfinite(low) || !std::isfinite(high) || low<=0 || high<=low)
+      if (!std::isfinite(low) || !std::isfinite(high) || low<0 || (!allow_zero_ && low==0) || high<=low)
         throw std::invalid_argument("Invalid replica temperature endpoints");
       int distribution=p.value_or<int>("TEMPERATURE_DISTRIBUTION_TYPE",inverse ? 1 : 2);
       if (distribution<1 || distribution>3) throw std::invalid_argument("Unknown temperature distribution");
+      if (distribution==2 && low==0) throw std::invalid_argument("A uniform-temperature grid requires a positive BETA_MIN");
       auto map=[&](double x) { return distribution==2 ? 1/x : distribution==3 ? std::sqrt(x) : x; };
       low=map(low); high=map(high);
       beta_.resize(n);
@@ -73,7 +75,10 @@ public:
       Weight left=interpolate(beta_[i-1]),right=interpolate(beta_[i+1]);
       double low=beta_[i-1],middle=beta_[i],high=beta_[i+1],tolerance=.01*(high-low);
       Weight center=interpolate(middle);
-      if (log_weight(left,beta_[i-1])>=log_weight(center,beta_[i-1]) ||
+      // At classical beta zero all weights are equal. Test the energy ordering
+      // at the interior point rather than suppressing every feedback update.
+      double comparison_beta=beta_[i-1]==0 ? beta_[i] : beta_[i-1];
+      if (log_weight(left,comparison_beta)>=log_weight(center,comparison_beta) ||
           log_weight(center,beta_[i+1])>=log_weight(right,beta_[i+1])) continue;
       for (int iteration=0;iteration<64;++iteration) {
         double a=log_weight(left,beta_[i-1])+log_weight(center,middle)-log_weight(left,middle)-log_weight(center,beta_[i-1]);

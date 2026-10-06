@@ -15,7 +15,7 @@
 #include "schema.hpp"
 
 int main(int argc,char** argv) {
-  auto schema=native_qmc::schema("loop",qmc_common_schema,qmc_application_schema);
+  auto schema=native_qmc::schema("loop",qmc_common_schema,qmc_application_schema)+alps::mc::replica_exchange_schema;
   return alps::mc::main<looper::application>(argc,argv,"loop",schema.c_str(),
     [](std::string const&)->char const*{return nullptr;},
     [](alps::params& p,alps::run_configuration const& run) {

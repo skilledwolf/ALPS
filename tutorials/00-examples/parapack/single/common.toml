@@ -1,0 +1,63 @@
+[parameters.L]
+type = "int64"
+default = 16
+min = 1
+max = 2147483645
+[parameters.T]
+type = "float64"
+min = 0.0
+[parameters.SWEEPS]
+type = "int64"
+default = 10000
+min = 2
+[parameters.THERMALIZATION]
+type = "int64"
+min = 0
+[execution.seed]
+type = "int64"
+default = 93812
+min = 0
+max = 2147483647
+[execution.bins]
+type = "int64"
+default = 64
+min = 2
+[output.results]
+type = "path"
+required = true
+[input]
+
+[input.checkpoint]
+type = "path"
+[output.checkpoint]
+type = "path"
+[execution.rng]
+type = "string"
+default = "mt19937"
+choices = ["mt19937", "lagged_fibonacci607"]
+[execution.chains]
+type = "int64"
+default = 1
+min = 1
+max = 2147483647
+[execution.time_limit]
+type = "float64"
+default = 0.0
+min = 0.0
+[execution.checkpoint_interval]
+type = "float64"
+default = 3600.0
+min = 0.0
+[execution.max_sweeps]
+type = "int64"
+default = 0
+min = 0
+[parameters.LATTICE]
+type = "string"
+[parameters.GRAPH]
+type = "string"
+[input.lattice_library]
+type = "path"
+[parameters.J]
+type = "float64"
+default = 1.0

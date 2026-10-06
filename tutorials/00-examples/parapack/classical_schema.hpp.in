@@ -1,0 +1,3 @@
+// SPDX-License-Identifier: MIT
+#pragma once
+inline constexpr char classical_schema[]=R"toml(@CLASSICAL_SCHEMA@)toml";

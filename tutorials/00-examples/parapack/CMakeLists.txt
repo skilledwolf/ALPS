@@ -17,6 +17,10 @@
 #   FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 #   DEALINGS IN THE SOFTWARE.
 
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/classical_schema.toml" CLASSICAL_SCHEMA)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/classical_schema.toml")
+configure_file(classical_schema.hpp.in classical_schema.hpp @ONLY)
+
 add_subdirectory(single)
 add_subdirectory(ising)
 add_subdirectory(heisenberg)

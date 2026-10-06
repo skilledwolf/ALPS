@@ -18,8 +18,8 @@
 #   DEALINGS IN THE SOFTWARE.
 
 add_executable(ising ising.C)
+target_include_directories(ising PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/.." "${CMAKE_CURRENT_BINARY_DIR}/../single")
 target_link_libraries(ising PRIVATE ALPS::alps)
-alps_add_test(
-  ising
-  INPUT ising
-  OUTPUT ising)
+if(ALPS_BUILD_TESTING)
+  add_test(NAME ising_validate COMMAND ising --validate "${CMAKE_CURRENT_SOURCE_DIR}/run.toml")
+endif()

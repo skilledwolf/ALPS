@@ -18,7 +18,8 @@
 #   DEALINGS IN THE SOFTWARE.
 
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/schema.toml" ISING_SCHEMA)
-set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/schema.toml")
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/common.toml" SPIN_COMMON_SCHEMA)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/schema.toml" "${CMAKE_CURRENT_SOURCE_DIR}/common.toml")
 configure_file(ising_schema.hpp.in ising_schema.hpp @ONLY)
 add_executable(ising_single main.C)
 target_include_directories(ising_single PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")

@@ -31,9 +31,10 @@ std::vector<event> scripted_step(exchange& state) {
 // Two-state physical walkers with E=+-2 have exactly known Gibbs moments.
 // Their state persists through both local updates and temperature exchanges;
 // an incorrect exchange sign consequently changes the measured distribution.
-void thermodynamics(bool randomized,bool disabled) {
+void thermodynamics(bool randomized,bool disabled,bool zero_beta=false) {
     auto p=parameters(); p["RANDOM_EXCHANGE"]=randomized; p["NO_EXCHANGE"]=disabled;
-    exchange state(p,0,0.);
+    if (zero_beta) p["INVERSE_TEMPERATURE_SET"]=std::vector<double>{0.,.7,1.3};
+    exchange state(p,0,0.,zero_beta);
     alps::random01 random(773);
     std::vector<double> energies{-2.,2.,-2.},sum(3),square(3);
     std::vector<uint64_t> counts(3);
@@ -73,6 +74,21 @@ void identity_diagnostics() {
         });
         require(returns==size_t(step==6 || step==8),"Round-trip completion was lost or duplicated");
     }
+}
+
+void classical_zero_endpoint() {
+    auto p=parameters();p["INVERSE_TEMPERATURE_SET"]=std::vector<double>{0.,.4,1.3};
+    bool rejected=false;
+    try {exchange quantum(p,0,0.);} catch (std::invalid_argument const&) {rejected=true;}
+    require(rejected,"Quantum grids accepted a zero inverse temperature");
+    alps::mc::temperature_grid grid(p,true);
+    grid.optimize_rate(std::vector<double>{0.,-2.,-3.},log_weight);
+    require(grid[0]==0 && grid[2]==1.3 && grid[1]>0 && grid[1]<1.3 && std::abs(grid[1]-.4)>.001,
+            "Classical zero endpoint disabled rate feedback");
+    p["OPTIMIZE_TEMPERATURE"]=true;p["OPTIMIZATION_TYPE"]="population";
+    rejected=false;
+    try {exchange population(p,0,0.,true);} catch (std::invalid_argument const&) {rejected=true;}
+    require(rejected,"Population feedback accepted an infinite temperature endpoint");
 }
 
 void checkpoints(boost::filesystem::path const& path,std::string const& method,std::string const& rng) {
@@ -120,7 +136,9 @@ int main() {
     const auto path=boost::filesystem::temp_directory_path()/boost::filesystem::unique_path("alps-exchange-%%%%-%%%%.h5");
     try {
         thermodynamics(false,false);thermodynamics(true,false);thermodynamics(false,true);
+        thermodynamics(true,false,true);
         identity_diagnostics();
+        classical_zero_endpoint();
         for (auto method:{"rate","population"}) for (auto rng:{"mt19937","lagged_fibonacci607"}) checkpoints(path,method,rng);
         rewind_feedback(path);
         boost::filesystem::remove(path);

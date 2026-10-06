@@ -1,2 +1,4 @@
 #pragma once
 inline constexpr char ising_schema[] = R"toml(@ISING_SCHEMA@)toml";
+
+inline constexpr char spin_common_schema[]=R"ALPS_SCHEMA(@SPIN_COMMON_SCHEMA@)ALPS_SCHEMA";

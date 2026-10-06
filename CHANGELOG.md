@@ -6,6 +6,15 @@ User-facing changes and migration notes are recorded here, starting with the bui
 
 ### Changed
 
+- Port the `ising` and `heisenberg` library examples to TOML and native ALEA,
+  preserving bond-type couplings, normalized magnetization moments, both
+  Heisenberg Binder ratios and replica exchange. Share ladder schemas and
+  feedback with `loop`; retain the classical infinite-temperature endpoint.
+  Correct self-bond update weights: those bonds contribute constant energy.
+  Native checkpoints support partial-run continuation, production extension
+  and MPI redistribution of independent ladders. Remove the replaced workers
+  and their obsolete scheduler output fixtures.
+
 - Port `loop` to native ALEA and the TOML CLI, retaining continuous-time/SSE,
   annealing, signed/improved/custom estimators, replica exchange and both
   temperature-feedback methods. Checkpoint physical walkers, exchange state,

@@ -11,13 +11,6 @@
 *
 *****************************************************************************/
 
-#include "ising.h"
-#include <alps/parapack/parapack.h>
-#include <alps/parapack/exchange.h>
+#include "../classical.hpp"
 
-int main(int argc, char** argv) { return alps::parapack::start(argc, argv); }
-
-PARAPACK_SET_VERSION("ALPS/parapack example program: Classical Ising Model");
-PARAPACK_REGISTER_ALGORITHM(ising_worker, "ising");
-PARAPACK_REGISTER_ALGORITHM(alps::parapack::single_exchange_worker<ising_worker>, "ising; exchange");
-PARAPACK_REGISTER_EVALUATOR(ising_evaluator, "ising");
+int main(int argc,char** argv) {return classical_main<1>(argc,argv,"ising");}

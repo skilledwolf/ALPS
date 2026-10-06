@@ -1,0 +1,14 @@
+[parameters]
+ALGORITHM = "heisenberg; exchange"
+LATTICE = "square lattice"
+L = 8
+J = 1.0
+TEMPERATURE_SET = [1.0, 1.5, 2.0, 3.0]
+SWEEPS = 10000
+THERMALIZATION = 1000
+[execution]
+seed = 7123
+bins = 64
+[output]
+results = "heisenberg.h5"
+checkpoint = "heisenberg.checkpoint.h5"

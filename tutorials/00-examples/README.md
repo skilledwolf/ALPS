@@ -36,3 +36,37 @@ ctest --test-dir build-fortran --output-on-failure
 Both projects register tests by default; pass `-DALPS_BUILD_TESTING=OFF` to build without registering tests. These standalone builds replace the root `ALPS_BUILD_EXAMPLES` option. To use a local ALPS checkout, build and install its SDK first, then pass that installation prefix in the commands above.
 
 CTest locates the SDK's XML resources. When running an executable directly, use the input files in its example directory; set `ALPS_ROOT` to the SDK prefix if the SDK has been relocated.
+
+## Native classical examples
+
+`parapack/ising/ising` and `parapack/heisenberg/heisenberg` keep their command
+names and use the shared TOML CLI: `program --schema`, `program --validate
+run.toml`, or `program run.toml`. Each directory contains a runnable replica
+exchange example. Both now use native ALEA and the shared replica-exchange
+controller; their old Parapack worker/evaluator classes are removed.
+
+Choose a lattice or graph, a default bond coupling `J`, and optional bond-type
+couplings `J0`, `J1`, etc. The energy is `-sum_b J_b s_i*s_j` (the dot product
+for Heisenberg unit vectors). Ising uses heat-bath updates and Heisenberg uses
+isotropic Metropolis proposals. Self-bonds contribute constant energy. Energy
+is extensive; magnetization moments are per site. Heisenberg retains both the
+vector-magnitude and z-component second/fourth moments and Binder ratios.
+Centered energy moments supply heat capacity and all nonlinear estimates use
+joint batches.
+
+For fixed temperature set `T` or `BETA`. Omitting both selects the classical
+infinite-temperature limit, `BETA = 0`. For exchange set `ALGORITHM` to
+`"ising; exchange"` or `"heisenberg; exchange"`, then supply explicit
+`TEMPERATURE_SET`/`INVERSE_TEMPERATURE_SET` arrays or `NUM_REPLICAS` and
+`T_MIN`/`T_MAX` or `BETA_MIN`/`BETA_MAX`. The shared schema lists exchange
+intervals, randomized ordering, disabled exchange, and rate/population feedback.
+Adaptive ladders require `execution.chains = 1`. Uniform-temperature grids and
+population feedback require positive inverse temperatures; explicit and
+inverse-temperature grids also allow the classical zero endpoint. At zero beta,
+results report `BETA = 0` and omit infinite-valued temperature diagnostics.
+
+Native checkpoints retain all physical walkers, RNG streams, partial batches
+and feedback history. Production can be extended with a larger `SWEEPS`.
+MPI distributes independent chains/ladders and permits changing process count
+on restart. The separate legacy `exchange` example still supplies distributed
+replicas and nested replica/spatial execution until those ports are complete.

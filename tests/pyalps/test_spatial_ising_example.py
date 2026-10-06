@@ -133,6 +133,7 @@ def test_mpi_exact_ring_thermodynamics(mpi_executable, launcher, tmp_path, proce
     expected = dict(zip(('Number of Sites', 'Energy', 'Energy^2', 'Magnetization',
                          'Magnetization^2', 'Magnetization^4'), means))
     expected['Specific Heat'] = (means[2]-means[1]**2)/(4.*7)
+    expected['Energy Density'] = means[1]/7
     expected['Binder Ratio of Magnetization'] = means[4]**2/means[5]
     values = {d.props['observable']: d.native_result for d in pyalps.loadMeasurements([str(filename)])[0]}
     assert values.keys() == expected.keys()

@@ -18,5 +18,8 @@
 #   DEALINGS IN THE SOFTWARE.
 
 add_executable(heisenberg heisenberg.C)
+target_include_directories(heisenberg PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/.." "${CMAKE_CURRENT_BINARY_DIR}/../single")
 target_link_libraries(heisenberg PRIVATE ALPS::alps)
-alps_add_test(heisenberg)
+if(ALPS_BUILD_TESTING)
+  add_test(NAME heisenberg_validate COMMAND heisenberg --validate "${CMAKE_CURRENT_SOURCE_DIR}/run.toml")
+endif()

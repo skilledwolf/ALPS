@@ -11,13 +11,6 @@
 *
 *****************************************************************************/
 
-#include "heisenberg.h"
-#include <alps/parapack/parapack.h>
-#include <alps/parapack/exchange.h>
+#include "../classical.hpp"
 
-int main(int argc, char** argv) { return alps::parapack::start(argc, argv); }
-
-PARAPACK_SET_VERSION("ALPS/parapack example program: Classical Heisenberg Model");
-PARAPACK_REGISTER_ALGORITHM(heisenberg_worker, "heisenberg");
-PARAPACK_REGISTER_ALGORITHM(alps::parapack::single_exchange_worker<heisenberg_worker>, "heisenberg; exchange");
-PARAPACK_REGISTER_EVALUATOR(heisenberg_evaluator, "heisenberg");
+int main(int argc,char** argv) {return classical_main<3>(argc,argv,"heisenberg");}

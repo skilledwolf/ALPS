@@ -10,6 +10,62 @@
 #include <utility>
 
 namespace alps::mc {
+// Shared TOML rules for classical and quantum replica ladders.
+inline constexpr char replica_exchange_schema[]=R"toml(
+[parameters.NUM_REPLICAS]
+type = "int64"
+min = 2
+[parameters.TEMPERATURE_SET]
+type = "float64[]"
+[parameters.INVERSE_TEMPERATURE_SET]
+type = "float64[]"
+[parameters.T_MIN]
+type = "float64"
+min = 0.0
+[parameters.T_MAX]
+type = "float64"
+min = 0.0
+[parameters.BETA_MIN]
+type = "float64"
+min = 0.0
+[parameters.BETA_MAX]
+type = "float64"
+min = 0.0
+[parameters.TEMPERATURE_DISTRIBUTION_TYPE]
+type = "int64"
+min = 0
+max = 3
+[parameters.NO_EXCHANGE]
+type = "bool"
+default = false
+[parameters.RANDOM_EXCHANGE]
+type = "bool"
+default = false
+[parameters.EXCHANGE_INTERVAL]
+type = "int64"
+default = 1
+min = 1
+[parameters.OPTIMIZE_TEMPERATURE]
+type = "bool"
+default = false
+[parameters.TEMPERATURE_OPTIMIZATION]
+type = "bool"
+default = false
+[parameters.OPTIMIZATION_TYPE]
+type = "string"
+default = "rate"
+choices = ["rate", "population"]
+[parameters.INITIAL_BLOCK_SWEEPS]
+type = "int64"
+min = 1
+[parameters.OPTIMIZATION_ITERATIONS]
+type = "int64"
+min = 0
+[parameters.BLOCK_SWEEP_FACTOR]
+type = "float64"
+min = 1.0
+)toml";
+
 // Exchange owns the temperature assignment and feedback, while applications
 // own physical walkers and temperature-slot statistics. Weight is either a
 // floating-point scalar energy or a fixed Eigen vector of floating-point
@@ -99,7 +155,7 @@ template<class Weight> class replica_exchange {
     else return zero_.size();
   }
 public:
-  replica_exchange(alps::params const& p,size_t chain,Weight zero):grid_(p),
+  replica_exchange(alps::params const& p,size_t chain,Weight zero,bool allow_zero_beta=false):grid_(p,allow_zero_beta),
       random_(0,p.value_or<std::string>("RNG","mt19937")),zero_(std::move(zero)),
       enabled_(!p.value_or("NO_EXCHANGE",false)),random_exchange_(p.value_or("RANDOM_EXCHANGE",false)),
       target_(p["SWEEPS"].as<uint64_t>()),thermalization_(p["THERMALIZATION"].as<uint64_t>()),
@@ -117,6 +173,7 @@ public:
       population_=type=="population";
       if (type!="rate" && !population_) throw std::invalid_argument("Unknown temperature optimization type");
       if (population_ && n<3) throw std::invalid_argument("Population optimization requires at least three replicas");
+      if (population_ && grid_[0]==0) throw std::invalid_argument("Population optimization in temperature coordinates requires positive inverse temperatures");
       factor_=p.value_or<double>("BLOCK_SWEEP_FACTOR",population_ ? 2. : 1.);
       if (!std::isfinite(factor_) || factor_<1) throw std::invalid_argument("BLOCK_SWEEP_FACTOR must be finite and at least one");
       auto iterations=p.value_or<size_t>("OPTIMIZATION_ITERATIONS",population_ ? 7 : 1);
@@ -143,7 +200,8 @@ public:
   auto const& weight_sums() const {return weight_sum_;}
   template<class Add> void init_diagnostics(Add const& add) const {
     for (size_t i=0;i<size();++i) {
-      for (auto name:{"EXMC: Temperature","EXMC: Inverse Temperature"}) add(i,name);
+      if (grid_[i]>0) add(i,"EXMC: Temperature");
+      add(i,"EXMC: Inverse Temperature");
       if (enabled_) {
         for (auto name:{"EXMC: Ratio of Upward-Moving Walker","EXMC: Ratio of Downward-Moving Walker","EXMC: Inverse Round-Trip Time"}) add(i,name);
         if (i+1<size()) add(i,"EXMC: Acceptance Rate");
@@ -160,7 +218,8 @@ public:
     ++steps_;if (was_optimizing) ++stage_count_;
     for (size_t i=0;i<size();++i) {
       update(walker_at_[i],i,grid_[i],sampling);
-      record(i,"EXMC: Temperature",1/grid_[i]);record(i,"EXMC: Inverse Temperature",grid_[i]);
+      if (grid_[i]>0) record(i,"EXMC: Temperature",1/grid_[i]);
+      record(i,"EXMC: Inverse Temperature",grid_[i]);
     }
     if (enabled_ && steps_%interval_==0) exchange(weights(),log_weight,record);
     if (sampling) ++production_;

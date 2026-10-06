@@ -337,16 +337,16 @@ or unused includes does not establish completion of those migrations.
 
 The `tutorials/00-examples/parapack` targets are not all redundant copies of
 the native solvers. Inspection of their workers and adapters establishes the
-following requirements. Except for the completed `ising_single` and
-`ising_multiple` ports described below, these remain outstanding work; old
+following requirements. The `ising_single`, `ising_multiple`, `ising` and `heisenberg` ports below are
+complete; the other rows remain outstanding work. Old
 implementations are not correctness oracles.
 
 | Command | Functionality to preserve or establish an equivalent for |
 | --- | --- |
 | `ising_single` | Native port completed: graph-colored heat-bath updates, deterministic OpenMP within a lattice, extensive moments and centered heat capacity, and resumable warm-start temperature scans. Its shared kernel still supplies the temporary legacy exchange adapter. |
 | `ising_multiple` | Native port completed: MPI spatial decomposition of **one** chain, ghost spins and global moments, sharing the serial model's statistics and scans. Odd/uneven ring partitions and exact restart with different rank counts are supported; arbitrary graphs retain a serial fallback. Spatial ranks do not multiply samples. |
-| `ising` | Lattice-library heat-bath simulation with bond-type `J`, `J0`, … couplings, normalized magnetization, extensive energy, Binder/heat-capacity analysis, and replica exchange. |
-| `heisenberg` | Unit-vector Metropolis updates with bond-type couplings; both vector-magnitude and z-component second/fourth moments and Binder ratios; replica exchange. |
+| `ising` | Native port completed: lattice-library heat-bath simulation with bond-type `J`, `J0`, … couplings, normalized magnetization, extensive energy, Binder/heat-capacity analysis, and replica exchange. |
+| `heisenberg` | Native port completed: unit-vector Metropolis updates with bond-type couplings; both vector-magnitude and z-component second/fourth moments and Binder ratios; replica exchange. |
 | `loop_single` | Continuous-time quantum loop example with energy, staggered magnetization and uniform/staggered susceptibility estimators. Compare its model, normalization and disorder inputs against native `loop` before consolidating. |
 | `exchange` | Classical and quantum workers; serial replica ladders, MPI-distributed replicas, and nested MPI replica/spatial decomposition. Temperature-ladder optimization and exchange diagnostics also belong to this interface. |
 | `wanglandau` | Classical Ising **energy** density-of-states learning, fixed-weight microcanonical measurements, and reweighting over temperature, including entropy/reference normalization. The native quantum QWL expansion-order workflow is not an equivalent implementation. |
@@ -388,9 +388,9 @@ statistical recording; signed classical energies are supported without imposing
 quantum expansion-order constraints. Acceptance/population diagnostics refer to
 temperature slots, while round-trip diagnostics retain physical walker identity.
 Do not introduce another exchange engine or restore the legacy observable
-framework to reuse the old adapters. The existing native grid requires positive
-finite inverse temperatures; the classical beta-zero endpoint needs explicit
-assessment during its port, especially for temperature-coordinate feedback.
+framework to reuse the old adapters. The native grid defaults to positive finite inverse temperatures for quantum
+models. Classical models explicitly allow beta zero; temperature-coordinate
+grids and population feedback still require positive beta.
 The generic `alps::mc` runner supplies execution and transport; an application
 still has to implement its ensemble's physical state and measurements.
 
