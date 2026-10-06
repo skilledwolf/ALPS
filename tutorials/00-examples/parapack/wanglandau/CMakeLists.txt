@@ -17,7 +17,13 @@
 #   FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 #   DEALINGS IN THE SOFTWARE.
 
-add_executable(wanglandau main.C wanglandau.C)
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/schema.toml" WL_SCHEMA)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/schema.toml")
+configure_file(schema.hpp.in schema.hpp @ONLY)
+add_executable(wanglandau main.C)
+target_include_directories(wanglandau PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
 target_link_libraries(wanglandau PRIVATE ALPS::alps)
 
-alps_add_test(wanglandau)
+if(ALPS_BUILD_TESTING)
+  add_test(NAME wanglandau_validate COMMAND wanglandau --validate "${CMAKE_CURRENT_SOURCE_DIR}/learn.toml")
+endif()

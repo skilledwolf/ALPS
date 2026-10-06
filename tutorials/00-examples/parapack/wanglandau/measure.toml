@@ -1,0 +1,15 @@
+[parameters]
+MODE = "measure"
+LATTICE = "square lattice"
+L = 8
+COUPLING = 1
+ENERGY_RANGE = [-128, 0]
+SWEEPS = 100000
+[input]
+weights = ["weights.h5"]
+[output]
+results = "microcanonical.h5"
+checkpoint = "measure.checkpoint.h5"
+[execution]
+seed = 731
+chains = 16

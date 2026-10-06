@@ -70,3 +70,8 @@ and feedback history. Production can be extended with a larger `SWEEPS`.
 MPI distributes independent chains/ladders and permits changing process count
 on restart. The separate legacy `exchange` example still supplies distributed
 replicas and nested replica/spatial execution until those ports are complete.
+
+The [classical energy Wang–Landau example](parapack/wanglandau/README.md) also
+uses native TOML runs and ALEA. It retains density-of-states learning, overlapping
+window stitching, fixed-weight microcanonical sampling, temperature reweighting,
+reference-normalized entropy/free energy, histograms and exact continuation.

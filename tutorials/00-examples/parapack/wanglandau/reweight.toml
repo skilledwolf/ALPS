@@ -1,0 +1,13 @@
+[parameters]
+MODE = "reweight"
+LATTICE = "square lattice"
+L = 8
+COUPLING = 1
+ENERGY_RANGE = [-128, 0]
+TEMPERATURE_SET = [0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0]
+REFERENCE_BIN = -128
+REFERENCE_LOGG = 0.6931471805599453
+[input]
+measurements = ["microcanonical.h5"]
+[output]
+results = "thermodynamics.h5"

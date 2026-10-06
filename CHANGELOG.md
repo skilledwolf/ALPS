@@ -6,6 +6,14 @@ User-facing changes and migration notes are recorded here, starting with the bui
 
 ### Changed
 
+- Port classical energy `wanglandau` learning, overlapping-window weights,
+  microcanonical sampling and temperature reweighting to TOML and native ALEA.
+  Preserve histogram/round-trip diagnostics, native continuation and MPI chains;
+  use joint batches for correlated thermodynamic errors. Include both energy
+  endpoints in flatness checks, distinguish inaccessible bins from zero log
+  weights, and require reference normalization for absolute free energy/entropy.
+  Remove the replaced Parapack Wang–Landau/XDR implementation and fixtures.
+
 - Port the `ising` and `heisenberg` library examples to TOML and native ALEA,
   preserving bond-type couplings, normalized magnetization moments, both
   Heisenberg Binder ratios and replica exchange. Share ladder schemas and

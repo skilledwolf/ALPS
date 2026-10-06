@@ -51,7 +51,6 @@ target_sources(alps_headers INTERFACE
     include/alps/parapack/types.h
     include/alps/parapack/util.h
     include/alps/parapack/version.h
-    include/alps/parapack/wanglandau.h
     include/alps/parapack/worker.h
     include/alps/parapack/worker_factory.h)
 

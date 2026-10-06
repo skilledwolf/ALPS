@@ -337,7 +337,7 @@ or unused includes does not establish completion of those migrations.
 
 The `tutorials/00-examples/parapack` targets are not all redundant copies of
 the native solvers. Inspection of their workers and adapters establishes the
-following requirements. The `ising_single`, `ising_multiple`, `ising` and `heisenberg` ports below are
+following requirements. The `ising_single`, `ising_multiple`, `ising`, `heisenberg` and `wanglandau` ports below are
 complete; the other rows remain outstanding work. Old
 implementations are not correctness oracles.
 
@@ -349,7 +349,7 @@ implementations are not correctness oracles.
 | `heisenberg` | Native port completed: unit-vector Metropolis updates with bond-type couplings; both vector-magnitude and z-component second/fourth moments and Binder ratios; replica exchange. |
 | `loop_single` | Continuous-time quantum loop example with energy, staggered magnetization and uniform/staggered susceptibility estimators. Compare its model, normalization and disorder inputs against native `loop` before consolidating. |
 | `exchange` | Classical and quantum workers; serial replica ladders, MPI-distributed replicas, and nested MPI replica/spatial decomposition. Temperature-ladder optimization and exchange diagnostics also belong to this interface. |
-| `wanglandau` | Classical Ising **energy** density-of-states learning, fixed-weight microcanonical measurements, and reweighting over temperature, including entropy/reference normalization. The native quantum QWL expansion-order workflow is not an equivalent implementation. |
+| `wanglandau` | Native port completed: classical Ising **energy** DOS learning, inclusive walk/measurement windows, penalties and histogram refinement, overlapping-window stitching, fixed-weight microcanonical moments, temperature reweighting and reference-normalized entropy/free energy. Joint ALEA batches retain cross-bin covariance; both RNGs, independent-chain MPI and exact continuation are covered. The distinct quantum QWL expansion-order algorithm remains separate. |
 
 The spatial Ising worker's acceptance weight and energy sign have been corrected
 against the ring Hamiltonian, and its halo transfers use `sendrecv`. It rejects
@@ -367,7 +367,7 @@ MPI scheduler remains a separate validation task; its
 historical golden files were not scientific references and have been removed.
 
 The authoritative registrations are each directory's `.C` files; the behavior
-is in the worker headers and `alps/parapack/{temperature_scan,exchange,exchange_multi,wanglandau}.h`.
+is in the worker headers and `alps/parapack/{temperature_scan,exchange,exchange_multi}.h`.
 The former `temperature_scan_adaptor` retains the worker's physical state
 between temperatures, resets measurements after thermalization, and checkpoints
 the stage and counters. Independent TOML jobs alone do not preserve this

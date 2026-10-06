@@ -1,0 +1,103 @@
+application = "wanglandau"
+schema_version = 1
+[parameters.MODE]
+type = "string"
+default = "learn"
+choices = ["learn", "measure", "reweight"]
+[parameters.LATTICE]
+type = "string"
+[parameters.GRAPH]
+type = "string"
+[parameters.L]
+type = "int64"
+default = 8
+min = 1
+[parameters.COUPLING]
+type = "int64"
+default = 1
+min = -2147483647
+max = 2147483647
+[parameters.ENERGY_RANGE]
+type = "int64[]"
+[parameters.ENERGY_WALK_RANGE]
+type = "int64[]"
+[parameters.ENERGY_MEASURE_RANGE]
+type = "int64[]"
+[parameters.CHECK_INTERVAL]
+type = "int64"
+default = 16384
+min = 1
+[parameters.INITIAL_UPDATE_FACTOR]
+type = "float64"
+default = 2.718281828459045
+min = 1.0
+[parameters.FINAL_UPDATE_FACTOR]
+type = "float64"
+default = 1.00000001
+min = 1.0
+[parameters.FLATNESS_THRESHOLD]
+type = "float64"
+default = 0.95
+min = 0.0
+max = 1.0
+[parameters.VISIT_PENALTY]
+type = "float64"
+default = 8.0
+min = 1.0
+[parameters.SWEEPS]
+type = "int64"
+default = 10000
+min = 1
+[parameters.THERMALIZATION]
+type = "int64"
+default = 1000
+min = 0
+[parameters.TEMPERATURE_SET]
+type = "float64[]"
+[parameters.REFERENCE_BIN]
+type = "int64"
+[parameters.REFERENCE_LOGG]
+type = "float64"
+[input.lattice_library]
+type = "path"
+[input.weights]
+type = "path[]"
+[input.measurements]
+type = "path[]"
+[input.checkpoint]
+type = "path"
+[output.results]
+type = "path"
+required = true
+[output.checkpoint]
+type = "path"
+[execution.seed]
+type = "int64"
+default = 93812
+min = 0
+max = 2147483647
+[execution.rng]
+type = "string"
+default = "mt19937"
+choices = ["mt19937", "lagged_fibonacci607"]
+[execution.bins]
+type = "int64"
+default = 64
+min = 2
+[execution.chains]
+type = "int64"
+default = 1
+min = 1
+max = 2147483647
+[execution.time_limit]
+type = "float64"
+default = 0.0
+min = 0.0
+[execution.checkpoint_interval]
+type = "float64"
+default = 3600.0
+min = 0.0
+[execution.max_sweeps]
+type = "int64"
+default = 0
+min = 0

@@ -1,0 +1,11 @@
+[parameters]
+MODE = "learn"
+LATTICE = "square lattice"
+L = 8
+COUPLING = 1
+ENERGY_RANGE = [-128, 0]
+[output]
+results = "weights.h5"
+checkpoint = "learn.checkpoint.h5"
+[execution]
+seed = 137
