@@ -29,10 +29,10 @@ namespace alps {
             else ar.delete_data(key);
         }
         alea::hdf5_serializer codec(ar,target);
-        for (auto const& [name,value]:results) {
-            auto save=[&](auto const& result) { alea::serialize(codec,ar.encode_segment(name),result); };
-            if constexpr (alea::is_alea_result<R>::value) save(value);
-            else std::visit(save,value);
+        for (auto const& entry:results) {
+            auto save=[&](auto const& result) { alea::serialize(codec,ar.encode_segment(entry.first),result); };
+            if constexpr (alea::is_alea_result<R>::value) save(entry.second);
+            else std::visit(save,entry.second);
         }
     }
     void save_results(std::map<std::string,alea::batch_result<double>> const& results, params const& parameters,

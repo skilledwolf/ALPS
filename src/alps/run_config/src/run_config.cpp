@@ -37,14 +37,16 @@ template <class T> auto toml_value(const T &x, const std::string &key) {
 }
 toml::table format_section(const params &values, const std::string &section) {
     toml::table out;
-    for (const auto &[key, item] : values)
-        item.apply_visitor([&](const auto &x) {
+    for (const auto &entry : values) {
+        const std::string &key = entry.first;
+        entry.second.apply_visitor([&](const auto &x) {
             using T = std::decay_t<decltype(x)>;
             if constexpr (std::is_same_v<T, params_ns::detail::None>)
                 fail(section + "." + key, "cannot serialize an unset value");
             else
                 out.insert(key, toml_value(x, section + "." + key));
         });
+    }
     return out;
 }
 std::string text(const toml::node_view<const toml::node> &node, const std::string &key) {
