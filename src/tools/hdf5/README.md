@@ -160,10 +160,39 @@ Summary-only results, missing or inconsistent histories, and aliases to moved
 statistical fields are rejected. Unrelated metadata remains intact. Separate
 scalar summaries cannot supply missing joint covariance.
 
+For raw `DetailedBinning` histories, the bins and partial bin must reproduce the
+recorded total `sum`. The writer added each sample to both, so recursive
+summation bounds their difference by `(count + batches) * eps * sum|x|`. The
+recorded `sum2` bounds `sum|x|` by `sqrt(count * sum2)`, which also holds when
+samples cancel. Without `sum2`, the bin magnitudes are used. A larger
+difference means that bins are missing, and the conversion fails.
+
 The output is an analysis result. It cannot supply the merge cursor, RNG or
 simulation configuration needed to resume an old NGS checkpoint. New NGS
 simulations use native kind-6 batch checkpoints directly and never infer restart
 state from legacy results.
+
+## Whole result groups
+
+Released task files store one group per observable under `/simulation/results`.
+To convert every observable from the best available evidence, select the
+containing group:
+
+```sh
+alps-hdf5-convert task.out.h5 native.h5 \
+  --parameters /parameters --alea-results /simulation/results
+```
+
+Observables with a linear bin history are converted as with `--alea-batches`.
+Observables without bins, such as constants that Parapack records without
+binning, keep their reported statistics as with `--alea-summary`. The command
+prints the choice for each observable. A history that exists but is
+inconsistent fails the conversion and never falls back to its summary. Every
+child of the selected group must be an observable group.
+
+Task files written by compiled spinmc and loop programs from the 3.0 line test
+this path: `tests/cli/fixtures/alps-master-639458499-{spinmc,loop}.h5`. Their
+JSON files record the producing revision, parameters and commands.
 
 ## Binning diagnostics
 

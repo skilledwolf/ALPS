@@ -1,0 +1,16 @@
+{
+  "fixture": "alps-master-639458499-loop.h5",
+  "sha256": "d5c90cd27ddc6446f7b2d5970ff78fcdf3f231a616d6ce33c4584d734f8003ab",
+  "producer": "ALPSim/ALPS master mirror 63945849977557e56313d4b6a5c2bf0c2f8e7224 (v3.0.0 plus 154 commits), built with CMake 3.27 on darwin-arm64",
+  "provenance": "Unmodified final task archive written by the compiled program. It is not a build of the v3.0.0 tag (1950cc6f682d7c4c1deae8b816f283857b1819d1); between the tag and this revision, src/alps/alea changes no HDF5 save statements.",
+  "parameters": "LATTICE=\"chain lattice\"\nMODEL=\"spin\"\nlocal_S=1/2\nL=8\nJ=1\nTHERMALIZATION=2000\nSWEEPS=20000\nALGORITHM=\"loop\"\n{ T=0.5 }\n",
+  "commands": [
+    "parameter2xml parm",
+    "loop parm.in.xml"
+  ],
+  "expect": {
+    "batches": 37,
+    "reported": 5
+  },
+  "notes": "Parapack layout. Five constant observables have no bin history; the Binder ratios and specific heat are evaluator jackknife results."
+}

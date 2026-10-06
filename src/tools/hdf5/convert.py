@@ -245,11 +245,13 @@ def _address(obj):
     return h5py.h5o.get_info(obj.id).addr
 
 
-def _schema_groups(source, pairs, matrices, parameters, alea, core_alea, alea_batches, alea_summaries, alea_autocorr):
+def _schema_groups(source, pairs, matrices, parameters, alea, core_alea, alea_batches, alea_summaries,
+                   alea_autocorr, alea_results):
     groups = {}
     for kind, paths in (("pair", pairs), ("matrix", matrices),
                         ("parameters", parameters), ("alea", alea), ("alea-batches", alea_batches),
                         ("alea-summary", alea_summaries), ("alea-autocorr", alea_autocorr),
+                        ("alea-results", alea_results),
                         *(("core-alea:" + kind, [path]) for kind, path in core_alea)):
         for path in paths:
             path = posixpath.normpath("/" + str(path).lstrip("/"))
@@ -363,6 +365,95 @@ def _profiles(source, schemas, declared, report):
         _check_object(dataset)
         return _encoding(dataset, None, (_address(dataset), None) in declared, [])
 
+    def alea(group, path):
+        if "count" not in group or not isinstance(group["count"], h5py.Dataset):
+            raise ValueError(f"{path}: ALEA profile requires a count dataset")
+        count = group["count"]
+        with closing(count.id.get_type()) as datatype:
+            numeric = datatype.get_class() in (h5py.h5t.INTEGER, h5py.h5t.FLOAT)
+        if (count.shape != () or not numeric or not np.isfinite(count[()])
+                or count[()] < 0 or count[()] != int(count[()])):
+            raise ValueError(f"{count.name}: ALEA count must be a nonnegative integral scalar")
+        for name in ("cannotrebin", "changed", "nonlinearoperations"):
+            if name in group.attrs:
+                with closing(group.attrs.get_id(name)) as attribute:
+                    if attribute.shape != ():
+                        raise ValueError(f"{path}@{name}: ALEA flag must be scalar")
+                declared.add((_address(group), name))
+        # Flagless mcdata and regular observable histories can look identical.
+        # Do not guess the older sum-to-mean normalization convention.
+        if ("mean/value" in group and "timeseries/data" in group
+                and not ("cannotrebin" in group.attrs or "changed" in group.attrs
+                         or "timeseries/logbinning" in group)):
+            raise ValueError(f"{path}: ambiguous pre-3.0 ALEA result flags/bin semantics")
+        leaves = ("mean/value", "mean/error", "variance/value", "tau/value", "sum", "sum2",
+                  "timeseries/partialbin", "timeseries/partialbin2")
+        bins = ("timeseries/data", "timeseries/data2", "jacknife/data",
+                "timeseries/logbinning", "timeseries/logbinning2", "timeseries/logbinning_lastbin")
+        element_shape, exemplars = None, {}
+        for field in leaves + bins:
+            if field not in group:
+                continue
+            dataset = group[field]
+            if not isinstance(dataset, h5py.Dataset):
+                raise ValueError(f"{dataset.name}: ALEA numeric field must be a dataset")
+            conversion, dtype, shape = encoding(dataset)
+            if shape is None:
+                continue
+            candidate = shape[1:] if field in bins else shape
+            if (len(candidate) > 1 or dtype.kind not in "iufc" and dtype.names != ("r", "i")
+                    or dtype.kind in "iuf" and dtype.metadata):
+                raise ValueError(f"{dataset.name}: unsupported ALEA element shape/datatype")
+            if element_shape is not None and element_shape != candidate:
+                raise ValueError(f"{dataset.name}: inconsistent ALEA element shapes")
+            element_shape = candidate
+            exemplars[field] = dtype
+        for field in leaves + bins + ("mean/error_convergence", "timeseries/logbinning_counts", "labels"):
+            if field not in group:
+                continue
+            dataset = group[field]
+            if not isinstance(dataset, h5py.Dataset):
+                raise ValueError(f"{dataset.name}: ALEA field must be a dataset")
+            conversion, dtype, shape = encoding(dataset)
+            if field == "labels":
+                if (h5py.check_string_dtype(dtype) is None
+                        or shape is not None and (len(shape) > 1
+                            or element_shape is not None and len(shape) != len(element_shape))):
+                    raise ValueError(f"{dataset.name}: ALEA labels must match the scalar/vector element rank")
+                remember(dataset, "text", h5py.string_dtype("utf-8"), (0,) if shape is None else shape)
+                continue
+            if shape is not None:
+                if field == "timeseries/logbinning_counts" and (len(shape) != 1 or dtype.kind not in "iu" or dtype.metadata):
+                    raise ValueError(f"{dataset.name}: ALEA bin counts must be an integer vector")
+                if field == "mean/error_convergence" and (dtype.kind not in "iu" or dtype.metadata or shape != element_shape):
+                    raise ValueError(f"{dataset.name}: invalid ALEA error convergence shape/type")
+                continue
+            if field == "timeseries/logbinning_counts":
+                if dtype.kind not in "iu" or dtype.metadata:
+                    raise ValueError(f"{dataset.name}: invalid ALEA bin counts datatype")
+                shape = (0,)
+            elif element_shape is None:
+                raise ValueError(f"{dataset.name}: NULL ALEA storage lost its element shape/type")
+            elif field in bins:
+                if element_shape:
+                    # The outer empty vector stored INT NULL, losing T.
+                    # mean is average_type<T>, which need not have T's dtype.
+                    family = (("timeseries/data", "timeseries/data2", "timeseries/partialbin", "timeseries/partialbin2")
+                              if field in ("timeseries/data", "timeseries/data2") else
+                              ("mean/value", "sum", "timeseries/logbinning", "timeseries/logbinning2", "timeseries/logbinning_lastbin", "jacknife/data"))
+                    dtype = next((exemplars[p] for p in family if p in exemplars), None)
+                    if dtype is None:
+                        raise ValueError(f"{dataset.name}: NULL ALEA bins lost their value datatype")
+                shape = (0,) + element_shape
+                conversion = None
+            elif element_shape == (0,):
+                shape = (0,)
+                conversion = None
+            else:
+                raise ValueError(f"{dataset.name}: NULL ALEA value disagrees with its scientific exemplar")
+            remember(dataset, conversion, dtype, shape)
+        return f"{path}: ALPS 3.0.0 ALEA observable/result profile"
+
     for kind, path, _ in schemas.values():
         group = source[path]
         if kind == "parameters":
@@ -399,94 +490,16 @@ def _profiles(source, schemas, declared, report):
                     shape = (0,)
                 remember(dataset, conversion, dtype, shape)
             report.append(f"{path}: ALPS 3.0.0 flat parameters -> alps.params.v2")
+        elif kind == "alea-results":
+            # One results group holds many observables; each is checked
+            # like an explicitly selected ALEA profile.
+            for name in group:
+                if (not isinstance(group.get(name, getlink=True), h5py.HardLink)
+                        or not isinstance(group[name], h5py.Group)):
+                    raise ValueError(f"{path}/{name}: released results must be hard-linked observable groups")
+                alea(group[name], posixpath.join(path, name))
         elif kind in ("alea", "alea-batches", "alea-summary", "alea-autocorr"):
-            if "count" not in group or not isinstance(group["count"], h5py.Dataset):
-                raise ValueError(f"{path}: ALEA profile requires a count dataset")
-            count = group["count"]
-            with closing(count.id.get_type()) as datatype:
-                numeric = datatype.get_class() in (h5py.h5t.INTEGER, h5py.h5t.FLOAT)
-            if (count.shape != () or not numeric or not np.isfinite(count[()])
-                    or count[()] < 0 or count[()] != int(count[()])):
-                raise ValueError(f"{count.name}: ALEA count must be a nonnegative integral scalar")
-            for name in ("cannotrebin", "changed", "nonlinearoperations"):
-                if name in group.attrs:
-                    with closing(group.attrs.get_id(name)) as attribute:
-                        if attribute.shape != ():
-                            raise ValueError(f"{path}@{name}: ALEA flag must be scalar")
-                    declared.add((_address(group), name))
-            # Flagless mcdata and regular observable histories can look identical.
-            # Do not guess the older sum-to-mean normalization convention.
-            if ("mean/value" in group and "timeseries/data" in group
-                    and not ("cannotrebin" in group.attrs or "changed" in group.attrs
-                             or "timeseries/logbinning" in group)):
-                raise ValueError(f"{path}: ambiguous pre-3.0 ALEA result flags/bin semantics")
-            leaves = ("mean/value", "mean/error", "variance/value", "tau/value", "sum", "sum2",
-                      "timeseries/partialbin", "timeseries/partialbin2")
-            bins = ("timeseries/data", "timeseries/data2", "jacknife/data",
-                    "timeseries/logbinning", "timeseries/logbinning2", "timeseries/logbinning_lastbin")
-            element_shape, exemplars = None, {}
-            for field in leaves + bins:
-                if field not in group:
-                    continue
-                dataset = group[field]
-                if not isinstance(dataset, h5py.Dataset):
-                    raise ValueError(f"{dataset.name}: ALEA numeric field must be a dataset")
-                conversion, dtype, shape = encoding(dataset)
-                if shape is None:
-                    continue
-                candidate = shape[1:] if field in bins else shape
-                if (len(candidate) > 1 or dtype.kind not in "iufc" and dtype.names != ("r", "i")
-                        or dtype.kind in "iuf" and dtype.metadata):
-                    raise ValueError(f"{dataset.name}: unsupported ALEA element shape/datatype")
-                if element_shape is not None and element_shape != candidate:
-                    raise ValueError(f"{dataset.name}: inconsistent ALEA element shapes")
-                element_shape = candidate
-                exemplars[field] = dtype
-            for field in leaves + bins + ("mean/error_convergence", "timeseries/logbinning_counts", "labels"):
-                if field not in group:
-                    continue
-                dataset = group[field]
-                if not isinstance(dataset, h5py.Dataset):
-                    raise ValueError(f"{dataset.name}: ALEA field must be a dataset")
-                conversion, dtype, shape = encoding(dataset)
-                if field == "labels":
-                    if (h5py.check_string_dtype(dtype) is None
-                            or shape is not None and (len(shape) > 1
-                                or element_shape is not None and len(shape) != len(element_shape))):
-                        raise ValueError(f"{dataset.name}: ALEA labels must match the scalar/vector element rank")
-                    remember(dataset, "text", h5py.string_dtype("utf-8"), (0,) if shape is None else shape)
-                    continue
-                if shape is not None:
-                    if field == "timeseries/logbinning_counts" and (len(shape) != 1 or dtype.kind not in "iu" or dtype.metadata):
-                        raise ValueError(f"{dataset.name}: ALEA bin counts must be an integer vector")
-                    if field == "mean/error_convergence" and (dtype.kind not in "iu" or dtype.metadata or shape != element_shape):
-                        raise ValueError(f"{dataset.name}: invalid ALEA error convergence shape/type")
-                    continue
-                if field == "timeseries/logbinning_counts":
-                    if dtype.kind not in "iu" or dtype.metadata:
-                        raise ValueError(f"{dataset.name}: invalid ALEA bin counts datatype")
-                    shape = (0,)
-                elif element_shape is None:
-                    raise ValueError(f"{dataset.name}: NULL ALEA storage lost its element shape/type")
-                elif field in bins:
-                    if element_shape:
-                        # The outer empty vector stored INT NULL, losing T.
-                        # mean is average_type<T>, which need not have T's dtype.
-                        family = (("timeseries/data", "timeseries/data2", "timeseries/partialbin", "timeseries/partialbin2")
-                                  if field in ("timeseries/data", "timeseries/data2") else
-                                  ("mean/value", "sum", "timeseries/logbinning", "timeseries/logbinning2", "timeseries/logbinning_lastbin", "jacknife/data"))
-                        dtype = next((exemplars[p] for p in family if p in exemplars), None)
-                        if dtype is None:
-                            raise ValueError(f"{dataset.name}: NULL ALEA bins lost their value datatype")
-                    shape = (0,) + element_shape
-                    conversion = None
-                elif element_shape == (0,):
-                    shape = (0,)
-                    conversion = None
-                else:
-                    raise ValueError(f"{dataset.name}: NULL ALEA value disagrees with its scientific exemplar")
-                remember(dataset, conversion, dtype, shape)
-            report.append(f"{path}: ALPS 3.0.0 ALEA observable/result profile")
+            report.append(alea(group, path))
     return conversions
 
 
@@ -811,8 +824,23 @@ def _alea_batches(group):
             if recorded.shape != data.shape[1:]:
                 raise ValueError(f"{recorded.name}: inconsistent total-sum shape")
             expected = np.asarray(recorded[components] if recorded.shape else recorded[()]).reshape(-1)
-            precision = max(1e-12, 32 * np.finfo(data.dtype).eps)
-            if not np.isfinite(expected).all() or not np.allclose(total, expected, rtol=precision, atol=precision):
+            # The writer summed every sample into the total and into a bin, so
+            # recursive summation bounds their difference by
+            # (count + batches) * eps * sum|x|. A real sum2 bounds sum|x| by
+            # Cauchy-Schwarz, which also holds when bins cancel. Without it,
+            # use the bin magnitudes.
+            magnitude = np.zeros(total.shape)
+            for rows, _ in _blocks((batches, len(total)), dtype.itemsize):
+                magnitude += abs(sums[rows, components]).sum(axis=0)
+            squares = group.get("sum2")
+            if (isinstance(squares, h5py.Dataset) and squares.shape == recorded.shape
+                    and squares.dtype.kind == "f"):
+                square = np.asarray(squares[components] if squares.shape else squares[()]).reshape(-1)
+                if not np.isfinite(square).all() or np.any(square < 0):
+                    raise ValueError(f"{squares.name}: invalid recorded sum of squares")
+                magnitude = np.maximum(magnitude, np.sqrt(count * square))
+            tolerance = (count + batches) * np.finfo(data.dtype).eps * magnitude
+            if not np.isfinite(expected).all() or np.any(abs(total - expected) > tolerance):
                 raise ValueError(f"{group.name}: bin sums disagree with the recorded total sum")
         variance = np.zeros(total.shape, dtype="f8")
         for rows, _ in _blocks((batches, len(total)), dtype.itemsize * 3):
@@ -836,7 +864,8 @@ def _alea_batches(group):
 
 
 def _copy(source, target, boolean_datasets, boolean_attributes, pair_groups, matrix_groups,
-          parameter_groups, alea_groups, core_alea_groups, alea_batch_groups, alea_summary_groups, alea_autocorr_groups):
+          parameter_groups, alea_groups, core_alea_groups, alea_batch_groups, alea_summary_groups,
+          alea_autocorr_groups, alea_result_groups):
     report = []
     declared = set()
     for path in boolean_datasets:
@@ -850,7 +879,8 @@ def _copy(source, target, boolean_datasets, boolean_attributes, pair_groups, mat
             raise ValueError(f"{path}@{name}: Boolean declaration must name an ordinary input attribute")
         declared.add((_address(obj), name))
     schemas = _schema_groups(source, pair_groups, matrix_groups, parameter_groups, alea_groups,
-                             core_alea_groups, alea_batch_groups, alea_summary_groups, alea_autocorr_groups)
+                             core_alea_groups, alea_batch_groups, alea_summary_groups, alea_autocorr_groups,
+                             alea_result_groups)
     conversions = _profiles(source, schemas, declared, report)
     seen = {_address(source): target}
     softlinks = []
@@ -936,6 +966,17 @@ def _copy(source, target, boolean_datasets, boolean_attributes, pair_groups, mat
         elif kind == "alea-batches":
             _alea_batches(obj)
             report.append(f"{path}: ALPS 3.0.0 bins/jackknife -> native ALEA batch result; error recomputed, source statistics retained in legacy/")
+        elif kind == "alea-results":
+            # Bins are the scientific evidence when present; an inconsistent
+            # history is an error, not a reason to fall back to the summary.
+            for name in list(obj):
+                child = obj[name]
+                if "timeseries/data" in child:
+                    _alea_batches(child)
+                    report.append(f"{child.name}: bins -> native ALEA batch result")
+                else:
+                    _alea_summary(child)
+                    report.append(f"{child.name}: no bin history -> reported estimate")
         elif kind.startswith("core-alea:"):
             _core_alea(obj, kind.split(":", 1)[1])
             report.append(f"{path}: ALPSCore 2.3.3 ALEA result -> versioned native result")
@@ -1112,13 +1153,15 @@ def _spinmc_state(source, target, filename):
 
 def convert(source, destination, *, boolean_datasets=(), boolean_attributes=(),
             pair_groups=(), matrix_groups=(), parameter_groups=(), alea_groups=(), core_alea_groups=(),
-            alea_batch_groups=(), alea_summary_groups=(), alea_autocorr_groups=(), qwl_sites=None, spinmc_state=None):
+            alea_batch_groups=(), alea_summary_groups=(), alea_autocorr_groups=(), alea_result_groups=(),
+            qwl_sites=None, spinmc_state=None):
     """Write a new file; leave the source and any existing destination untouched."""
     if qwl_sites is not None:
         if spinmc_state is not None:
             raise ValueError("Select one application profile")
         if any((boolean_datasets, boolean_attributes, pair_groups, matrix_groups, parameter_groups,
-                alea_groups, core_alea_groups, alea_batch_groups, alea_summary_groups, alea_autocorr_groups)):
+                alea_groups, core_alea_groups, alea_batch_groups, alea_summary_groups, alea_autocorr_groups,
+                alea_result_groups)):
             raise ValueError("QWL is a whole-file profile; select it separately")
         parameter_groups = ("/parameters",)
     source, destination = Path(source), Path(destination)
@@ -1136,7 +1179,8 @@ def convert(source, destination, *, boolean_datasets=(), boolean_attributes=(),
             with h5py.File(temporary, "w", track_order=True) as dst:
                 report = _copy(src, dst, boolean_datasets, boolean_attributes,
                                pair_groups, matrix_groups, parameter_groups, alea_groups, core_alea_groups,
-                               alea_batch_groups, alea_summary_groups, alea_autocorr_groups)
+                               alea_batch_groups, alea_summary_groups, alea_autocorr_groups,
+                               alea_result_groups)
                 if qwl_sites is not None:
                     report.append(_qwl(src, dst, qwl_sites))
                 if spinmc_state is not None:
@@ -1174,6 +1218,9 @@ def main(argv=None):
     parser.add_argument("--alea-batches", action="append", default=[], metavar="GROUP",
                         help="recover ALPS 3.0.0 linear bins or equal-weight jackknife histories as native ALEA results; "
                              "recompute uncertainty, never invent restart state (repeatable)")
+    parser.add_argument("--alea-results", action="append", default=[], metavar="GROUP",
+                        help="convert every observable in a released results group: bin histories become native "
+                             "ALEA results, observables without bins keep their reported estimates (repeatable)")
     parser.add_argument("--core-alea", action="append", nargs=2, default=[],
                         metavar=("KIND", "GROUP"),
                         help="migrate a released ALPSCore 2.3.3 ALEA result; KIND is "
@@ -1189,7 +1236,8 @@ def main(argv=None):
                          pair_groups=args.pair, matrix_groups=args.matrix,
                          parameter_groups=args.parameters, alea_groups=args.alea,
                          core_alea_groups=args.core_alea, alea_batch_groups=args.alea_batches,
-                         alea_summary_groups=args.alea_summary, alea_autocorr_groups=args.alea_autocorr, qwl_sites=args.qwl_sites,
+                         alea_summary_groups=args.alea_summary, alea_autocorr_groups=args.alea_autocorr,
+                         alea_result_groups=args.alea_results, qwl_sites=args.qwl_sites,
                          spinmc_state=args.spinmc_state)
     except (OSError, ValueError, KeyError, TypeError) as error:
         parser.exit(1, f"{parser.prog}: {error}\n")

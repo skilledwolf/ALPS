@@ -1,0 +1,16 @@
+{
+  "fixture": "alps-master-639458499-spinmc.h5",
+  "sha256": "14b1cd0016cba0efb6d8650bd377fc8dce0c7a2a487a942ba75bbc9b433594fd",
+  "producer": "ALPSim/ALPS master mirror 63945849977557e56313d4b6a5c2bf0c2f8e7224 (v3.0.0 plus 154 commits), built with CMake 3.27 on darwin-arm64",
+  "provenance": "Unmodified final task archive written by the compiled program. It is not a build of the v3.0.0 tag (1950cc6f682d7c4c1deae8b816f283857b1819d1); between the tag and this revision, src/alps/alea changes no HDF5 save statements.",
+  "parameters": "LATTICE=\"chain lattice\"\nL=8\nT=2.0\nJ=1\nTHERMALIZATION=500\nSWEEPS=4000\nUPDATE=\"local\"\nMODEL=\"Ising\"\n{ L=8 }\n",
+  "commands": [
+    "parameter2xml parm",
+    "spinmc --Tmin 1 --Tmax 2 parm.in.xml"
+  ],
+  "expect": {
+    "batches": 16,
+    "reported": 0
+  },
+  "notes": "beta * Energy / sqrt(N) has a 6.2e-12 relative difference between its bin sums and the recorded total, from accumulation round-off."
+}

@@ -1233,6 +1233,101 @@ def test_released_result_final_row_retains_its_partial_weight(converter, tmp_pat
         np.testing.assert_array_equal(group["mean/value"], [18. * factor / 8])
 
 
+@pytest.mark.parametrize("sum2", [True, False])
+@pytest.mark.parametrize("history", ["complete", "extra-bin"])
+def test_bin_total_check_bounds_round_off_of_cancelling_samples(converter, tmp_path, sum2, history):
+    # Samples of about +-1e6 cancel inside each bin. The released total may
+    # then differ from the bin sums by round-off far above the total itself.
+    source, output = tmp_path / "source.h5", tmp_path / "output.h5"
+    bins = np.array([1e-3, -1e-3, 2e-3, -2e-3])
+    with h5py.File(source, "w") as archive:
+        group = released_bins(archive, "observable", bins, binsize=4, remainder=0)
+        group["sum"][()] = bins.sum() + (1e-9 if history == "complete" else bins[2])
+        if sum2:
+            group["sum2"] = 16 * 1e12
+    if history == "complete" and sum2:
+        converter.convert(source, output, alea_batch_groups=["/observable"])
+        with h5py.File(output, "r") as archive:
+            np.testing.assert_array_equal(archive["observable/batch/sum"][:4, 0], bins)
+    else:
+        # Without sum2, the bins understate sum|x| and the check stays strict.
+        with pytest.raises(ValueError, match="disagree with the recorded total"):
+            converter.convert(source, output, alea_batch_groups=["/observable"])
+
+
+def released_result_fixture(name):
+    fixture = Path(__file__).with_name("fixtures") / f"alps-master-639458499-{name}.h5"
+    metadata = json.loads(fixture.with_suffix(".json").read_text())
+    assert hashlib.sha256(fixture.read_bytes()).hexdigest() == metadata["sha256"]
+    return fixture, metadata
+
+
+@pytest.mark.parametrize("name", ["spinmc", "loop"])
+def test_genuine_released_results_convert_each_observable_and_load_natively(tmp_path, name):
+    source, metadata = released_result_fixture(name)
+    output = tmp_path / "native.h5"
+    completed = run_cli(source, output, "--parameters", "/parameters", "--alea-results", "/simulation/results")
+    assert completed.returncode == 0, completed.stderr
+    batches = [line.split(": ")[0] for line in completed.stdout.splitlines()
+               if line.endswith(": bins -> native ALEA batch result")]
+    reported = [line.split(": ")[0] for line in completed.stdout.splitlines()
+                if line.endswith(": no bin history -> reported estimate")]
+    assert (len(batches), len(reported)) == (metadata["expect"]["batches"], metadata["expect"]["reported"])
+    with h5py.File(source, "r") as old, h5py.File(output, "r") as new:
+        assert sorted(batches + reported) == sorted(child.name for child in old["simulation/results"].values())
+        assert new["parameters/format"].asstr()[()] == "alps.params.v2"
+        for path in batches + reported:
+            legacy = old[path]
+            converted = new[path]
+            # Reported means survive exactly; bins reproduce them up to the
+            # writer's own accumulation round-off.
+            if path in reported:
+                np.testing.assert_array_equal(converted["mean/value"], np.atleast_1d(legacy["mean/value"][()]))
+                np.testing.assert_array_equal(converted["mean/error"], np.atleast_1d(legacy["mean/error"][()]))
+            else:
+                np.testing.assert_allclose(converted["mean/value"], np.atleast_1d(legacy["mean/value"][()]),
+                                           rtol=1e-11)
+            if "changed" in legacy.attrs:
+                # Jackknife pseudovalues keep the released bias-corrected error.
+                np.testing.assert_allclose(converted["mean/error"], np.atleast_1d(legacy["mean/error"][()]),
+                                           rtol=1e-12)
+    if os.environ.get("ALPS_DIR"):
+        from pyalps import alea, hdf5
+        with hdf5.archive(str(output), "r") as archive:
+            kinds = {path: type(alea.read_result(archive, path)).__name__ for path in batches + reported}
+        assert {kinds[path] for path in batches} <= {"BatchResult"}
+        assert {kinds[path] for path in reported} <= {"ReportedEstimate"}
+
+
+def test_alea_results_never_hide_an_inconsistent_history_behind_its_summary(converter, tmp_path):
+    source, output = tmp_path / "source.h5", tmp_path / "output.h5"
+    with h5py.File(source, "w") as archive:
+        released_bins(archive, "observable", [3., 9., 6.])
+        results = archive.create_group("results")
+        archive.move("observable", "results/binned")
+        constant = results.create_group("constant")
+        constant["count"] = np.uint64(11)
+        constant["mean/value"], constant["mean/error"] = 2., 0.
+        constant["sum"], constant["sum2"] = 22., 44.
+    report = converter.convert(source, output, alea_result_groups=["/results"])
+    assert "/results/binned: bins -> native ALEA batch result" in report
+    assert "/results/constant: no bin history -> reported estimate" in report
+    with h5py.File(output, "r") as archive:
+        assert archive["results/binned"].attrs["kind"] == 5
+        assert archive["results/constant"].attrs["format"] == "alps.reported-estimate.v1"
+    output.unlink()
+    with h5py.File(source, "a") as archive:
+        archive["results/binned/sum"][()] += 1
+    with pytest.raises(ValueError, match="disagree with the recorded total"):
+        converter.convert(source, output, alea_result_groups=["/results"])
+    with h5py.File(source, "a") as archive:
+        archive["results/binned/sum"][()] -= 1
+        archive["results/note"] = "not an observable"
+    with pytest.raises(ValueError, match="hard-linked observable groups"):
+        converter.convert(source, output, alea_result_groups=["/results"])
+    assert not output.exists()
+
+
 def test_native_complex_bin_conversion_is_bounded_and_preserves_covariance(converter, tmp_path, monkeypatch):
     source, output = tmp_path / "source.h5", tmp_path / "output.h5"
     values = np.array([[3+2j, 6+4j], [9-2j, 18-4j], [6+1j, 12+2j]])

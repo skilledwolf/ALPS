@@ -403,7 +403,8 @@ class Hdf5Loader:
                         children = archive.list_children(path)
                         if (any(field in children for field in ('count', 'timeseries', 'jacknife')) or
                                 archive.is_data(path+'/mean/error')):
-                            raise ValueError(f"{path}: legacy statistics require alps-hdf5-convert --alea-batches or --alea-summary")
+                            raise ValueError(f"{path}: legacy statistics require alps-hdf5-convert --alea-results "
+                                             f"{path.rsplit('/', 1)[0] or '/'} (or --alea-batches/--alea-summary)")
                         # Deterministic eigenstate measurements carry plain values.
                         values = np.atleast_1d(archive[path+'/mean/value'])
                         data = DataSet(np.arange(len(values)), values)

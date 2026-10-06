@@ -87,6 +87,10 @@ User-facing changes and migration notes are recorded here, starting with the bui
   complete linear bin sums and partial weights as native ALEA analysis results;
   recompute uncertainty and preserve vector covariance. Reject unrecoverable
   histories instead of inventing restart state or missing covariance.
+  `--alea-results GROUP` applies this to every observable of a released task
+  file and keeps reported estimates for observables without bins. The total-sum
+  check uses the writer's summation round-off bound, so genuine released files
+  with accumulated rounding convert.
 
 - Apply opposite magnetic-field signs to paired flavors in the general
   paramagnetic DMFT Hilbert transform; previously every flavor used `MU - H`.

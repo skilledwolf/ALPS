@@ -199,9 +199,11 @@ write native results and no longer emit legacy statistical schemas.
 ## MCData removal
 
 `MCScalarData`, `MCVectorData` and the `pymcdata_c` extension are removed.
-Measurement loading requires explicit conversion of legacy statistical records:
-use `--alea-batches` for recoverable linear/jackknife histories, or
-`--alea-summary` to retain published statistics without inferring history.
+Measurement loading requires explicit conversion of legacy statistical records.
+`--alea-results /simulation/results` converts a whole task file and prints the
+choice for each observable: `--alea-batches` for recoverable linear/jackknife
+histories, or `--alea-summary` to retain published statistics without
+inferring history.
 The primitive-normalization-only `--alea` option does not produce a modern
 analysis result. Unconverted statistics now raise an actionable error rather
 than being loaded implicitly or skipped after a logged exception.
