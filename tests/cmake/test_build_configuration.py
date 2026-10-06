@@ -256,6 +256,8 @@ def test_tutorials_are_an_explicit_install_component(tmp_path):
         assert (tutorials / "00-examples/parapack/multiple" / name).is_file()
     for name in ("ising.C", "ising.ip", "ising.op-2", "ising.op-4", "params"):
         assert not (tutorials / "00-examples/parapack/multiple" / name).exists()
+    for name in ("hello/schema.toml.in", "ising/schema.toml.in"):
+        assert (tutorials / "00-examples/fortran" / name).is_file()
     assert (install / "share/alps/cmake/ALPSTesting.cmake").is_file()
     assert (install / "share/alps/cmake/run_test.cmake").is_file()
     assert not (tutorials / "10-ngs/5_export_python").exists()

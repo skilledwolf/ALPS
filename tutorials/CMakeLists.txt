@@ -27,6 +27,7 @@ install(
   PATTERN "*.toml"
   PATTERN "*.cmake"
   PATTERN "*.hpp.in"
+  PATTERN "*.toml.in"
   PATTERN "*.jpg"
   PATTERN "*.tex"
   PATTERN "*.bib"
