@@ -13,7 +13,7 @@ User-facing changes and migration notes are recorded here, starting with the bui
   Correct normal-estimator sign tracking after cluster flips and include
   longitudinal-field energy in replica exchange weights. Retain one common
   Hamiltonian across the ladder, including parameter-dependent XML couplings.
-  Released scheduler-checkpoint conversion remains pending.
+  Finish released simulations with ALPS 3.0; the converter migrates results for analysis.
 
 - Port `worm` and `dirloop_sse` to native ALEA and the established TOML CLI,
   retaining executable names, update kernels and both RNGs. Checkpoint complete
@@ -23,8 +23,7 @@ User-facing changes and migration notes are recorded here, starting with the bui
   moments and centered compressibility. Fixed-number worm tuning preserves
   sector weights and reports energies for the requested Hamiltonian. Reject
   unimplemented estimator combinations. Migrate the Python tutorials and English/Japanese notebooks to TOML and native
-  results; remove obsolete XML input examples. Released checkpoint conversion
-  remains pending; see the quantum solver run guide.
+  results; remove obsolete XML input examples. Finish released runs with ALPS 3.0; see the quantum solver run guide.
 
 - Port `qwl` to native ALEA and typed TOML runs using the shared Monte Carlo
   runner. Preserve refinement modes, magnetic measurements, intermediate

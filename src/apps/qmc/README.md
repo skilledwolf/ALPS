@@ -101,7 +101,7 @@ to the requested Hamiltonian; each chain records its actual
 vacuum. Conditional number fluctuations, and hence the reported fluctuation
 compressibility, vanish in a fixed-number sector.
 
-Released scheduler checkpoints cannot yet be resumed by these executables.
-Keep originals and released readers until offline conversion is implemented.
-Released checkpoint converters and the remaining legacy-library clients still
-need migration before the legacy library can be removed.
+Finish released simulations with ALPS 3.0 and their original checkpoint files.
+The offline converter migrates results for analysis; it does not translate
+physical restart state. Remaining legacy-library clients still need native
+replacements before the legacy library can be removed.

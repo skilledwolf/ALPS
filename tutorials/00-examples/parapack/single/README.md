@@ -59,6 +59,5 @@ execute serially to avoid thread-launch overhead.
 `kernel.hpp` also supplies the physical update to the temporary legacy adapter
 in `ising.h`, still used by the unported exchange example. The native spatial
 command reuses this model's statistics and scan handling with a distributed kernel.
-The native command does not include that adapter. Released Parapack physical
-checkpoints still need an offline converter; native continuation does not imply
-that released XDR files can be read directly.
+The native command does not include that adapter. Finish runs from released Parapack checkpoints with ALPS 3.0. The offline
+converter migrates results for analysis, not physical restart state.

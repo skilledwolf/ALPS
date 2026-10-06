@@ -43,8 +43,8 @@ configuration must agree. A warmup-only stop records unavailable statistics
 and still writes a resumable checkpoint.
 
 Old scheduler flags, parameter expressions and XML input are replaced by typed
-TOML. Released scheduler/XDR physical checkpoints are not native checkpoints;
-conversion and continuation support remains outstanding. The `evaluate` and `evaluate2` commands now build from one native postprocessor:
+TOML. Finish released scheduler/XDR runs with ALPS 3.0; the offline converter
+migrates results for analysis. The `evaluate` and `evaluate2` commands now build from one native postprocessor:
 
 ```sh
 build/scheduler/evaluate --validate scheduler/evaluate.toml

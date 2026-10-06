@@ -57,6 +57,5 @@ live simulation intact. The caller handle itself must never be stored in state.
 
 The old F77 callback ABI, scheduler input files and XDR physical dumps are not
 accepted by this bridge. Existing recorded HDF5 results can use the offline
-archive converter. Old application-defined, untyped XDR state needs an
-application-specific offline decoder; generic native restart from it is not
-implemented. Keep those source checkpoints until that conversion is available.
+archive converter. Finish old runs with ALPS 3.0 and retain their original checkpoints; physical
+restart translation is outside the results converter's scope.

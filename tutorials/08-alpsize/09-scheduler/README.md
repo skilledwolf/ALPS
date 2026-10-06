@@ -35,8 +35,8 @@ Changed topology, invalid spins or inconsistent measurement counts are rejected.
 Results preserve `<m^2>^2/<m^4>` as the Binder convention. `/simulation/joint`
 retains the pooled batch evidence; per-chain diagnostics are under
 `/simulation/realizations/0/clones/<id>/autocorrelation`. These native checkpoints
-support exact continuation. Released Parapack/XDR checkpoints still require a
-physical-state converter; they are not accepted as native checkpoints.
+support exact continuation. Finish runs from released Parapack/XDR checkpoints with ALPS 3.0. The offline
+converter migrates their results for analysis.
 
 The separate `hello` command introduces typed run input without simulation
 machinery: `build/hello hello.toml` prints `hello, world`. Change
