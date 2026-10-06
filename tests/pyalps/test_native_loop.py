@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 from pyalps.run_io import write_run_file
 from test_native_mpi import compare, invoke, launcher
-from conftest import alps_program
+from conftest import alps_program, variants
 
 
 @pytest.fixture
@@ -30,9 +30,9 @@ def run(executable, directory, name, parameters, *, rng='mt19937', budget=0,
 
 
 @pytest.mark.parametrize('algorithm', ['loop', 'loop; sse'])
-@pytest.mark.parametrize('parameters', [{}, {'local_S': 1.}, {'L': 3},
-                                      {'L': 3, 'DISABLE_IMPROVED_ESTIMATOR': True}])
-@pytest.mark.parametrize('rng', ['mt19937', 'lagged_fibonacci607'])
+@pytest.mark.parametrize('parameters', variants({}, {'local_S': 1.}, {'L': 3},
+                                               {'L': 3, 'DISABLE_IMPROVED_ESTIMATOR': True}))
+@pytest.mark.parametrize('rng', variants('mt19937', 'lagged_fibonacci607'))
 def test_exact_continuation(executable, tmp_path, algorithm, parameters, rng):
     p = dict(parameters, ALGORITHM=algorithm)
     run(executable, tmp_path, 'full', p, rng=rng)
@@ -140,7 +140,7 @@ REPLICA_MODES = [
 
 @pytest.mark.parametrize('algorithm,rng', [('loop; exchange', 'mt19937'),
                                          ('loop; sse; exchange', 'lagged_fibonacci607')])
-@pytest.mark.parametrize('mode', REPLICA_MODES)
+@pytest.mark.parametrize('mode', variants(*REPLICA_MODES))
 def test_replica_continuation_and_loader(executable, tmp_path, algorithm, rng, mode):
     import pyalps
     p = dict(ALGORITHM=algorithm, NUM_REPLICAS=3, T_MIN=.8, T_MAX=1.2,
@@ -173,7 +173,7 @@ def test_replica_continuation_and_loader(executable, tmp_path, algorithm, rng, m
 
 
 @pytest.mark.parametrize('algorithm', ['loop; exchange', 'loop; sse; exchange'])
-@pytest.mark.parametrize('rng', ['mt19937', 'lagged_fibonacci607'])
+@pytest.mark.parametrize('rng', variants('mt19937', 'lagged_fibonacci607'))
 def test_checkpoint_offdiagonal_validity(executable, tmp_path, algorithm, rng):
     # Graph decorations are chosen before a cluster flip. For an offdiagonal
     # XXZ vertex their diagonal predicate need not match the saved worldline.

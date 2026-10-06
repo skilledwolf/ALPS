@@ -13,7 +13,7 @@ from pyalps import alea, hdf5
 from pyalps.run_io import write_run_file
 from test_native_mpi import compare, invoke, launcher
 from test_single_ising_example import run
-from conftest import tutorials_build
+from conftest import tutorials_build, unavailable
 
 
 @pytest.fixture
@@ -27,6 +27,8 @@ def mpi_executable():
     # mpiexec could create several competing writers and conceal missing MPI.
     value = os.environ.get('ALPS_SPATIAL_ISING_MPI_EXECUTABLE')
     if not value:
+        if os.environ.get('ALPS_MPIEXEC'):
+            unavailable('set ALPS_SPATIAL_ISING_MPI_EXECUTABLE to the MPI-enabled example')
         pytest.skip('set ALPS_SPATIAL_ISING_MPI_EXECUTABLE to an MPI-enabled build')
     return str(Path(value).resolve(strict=True))
 
@@ -77,7 +79,7 @@ def test_mpi_partition_independent_evidence(mpi_executable, launcher, tmp_path, 
 
 
 @pytest.mark.parametrize('rng', ['mt19937', 'lagged_fibonacci607'])
-def test_mpi_threaded_ring_preserves_evidence(mpi_executable, launcher, tmp_path, monkeypatch, rng):
+def test_mpi_threaded_ring_preserves_evidence(mpi_executable, launcher, openmp_examples, tmp_path, monkeypatch, rng):
     # Three 512-site blocks give each color 256 sites, exercising the
     # threaded kernel rather than its small-lattice serial shortcut.
     monkeypatch.setenv('OMP_NUM_THREADS', '1')

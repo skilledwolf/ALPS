@@ -16,7 +16,7 @@
 #include <array>
 
 // All ranks cooperate on each physical chain; publication remains root-only.
-struct spatial_group : alps::mc::parallel {
+struct spatial_group : ising_group {
     bool owns(size_t) const {return true;}
     bool stopped(bool local) const {return any(local);}
     template<class Runs> void verify(Runs const& runs,bool validate=false) const {

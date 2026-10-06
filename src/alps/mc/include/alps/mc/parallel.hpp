@@ -18,6 +18,9 @@ namespace alps::mc {
 // Independent chains retain global IDs and seeds regardless of process count.
 struct parallel {
 #ifdef ALPS_HAVE_MPI
+    // MPI thread support the program requires. A group whose chains run
+    // threads beside MPI calls on the main thread raises this to funneled.
+    static constexpr boost::mpi::threading::level threading=boost::mpi::threading::single;
     boost::mpi::communicator world;
     int rank() const { return world.rank(); }
     int size() const { return world.size(); }

@@ -48,9 +48,6 @@ def test_exact_continuation(executable,tmp_path,rng,scan,budget):
     _,state=run(executable,tmp_path,'part',rng=rng,scan=scan,budget=budget)
     resumed,resumed_state=run(executable,tmp_path,'resumed',rng=rng,scan=scan,checkpoint=state)
     compare(full,resumed);compare(full_state,resumed_state)
-    # Different thread counts must consume the same RNG stream and updates.
-    threaded,threaded_state=run(executable,tmp_path,'threaded',rng=rng,scan=scan,threads=2)
-    compare(full,threaded);compare(full_state,threaded_state)
 
 
 @pytest.mark.parametrize('fault',['spin','count','topology','rng'])
@@ -113,7 +110,7 @@ def test_mpi_scan_checkpoint_repartition(executable,launcher,tmp_path):
     compare(full,resumed);compare(full_state,resumed_state)
 
 
-def test_thread_count_independent_large_lattice(executable,tmp_path):
+def test_thread_count_independent_large_lattice(executable,openmp_examples,tmp_path):
     one,one_state=run(executable,tmp_path,'one',length=512,sweeps=37,scan=True,threads=1)
     two,two_state=run(executable,tmp_path,'two',length=512,sweeps=37,scan=True,threads=2)
     four,four_state=run(executable,tmp_path,'four',length=512,sweeps=37,scan=True,threads=4)

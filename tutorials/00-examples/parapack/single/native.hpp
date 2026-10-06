@@ -92,7 +92,7 @@ public:
             auto& values=restored.stats_[i];
             alps::alea::hdf5_serializer codec(ar,"stages/"+std::to_string(i));
             deserialize(codec,"joint",values.joint); deserialize(codec,"autocorrelation",values.diagnostics);
-            const uint64_t count=restored.steps_<=start_[i]+warm_[i] ? 0 : std::min(restored.steps_-start_[i]-warm_[i],parameters_["SWEEPS"].as<uint64_t>());
+            const uint64_t count=restored.steps_<=start_[i]+warm_[i] ? 0 : std::min(restored.steps_-start_[i]-warm_[i],parameters_["SWEEPS"].template as<uint64_t>());
             if (values.joint.size()!=6 || values.joint.num_batches()!=bins_ || values.joint.count()!=count
                     || values.joint.current_batch_size()!=values.joint.cursor().factor()
                     || !values.joint.store().batch().allFinite() || values.diagnostics.size()!=6
@@ -115,7 +115,14 @@ private:
 
 using single_ising=basic_ising<ising_kernel>;
 
-template<class Simulation,class Group=alps::mc::parallel>
+// OpenMP workers never call MPI; only threaded builds require funneled support.
+struct ising_group : alps::mc::parallel {
+#if defined(ALPS_HAVE_MPI) && defined(_OPENMP)
+    static constexpr auto threading=boost::mpi::threading::funneled;
+#endif
+};
+
+template<class Simulation,class Group=ising_group>
 int ising_main(int argc,char** argv,char const* command) {
     auto prepare=[](alps::params& p,alps::run_configuration const&) {
         if (!p.exists("THERMALIZATION")) p["THERMALIZATION"]=p["SWEEPS"].as<uint64_t>()/8;

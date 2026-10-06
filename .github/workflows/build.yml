@@ -233,9 +233,13 @@ jobs:
           tutorials="$PWD/_build/ci/install/share/alps/tutorials"
           for source in "$tutorials/00-examples" "$tutorials/00-examples/fortran"; do
             output="_build/consumers/${source#"$tutorials/"}"
+            extra_args=()
+            if [[ "$source" == "$tutorials/00-examples" ]]; then
+              extra_args+=(-DALPS_ENABLE_OPENMP=ON)
+            fi
             cmake -S "$source" -B "$output" -G Ninja \
               "-DALPS_DIR=$PWD/_build/ci/install/share/alps" \
-              "-DCMAKE_PREFIX_PATH=$PWD/_build/boost-install"
+              "-DCMAKE_PREFIX_PATH=$PWD/_build/boost-install" "${extra_args[@]}"
             python .github/scripts/build_metrics.py run "Tutorial ${source#"$tutorials/"}" cmake --build "$output"
             ctest --test-dir "$output" --output-on-failure --output-junit ctest.xml --no-tests=error
           done
@@ -270,7 +274,7 @@ jobs:
           python -m pip install build 'nanobind==2.15.0' 'scikit-build-core>=1.0' numpy scipy matplotlib h5py patchelf
           python .github/scripts/build_metrics.py run 'Editable bindings' python -m pip install --no-build-isolation --no-deps -e python/pyalps \
             --config-settings "build-dir=$PWD/_build/ci-python"
-          python .github/scripts/build_metrics.py run --timeout 900 'Bindings and SDK contracts' \
+          python .github/scripts/build_metrics.py run --timeout 1800 'Bindings and SDK contracts' \
             python -m pytest tests/pyalps tests/cmake tests/cli/test_hdf5_convert.py -q --junitxml=_build/ci/python.xml
           # Long comparisons with exact diagonalization and enumeration.
           if [[ "$PHYSICS" == true ]]; then

@@ -11,8 +11,8 @@ A missing requirement skips its tests locally. CI sets
 ALPS_REQUIRE_INTEGRATION=1 so that a misconfigured job fails instead of
 passing by skipping.
 
-Tests marked `slow` validate physics against exact results and run only with
-ALPS_SLOW_TESTS=1.
+Tests marked `slow` run only with ALPS_SLOW_TESTS=1. variants() keeps one
+representative of an expensive parametrization in the default run.
 """
 import os
 from pathlib import Path
@@ -22,16 +22,23 @@ import pytest
 
 
 def pytest_configure(config):
-    config.addinivalue_line("markers", "slow: long physics validation; run with ALPS_SLOW_TESTS=1")
+    config.addinivalue_line("markers", "slow: long-running test; run with ALPS_SLOW_TESTS=1")
 
 
 def pytest_collection_modifyitems(config, items):
     if os.environ.get("ALPS_SLOW_TESTS") == "1":
         return
-    skip = pytest.mark.skip(reason="slow physics validation; set ALPS_SLOW_TESTS=1")
+    skip = pytest.mark.skip(reason="long-running test; set ALPS_SLOW_TESTS=1")
     for item in items:
         if "slow" in item.keywords:
             item.add_marker(skip)
+
+
+def variants(*values, fast=1):
+    """Parametrize values; only the first `fast` run without ALPS_SLOW_TESTS."""
+    return [value if index < fast else
+            pytest.param(*(value if isinstance(value, tuple) else (value,)), marks=pytest.mark.slow)
+            for index, value in enumerate(values)]
 
 
 def unavailable(reason):
@@ -59,3 +66,10 @@ def tutorials_build():
     if not value:
         unavailable("set ALPS_TUTORIALS_BUILD_DIR to the built tutorial projects")
     return Path(value).resolve(strict=True)
+
+
+@pytest.fixture
+def openmp_examples():
+    cache = tutorials_build() / "00-examples/CMakeCache.txt"
+    if "ALPS_ENABLE_OPENMP:BOOL=ON" not in cache.read_text().splitlines():
+        unavailable("configure the examples with ALPS_ENABLE_OPENMP=ON to test threaded updates")

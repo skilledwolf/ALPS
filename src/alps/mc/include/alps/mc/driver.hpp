@@ -241,7 +241,7 @@ int main(int argc, char** argv, char const* application, char const* base_schema
         }
         if (files.empty()) throw std::invalid_argument("No TOML run file specified");
 #ifdef ALPS_HAVE_MPI
-        boost::mpi::environment environment(argc, argv, boost::mpi::threading::funneled, false);
+        boost::mpi::environment environment(argc, argv, Group::threading, false);
 #endif
         Group group;
         std::vector<alps::run_configuration> runs;
@@ -249,8 +249,8 @@ int main(int argc, char** argv, char const* application, char const* base_schema
         std::set<std::filesystem::path> protected_paths, destinations;
         group.checked([&] {
 #ifdef ALPS_HAVE_MPI
-        if (boost::mpi::environment::thread_level()<boost::mpi::threading::funneled)
-            throw std::runtime_error("Native MC requires MPI support for worker threads with calls on the main thread");
+        if (boost::mpi::environment::thread_level()<Group::threading)
+            throw std::runtime_error("The MPI library does not provide the thread support this program requires");
 #endif
         for (auto const& file : files) protected_paths.insert(std::filesystem::weakly_canonical(file));
         for (auto const& file : files) {
