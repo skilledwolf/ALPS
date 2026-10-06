@@ -4,10 +4,10 @@
 TOML. Build it from the parent examples project against an installed ALPS SDK:
 
 ```sh
-build/parapack/single/ising_single --schema
-build/parapack/single/ising_single --validate parapack/single/run.toml
-build/parapack/single/ising_single parapack/single/run.toml
-build/parapack/single/ising_single parapack/single/scan.toml
+build/mc/single/ising_single --schema
+build/mc/single/ising_single --validate mc/single/run.toml
+build/mc/single/ising_single mc/single/run.toml
+build/mc/single/ising_single mc/single/scan.toml
 ```
 
 Specify exactly one `LATTICE` or `GRAPH`; an optional `input.lattice_library`

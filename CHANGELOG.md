@@ -38,7 +38,8 @@ User-facing changes and migration notes are recorded here, starting with the bui
 
 - Remove the Parapack framework (`<alps/parapack/*.h>`) and its `pevaluate` and
   `poutput` commands; every former Parapack example now runs on the native
-  Monte Carlo driver. The SDK no longer links OpenMP: `ALPS_ENABLE_OPENMP`
+  Monte Carlo driver and moves from `tutorials/00-examples/parapack` to
+  `tutorials/00-examples/mc`, keeping its program name. The SDK no longer links OpenMP: `ALPS_ENABLE_OPENMP`
   only builds the OpenMP thread-safety tests, and the classical examples take
   their own `ALPS_ENABLE_OPENMP` option. See [migration](#removed-and-migration).
 

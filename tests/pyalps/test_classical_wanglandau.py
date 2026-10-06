@@ -17,7 +17,7 @@ SPINS = np.array(list(itertools.product((-1, 1), repeat=4)))
 
 @pytest.fixture
 def executable():
-    return str(tutorials_build()/'00-examples/parapack/wanglandau/wanglandau')
+    return str(tutorials_build()/'00-examples/mc/wanglandau/wanglandau')
 
 
 def spectrum(coupling=1):

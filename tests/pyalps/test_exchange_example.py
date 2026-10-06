@@ -11,12 +11,12 @@ from conftest import tutorials_build, variants
 from test_native_mpi import compare, invoke, launcher
 
 BETAS = [.2, .5, .9]
-EXAMPLE = Path(__file__).resolve().parents[2]/'tutorials/00-examples/parapack/exchange'
+EXAMPLE = Path(__file__).resolve().parents[2]/'tutorials/00-examples/mc/exchange'
 
 
 @pytest.fixture
 def executable():
-    return str(tutorials_build()/'00-examples/parapack/exchange/exchange')
+    return str(tutorials_build()/'00-examples/mc/exchange/exchange')
 
 
 def run(executable, directory, name, *, processes=1, team=1, launcher=None, budget=0,

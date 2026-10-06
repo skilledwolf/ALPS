@@ -18,7 +18,7 @@ from conftest import tutorials_build, unavailable
 
 @pytest.fixture
 def executable():
-    return str(tutorials_build()/'00-examples/parapack/multiple/ising_multiple')
+    return str(tutorials_build()/'00-examples/mc/multiple/ising_multiple')
 
 
 @pytest.fixture
@@ -35,7 +35,7 @@ def mpi_executable():
 
 @pytest.mark.parametrize('scan', [False, True])
 def test_serial_arbitrary_graph_fallback(executable, tmp_path, scan):
-    single = str(tutorials_build()/'00-examples/parapack/single/ising_single')
+    single = str(tutorials_build()/'00-examples/mc/single/ising_single')
     reference, reference_state = run(single, tmp_path, 'single', scan=scan, lattice='square lattice', length=4)
     actual, actual_state = run(executable, tmp_path, 'spatial', scan=scan, lattice='square lattice', length=4)
     compare(reference, actual)

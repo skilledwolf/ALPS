@@ -15,7 +15,7 @@ from conftest import tutorials_build
 
 @pytest.fixture
 def executable():
-    return str(tutorials_build()/'00-examples/parapack/single/ising_single')
+    return str(tutorials_build()/'00-examples/mc/single/ising_single')
 
 
 def run(executable, directory, name, *, scan=False, budget=0, checkpoint=None,

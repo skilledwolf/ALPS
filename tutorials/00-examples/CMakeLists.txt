@@ -30,7 +30,7 @@ endif()
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/ALPSTesting.cmake")
 
 add_subdirectory(alea)
-add_subdirectory(parapack)
+add_subdirectory(mc)
 add_subdirectory(scheduler)
 add_subdirectory(sampling)
 add_subdirectory(model)

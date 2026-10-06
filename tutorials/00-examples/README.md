@@ -8,7 +8,7 @@ These small programs demonstrate individual ALPS APIs. For complete simulation w
 | [hdf5](hdf5/) | Saving custom C++ types in HDF5 archives |
 | [ietl](ietl/) | Iterative eigenvalue methods |
 | [model](model/) | Symbolic and numerical model construction |
-| [parapack](parapack/) | Simulation workers and parameter scans |
+| [mc](mc/) | Native Monte Carlo simulations, replica exchange and Wang–Landau sampling |
 | [sampling](sampling/) | Sampling distributions |
 | [scheduler](scheduler/) | Scheduled simulations |
 | [fortran](fortran/) | Calling Fortran simulation code through the C++ bridge |
@@ -39,7 +39,7 @@ CTest locates the SDK's XML resources. When running an executable directly, use 
 
 ## Native classical examples
 
-`parapack/ising/ising` and `parapack/heisenberg/heisenberg` keep their command
+`mc/ising/ising` and `mc/heisenberg/heisenberg` keep their command
 names and use the shared TOML CLI: `program --schema`, `program --validate
 run.toml`, or `program run.toml`. Each directory contains a runnable replica
 exchange example. Both now use native ALEA and the shared replica-exchange
@@ -76,16 +76,16 @@ Ranks store only their owned physical walkers; native checkpoint groups stream
 through a bounded buffer into root's disk cache. Temperature histories remain
 replicated to preserve their chronology.
 
-The [exchange example](parapack/exchange/README.md) runs heat-bath Ising ladders
+The [exchange example](mc/exchange/README.md) runs heat-bath Ising ladders
 whose walkers can also be spatially decomposed: with
 `execution.processes_per_walker = p`, teams of `p` processes each advance one
 ring walker at a time. Every layout reproduces the serial ladder exactly.
 
-The [quantum loop example](parapack/loop/README.md) runs the installed `loop`
+The [quantum loop example](mc/loop/README.md) runs the installed `loop`
 application, which replaces the former `loop_single` example program. Its
 explicit disorder jobs retain separate quenched realizations.
 
-The [classical energy Wang–Landau example](parapack/wanglandau/README.md) also
+The [classical energy Wang–Landau example](mc/wanglandau/README.md) also
 uses native TOML runs and ALEA. It retains density-of-states learning, overlapping
 window stitching, fixed-weight microcanonical sampling, temperature reweighting,
 reference-normalized entropy/free energy, histograms and exact continuation.

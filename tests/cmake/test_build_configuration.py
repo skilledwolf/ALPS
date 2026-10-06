@@ -247,22 +247,22 @@ def test_tutorials_are_an_explicit_install_component(tmp_path):
     for name in ("wolff.hpp", "wolff-schema.toml", "wolff_schema.hpp.in", "Wolff.cmake", "07-alea/run.toml", "08-lattice/run.toml", "09-scheduler/hello.toml", "09-scheduler/run.toml", "09-scheduler/execution.toml", "09-scheduler/wolff_worker.h"):
         assert (tutorials / "08-alpsize" / name).is_file()
     for name in ("main.C", "native.hpp", "kernel.hpp", "schema.toml", "common.toml", "ising_schema.hpp.in", "run.toml", "scan.toml"):
-        assert (tutorials / "00-examples/parapack/single" / name).is_file()
-    assert not (tutorials / "00-examples/parapack/single/ising.C").exists()
+        assert (tutorials / "00-examples/mc/single" / name).is_file()
+    assert not (tutorials / "00-examples/mc/single/ising.C").exists()
     for name in ("main.C", "run.toml", "spatial.toml", "README.md"):
-        assert (tutorials / "00-examples/parapack/exchange" / name).is_file()
+        assert (tutorials / "00-examples/mc/exchange" / name).is_file()
     for name in ("exchange/ising.C", "exchange/params-ising", "single/ising.h", "multiple/ising.h", "loop/loop.h"):
-        assert not (tutorials / "00-examples/parapack" / name).exists()
+        assert not (tutorials / "00-examples/mc" / name).exists()
     for name in ("run.toml", "runs.py", "README.md"):
-        assert (tutorials / "00-examples/parapack/loop" / name).is_file()
-    assert not (tutorials / "00-examples/parapack/loop/main.C").exists()
+        assert (tutorials / "00-examples/mc/loop" / name).is_file()
+    assert not (tutorials / "00-examples/mc/loop/main.C").exists()
     for name in ("main.C", "native.hpp", "schema.toml", "schema.hpp.in", "learn.toml", "measure.toml", "reweight.toml", "README.md"):
-        assert (tutorials / "00-examples/parapack/wanglandau" / name).is_file()
-    assert not (tutorials / "00-examples/parapack/wanglandau/wanglandau.h").exists()
+        assert (tutorials / "00-examples/mc/wanglandau" / name).is_file()
+    assert not (tutorials / "00-examples/mc/wanglandau/wanglandau.h").exists()
     for name in ("main.C", "kernel.hpp", "run.toml", "README.md"):
-        assert (tutorials / "00-examples/parapack/multiple" / name).is_file()
+        assert (tutorials / "00-examples/mc/multiple" / name).is_file()
     for name in ("ising.C", "ising.ip", "ising.op-2", "ising.op-4", "params"):
-        assert not (tutorials / "00-examples/parapack/multiple" / name).exists()
+        assert not (tutorials / "00-examples/mc/multiple" / name).exists()
     for name in ("hello/schema.toml.in", "ising/schema.toml.in"):
         assert (tutorials / "00-examples/fortran" / name).is_file()
     assert (install / "share/alps/cmake/ALPSTesting.cmake").is_file()

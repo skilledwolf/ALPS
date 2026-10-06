@@ -268,7 +268,7 @@ jobs:
           ALPS_TUTORIALS_BUILD_DIR: ${{ matrix.extras && format('{0}/_build/consumers', github.workspace) || '' }}
           ALPS_MPIEXEC: ${{ matrix.mpi == 'ON' && 'mpiexec' || '' }}
           ALPS_MPIEXEC_ARGS: --oversubscribe
-          ALPS_SPATIAL_ISING_MPI_EXECUTABLE: ${{ matrix.extras && matrix.mpi == 'ON' && format('{0}/_build/consumers/00-examples/parapack/multiple/ising_multiple', github.workspace) || '' }}
+          ALPS_SPATIAL_ISING_MPI_EXECUTABLE: ${{ matrix.extras && matrix.mpi == 'ON' && format('{0}/_build/consumers/00-examples/mc/multiple/ising_multiple', github.workspace) || '' }}
         run: |
           cmake --install _build/ci
           python -m pip install build 'nanobind==2.15.0' 'scikit-build-core>=1.0' numpy scipy matplotlib h5py patchelf

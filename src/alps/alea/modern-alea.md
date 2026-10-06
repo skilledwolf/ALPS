@@ -337,7 +337,8 @@ unused includes does not by itself establish that a migration is complete.
 
 ### Parapack example migration requirements
 
-The `tutorials/00-examples/parapack` targets are not all redundant copies of
+The `tutorials/00-examples/mc` targets (formerly `parapack`) are not all
+redundant copies of
 the native solvers. Inspection of their workers and adapters establishes the
 following requirements. All ports below are complete, and the Parapack
 framework has been removed. Old implementations are not correctness oracles.

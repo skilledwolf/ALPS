@@ -5,8 +5,8 @@ temperature scans and restart rules as [ising_single](../single/README.md).
 Build it from the parent examples project against an installed ALPS SDK:
 
 ```sh
-build/parapack/multiple/ising_multiple --validate parapack/multiple/run.toml
-mpiexec -n 3 build/parapack/multiple/ising_multiple parapack/multiple/run.toml
+build/mc/multiple/ising_multiple --validate mc/multiple/run.toml
+mpiexec -n 3 build/mc/multiple/ising_multiple mc/multiple/run.toml
 ```
 
 With an MPI-enabled SDK, all ranks cooperate on each physical chain. A periodic

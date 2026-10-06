@@ -18,7 +18,7 @@ def model(request):
 
 def run(directory, model, name, *, exchange=True, parameters=None, budget=0,
         checkpoint=None, rng='mt19937', chains=2, processes=1, launcher=None, parallel='chains'):
-    executable = str(tutorials_build() / f'00-examples/parapack/{model}/{model}')
+    executable = str(tutorials_build() / f'00-examples/mc/{model}/{model}')
     p = dict(ALGORITHM=model + ('; exchange' if exchange else ''), GRAPH='test',
              J=.7, J0=.8, J2=-.4, SWEEPS=127, THERMALIZATION=17)
     if exchange:
@@ -124,7 +124,7 @@ def test_corrupt_checkpoint_keeps_existing_outputs(model, tmp_path, fault):
         elif fault == 'count': clone['exchange/production'][()] += 1
         elif fault == 'diagnostics': del clone['stages/0/exchange/EXMC: Inverse Temperature']
         else: del clone['walkers/0/rng']
-    executable = tutorials_build()/f'00-examples/parapack/{model}/{model}'
+    executable = tutorials_build()/f'00-examples/mc/{model}/{model}'
     rejected = subprocess.run([str(executable), str(tmp_path/'resume.toml')], capture_output=True, timeout=60)
     assert rejected.returncode != 0
     assert before == (result.read_bytes(), resumed.read_bytes())
@@ -140,7 +140,7 @@ def test_mpi_independent_ladders_preserve_evidence(model, tmp_path, launcher):
 @pytest.mark.parametrize('fault', ['temperature', 'ladder-on-fixed', 'population-zero',
                                   'uniform-temperature-zero', 'wrong-model', 'seed', 'bins'])
 def test_validate_rejects_invalid_models_without_writing(model, tmp_path, fault):
-    executable = tutorials_build()/f'00-examples/parapack/{model}/{model}'
+    executable = tutorials_build()/f'00-examples/mc/{model}/{model}'
     p = dict(ALGORITHM=model+'; exchange', LATTICE='chain lattice', L=4,
              INVERSE_TEMPERATURE_SET=[0., .3, .9], SWEEPS=31)
     execution = dict(seed=17, bins=8)
@@ -194,7 +194,7 @@ def test_mpi_distributed_replicas_preserve_chronology(model, tmp_path, launcher,
 
 
 def test_mpi_fixed_temperature_rejects_replica_layout(model, tmp_path, launcher):
-    executable = str(tutorials_build()/f'00-examples/parapack/{model}/{model}')
+    executable = str(tutorials_build()/f'00-examples/mc/{model}/{model}')
     p = dict(ALGORITHM=model, LATTICE='chain lattice', L=7, BETA=.3, SWEEPS=31)
     output = tmp_path/'keep.h5'
     output.write_bytes(b'Existing scientific output')
@@ -213,7 +213,7 @@ def test_mpi_owned_checkpoint_validation_preserves_outputs(model, tmp_path, laun
     with h5py.File(state, 'r+') as ar:
         # Walker 1 exists only on rank 1; rank 3 is idle for this ladder.
         ar['simulation/realizations/0/clones/0/walkers/1/spins'][0, :] = 0
-    executable = str(tutorials_build()/f'00-examples/parapack/{model}/{model}')
+    executable = str(tutorials_build()/f'00-examples/mc/{model}/{model}')
     failed = invoke(launcher, executable, tmp_path/'resume.toml', processes=4, success=False)
     assert 'Invalid classical checkpoint spin' in failed.stdout + failed.stderr
     assert before == (result.read_bytes(), restored.read_bytes())
@@ -221,7 +221,7 @@ def test_mpi_owned_checkpoint_validation_preserves_outputs(model, tmp_path, laun
 
 def test_mpi_replica_layout_requires_consensus(model, tmp_path, launcher):
     from test_spatial_ising_example import mpmd_failure
-    executable = str(tutorials_build()/f'00-examples/parapack/{model}/{model}')
+    executable = str(tutorials_build()/f'00-examples/mc/{model}/{model}')
     p = dict(ALGORITHM=model+'; exchange', LATTICE='chain lattice', L=7,
              INVERSE_TEMPERATURE_SET=[0., .3, .9], SWEEPS=31)
     paths = [write_run_file(tmp_path/(mode+'.toml'), parameters=p,
@@ -236,7 +236,7 @@ def test_mpi_replica_layout_requires_consensus(model, tmp_path, launcher):
 def test_mpi_multiple_runs_keep_separate_execution_layouts(tmp_path, launcher):
     import os
     import shlex
-    executable = str(tutorials_build()/'00-examples/parapack/ising/ising')
+    executable = str(tutorials_build()/'00-examples/mc/ising/ising')
     paths = []
     for layout in ('chains', 'replicas'):
         name = 'reference-'+layout
