@@ -41,7 +41,8 @@ User-facing changes and migration notes are recorded here, starting with the bui
   Monte Carlo driver and moves from `tutorials/00-examples/parapack` to
   `tutorials/00-examples/mc`, keeping its program name. The SDK no longer links OpenMP: `ALPS_ENABLE_OPENMP`
   only builds the OpenMP thread-safety tests, and the classical examples take
-  their own `ALPS_ENABLE_OPENMP` option. See [migration](#removed-and-migration).
+  their own `ALPS_ENABLE_OPENMP` option. Parapack's OpenMP threads per clone have
+  no replacement; chains run as MPI processes. See [migration](#removed-and-migration).
 
 - Remove the scheduler's Monte Carlo layer (`<alps/scheduler/montecarlo.h>`)
   and the `compactrun` command for its run dumps. `convert2xml` keeps its
@@ -66,6 +67,10 @@ User-facing changes and migration notes are recorded here, starting with the bui
   validated before the first starts, and no further run starts after a failure.
   `mpirun` also accepts a launcher argument list, such as
   `["mpirun", "--bind-to", "none"]` for concurrent MPI runs.
+
+- Port the Fortran bridge (`ALPS::fortran`) to TOML runs, native ALEA and typed
+  HDF5 checkpoints. Fortran callbacks now use `bind(C)` interfaces with an explicit
+  caller handle; see [migration](#removed-and-migration).
 
 - Port `loop` to native ALEA and the TOML CLI, retaining continuous-time/SSE,
   annealing, signed/improved/custom estimators, replica exchange and both
@@ -288,12 +293,25 @@ Numerical persistence now requires an explicit adapter: include `<alps/hdf5/matr
 | `ALPS_INSTALL_HEADERS` | SDK headers are always installed |
 | `ALPS_INCLUDE_TUTORIALS` | `cmake --install <build-dir> --component tutorials` |
 | `ALPS_ENABLE_OPENMP_WORKER` | Removed with the Parapack worker; the classical examples in `tutorials/00-examples` take their own `ALPS_ENABLE_OPENMP` |
+| `ALPS_USE_MKL_PARALLEL` | `BLA_VENDOR=Intel10_64lp` for threaded or `Intel10_64lp_seq` for sequential MKL |
+| `ALPS_BUILD_ON_CRAY` | Removed without replacement; CMake's BLAS and LAPACK finders select the numerical libraries |
+| `ALPS_LINK_BOOST_TEST`, `ALPS_INSTALL_BOOST_TEST` | Removed; native tests use header-only Boost.Test, which the SDK does not install |
+| `ALPS_BUILD_DEVELOPER_TOOLS` | Removed without replacement |
+| `ALPS_NGS_OPENMPI_ULFM` | Removed with the unused ULFM fault-tolerance sources |
 | `PYALPS_BUILD_APPLICATIONS` | `PYALPS_BUILD_SOLVERS`; `PYALPS_BUNDLE_APPLICATIONS` still controls bundled executables separately |
 | `ALPS_USE_SYSTEM_BOOST`, `Boost_ROOT_DIR` / bundled Boost discovery | External Boost packages are always required; locate them through `Boost_ROOT` or `CMAKE_PREFIX_PATH` |
 | `LAPACK_64_BIT`, alternate `BIND_FORTRAN_*` ABIs | Use LP64 BLAS/LAPACK with lowercase, trailing-underscore symbols |
 | `UseALPS.cmake`, `include.mk`, `alpsvars` scripts | Imported SDK targets and explicit installation paths; add the installed `bin` directory to `PATH` |
 | `UsePyALPS.cmake`, `<alps/ngs/detail/export_sim_to_python.hpp>` | [pyalps downstream CMake package](python/pyalps/README.md#downstream-native-extensions) and `<pyalps/export_simulation.hpp>` |
 | `plot2*`, `convert2html`, `convert2text`, `extract*` shell tools | `alps-xml plot`, `alps-xml convert`, `alps-xml extract`; see [XML tools](CONTRIBUTING.md#xml-resources-and-tools) for formats and dependencies |
+| `xslttransform`, `use_local_stylesheet`, `archivecat` shell tools | `alps-xml` for rendering; run `xsltproc` with the stylesheets in `share/alps/xml` for other transformations |
+| `archive` (SQLite result index), `xml2archive`, `txt2archive` | Removed without replacement; load results with pyalps |
+| `spinmc_evaluate`, `loop --evaluate`, `pyalps.evaluateSpinMC`, `pyalps.evaluateLoop` | `spinmc` and `loop` write derived results at the end of each invocation; convert released results with `alps-hdf5-convert --alea-results` |
+| `pyalps.runApplication` for TOML programs | `pyalps.run_io.execute(application, runs)`; `runApplication` remains for the XML scheduler applications `fulldiag`, `sparsediag` and `dmrg` |
+| Several tasks of one XML job file in one program invocation | One TOML run per invocation; run a job manifest with `pyalps.run_io.execute(application, manifest, concurrency=N)` |
+| Parapack `--threads-per-clone`, `--total-threads` | No thread-level replacement; run independent chains as MPI processes with `execution.chains` and `mpiexec -n` |
+| Fortran F77 callbacks (`alps_init_`, ...), `ALPS_LONG`, scheduler input and XDR dumps | `bind(C)` callbacks taking a `type(c_ptr), value :: caller` handle, NUL-terminated names, `ALPS_INT64` and TOML runs; see the [Fortran examples](tutorials/00-examples/fortran/README.md#writing-an-application) |
+| `src/apps/qmc/sse` (`dirloop_sse_v1`), `src/apps/qmc/sse2` sources | `dirloop_sse`; `sse2`'s optimized-ensemble workflow has no replacement |
 | Top-level `import mpi` compatibility module | `import pyalps.mpi`; install the `mpi` extra for mpi4py |
 | `applications/`, `tool/`, `test/`, `example/` | `src/apps/`, `src/tools/`, `tests/`, `tutorials/00-examples/` |
 | Loose subsystem trees and transitional `src/alps/{common,runtime}/` | Semantic `src/alps/<module>/{include,src,tests}` ownership; see the [module map](src/alps/README.md#source-ownership) |

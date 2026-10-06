@@ -114,11 +114,10 @@ sampling/callback errors before progress collectives. The native Ising and
 Heisenberg contracts verify exact restart and independently calculated Boltzmann
 energies; they do not use legacy statistics as a correctness oracle.
 
-Direct legacy `MCScalarData` still serves other applications and has unresolved
-uneven-bin merging: samples 0–999 and 1000–2999 change count from 3000 to 2976
-on reanalysis and give mean 1492.8333 instead of 1499.5. This upstream behavior
-is a migration gate for those remaining callers. Native result reduction retains
-exact sample counts, sums and weights. Released recoverable linear-bin histories
+The removed legacy `MCScalarData` merged uneven bins incorrectly: samples 0–999
+and 1000–2999 changed count from 3000 to 2976 on reanalysis and gave mean
+1492.8333 instead of 1499.5. Native result reduction retains exact sample counts,
+sums and weights. Released recoverable linear-bin histories
 can be converted offline to native batch analysis; missing joint covariance or
 checkpoint cursors cannot be reconstructed from summaries.
 
