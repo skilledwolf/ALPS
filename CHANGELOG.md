@@ -23,6 +23,19 @@ User-facing changes and migration notes are recorded here, starting with the bui
   and MPI redistribution of independent ladders. Remove the replaced workers
   and their obsolete scheduler output fixtures.
 
+- Distribute the walkers of one replica ladder over MPI ranks with
+  `execution.parallel = "replicas"` in `loop` and the `ising` and `heisenberg`
+  examples; the default `"chains"` distributes independent ladders. Each
+  temperature keeps one chronological measurement stream, and checkpoints
+  resume with either layout and any process count.
+
+- Port the `exchange` library example to TOML and native ALEA. It accepts the
+  former `"ising; exchange"` and `"multiple parallel ising; exchange"`
+  algorithms; `execution.processes_per_walker` (formerly `PROCESS_PER_WORKER`)
+  decomposes each ring walker over a team of MPI processes. Every layout
+  reproduces the serial ladder exactly. Run `"loop; exchange"` jobs with the
+  `loop` application, which also replaces the `loop_single` example program.
+
 - Port `loop` to native ALEA and the TOML CLI, retaining continuous-time/SSE,
   annealing, signed/improved/custom estimators, replica exchange and both
   temperature-feedback methods. Checkpoint physical walkers, exchange state,

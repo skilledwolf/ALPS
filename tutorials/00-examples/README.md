@@ -74,8 +74,12 @@ Each temperature keeps its original sample order and autocorrelation history,
 and checkpoints can resume in either layout at a different rank count.
 Ranks store only their owned physical walkers; native checkpoint groups stream
 through a bounded buffer into root's disk cache. Temperature histories remain
-replicated to preserve their chronology. The separate legacy `exchange` example
-still supplies nested replica/spatial execution until that port is complete.
+replicated to preserve their chronology.
+
+The [exchange example](parapack/exchange/README.md) runs heat-bath Ising ladders
+whose walkers can also be spatially decomposed: with
+`execution.processes_per_walker = p`, teams of `p` processes each advance one
+ring walker at a time. Every layout reproduces the serial ladder exactly.
 
 The [quantum loop example](parapack/loop/README.md) runs the installed `loop`
 application, which replaces the former `loop_single` example program. Its

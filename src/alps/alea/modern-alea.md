@@ -338,28 +338,24 @@ or unused includes does not establish completion of those migrations.
 
 The `tutorials/00-examples/parapack` targets are not all redundant copies of
 the native solvers. Inspection of their workers and adapters establishes the
-following requirements. The `ising_single`, `ising_multiple`, `ising`,
-`heisenberg`, `loop_single` and `wanglandau` ports below are complete;
-`exchange` retains the outstanding nested decomposition. Old
-implementations are not correctness oracles.
+following requirements. All ports below are complete, and no example uses
+the Parapack framework. Old implementations are not correctness oracles.
 
 | Command | Functionality to preserve or establish an equivalent for |
 | --- | --- |
-| `ising_single` | Native port completed: graph-colored heat-bath updates, deterministic OpenMP within a lattice, extensive moments and centered heat capacity, and resumable warm-start temperature scans. Its shared kernel still supplies the temporary legacy exchange adapter. |
+| `ising_single` | Native port completed: graph-colored heat-bath updates, deterministic OpenMP within a lattice, extensive moments and centered heat capacity, and resumable warm-start temperature scans. |
 | `ising_multiple` | Native port completed: MPI spatial decomposition of **one** chain, ghost spins and global moments, sharing the serial model's statistics and scans. Odd/uneven ring partitions and exact restart with different rank counts are supported; arbitrary graphs retain a serial fallback. Spatial ranks do not multiply samples. |
 | `ising` | Native port completed: lattice-library heat-bath simulation with bond-type `J`, `J0`, … couplings, normalized magnetization, extensive energy, Binder/heat-capacity analysis, and replica exchange. |
 | `heisenberg` | Native port completed: unit-vector Metropolis updates with bond-type couplings; both vector-magnitude and z-component second/fourth moments and Binder ratios; replica exchange. |
-| `loop_single` | Native port completed: the example runs the installed `loop` application, which replaces this command. Exact diagonalization verifies all six old observables, including depleted-lattice volume and Kubo staggered susceptibility. Separate TOML jobs preserve quenched disorder realizations. Shared legacy physics headers remain only for `exchange`. |
-| `exchange` | Classical and quantum workers; serial replica ladders, MPI-distributed replicas, and nested MPI replica/spatial decomposition. Temperature-ladder optimization and exchange diagnostics also belong to this interface. |
+| `loop_single` | Native port completed: the example runs the installed `loop` application, which replaces this command. Exact diagonalization verifies all six old observables, including depleted-lattice volume and Kubo staggered susceptibility. Separate TOML jobs preserve quenched disorder realizations. |
+| `exchange` | Native port completed: heat-bath Ising ladders whose walkers may be spatially decomposed over teams of `execution.processes_per_walker` processes (the former `PROCESS_PER_WORKER`). Every layout reproduces the serial ladder exactly, and checkpoints resume across layouts. `loop; exchange` is the `loop` application with replica exchange. |
 | `wanglandau` | Native port completed: classical Ising **energy** DOS learning, inclusive walk/measurement windows, penalties and histogram refinement, overlapping-window stitching, fixed-weight microcanonical moments, temperature reweighting and reference-normalized entropy/free energy. Joint ALEA batches retain cross-bin covariance; both RNGs, independent-chain MPI and exact continuation are covered. The distinct quantum QWL expansion-order algorithm remains separate. |
 
 The spatial Ising worker's acceptance weight and energy sign have been corrected
 against the ring Hamiltonian, and its halo transfers use `sendrecv`. It rejects
-inconsistent model inputs collectively before communication. Direct worker tests
-at one, two and three MPI ranks cover odd and uneven partitions, canonical
-ferromagnetic/antiferromagnetic moments, physical bounds, exact restart and
-invalid-input consensus, with synchronous sends to expose buffering-dependent
-deadlocks. The native command additionally tests partition-independent results,
+inconsistent model inputs collectively before communication. The native
+command tests odd and uneven partitions, exact ring thermodynamics for both
+signs of the coupling, partition-independent results,
 cross-rank restart of unfinished warmups/statistical bins, both RNGs, temperature
 scans, heat capacity and Binder analysis, collective stopping and root-only
 publication. Proposals and results also remain identical under OpenMP. Native
@@ -369,9 +365,9 @@ MPI scheduler remains a separate validation task; its
 historical golden files were not scientific references and have been removed.
 The released spatial worker hardcoded a ring and ignored `LATTICE`; rejecting
 non-ring MPI inputs prevents silently simulating the wrong graph. The native
-kernel still retains global topology and constructs full initial state locally.
-Reduce that storage when integrating nested teams before claiming complete
-spatial memory scaling parity with the released worker.
+kernel still retains global topology and constructs full initial state locally,
+and nested teams reuse it unchanged: spatial decomposition divides update work,
+not memory per rank.
 
 The old scheduler's default clone disorder seed is clone-dependent
 (`parapack/clone_info.C`); explicit `DISORDER_SEED` fixes it across clones.
@@ -382,8 +378,6 @@ TOML runs. The quantum loop example does this explicitly; its tests
 validate distinct realizations, fixed models within chains, and exact restart.
 All walkers within one exchange ladder must still share the same realization.
 
-The remaining legacy exchange registrations are in its `.C` files; the behavior
-is in the worker headers and `alps/parapack/{exchange,exchange_multi}.h`.
 The former `temperature_scan_adaptor` retains the worker's physical state
 between temperatures, resets measurements after thermalization, and checkpoints
 the stage and counters. Independent TOML jobs alone do not preserve this
@@ -426,12 +420,17 @@ Quantum loop routes raw signed/vector observations through the same native
 measurement recorder; it does not combine fragments of a temperature's stream
 as independent runs. Both continuous-time and SSE kernels retain exact restart
 across layouts, including signed correlation and structure-factor measurements.
-Spatial teams remain a separate capability until the exchange worker is ported.
+The `exchange` example adds spatial teams through a group derived from
+`replica_parallel` in the tutorial: consecutive ranks form teams of
+`execution.processes_per_walker` processes, walker `w` runs on team
+`w % teams`, and only team roots contribute samples and checkpoint state.
+Because the spatial kernel draws all proposals on its team root, every
+layout reproduces the serial ladder exactly and checkpoints resume across
+layouts.
 
-Port and validate these behaviors before deleting their workers or the legacy
-Parapack MC framework. Validation must distinguish independent-chain MPI,
-spatial MPI, replica exchange, and nested decomposition, and must cover physical
-results as well as exact native continuation. Old formulas and golden output
+The ports were validated separately for independent-chain MPI, spatial MPI,
+replica exchange and nested decomposition, covering physical results as well
+as exact native continuation. Old formulas and golden output
 are evidence to inspect, not automatic correctness oracles. The scheduler
 Ising migration, for example, exposed an even-sweep parity trap when all flips
 were accepted; symmetric proposals that may keep the current spin now avoid

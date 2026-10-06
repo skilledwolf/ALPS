@@ -1,0 +1,19 @@
+[parameters]
+ALGORITHM = "multiple parallel ising; exchange"
+LATTICE = "chain lattice"
+L = 64
+J = 1.0
+NUM_REPLICAS = 4
+T_MIN = 2.0
+T_MAX = 4.0
+TEMPERATURE_DISTRIBUTION_TYPE = 2
+RANDOM_EXCHANGE = true
+SWEEPS = 16384
+[execution]
+seed = 2873
+bins = 64
+parallel = "replicas"
+processes_per_walker = 2
+[output]
+results = "spatial.h5"
+checkpoint = "spatial.checkpoint.h5"

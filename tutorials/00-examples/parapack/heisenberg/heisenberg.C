@@ -13,4 +13,4 @@
 
 #include "../classical.hpp"
 
-int main(int argc,char** argv) {return classical_main<classical_walker<3>>(argc,argv,"heisenberg");}
+int main(int argc,char** argv) {return classical_main<classical_walker<3>>(argc,argv,"heisenberg",{"heisenberg","heisenberg; exchange"});}

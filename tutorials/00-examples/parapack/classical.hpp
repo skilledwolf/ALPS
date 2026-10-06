@@ -5,6 +5,7 @@
 #include "classical_schema.hpp"
 #include <alps/mc/replica_exchange.hpp>
 #include <alps/mc/replica_parallel.hpp>
+#include <algorithm>
 #include <array>
 #include <optional>
 
@@ -58,6 +59,7 @@ public:
             }
         }
     }
+    void synchronize() {}
     double energy() const {
         double energy=0;
         for (size_t i=0;i<spins_.size();++i) for (auto [j,coupling]:neighbors_[i])
@@ -94,13 +96,26 @@ public:
     }
 };
 
-template<class Walker> class classical_application {
+// Groups that spread one walker over several ranks check owned walkers
+// locally on construction, bind them to their team before collective work,
+// and store each walker from one rank.
+template<class Group,class Walkers> auto check_walkers(Group const& group,Walkers const& walkers,int)
+    -> decltype(group.check(walkers),void()) {group.check(walkers);}
+template<class Group,class Walkers> void check_walkers(Group const&,Walkers const&,long) {}
+template<class Group,class Walkers> auto bind_walkers(Group& group,Walkers& walkers,int)
+    -> decltype(group.bind(walkers),void()) {group.bind(walkers);}
+template<class Group,class Walkers> void bind_walkers(Group&,Walkers&,long) {}
+template<class Group> auto stores_walker(Group const& group,size_t i,int)
+    -> decltype(group.stores_walker(i)) {return group.stores_walker(i);}
+template<class Group> bool stores_walker(Group const& group,size_t i,long) {return group.owns_walker(i);}
+
+template<class Walker,class Group=alps::mc::replica_parallel> class classical_application {
     alps::params parameters_;
     size_t bins_,chain_;
     uint64_t steps_=0;
     std::vector<std::optional<Walker>> walkers_;
     std::unique_ptr<alps::mc::replica_checkpoint> checkpoint_;
-    alps::mc::replica_parallel group_;
+    Group group_;
     std::vector<spin_statistics> stats_;
     std::vector<std::map<std::string,alps::mc::batch>> diagnostics_;
     std::optional<alps::mc::replica_exchange<double>> exchange_;
@@ -117,7 +132,7 @@ template<class Walker> class classical_application {
         return i%2 ? last-first-even : even;
     }
 public:
-    classical_application(alps::params const& p,size_t bins,size_t chain,alps::mc::replica_parallel group):parameters_(p),bins_(bins),chain_(chain),group_(std::move(group)) {
+    classical_application(alps::params const& p,size_t bins,size_t chain,Group group):parameters_(p),bins_(bins),chain_(chain),group_(std::move(group)) {
         if (p["ALGORITHM"].as<std::string>().find("exchange")!=std::string::npos) exchange_.emplace(p,chain,0.,true);
         if (group_.distributed && !exchange_) throw std::invalid_argument("parallel = replicas requires an exchange algorithm");
         const size_t n=exchange_ ? exchange_->size() : 1;
@@ -128,6 +143,7 @@ public:
         }
         // Idle ranks still validate the model before collective preflight.
         if (std::none_of(walkers_.begin(),walkers_.end(),[](auto const& w){return bool(w);})) Walker(p,chain*(n+1));
+        check_walkers(group_,walkers_,0);
         diagnostics_.resize(n);
         if (exchange_) exchange_->init_diagnostics([&](size_t i,char const* name){diagnostics_[i].emplace(name,alps::mc::batch(1,bins));});
     }
@@ -141,11 +157,15 @@ public:
     uint64_t completed_sweeps() const {return exchange_ ? exchange_->completed_sweeps() : steps_;}
     double fraction_completed() const {return double(production())/parameters_["SWEEPS"].template as<uint64_t>();}
     void synchronize() {
+        bind_walkers(group_,walkers_,0);
+        for (auto& walker:walkers_) if (walker) walker->synchronize();
         group_.synchronize_physical([&](auto& ar) {
-            for (size_t i=0;i<stages();++i) if (walkers_[i]) ar["/walkers/"+std::to_string(i)]<<*walkers_[i];
+            for (size_t i=0;i<stages();++i) if (walkers_[i] && stores_walker(group_,i,0))
+                ar["/walkers/"+std::to_string(i)]<<*walkers_[i];
         },checkpoint_,"/walkers");
     }
     void update() {
+        bind_walkers(group_,walkers_,0);
         if (!exchange_) {
             walkers_[0]->step(parameters_["BETA"].template as<double>());++steps_;
             if (production()) stats_[0].add(walkers_[0]->sample());
@@ -215,15 +235,19 @@ public:
     }
 };
 
-template<class Walker,class Group=alps::mc::replica_parallel> int classical_main(int argc,char** argv,char const* command) {
-    using simulation=classical_application<Walker>;
-    auto schema=std::string(classical_schema)+spin_common_schema+alps::mc::replica_exchange_schema+alps::mc::replica_parallel_schema;
+// The first algorithm is the default; names containing "exchange" run a ladder.
+template<class Walker,class Group=alps::mc::replica_parallel>
+int classical_main(int argc,char** argv,char const* command,std::vector<std::string> algorithms,std::string const& group_schema="") {
+    using simulation=classical_application<Walker,Group>;
+    auto schema=std::string(classical_schema)+spin_common_schema+alps::mc::replica_exchange_schema+alps::mc::replica_parallel_schema+group_schema;
+    schema+="[parameters.ALGORITHM]\ntype = \"string\"\ndefault = \""+algorithms.front()+"\"\nchoices = [";
+    for (size_t i=0;i<algorithms.size();++i) schema+=(i ? ", \"" : "\"")+algorithms[i]+"\"";
+    schema+="]\n";
     return alps::mc::main<simulation,Group>(argc,argv,command,schema.c_str(),
         [](std::string const& key)->char const* {
             return key.size()>1 && key[0]=='J' && key.find_first_not_of("0123456789",1)==std::string::npos ? "float64" : nullptr;
         },[=](alps::params& p,alps::run_configuration const& run) {
-            auto algorithm=p.value_or<std::string>("ALGORITHM",command);p["ALGORITHM"]=algorithm;
-            if (algorithm!=command && algorithm!=std::string(command)+"; exchange") throw std::invalid_argument("ALGORITHM does not match the command");
+            auto algorithm=p.value_or<std::string>("ALGORITHM",algorithms.front());p["ALGORITHM"]=algorithm;
             const bool exchange=algorithm.find("exchange")!=std::string::npos;
             if (!p.exists("THERMALIZATION")) p["THERMALIZATION"]=p["SWEEPS"].as<uint64_t>()/8;
             if (exchange) {

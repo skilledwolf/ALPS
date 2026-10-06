@@ -17,7 +17,13 @@
 #   FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 #   DEALINGS IN THE SOFTWARE.
 
-add_executable(exchange main.C ising.C loop.C)
+add_executable(exchange main.C)
+target_include_directories(exchange PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/.." "${CMAKE_CURRENT_BINARY_DIR}/../single")
 target_link_libraries(exchange PRIVATE ALPS::alps)
-
-alps_add_test(exchange)
+if(ALPS_ENABLE_OPENMP)
+  find_package(OpenMP REQUIRED COMPONENTS CXX)
+  target_link_libraries(exchange PRIVATE OpenMP::OpenMP_CXX)
+endif()
+if(ALPS_BUILD_TESTING)
+  add_test(NAME exchange_validate COMMAND exchange --validate "${CMAKE_CURRENT_SOURCE_DIR}/run.toml")
+endif()

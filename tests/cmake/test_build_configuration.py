@@ -249,7 +249,10 @@ def test_tutorials_are_an_explicit_install_component(tmp_path):
     for name in ("main.C", "native.hpp", "kernel.hpp", "schema.toml", "common.toml", "ising_schema.hpp.in", "run.toml", "scan.toml"):
         assert (tutorials / "00-examples/parapack/single" / name).is_file()
     assert not (tutorials / "00-examples/parapack/single/ising.C").exists()
-    assert (tutorials / "00-examples/parapack/exchange/params-ising").is_file()
+    for name in ("main.C", "run.toml", "spatial.toml", "README.md"):
+        assert (tutorials / "00-examples/parapack/exchange" / name).is_file()
+    for name in ("exchange/ising.C", "exchange/params-ising", "single/ising.h", "multiple/ising.h", "loop/loop.h"):
+        assert not (tutorials / "00-examples/parapack" / name).exists()
     for name in ("run.toml", "runs.py", "README.md"):
         assert (tutorials / "00-examples/parapack/loop" / name).is_file()
     assert not (tutorials / "00-examples/parapack/loop/main.C").exists()

@@ -1,0 +1,17 @@
+[parameters]
+ALGORITHM = "ising; exchange"
+LATTICE = "square lattice"
+L = 8
+J = 1.0
+NUM_REPLICAS = 16
+T_MIN = 1.0
+T_MAX = 10.0
+TEMPERATURE_DISTRIBUTION_TYPE = 2
+OPTIMIZE_TEMPERATURE = true
+SWEEPS = 65536
+[execution]
+seed = 2873
+bins = 64
+[output]
+results = "exchange.h5"
+checkpoint = "exchange.checkpoint.h5"

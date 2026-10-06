@@ -3,6 +3,3 @@ schema_version = 1
 [parameters.BETA]
 type = "float64"
 min = 0.0
-[parameters.ALGORITHM]
-type = "string"
-choices = ["ising", "ising; exchange", "heisenberg", "heisenberg; exchange"]

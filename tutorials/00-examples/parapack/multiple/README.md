@@ -30,7 +30,7 @@ before each sweep, gather spins for checkpoints, and publish through rank zero.
 
 The command retains the ring Hamiltonian `-J*sum_b s_i*s_j`, with spins ±1 and
 either sign of `J`. The historical scheduler output goldens used incorrect
-acceptance weights and energy signs; they have been removed. The corrected
-legacy worker in `ising.h` remains only for the unported nested replica-exchange
-adapter. Finish runs from released Parapack checkpoints with ALPS 3.0; convert their
+acceptance weights and energy signs; they have been removed. The
+[exchange example](../exchange/README.md) runs replica-exchange ladders of these
+spatially decomposed walkers. Finish runs from released Parapack checkpoints with ALPS 3.0; convert their
 results for analysis.
