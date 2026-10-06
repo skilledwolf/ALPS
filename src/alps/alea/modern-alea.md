@@ -214,7 +214,7 @@ capacity retains bin averages, which cannot reconstruct within-bin fluctuations.
 | Mixed-family C++ joins | Preserve the common available evidence; summary joins assume independence |
 | Spin application restart and MPI | Both supported RNGs; extend production; change process count on restart |
 | Released statistical files | Offline profile conversion; recoverable histories can become native analysis batches |
-| Released scheduler/Parapack application checkpoints | Conversion into the new spin engine state is **not implemented**; retain originals and released readers |
+| Released scheduler/Parapack application checkpoints | Finish runs with ALPS 3.0; results-only conversion is the supported migration boundary |
 
 The imported `sampling_prop` and `bootstrap_prop` were declarations marked
 unimplemented, with no transform implementation. They have been removed from the
@@ -227,7 +227,7 @@ walker permutations, and every physical configuration. See the [quantum solver r
 for checkpoint state, signed correlations and particle-number tuning. The impurity solver analysis files
 still lack complete physical solver state and do not provide restart. These
 boundaries are explicit; consolidation is not complete until the remaining
-clients and released application-checkpoint conversion are handled.
+clients are ported. Released runs finish with ALPS 3.0; only their results are converted.
 
 QWL uses mean estimators for its coefficient/histogram snapshots and native
 batch/autocorrelation estimators for traversal times. It shares the native
@@ -298,7 +298,7 @@ Two older source directories require separate decisions before deletion:
   them a redundant QWL copy or claim complete optional-algorithm parity.
 
 The remaining migration work includes live Parapack/Monte Carlo scheduler
-consumers and released physical-checkpoint continuation. Removing dead wrappers
+consumers. Released physical checkpoints remain with ALPS 3.0. Removing dead wrappers
 or unused includes does not establish completion of those migrations.
 
 ### Parapack example migration requirements

@@ -304,60 +304,13 @@ schema; it contains no legacy file reader. The fixture
 output; its metadata records the producer and the comparison with released QWL
 measurement writers. It is not represented as output from a compiled v3.0.0 build.
 
-## Application checkpoint conversion boundary
+## Released simulation continuation
 
-A released result file is not necessarily a complete application checkpoint.
-For example, the ALPS 3.0.0 `spinmc` HDF5-enabled writer splits a restart across
-its `.out.runN.h5` archive and companion `.out.runN` XDR file:
-
-| State | Released writer and location |
-| --- | --- |
-| Parameters and RNG name/state | `Worker::save(hdf5::archive&)`: `/parameters`, `/rng` and `/rng/@name` |
-| Measurements | `MCRun::save(hdf5::archive&)`: `/simulation/realizations/0/clones/0/results` |
-| Total updates and fractional cluster thermalization | `AbstractSpinSim::save(ODump&)`: XDR payload |
-| Physical spins | `SpinSim::save(ODump&)`: XDR payload, with model-specific moment representation |
-
-This follows the pinned release sources in `src/alps/scheduler/worker.C`,
-`src/alps/scheduler/montecarlo.C` and
-`applications/mc/spins/{abstractspinsim,spinsim,ising,potts,on}.h`.
-Despite the comment in the released `config.h.in` saying checkpoint data is
-HDF5-only, application `ODump` hooks still write physical state. The worker
-stream starts with the run marker, reserved integer and format version. Version
-400 moves framework state to HDF5; version 310 additionally embeds parameters,
-RNG, task information and measurements in XDR. These layouts must not be mixed.
-
-The `--spinmc-state` profile recovers the version-400 physical payload into
-ordinary HDF5 datasets while copying the companion HDF5 archive:
-
-```sh
-alps-hdf5-convert task.out.run1.h5 recovered.h5 \
-  --spinmc-state task.out.run1 --parameters /parameters
-```
-
-`/migration/spinmc` contains the model, spins (site × component), total-update
-counter, fractional thermalization counter, thermalization sweep counter, and
-exact source XDR bytes. Ising Boolean states become ±1; Potts states retain their
-color indices; XY, Heisenberg and O(4) retain their vector components. The reader
-checks the header, exact payload length and physical spin constraints before
-publication. Potts requires a numeric `q` of 3, 4 or 10; unresolved expressions
-are rejected. Version 310 is not yet supported. RNG and measurement data remain
-in their original archive locations; statistical profiles can be selected in the
-same invocation. The source files remain untouched.
-
-The released pair has no shared identifier: callers must supply companions
-from the same saved run. Presence and payload checks cannot authenticate that
-pairing. The fixtures are compiled C++ protocol reconstructions using OSIRIS,
-with source references and hashes in `tests/cli/fixtures/spinmc-state.json`;
-they are not represented as complete released application checkpoints.
-
-This profile is state recovery, not native solver restart conversion.
-No existing profile translates these physical checkpoints into native solver
-checkpoints. Keep both companion files. A complete offline translator must
-validate the pair and model representation, carry physical state and RNG into
-the native engine, and explicitly preserve the available statistical history.
-Missing histories or changed estimator definitions must not become invented
-native batches or be silently discarded. A warm start with reset measurements
-would be a different operation, not complete checkpoint conversion.
+The converter migrates results for analysis. Continue released simulations with
+ALPS 3.0, retaining their original checkpoint files and companion files. Native
+solvers resume only their own native checkpoints; translating physical state,
+RNG streams and incomplete measurement histories from released applications is
+outside this converter's scope.
 
 ## Older explicit container schema migration
 
@@ -440,11 +393,7 @@ counts, unsigned 64-bit total count, and range/step attributes. No histogram
 format adapter or new runtime class is needed. Tests independently reconstruct
 this contract and verify preservation alongside summaries and histories.
 
-Keep original released checkpoints when continuation with the released program
-is needed. The new spin engines checkpoint their complete native state, and can
-continue those files across serial/MPI process counts; a released scheduler or
-Parapack checkpoint is not yet convertible into that new application state.
-This remains a migration gap, and blocks a claim of complete checkpoint-format
-coverage. Do not remove an old checkpoint reader merely because statistical
-result conversion passes. CT-INT, CT-HYB and Hirsch-Fye analysis files omit solver
-configurations; a converter cannot turn them into resumable solver checkpoints.
+Keep original released checkpoints and finish those runs with ALPS 3.0. The
+native engines checkpoint their complete state and support continuation across
+serial/MPI process counts. Results conversion does not reconstruct physical
+configurations or infer missing measurements.
