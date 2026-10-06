@@ -103,23 +103,33 @@ def executeCommandLogged(cmdline,logfile):
     log(cmd)
     return subprocess.call(cmd, shell=True, stdout=open(logfile, 'w'), stderr=subprocess.STDOUT)
 
+# These programs read TOML run files; pyalps.run_io.execute validates and
+# launches them. runApplication keeps the scheduler XML command line.
+_RUN_FILE_APPLICATIONS = frozenset((
+    "spinmc", "simplemc", "loop", "worm", "dirloop_sse", "qwl",
+    "dmft", "hybridization", "interaction", "hirschfye", "maxent"))
+
+
 def runApplication(appname, parmfiles, T=None, Tmin=None, Tmax=None, writexml=False, MPI=None, mpirun='mpirun'):
-    """ run an ALPS application 
-    
-        This function runs an ALPS application. The parameers are:
-        
+    """ run an XML scheduler application (sparsediag, fulldiag or dmrg)
+
         appname: the name of the application
-        parmfile: the name of the main XML input file
-        writexml: optional parameter, to be set to True if all results should be written to the XML files in addition to the HDF5 files
-        T: time limit of MC simulation
-        Tmin: optional parameter specifying the minimum time between checks whether a MC simulatio is finished
-        Tmax: optional parameter specifying the maximum time between checks whether a MC simulatio is finished
-        MPI: optional parameter specifying the number of processes to be used in an MPI simulation. MPI is not used if this parameter is left at ots default value  None.
-        mpirun: optional parameter giving the name of the executable used to laucnh MPI applications. The default is 'mpirun'
+        parmfiles: the name of the main XML input file, or a list of them
+        writexml: also write results to the XML files in addition to the HDF5 files
+        T: time limit in seconds
+        Tmin, Tmax: minimum and maximum time in seconds between checks whether a simulation is finished
+        MPI: number of MPI processes; MPI is not used if this is None
+        mpirun: the MPI launcher, by default 'mpirun'
+
+        Applications that read TOML run files are run with pyalps.run_io.execute.
     """
+    if isinstance(parmfiles, (str, os.PathLike)):
+      parmfiles = [parmfiles]
+    parmfiles = [os.fspath(parmfile) for parmfile in parmfiles]
+    if (os.path.basename(appname) in _RUN_FILE_APPLICATIONS
+            or any(parmfile.lower().endswith('.toml') for parmfile in parmfiles)):
+      raise ValueError(f"{appname} reads TOML run files; use pyalps.run_io.execute({appname!r}, run_files)")
     check_existence(appname)
-    if isinstance(parmfiles, str):
-      parmfiles = [parmfiles];
 
     for parmfile in parmfiles:
       cmdline = []
@@ -127,36 +137,21 @@ def runApplication(appname, parmfiles, T=None, Tmin=None, Tmax=None, writexml=Fa
           cmdline += [mpirun,'-np',str(MPI)]
       cmdline += [appname]
       if MPI is not None:
-          cmdline += ['--mpi']
-          if appname in ['sparsediag','fulldiag','dmrg']:
-              cmdline += ['--Nmax','1']
+          cmdline += ['--mpi','--Nmax','1']
       cmdline += [parmfile]
       if T:
         cmdline += ['-T',str(T)]
       if Tmin:
         cmdline += ['--Tmin',str(Tmin)]
       if Tmax:
-        cmdline += ['--TMax',str(Tmax)]
+        cmdline += ['--Tmax',str(Tmax)]
       if writexml:
         cmdline += ['--write-xml']
       if parmfile.find('.xml') != -1:
         return (executeCommand(cmdline),parmfile.replace('.in.xml','.out.xml'))  # no iteration for xml i/o
       if parmfile.find('.h5') != -1:
         executeCommand(cmdline);
-   
 
-def evaluateLoop(infiles, appname='loop', write_xml=False):
-    """ evaluate results of the looper QMC application 
-    
-        this function calls the evaluate tool of the looper application. Additionally evaluated results are written back into the files. Besides a list of result files it takes one optional argument:
-        
-        write_xml: if this optional argument is set to True, the results will also bw written to the XML files
-    """
-    cmdline = [appname,'--evaluate']
-    if write_xml:
-      cmdline += ['--write-xml']
-    cmdline += make_list(infiles)
-    return executeCommand(cmdline)
 
 def evaluateQWL(infiles, appname='qwl_evaluate', DELTA_T=None, T_MIN=None, T_MAX=None):
     """ evaluate results of the quantum Wang-Landau application 

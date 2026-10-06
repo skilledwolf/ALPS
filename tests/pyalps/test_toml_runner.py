@@ -253,8 +253,17 @@ def test_existing_scheduler_xml_path_is_preserved(monkeypatch):
     recorded = []
     monkeypatch.setattr(tools, "check_existence", lambda _: None)
     monkeypatch.setattr(tools, "executeCommand", lambda args: recorded.append(args) or 0)
-    assert tools.runApplication("loop", "legacy.in.xml", MPI=2, T=10) == (0, "legacy.out.xml")
-    assert recorded == [["mpirun", "-np", "2", "loop", "--mpi", "legacy.in.xml", "-T", "10"]]
+    assert tools.runApplication("sparsediag", "ed.in.xml", MPI=2, T=10, Tmax=30) == (0, "ed.out.xml")
+    assert recorded == [["mpirun", "-np", "2", "sparsediag", "--mpi", "--Nmax", "1", "ed.in.xml",
+                         "-T", "10", "--Tmax", "30"]]
+
+
+@pytest.mark.parametrize("application, run", [("loop", "parm.in.xml"), ("/opt/alps/bin/spinmc", "parm.in.xml"),
+                                              ("custom", "run.toml")])
+def test_scheduler_launcher_refuses_toml_run_applications(monkeypatch, application, run):
+    monkeypatch.setattr(tools, "executeCommand", lambda args: pytest.fail("must not launch"))
+    with pytest.raises(ValueError, match="use pyalps.run_io.execute"):
+        tools.runApplication(application, run)
 
 
 def test_native_cthyb_launcher_roundtrip_when_cli_available(tmp_path, monkeypatch):

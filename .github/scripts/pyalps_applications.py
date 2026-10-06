@@ -58,9 +58,10 @@ cases = {
         "NUMBER_EIGENVALUES": 1,
     },
 }
-if app == "spinmc":
+if app in ("spinmc", "loop", "dirloop_sse"):
     from pyalps.run_io import execute, write_run_files
-    manifest = write_run_files("test", [{"parameters": cases[app],
+    parameters = {key: value for key, value in cases[app].items() if key != "SEED"}
+    manifest = write_run_files("test", [{"parameters": parameters,
         "execution": {"seed": 42, "time_limit": 45.0},
         "output": {"results": "test.task1.out.h5"}}])
     files = execute(app, manifest)
