@@ -316,21 +316,15 @@ its current measurement implementation. The former `looper/evaluator.h` and
 `evaluator_impl.h` wrappers had no callers, referred to retired evaluator
 selectors, and have been removed. No measurement algorithm was removed with them.
 
-Two older source directories require separate decisions before deletion:
-
-- `src/apps/qmc/sse` was already excluded by the released v3.0.0 QMC CMake file
-  (`1950cc6f682d7c4c1deae8b816f283857b1819d1`). Its old local CMake file names
-  `dirloop_sse_v1` and `dirloop_sse_evaluate`. The built `dirloop_sse` is the
-  native `sse4` implementation. Being unbuilt is not a feature-parity proof.
-- `src/apps/qmc/sse2` has no CMake target in that release or this tree. Its
-  `SIMULATION_PHASE=2` workflow loads external `LOGG_FILENAME` weights, performs
-  optimized-ensemble sweeps, and records up-walker histograms for iterative
-  weight optimization. The current QWL implementation has Wang–Landau and
-  multicanonical sampling but does not implement that external-weight workflow.
-  Retain these sources until this unique capability is resolved; do not label
-  them a redundant QWL copy or claim complete optional-algorithm parity.
-  Both were written against the former scheduler-based `QMCRun` and the
-  removed legacy ALEA observables, so they no longer compile in this tree.
+The older `src/apps/qmc/sse` and `src/apps/qmc/sse2` directories are removed.
+The released v3.0.0 QMC CMake file (`1950cc6f682d7c4c1deae8b816f283857b1819d1`)
+built neither, and both depended on the scheduler's `QMCRun` and the legacy
+ALEA observables. The installed `dirloop_sse` is the native `sse4`
+implementation. One `sse2` capability has no replacement: its
+`SIMULATION_PHASE=2` workflow loaded external `LOGG_FILENAME` weights, performed
+optimized-ensemble sweeps and recorded up-walker histograms for iterative
+weight optimization. `qwl` provides Wang–Landau and multicanonical sampling,
+not that external-weight workflow; port it from git history if it is needed.
 
 Released physical checkpoints remain with ALPS 3.0. Removing dead wrappers or
 unused includes does not by itself establish that a migration is complete.

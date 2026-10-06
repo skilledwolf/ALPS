@@ -54,6 +54,12 @@ User-facing changes and migration notes are recorded here, starting with the bui
   consumers migrated. `ALPS::statistics` is the only statistics library; the
   `fleas_correlated` sampling example now uses its autocorrelation estimator.
 
+- Remove the unbuilt `src/apps/qmc/sse` and `sse2` sources, which the released
+  QMC build already excluded and which no longer compiled. The installed
+  `dirloop_sse` is unchanged. The `sse2` optimized-ensemble workflow
+  (`SIMULATION_PHASE=2` with external `LOGG_FILENAME` weights) has no
+  replacement; `qwl` provides Wang–Landau and multicanonical sampling.
+
 - Port `loop` to native ALEA and the TOML CLI, retaining continuous-time/SSE,
   annealing, signed/improved/custom estimators, replica exchange and both
   temperature-feedback methods. Checkpoint physical walkers, exchange state,
