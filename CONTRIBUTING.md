@@ -284,7 +284,7 @@ Plot/extraction formats are `text`, `html`, `gnuplot`, `matplotlib` and `grace`;
 
 ## CI coverage
 
-Pull requests report aggregate `Source CI` and `Packaging CI` checks. Path-based selection limits documentation-only runs; build-system and public-header changes select broader coverage. Scheduled and release runs use the full matrix. The [source workflow](.github/workflows/build.yml), [coverage matrix](.github/ci-matrix.json) and [packaging workflow](.github/workflows/build_wheels.yml) are the authoritative lists of tested configurations.
+Pull requests report aggregate `Source CI` and `Packaging CI` checks. Path-based selection limits documentation-only runs; build-system and public-header changes select broader coverage. The pull-request source build also builds every installed tutorial, including the MPI programs, and fails integration tests that would otherwise skip for a missing program. Scheduled and release runs use the full matrix. The [source workflow](.github/workflows/build.yml), [coverage matrix](.github/ci-matrix.json) and [packaging workflow](.github/workflows/build_wheels.yml) are the authoritative lists of tested configurations.
 
 Coverage includes Linux/macOS source builds, CMake 3.27, MPI/OpenMP, installed-SDK consumers, direct CMake/editable-pip contributor workflows and repaired wheels tested on fresh runners. Dependency providers in CI are runner configuration, not requirements to use that package manager locally. Wheel builds are per CPython interpreter; local editable tests do not replace wheel and source-distribution validation.
 

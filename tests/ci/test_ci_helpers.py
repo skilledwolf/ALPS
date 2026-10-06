@@ -50,7 +50,8 @@ def test_matrix_event_selection(tmp_path, event, ref, tier, count):
     else:
         assert builds[0]["python"] and builds[0]["mpi"] == "ON"
         assert not builds[0]["physics"]
-        assert not builds[0]["extras"]
+        # Pull requests build the installed tutorials and require their tests.
+        assert builds[0]["extras"]
     if count == 14:
         assert any(build["extensive"] for build in builds)
         sanitized = [build for build in builds if build["sanitizer"]]
