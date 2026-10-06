@@ -9,11 +9,9 @@ group; executable names and installation components remain stable.
 | `parameters/` | `parameter2xml`, `parameter2hdf5`, `p2h5` | None |
 | `lattice/` | `lattice2xml`, `printgraph` | `pltgraph.py` and historical local fixtures |
 | `scheduler/` | `convert2xml`, `compactrun`, `snap2vtk` | None |
-| `parapack/` | `pevaluate`, `poutput` | `xml2archive.C` |
 | `diagnostics/` | `pconfig` | None |
 | `hdf5/` | `alps-hdf5-convert` (Python, requires h5py and NumPy) | None |
 | `xml/` | `alps-xml` on Unix | `txt2archive.C` and all historical shell wrappers |
-| `result_archive/` | None | SQLite-backed XML result indexing and plotting sources |
 | `alea/` | None | C++ and Python mean/variance analysis programs |
 | `launchers/` | None | Historical `alpspython` shell and Windows templates |
 | `installer/` | None | Historical macOS postflight template |

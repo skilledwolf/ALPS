@@ -191,7 +191,7 @@ For development questions, use [Discord](https://discord.gg/JRNWnnva9g); reprodu
 | `src/alps/{containers,numerics,numeric_io}/` | Separate interface targets for container storage, numerical algorithms and numerical HDF5 adapters |
 | `src/alps/{ietl,graph}/` | Eigensolver and graph headers and tests contributing to the aggregate interface |
 | `src/alps/plotting/` | `<alps/plot.h>` output helpers combining XML and older parameters; contributes headers, not a separate library |
-| `src/alps/{legacy_parameters,expression,lattice,model,random,alea,accumulators,mc,scheduler,parapack}/` | Semantic source modules contributing to `ALPS::alps` and its compile interface |
+| `src/alps/{legacy_parameters,expression,lattice,model,random,alea,mc,scheduler}/` | Semantic source modules contributing to `ALPS::alps` and its compile interface |
 | `src/alps/solvers/` | Public callable solver declarations shared by MaxEnt and CT-QMC |
 | `src/alps/fortran/` | Public headers and implementation of the `ALPS::fortran` bridge |
 | `src/apps/`, `src/tools/` | Simulation applications, shared solver implementations and [CLI tools grouped by responsibility](src/tools/README.md) |
@@ -230,10 +230,10 @@ Update the owning module's CMake declarations when adding production files or de
 | `ALPS_BUILD_APPLICATIONS` | `ON` | Build simulation applications, solver libraries and command-line tools |
 | `BUILD_SHARED_LIBS` | `ON` when unset | Shared libraries; required for Python bindings |
 | `ALPS_ENABLE_MPI` | `OFF` | Enable MPI; requires matching MPI and Boost.MPI installations |
-| `ALPS_ENABLE_OPENMP` | `OFF` | Enable OpenMP, including worker scheduling |
+| `ALPS_ENABLE_OPENMP` | `OFF` | Build the OpenMP thread-safety tests |
 | `ALPS_BUILD_EXTENSIVE_TESTS` | `OFF` | Add expensive graph and HDF5 type-matrix tests when testing is enabled |
 
-For example, configure with `cmake --preset default -DALPS_ENABLE_OPENMP=ON`. The `sdk` preset disables applications and tests; `distribution` disables tests and its build preset installs automatically. When embedding ALPS with `add_subdirectory`, applications and tests default to `OFF`. MPI remains opt-in. Headers and the C++ Fortran bridge are always part of the SDK; building that bridge needs no Fortran compiler.
+For example, configure with `cmake --preset default -DALPS_ENABLE_MPI=ON`. The `sdk` preset disables applications and tests; `distribution` disables tests and its build preset installs automatically. When embedding ALPS with `add_subdirectory`, applications and tests default to `OFF`. MPI remains opt-in. Headers and the C++ Fortran bridge are always part of the SDK; building that bridge needs no Fortran compiler.
 
 Examples build separately against an installed SDK; see the [C++ and Fortran example instructions](tutorials/00-examples/README.md). Fortran tutorials that call OpenMP also need a Fortran OpenMP runtime. To install tutorial sources under `share/alps/tutorials`, run `cmake --install _build/default --component tutorials` after installing the SDK.
 

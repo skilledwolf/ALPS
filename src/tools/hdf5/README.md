@@ -184,8 +184,8 @@ alps-hdf5-convert task.out.h5 native.h5 \
 ```
 
 Observables with a linear bin history are converted as with `--alea-batches`.
-Observables without bins, such as constants that Parapack records without
-binning, keep their reported statistics as with `--alea-summary`. The command
+Observables without bins, such as constants that released Parapack
+applications recorded without binning, keep their reported statistics as with `--alea-summary`. The command
 prints the choice for each observable. A history that exists but is
 inconsistent fails the conversion and never falls back to its summary. Every
 child of the selected group must be an observable group.

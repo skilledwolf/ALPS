@@ -375,8 +375,7 @@ runs' input and output paths must stay outside it.
 rejects outputs that replace any run's inputs or other outputs, and validates every
 run file or manifest with the application executable, then runs them in order and
 returns their absolute result paths. Job execution through the legacy
-scheduler/parapack fronts remains pending migration for their remaining
-applications. `simplemc` now uses this native TOML workflow for all three
+scheduler front remains pending migration for its remaining applications. `simplemc` now uses this native TOML workflow for all three
 classical spin models, independent chains, exact HDF5 restart and direct VTK
 snapshots; see the [simplemc guide](../../src/apps/mc/simple/README.md).
 `spinmc` uses the same driver for Ising, XY, Heisenberg, O(4) and Potts models,

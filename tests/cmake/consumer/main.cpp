@@ -1,8 +1,6 @@
 #ifdef _WIN32
 #include <windows.h>
 #endif
-#include <boost/spirit/include/classic_core.hpp>
-#include <alps/parapack/integer_range.h>
 #include <alps/hdf5/archive.hpp>
 #include <alps/hdf5/vector.hpp>
 #include <alps/params.hpp>
@@ -60,7 +58,6 @@ int main(int argc, char** argv) {
         return 1;
     alps::params parameters;
     parameters["count"] = 3;
-    const alps::integer_range<int> range("[2:5]");
     const std::vector<double> expected{1.0, 2.0, 3.0};
     {
         alps::OXDRFileDump output("sdk-contract.xdr");
@@ -82,6 +79,5 @@ int main(int argc, char** argv) {
     sim.run([] { return false; });
     const auto result = std::get<alps::alea::batch_result<double>>(sim.collect_results().at("samples"));
     return actual == expected && checkpoint_value == 42 && int(parameters["count"]) == 3
-        && (range.min)() == 2 && (range.max)() == 5
         && result.count() == 3 && result.mean()(0) == 2.0 ? 0 : 1;
 }

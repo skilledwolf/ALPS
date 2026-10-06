@@ -40,7 +40,7 @@ handles; collected result dictionaries own snapshots. The old NGS measurement
 facade, feature-stack API and unused scheduler prototypes are removed.
 `simplemc` shares one local-update engine for Ising, XY and Heisenberg models on
 this framework, with typed runs, raw-chain pooling, exact checkpoints and direct
-VTK snapshots; its duplicate Parapack workers are removed. See the
+VTK snapshots. See the
 [application guide](../apps/mc/simple/README.md).
 `spinmc` uses the same typed-run driver with a native engine for Ising,
 XY, Heisenberg, O(4) and Potts models, local/cluster updates, matrix couplings and
@@ -146,7 +146,7 @@ Each module uses `include/`, `src/` and `tests/` where applicable. Public includ
 | `graph/`, `lattice/`, `model/` | Graph helpers, lattice definitions and physical models | `ALPS::headers`, `ALPS::alps` |
 | `random/` | Random generators and their factories | `ALPS::alps` |
 | `alea/` | Legacy observables and modern Eigen-based statistical estimators | `ALPS::alps`, `ALPS::statistics` |
-| `mc/`, `scheduler/`, `parapack/` | Simulation API, execution and scheduling | `ALPS::alps` |
+| `mc/`, `scheduler/` | Simulation API, execution and scheduling | `ALPS::alps` |
 | `fortran/` | C++ bridge with public headers in `include/alps/fortran/` | `ALPS::fortran` |
 | `solvers/` | Shared `<alps/solvers.hpp>` declarations for MaxEnt and CT-QMC | `ALPS::solver_headers` |
 | `resources/` | XML definitions and stylesheets | Installed data component |

@@ -36,6 +36,12 @@ User-facing changes and migration notes are recorded here, starting with the bui
   reproduces the serial ladder exactly. Run `"loop; exchange"` jobs with the
   `loop` application, which also replaces the `loop_single` example program.
 
+- Remove the Parapack framework (`<alps/parapack/*.h>`) and its `pevaluate` and
+  `poutput` commands; every former Parapack example now runs on the native
+  Monte Carlo driver. The SDK no longer links OpenMP: `ALPS_ENABLE_OPENMP`
+  only builds the OpenMP thread-safety tests, and the classical examples take
+  their own `ALPS_ENABLE_OPENMP` option. See [migration](#removed-and-migration).
+
 - Port `loop` to native ALEA and the TOML CLI, retaining continuous-time/SSE,
   annealing, signed/improved/custom estimators, replica exchange and both
   temperature-feedback methods. Checkpoint physical walkers, exchange state,
@@ -213,7 +219,7 @@ User-facing changes and migration notes are recorded here, starting with the bui
 - Change params checkpoints to `alps.params.v2`, with native datatype/rank determining value types, native complex/Boolean datatypes, ranked empty vectors and transactional loading. Indexed name/value entries preserve arbitrary parameter names without duplicate type tags. Python params copy values on assignment and retrieval; missing keys raise `KeyError`. Native spin tutorials use TOML input with a shared application schema.
 
 - Export `ALPS::configuration`, `ALPS::containers`, `ALPS::numerics`, `ALPS::numeric_io` and `ALPS::solver_headers` as interface targets. Foundation libraries and interfaces own their header sets without inheriting aggregate `ALPS::headers`. Separate array storage from mathematical helpers and numerical types from HDF5 adapters, removing the foundation include cycle; the expression/older-parameters cycle remains. Numerical algorithms and the moved headers' public include names are preserved, with no ALPSCore implementation imported. Params conversion headers move to `params/adapters/include/` and remain exposed through the aggregate interface with implementations in `ALPS::alps`.
-- Group `src/tools/` commands by parameter preparation, lattice export, scheduler formats, Parapack, diagnostics and XML transformations. Keep historical inactive tools under explicit owners without enabling them. Executable names, installation components and source contents are preserved; `pconfig` now links only the utilities component.
+- Group `src/tools/` commands by parameter preparation, lattice export, scheduler formats, diagnostics and XML transformations. Keep historical inactive tools under explicit owners without enabling them. Executable names, installation components and source contents are preserved; `pconfig` now links only the utilities component.
 - Organize `src/alps/` by semantic ownership, including numerical/container helpers, XML, older parameters, models, observables and execution, replacing the transitional `common/` and `runtime/` groups. Modules own their headers, sources and local tests; configuration templates live in `cmake/config/`. Explicit file sets preserve public include names, and generated headers use `<build-dir>/generated/include/alps/`. A CMake-generated module manifest supports ownership and include-dependency checks. Remaining simulation modules use the aggregate header interface; physical owners are not all independent libraries.
 - Export `ALPS::xml` for XML parsing/output and `ALPS::cli` for the existing `mcoptions` and `parseargs` command-line grammars. MaxEnt's executable now links `ALPS::cli` instead of `ALPS::alps`; its HDF5 input, command-line behavior and scientific calculations are unchanged. Move `<alps/plot.h>` to the `plotting` header module because it also uses older parameters. Public include names remain stable, and `ALPS::headers` remains the aggregate compile interface. Python runtime packaging includes both libraries; rebuild downstream binaries after the split.
 - Export `ALPS::osiris` for dump/XDR serialization and process/communication state. MaxEnt's solver links the foundations, Osiris and numerical providers without the simulation runtime, preserving its numerical calculations and stop-callback behavior. Python runtime packaging includes Osiris. Rebuild downstream binaries after the library split.
@@ -239,7 +245,7 @@ Typed params no longer accept legacy text/XML files or old parameter checkpoints
 
 Python archive indexing reads primitive datasets or returns h5py groups; use explicit group/dataset operations rather than assigning nested dictionaries or inferring lists from numbered children. Native object `save`/`load` operations close h5py temporarily, invalidating previously borrowed h5py objects. Deprecated `h5ar`, `iArchive`, `oArchive` and XML-export aliases are removed.
 
-The unreferenced `alps::ngs_parapack` XML frontend is removed: all its references were internal to that frontend, and the project assumes no external consumers. The active `alps::parapack` implementation and older `alps::Parameters` applications remain; migrating their application orchestration is separate work. The internal typed-to-`Parameters` adapter remains for live model and lattice callers.
+The unreferenced `alps::ngs_parapack` XML frontend is removed: all its references were internal to that frontend, and the project assumes no external consumers. The `alps::parapack` framework is also removed; write simulations against `alps::mc::main` as in the classical examples of `tutorials/00-examples`. Its `pevaluate` and `poutput` commands read released Parapack XDR and HDF5 results: convert results with `alps-hdf5-convert SOURCE DESTINATION --parameters /parameters --alea-results GROUP` and analyze them with pyalps, and finish released mid-run Parapack simulations with ALPS 3.0. Older `alps::Parameters` applications remain; migrating their application orchestration is separate work. The internal typed-to-`Parameters` adapter remains for live model and lattice callers.
 
 The Python MaxEnt, CT-HYB and CT-INT modules expose `schema()`, `prepare(parameters, input, output, execution)` and `solve(run)`. CT-INT's `schema(parameters={})` expands its per-flavor settings. `solve` takes a run returned by `prepare` or loaded with `pyalps.run_config.load` instead of a combined parameter dictionary, and MaxEnt's `AnalyticContinuation` function is removed. `pyalps.runDMFT` is replaced by `pyalps.run_io.execute(application, runs)`, which validates every TOML run file or job manifest before running any; `write_run_file` and `write_run_files` take an optional schema. DMFT's in-process solvers and scheduler settings `NRUNS`, `CONVERGENCE_CHECK_PERIOD` and `SWEEP_MULTIPLICATOR` are removed.
 
@@ -256,7 +262,7 @@ Numerical persistence now requires an explicit adapter: include `<alps/hdf5/matr
 | `ALPS_BUILD_FORTRAN` | The SDK always includes `ALPS::fortran`; build Fortran examples separately with a Fortran compiler |
 | `ALPS_INSTALL_HEADERS` | SDK headers are always installed |
 | `ALPS_INCLUDE_TUTORIALS` | `cmake --install <build-dir> --component tutorials` |
-| `ALPS_ENABLE_OPENMP_WORKER` | `ALPS_ENABLE_OPENMP`; choose the worker thread count at runtime |
+| `ALPS_ENABLE_OPENMP_WORKER` | Removed with the Parapack worker; the classical examples in `tutorials/00-examples` take their own `ALPS_ENABLE_OPENMP` |
 | `PYALPS_BUILD_APPLICATIONS` | `PYALPS_BUILD_SOLVERS`; `PYALPS_BUNDLE_APPLICATIONS` still controls bundled executables separately |
 | `ALPS_USE_SYSTEM_BOOST`, `Boost_ROOT_DIR` / bundled Boost discovery | External Boost packages are always required; locate them through `Boost_ROOT` or `CMAKE_PREFIX_PATH` |
 | `LAPACK_64_BIT`, alternate `BIND_FORTRAN_*` ABIs | Use LP64 BLAS/LAPACK with lowercase, trailing-underscore symbols |

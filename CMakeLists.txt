@@ -46,7 +46,7 @@ foreach(legacy IN ITEMS
     "ALPS_BUILD_FORTRAN|ALPS::fortran is always built"
     "ALPS_INSTALL_HEADERS|headers are always installed"
     "ALPS_INCLUDE_TUTORIALS|use cmake --install <build> --component tutorials"
-    "ALPS_ENABLE_OPENMP_WORKER|use ALPS_ENABLE_OPENMP"
+    "ALPS_ENABLE_OPENMP_WORKER|the Parapack OpenMP worker was removed"
     "ALPS_USE_SYSTEM_BOOST|an installed Boost >= 1.76 is always required"
     "Boost_SRC_DIR|bundled Boost builds were removed; set Boost_ROOT"
     "LAPACK_64_BIT|only LP64 BLAS/LAPACK is supported")
@@ -69,7 +69,7 @@ include(CMakePackageConfigHelpers)
 if(NOT DEFINED BUILD_SHARED_LIBS)
   set(BUILD_SHARED_LIBS ON)
 endif()
-option(ALPS_ENABLE_OPENMP "Enable OpenMP parallelization" OFF)
+option(ALPS_ENABLE_OPENMP "Build the OpenMP thread-safety tests" OFF)
 option(ALPS_BUILD_EXTENSIVE_TESTS "Build expensive graph and HDF5 type-matrix tests" OFF)
 set(ALPS_VERSION_PRERELEASE "" CACHE STRING "Optional prerelease version label")
 
@@ -118,9 +118,6 @@ if(HDF5_IS_PARALLEL AND NOT ALPS_ENABLE_MPI)
   message(FATAL_ERROR "Parallel HDF5 requires ALPS_ENABLE_MPI=ON")
 endif()
 set(ALPS_HAVE_HDF5_PARALLEL "${HDF5_IS_PARALLEL}")
-if(ALPS_ENABLE_OPENMP)
-  find_package(OpenMP REQUIRED COMPONENTS CXX)
-endif()
 
 include(cmake/ALPSNumerics.cmake)
 

@@ -328,18 +328,18 @@ Two older source directories require separate decisions before deletion:
   multicanonical sampling but does not implement that external-weight workflow.
   Retain these sources until this unique capability is resolved; do not label
   them a redundant QWL copy or claim complete optional-algorithm parity.
-  Their scheduler `QMCRun` dependency is separate from Parapack removal.
+  They also depend on the scheduler's `QMCRun`.
 
-The remaining migration work includes live Parapack/Monte Carlo scheduler
-consumers. Released physical checkpoints remain with ALPS 3.0. Removing dead wrappers
-or unused includes does not establish completion of those migrations.
+The remaining migration work includes live Monte Carlo scheduler consumers.
+Released physical checkpoints remain with ALPS 3.0. Removing dead wrappers or
+unused includes does not establish completion of those migrations.
 
 ### Parapack example migration requirements
 
 The `tutorials/00-examples/parapack` targets are not all redundant copies of
 the native solvers. Inspection of their workers and adapters establishes the
-following requirements. All ports below are complete, and no example uses
-the Parapack framework. Old implementations are not correctness oracles.
+following requirements. All ports below are complete, and the Parapack
+framework has been removed. Old implementations are not correctness oracles.
 
 | Command | Functionality to preserve or establish an equivalent for |
 | --- | --- |
@@ -360,9 +360,9 @@ cross-rank restart of unfinished warmups/statistical bins, both RNGs, temperatur
 scans, heat capacity and Binder analysis, collective stopping and root-only
 publication. Proposals and results also remain identical under OpenMP. Native
 spatial preflight checks run settings and input-file bytes across ranks before
-physical collectives; constructors and checkpoint loading stay local. The legacy
-MPI scheduler remains a separate validation task; its
-historical golden files were not scientific references and have been removed.
+physical collectives; constructors and checkpoint loading stay local. The
+Parapack MPI scheduler's historical golden files were not scientific references
+and were removed with it.
 The released spatial worker hardcoded a ring and ignored `LATTICE`; rejecting
 non-ring MPI inputs prevents silently simulating the wrong graph. The native
 kernel still retains global topology and constructs full initial state locally,
@@ -370,7 +370,7 @@ and nested teams reuse it unchanged: spatial decomposition divides update work,
 not memory per rank.
 
 The old scheduler's default clone disorder seed is clone-dependent
-(`parapack/clone_info.C`); explicit `DISORDER_SEED` fixes it across clones.
+(Parapack's `clone_info.C`); explicit `DISORDER_SEED` fixes it across clones.
 Native `execution.chains` currently advances independent MC chains with the
 same `execution.disorder_seed`. Do not translate the old `params_disorder`
 workflow into more native chains: preserve distinct realizations as separate

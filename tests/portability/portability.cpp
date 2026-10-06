@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include <alps/utility/temporary_filename.hpp>
 #include <alps/utility/os.hpp>
-#include <alps/parapack/filelock.h>
 #include <alps/ngs/sleep.hpp>
 #include <alps/osiris/xdrcore.h>
 #include <alps/osiris/xdrdump.h>
@@ -51,16 +50,6 @@ int main() try {
     temporary_file first, second;
     require(first.path != second.path, "temporary names must be distinct");
     require(boost::filesystem::is_regular_file(first.path), "temporary_filename must reserve a file");
-    alps::filelock owner(first.path, true, 0);
-    alps::filelock competitor(first.path);
-    require(competitor.locked(), "a second owner must see the lock");
-    bool refused = false;
-    try { competitor.lock(0); } catch (const std::logic_error&) { refused = true; }
-    require(refused, "exclusive lock must reject a second owner");
-    owner.release();
-    competitor.lock(0);
-    competitor.release();
-    require(!competitor.locked(), "release must remove the lock");
 
     auto start = std::chrono::steady_clock::now();
     alps::sleep(20000000);

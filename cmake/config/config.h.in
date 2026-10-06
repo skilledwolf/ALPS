@@ -53,13 +53,6 @@
 #endif
 
 //
-// OpenMP
-//
-
-// Define to 1 if OpenMP Worker is supported in ALPS/parpack scheduler
-#cmakedefine ALPS_ENABLE_OPENMP
-
-//
 // Introduce [int,uint]*_t into alps namespace
 //
 

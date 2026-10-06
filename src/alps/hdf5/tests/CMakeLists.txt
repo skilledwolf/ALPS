@@ -51,6 +51,7 @@ target_compile_definitions(hdf5_fortran_string PRIVATE
   ALPS_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 
 if(ALPS_ENABLE_OPENMP)
+  find_package(OpenMP REQUIRED COMPONENTS CXX)
   add_executable(hdf5_omp hdf5_omp.cpp)
 
   target_link_libraries(hdf5_omp PRIVATE ALPS::hdf5 OpenMP::OpenMP_CXX)

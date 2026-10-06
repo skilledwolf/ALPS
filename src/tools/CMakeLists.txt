@@ -22,11 +22,9 @@
 add_subdirectory(parameters)
 add_subdirectory(lattice)
 add_subdirectory(scheduler)
-add_subdirectory(parapack)
 add_subdirectory(diagnostics)
 add_subdirectory(hdf5)
 add_subdirectory(xml)
 
-# Ownership inventory only: these historical programs remain unbuilt.
-add_subdirectory(result_archive)
+# Ownership inventory only: these source-tree scripts are not installed.
 add_subdirectory(alea)
