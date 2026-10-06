@@ -3,6 +3,19 @@
 #include "parallel.hpp"
 
 namespace alps::mc {
+// Root caches native physical groups on disk rather than constructing remote
+// walkers. Only ordered temperature statistics are replicated in memory.
+struct replica_checkpoint {
+    boost::filesystem::path directory=boost::filesystem::temp_directory_path()/boost::filesystem::unique_path("alps-replicas-%%%%-%%%%-%%%%");
+    replica_checkpoint() {
+        if (!boost::filesystem::create_directory(directory)) throw std::runtime_error("Cannot create replica checkpoint cache");
+    }
+    ~replica_checkpoint() {boost::system::error_code error;boost::filesystem::remove_all(directory,error);}
+    std::string path() const {return (directory/"state.h5").string();}
+    void copy(std::string const& source,alps::hdf5::archive& target,std::string const& destination) const {
+        alps::hdf5::archive ar(path());ar.copy(source,target,destination);
+    }
+};
 inline constexpr char replica_parallel_schema[]=R"toml(
 [execution.parallel]
 type = "string"
@@ -49,14 +62,17 @@ struct replica_parallel : collective {
         if (distributed) for (auto& chain:chains) chain->synchronize();
         else parallel::synchronize(chains);
     }
-    template<class Walkers> void synchronize_walkers(Walkers& walkers) const {
+    template<class Save> void synchronize_physical(Save const& save,std::unique_ptr<replica_checkpoint>& cache,std::string const& path) const {
         if (!distributed) return;
-        transport([&](auto& ar) {
-            for (size_t w=0;w<walkers.size();++w) if (owns_walker(w))
-                ar["/walkers/"+std::to_string(w)]<<walkers[w];
-        },[&](auto& ar,int source) {
-            for (size_t w=0;w<walkers.size();++w) if (owner(w)==source)
-                ar["/walkers/"+std::to_string(w)]>>walkers[w];
+        checked([&] {
+            if (rank()!=0) return;
+            cache=std::make_unique<replica_checkpoint>();
+            alps::hdf5::archive ar(cache->path(),"w");save(ar);
+        });
+        transport(save,[&](auto& ar,int) {
+            alps::hdf5::archive target(cache->path(),"a");
+            if (ar.is_group(path)) for (auto const& child:ar.list_children(path))
+                ar.copy(path+"/"+child,target,path+"/"+child);
         });
     }
 };

@@ -80,6 +80,7 @@ namespace alps {
             void load(boost::filesystem::path const & filename);
             virtual void save(alps::hdf5::archive & ar) const;
             virtual void load(alps::hdf5::archive & ar);
+            void save_measurements(alps::hdf5::archive & ar) const;
 
             // Non-virtual accessors for language bindings and downstream
             // exporters. Keeping these on the actual base class avoids
@@ -87,6 +88,7 @@ namespace alps {
             alps::random01 & get_random() { return random; }
             parameters_type & get_parameters() { return parameters; }
             observable_collection_type & get_measurements() { return measurements; }
+            observable_collection_type const & get_measurements() const { return measurements; }
 
         protected:
 

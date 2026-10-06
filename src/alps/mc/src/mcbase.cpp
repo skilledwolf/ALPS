@@ -79,6 +79,11 @@ namespace alps {
 
     void mcbase::save(alps::hdf5::archive & ar) const {
         ar["/parameters"] << parameters;
+        save_measurements(ar);
+        ar["checkpoint/engine"] << random;
+    }
+
+    void mcbase::save_measurements(alps::hdf5::archive & ar) const {
         ar.create_group("measurements");
         for (auto const& child : ar.list_children("measurements")) {
             auto const path = "measurements/" + child;
@@ -92,7 +97,6 @@ namespace alps {
                 alps::alea::serialize(serializer,ar.encode_segment(entry.first),*handle);
             },entry.second);
         }
-        ar["checkpoint/engine"] << random;
     }
 
     namespace {

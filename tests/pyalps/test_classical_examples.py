@@ -205,6 +205,20 @@ def test_mpi_fixed_temperature_rejects_replica_layout(model, tmp_path, launcher)
     assert output.read_bytes() == b'Existing scientific output'
 
 
+def test_mpi_owned_checkpoint_validation_preserves_outputs(model, tmp_path, launcher):
+    _, state = run(tmp_path, model, 'partial', budget=41, chains=1)
+    result, restored = run(tmp_path, model, 'resume', checkpoint=state, chains=1,
+                           parallel='replicas', processes=4, launcher=launcher)
+    before = result.read_bytes(), restored.read_bytes()
+    with h5py.File(state, 'r+') as ar:
+        # Walker 1 exists only on rank 1; rank 3 is idle for this ladder.
+        ar['simulation/realizations/0/clones/0/walkers/1/spins'][0, :] = 0
+    executable = str(tutorials_build()/f'00-examples/parapack/{model}/{model}')
+    failed = invoke(launcher, executable, tmp_path/'resume.toml', processes=4, success=False)
+    assert 'Invalid classical checkpoint spin' in failed.stdout + failed.stderr
+    assert before == (result.read_bytes(), restored.read_bytes())
+
+
 def test_mpi_replica_layout_requires_consensus(model, tmp_path, launcher):
     from test_spatial_ising_example import mpmd_failure
     executable = str(tutorials_build()/f'00-examples/parapack/{model}/{model}')

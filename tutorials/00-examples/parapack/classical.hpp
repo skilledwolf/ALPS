@@ -98,7 +98,8 @@ template<class Walker> class classical_application {
     alps::params parameters_;
     size_t bins_,chain_;
     uint64_t steps_=0;
-    std::vector<Walker> walkers_;
+    std::vector<std::optional<Walker>> walkers_;
+    std::unique_ptr<alps::mc::replica_checkpoint> checkpoint_;
     alps::mc::replica_parallel group_;
     std::vector<spin_statistics> stats_;
     std::vector<std::map<std::string,alps::mc::batch>> diagnostics_;
@@ -120,10 +121,13 @@ public:
         if (p["ALGORITHM"].as<std::string>().find("exchange")!=std::string::npos) exchange_.emplace(p,chain,0.,true);
         if (group_.distributed && !exchange_) throw std::invalid_argument("parallel = replicas requires an exchange algorithm");
         const size_t n=exchange_ ? exchange_->size() : 1;
+        walkers_.resize(n);
         for (size_t i=0;i<n;++i) {
-            walkers_.emplace_back(p,exchange_ ? chain*(n+1)+i : chain);
+            if (group_.owns_walker(i)) walkers_[i].emplace(p,exchange_ ? chain*(n+1)+i : chain);
             stats_.emplace_back(bins,names().size());
         }
+        // Idle ranks still validate the model before collective preflight.
+        if (std::none_of(walkers_.begin(),walkers_.end(),[](auto const& w){return bool(w);})) Walker(p,chain*(n+1));
         diagnostics_.resize(n);
         if (exchange_) exchange_->init_diagnostics([&](size_t i,char const* name){diagnostics_[i].emplace(name,alps::mc::batch(1,bins));});
     }
@@ -136,11 +140,15 @@ public:
     auto const& diagnostics(size_t i) const {return diagnostics_.at(i);}
     uint64_t completed_sweeps() const {return exchange_ ? exchange_->completed_sweeps() : steps_;}
     double fraction_completed() const {return double(production())/parameters_["SWEEPS"].template as<uint64_t>();}
-    void synchronize() {group_.synchronize_walkers(walkers_);}
+    void synchronize() {
+        group_.synchronize_physical([&](auto& ar) {
+            for (size_t i=0;i<stages();++i) if (walkers_[i]) ar["/walkers/"+std::to_string(i)]<<*walkers_[i];
+        },checkpoint_,"/walkers");
+    }
     void update() {
         if (!exchange_) {
-            walkers_[0].step(parameters_["BETA"].template as<double>());++steps_;
-            if (production()) stats_[0].add(walkers_[0].sample());
+            walkers_[0]->step(parameters_["BETA"].template as<double>());++steps_;
+            if (production()) stats_[0].add(walkers_[0]->sample());
             return;
         }
         bool sampling=false;
@@ -151,7 +159,7 @@ public:
             std::vector<double> samples(stages()*components);
             group_.update([&] {
                 for (size_t i=0;i<stages();++i) if (group_.owns_walker(walkers[i])) {
-                    auto& walker=walkers_[walkers[i]];walker.step(betas[i]);
+                    auto& walker=*walkers_[walkers[i]];walker.step(betas[i]);
                     auto sample=walker.sample();
                     std::copy(sample.begin(),sample.end(),samples.begin()+i*components);
                 }
@@ -170,14 +178,16 @@ public:
         ar["/parameters"]<<parameters_;ar["chain"]<<uint64_t(chain_);
         if (exchange_) exchange_->save(ar); else ar["steps"]<<steps_;
         for (size_t i=0;i<stages();++i) {
-            ar["walkers/"+std::to_string(i)]<<walkers_[i];
+            auto path="walkers/"+std::to_string(i);
+            if (group_.distributed) checkpoint_->copy("/"+path,ar,path);
+            else ar[path]<<*walkers_[i];
             stats_[i].save(ar,"stages/"+std::to_string(i));
             alps::alea::hdf5_serializer codec(ar,"stages/"+std::to_string(i)+"/exchange");
             for (auto const& [name,value]:diagnostics_[i]) serialize(codec,ar.encode_segment(name),value);
         }
     }
     void load(alps::hdf5::archive& ar) {
-        auto restored=*this;alps::params p;uint64_t chain;
+        classical_application restored(parameters_,bins_,chain_,group_);alps::params p;uint64_t chain;
         ar["/parameters"]>>p;ar["chain"]>>chain;
         if (checkpoint_parameters(p)!=checkpoint_parameters(parameters_) || chain!=chain_ ||
                 ar.list_children("walkers").size()!=stages() || ar.list_children("stages").size()!=stages())
@@ -188,7 +198,7 @@ public:
             if (restored.production()>parameters_["SWEEPS"].template as<uint64_t>()) throw std::invalid_argument("Invalid classical checkpoint counter");
         }
         for (size_t i=0;i<stages();++i) {
-            ar["walkers/"+std::to_string(i)]>>restored.walkers_[i];
+            if (restored.walkers_[i]) ar["walkers/"+std::to_string(i)]>>*restored.walkers_[i];
             restored.stats_[i].load(ar,"stages/"+std::to_string(i),restored.production());
             if (!exchange_) continue;
             const auto path="stages/"+std::to_string(i)+"/exchange";

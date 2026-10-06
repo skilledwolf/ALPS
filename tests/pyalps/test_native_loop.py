@@ -324,3 +324,25 @@ def test_distributed_replica_signed_vectors(executable, launcher, tmp_path, algo
         moments = ar['simulation/realizations/0/clones/0/replicas/0/measurements']
         assert moments['Spin Correlations/batch/sum'].shape[-1] > 2
         assert moments['Sign/batch/count'][()].sum() == 127
+
+
+@pytest.mark.parametrize('fault', ['spins', 'measurements'])
+def test_replica_mpi_owned_checkpoint_validation(executable, launcher, tmp_path, fault):
+    p = dict(ALGORITHM='loop; exchange', LATTICE='chain lattice', MODEL='spin',
+             local_S=.5, L=4, J=1., TEMPERATURE_SET=[.8, 1., 1.2],
+             THERMALIZATION=17, SWEEPS=127)
+    def config(name, budget=0, checkpoint=None):
+        return write_run_file(tmp_path/(name+'.toml'), parameters=p,
+            execution=dict(seed=137, bins=8, chains=1, parallel='replicas', max_sweeps=budget),
+            input=dict(checkpoint=checkpoint) if checkpoint else None,
+            output=dict(results=name+'.h5', checkpoint=name+'.checkpoint.h5'))
+    invoke(launcher, executable, config('partial', 41), processes=4)
+    path = config('resume', checkpoint='partial.checkpoint.h5')
+    invoke(launcher, executable, path, processes=4)
+    before = [(tmp_path/('resume'+suffix)).read_bytes() for suffix in ('.h5', '.checkpoint.h5')]
+    with h5py.File(tmp_path/'partial.checkpoint.h5', 'r+') as ar:
+        replica = ar['simulation/realizations/0/clones/0/replicas/1']
+        if fault == 'spins': replica['checkpoint/spins'][0] = 2
+        else: del replica['measurements/Temperature']
+    invoke(launcher, executable, path, processes=4, success=False)
+    assert before == [(tmp_path/('resume'+suffix)).read_bytes() for suffix in ('.h5', '.checkpoint.h5')]
