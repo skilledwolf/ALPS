@@ -37,6 +37,8 @@ target_sources(alps_headers INTERFACE
     include/alps/alea/type_tag.hpp)
 
 # Modern Eigen-based ALEA from pinned ALPSCore; a separate scientific runtime.
+install(FILES LICENSE.TXT COPYRIGHT.TXT ACKNOWLEDGE.TXT
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/alps/licenses/alea COMPONENT libraries)
 add_library(alps_statistics
   src/statistics/moments.hpp
   src/statistics/autocorr.cpp

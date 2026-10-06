@@ -7,6 +7,38 @@ ALPS Collaboration copyright notices and MIT licensing. Core's MPI and stream
 codec plugins and package build system are not imported. Existing legacy
 ALEA APIs remain with `ALPS::alps` while active clients migrate.
 
+## ALPSCore consolidation decisions
+
+Native ALEA is the shared statistical implementation. The older ALPSCore
+`accumulators` package is outside this consolidation: its wrapper API and
+second estimator stack will not be imported. ALPS uses its own HDF5 codec and
+Boost.MPI reduction bridge; the upstream codec plugins and build system would
+duplicate those facilities.
+
+`alps::mc` owns TOML application execution, independent chains, collective
+workers, atomic publication and restart. `mcbase` remains a simulation API
+used by those applications and the teaching examples; its `run`/`mcmpiadapter`
+entry points also remain available for custom embedding. These are deliberate
+ALPS interfaces, not a promise of drop-in ALPSCore Monte Carlo API compatibility.
+Tutorial front ends still need consolidation onto the shared TOML runner.
+
+### Changes from the pinned ALEA source
+
+Keep this ledger current when updating the import. Upstream provenance is the
+revision above; this is a maintained integration, not an unmodified vendor copy.
+The original [license](LICENSE.TXT), [copyright](COPYRIGHT.TXT) and
+[acknowledgment](ACKNOWLEDGE.TXT) notices accompany source and SDK distributions;
+the combined MIT notice also ships in Python packages.
+
+| Area | Change and reason | Regression coverage |
+| --- | --- | --- |
+| Moment accumulation and merging | Centered Chan/Welford sums replace cancellation-prone raw subtraction; real, circular and elliptic complex strategies retain their distinct algebra. Squared weights use floating arithmetic to avoid upstream `uint64` overflow. | `tests/statistics.cpp`, `tests/mpi.cpp` |
+| Independent runs and MPI | Reduction stages owned snapshots instead of mutating const inputs. Empty runs are neutral; all ranks validate schemas before collectives. Batch histories retain independent-run weights. `reduce` is an ALPS bridge API. | `tests/mpi.cpp`, `tests/statistics.cpp` |
+| Nonlinear propagation | Unequal/empty batches are handled explicitly; signed ratio covariance retains cross terms; the numerical Jacobian uses central differences. Declared but unimplemented bootstrap/sampling tags are removed. | `tests/statistics.cpp`, Python ALEA tests |
+| Mean tests | Correct effective weights and dimensional degrees of freedom, use Boost's F distribution, and expose explicit one-/two-sample `t2_test` overloads. | `tests/statistics.cpp` |
+| Results and restart | Native result codecs validate before replacement; kinds 6–10 add full accumulator checkpoints, including partial batches and hierarchy state. Loading a result into an autocorrelation accumulator is rejected: upstream's unfinished overload could not restore that state. | `tests/checkpoint_contracts.C`, `tests/migration.cpp` |
+| Public integration | Native Python bindings, family joins, real-component transforms and diagnostics expose the same statistical core. Serialization adapters keep HDF5 outside `ALPS::statistics`. | Python ALEA tests, installed SDK consumers |
+
 Use `<alps/alea.hpp>` for estimators and `<alps/alea/hdf5.hpp>` for the thin
 serializer bridge to the canonical native HDF5 mappings; users of that adapter
 also link `ALPS::hdf5`. The statistical core itself has no HDF5 dependency. Eigen matrices use
