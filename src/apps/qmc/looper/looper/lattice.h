@@ -14,7 +14,6 @@
 
 #include "alternating_tensor.h"
 #include <alps/lattice.h>
-#include <alps/parapack/integer_range.h>
 #include <boost/throw_exception.hpp>
 #include <stdexcept>
 #include <utility>                 // std::pair, std::make_pair
@@ -273,7 +272,6 @@ public:
   typedef alps::graph_helper<real_graph_type> graph_helper_type;
   typedef virtual_mapping<real_graph_type, virtual_graph_type>
                                               mapping_type;
-  typedef alps::integer_range<int>            type_range_type;
 
   typedef real_graph_type    rg_type;
   typedef virtual_graph_type vg_type;
@@ -343,8 +341,6 @@ private:
   double volume_;
   virtual_graph_type vgraph_;
   mapping_type mapping_;
-  type_range_type site_type_range_;
-  type_range_type bond_type_range_;
 };
 
 
@@ -641,13 +637,6 @@ void lattice_helper<RG>::generate_virtual_graph(M const& model, bool has_d_term)
     vei_first = vei_last;
   }
 
-  // set range of types
-  site_type_range_ = 0;
-  BOOST_FOREACH(typename graph_traits<rg_type>::site_descriptor rv, vertices(rg()))
-    site_type_range_.include(get(site_index_t(), rg(), rv));
-  bond_type_range_ = 0;
-  BOOST_FOREACH(typename graph_traits<rg_type>::bond_descriptor re, bonds(rg()))
-    bond_type_range_.include(get(bond_index_t(), rg(), re));
 }
 
 template<typename RG>
