@@ -228,6 +228,8 @@ jobs:
       - name: Build installed C, C++ and Fortran tutorials
         if: matrix.extras
         run: |
+          # The Fortran example contracts read their HDF5 results in Python.
+          python -m pip install numpy h5py
           cmake --install _build/ci
           cmake --install _build/ci --component tutorials
           tutorials="$PWD/_build/ci/install/share/alps/tutorials"
