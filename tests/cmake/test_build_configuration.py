@@ -250,7 +250,9 @@ def test_tutorials_are_an_explicit_install_component(tmp_path):
         assert (tutorials / "00-examples/parapack/single" / name).is_file()
     assert not (tutorials / "00-examples/parapack/single/ising.C").exists()
     assert (tutorials / "00-examples/parapack/exchange/params-ising").is_file()
-    assert (tutorials / "00-examples/parapack/loop/params_disorder").is_file()
+    for name in ("run.toml", "runs.py", "README.md"):
+        assert (tutorials / "00-examples/parapack/loop" / name).is_file()
+    assert not (tutorials / "00-examples/parapack/loop/main.C").exists()
     for name in ("main.C", "native.hpp", "schema.toml", "schema.hpp.in", "learn.toml", "measure.toml", "reweight.toml", "README.md"):
         assert (tutorials / "00-examples/parapack/wanglandau" / name).is_file()
     assert not (tutorials / "00-examples/parapack/wanglandau/wanglandau.h").exists()

@@ -1,0 +1,19 @@
+[parameters]
+ALGORITHM = "loop"
+LATTICE = "chain lattice"
+MODEL = "spin"
+local_S = 0.5
+J = 1.0
+L = 8
+T = 0.5
+THERMALIZATION = 6553
+SWEEPS = 65536
+
+[execution]
+seed = 42
+chains = 1
+bins = 128
+
+[output]
+results = "run.h5"
+checkpoint = "run.checkpoint.h5"

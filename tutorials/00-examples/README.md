@@ -72,8 +72,14 @@ on restart. Set `execution.parallel = "replicas"` to advance physical walkers co
 across MPI ranks; `"chains"` remains the default independent-ladder layout.
 Each temperature keeps its original sample order and autocorrelation history,
 and checkpoints can resume in either layout at a different rank count.
-The separate legacy `exchange` example still supplies quantum and nested
-replica/spatial execution until those ports are complete.
+Ranks store only their owned physical walkers; native checkpoint groups stream
+through a bounded buffer into root's disk cache. Temperature histories remain
+replicated to preserve their chronology. The separate legacy `exchange` example
+still supplies nested replica/spatial execution until that port is complete.
+
+The [quantum loop example](parapack/loop/README.md) runs the installed `loop`
+application, which replaces the former `loop_single` example program. Its
+explicit disorder jobs retain separate quenched realizations.
 
 The [classical energy Wang–Landau example](parapack/wanglandau/README.md) also
 uses native TOML runs and ALEA. It retains density-of-states learning, overlapping

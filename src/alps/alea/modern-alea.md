@@ -328,6 +328,7 @@ Two older source directories require separate decisions before deletion:
   multicanonical sampling but does not implement that external-weight workflow.
   Retain these sources until this unique capability is resolved; do not label
   them a redundant QWL copy or claim complete optional-algorithm parity.
+  Their scheduler `QMCRun` dependency is separate from Parapack removal.
 
 The remaining migration work includes live Parapack/Monte Carlo scheduler
 consumers. Released physical checkpoints remain with ALPS 3.0. Removing dead wrappers
@@ -337,8 +338,9 @@ or unused includes does not establish completion of those migrations.
 
 The `tutorials/00-examples/parapack` targets are not all redundant copies of
 the native solvers. Inspection of their workers and adapters establishes the
-following requirements. The `ising_single`, `ising_multiple`, `ising`, `heisenberg` and `wanglandau` ports below are
-complete; the other rows remain outstanding work. Old
+following requirements. The `ising_single`, `ising_multiple`, `ising`,
+`heisenberg`, `loop_single` and `wanglandau` ports below are complete;
+`exchange` retains the outstanding nested decomposition. Old
 implementations are not correctness oracles.
 
 | Command | Functionality to preserve or establish an equivalent for |
@@ -347,7 +349,7 @@ implementations are not correctness oracles.
 | `ising_multiple` | Native port completed: MPI spatial decomposition of **one** chain, ghost spins and global moments, sharing the serial model's statistics and scans. Odd/uneven ring partitions and exact restart with different rank counts are supported; arbitrary graphs retain a serial fallback. Spatial ranks do not multiply samples. |
 | `ising` | Native port completed: lattice-library heat-bath simulation with bond-type `J`, `J0`, … couplings, normalized magnetization, extensive energy, Binder/heat-capacity analysis, and replica exchange. |
 | `heisenberg` | Native port completed: unit-vector Metropolis updates with bond-type couplings; both vector-magnitude and z-component second/fourth moments and Binder ratios; replica exchange. |
-| `loop_single` | Continuous-time quantum loop example with energy, staggered magnetization and uniform/staggered susceptibility estimators. Compare its model, normalization and disorder inputs against native `loop` before consolidating. |
+| `loop_single` | Native port completed: the example runs the installed `loop` application, which replaces this command. Exact diagonalization verifies all six old observables, including depleted-lattice volume and Kubo staggered susceptibility. Separate TOML jobs preserve quenched disorder realizations. Shared legacy physics headers remain only for `exchange`. |
 | `exchange` | Classical and quantum workers; serial replica ladders, MPI-distributed replicas, and nested MPI replica/spatial decomposition. Temperature-ladder optimization and exchange diagnostics also belong to this interface. |
 | `wanglandau` | Native port completed: classical Ising **energy** DOS learning, inclusive walk/measurement windows, penalties and histogram refinement, overlapping-window stitching, fixed-weight microcanonical moments, temperature reweighting and reference-normalized entropy/free energy. Joint ALEA batches retain cross-bin covariance; both RNGs, independent-chain MPI and exact continuation are covered. The distinct quantum QWL expansion-order algorithm remains separate. |
 
@@ -365,17 +367,23 @@ spatial preflight checks run settings and input-file bytes across ranks before
 physical collectives; constructors and checkpoint loading stay local. The legacy
 MPI scheduler remains a separate validation task; its
 historical golden files were not scientific references and have been removed.
+The released spatial worker hardcoded a ring and ignored `LATTICE`; rejecting
+non-ring MPI inputs prevents silently simulating the wrong graph. The native
+kernel still retains global topology and constructs full initial state locally.
+Reduce that storage when integrating nested teams before claiming complete
+spatial memory scaling parity with the released worker.
 
 The old scheduler's default clone disorder seed is clone-dependent
 (`parapack/clone_info.C`); explicit `DISORDER_SEED` fixes it across clones.
 Native `execution.chains` currently advances independent MC chains with the
 same `execution.disorder_seed`. Do not translate the old `params_disorder`
 workflow into more native chains: preserve distinct realizations as separate
-TOML runs and validate disorder averaging before retiring `loop_single`.
+TOML runs. The quantum loop example does this explicitly; its tests
+validate distinct realizations, fixed models within chains, and exact restart.
 All walkers within one exchange ladder must still share the same realization.
 
-The authoritative registrations are each directory's `.C` files; the behavior
-is in the worker headers and `alps/parapack/{temperature_scan,exchange,exchange_multi}.h`.
+The remaining legacy exchange registrations are in its `.C` files; the behavior
+is in the worker headers and `alps/parapack/{exchange,exchange_multi}.h`.
 The former `temperature_scan_adaptor` retains the worker's physical state
 between temperatures, resets measurements after thermalization, and checkpoints
 the stage and counters. Independent TOML jobs alone do not preserve this
@@ -406,10 +414,12 @@ physical walkers across MPI ranks, while the default `"chains"` distributes
 independent ladders. Each temperature retains its chronological sample stream,
 including autocorrelation and partial batches; rank-local fragments are never
 merged as independent runs. Both layouts use the same native checkpoints and
-may be changed on restart. Replica execution currently retains a full ladder's
-storage on each rank, though only the owning rank advances each walker.
-Before deleting the old distributed worker, make physical-state storage scale
-with locally owned replicas and validate checkpoint transport for that layout.
+may be changed on restart. Each rank constructs only its owned physical walkers;
+idle ranks use a temporary model-validation prototype. Temperature statistics
+remain replicated, matching the old distributed worker's statistical memory
+model. Checkpoint payloads stream in bounded 64 KiB blocks into a root disk cache;
+native HDF5 object copies assemble the existing checkpoint layout without
+constructing remote walkers or gathering the ensemble's bytes in memory.
 `replica_parallel.hpp` reuses the runner's native HDF5 transport and collective
 input validation; no additional exchange engine or wire-state schema is used.
 Quantum loop routes raw signed/vector observations through the same native

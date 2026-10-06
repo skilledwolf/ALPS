@@ -17,10 +17,9 @@
 #   FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 #   DEALINGS IN THE SOFTWARE.
 
-add_executable(loop_single main.C loop.C)
-target_link_libraries(loop_single PRIVATE ALPS::alps)
-
-alps_add_test(
-  loop_single
-  INPUT loop
-  OUTPUT loop)
+# The installed loop application provides this example's model and all its
+# observables; the example compiles no second algorithm.
+if(ALPS_BUILD_TESTING)
+  find_package(ALPS CONFIG REQUIRED COMPONENTS applications)
+  add_test(NAME loop_example_validate COMMAND ALPS::loop --validate "${CMAKE_CURRENT_SOURCE_DIR}/run.toml")
+endif()
