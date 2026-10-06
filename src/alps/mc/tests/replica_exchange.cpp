@@ -19,10 +19,13 @@ using exchange=alps::mc::replica_exchange<double>;
 using event=std::tuple<size_t,std::string,double>;
 std::vector<event> scripted_step(exchange& state) {
     std::vector<event> events;
-    state.step([&](size_t walker,size_t slot,double beta,bool sampling) {
-        events.emplace_back(slot,"walker",double(walker));
-        events.emplace_back(slot,"beta",beta);
-        events.emplace_back(slot,"sampling",double(sampling));
+    state.step([&](auto const& walkers,auto const& betas,bool sampling) {
+        for (size_t slot=0;slot<walkers.size();++slot) {
+            auto walker=walkers[slot];auto beta=betas[slot];
+            events.emplace_back(slot,"walker",double(walker));
+            events.emplace_back(slot,"beta",beta);
+            events.emplace_back(slot,"sampling",double(sampling));
+        }
     },[]{return std::vector<double>{-4.,-2.,1.};},log_weight,
     [&](size_t slot,char const* name,double value){events.emplace_back(slot,name,value);});
     return events;
@@ -39,12 +42,15 @@ void thermodynamics(bool randomized,bool disabled,bool zero_beta=false) {
     std::vector<double> energies{-2.,2.,-2.},sum(3),square(3);
     std::vector<uint64_t> counts(3);
     while (state.fraction_completed()<1) {
-        state.step([&](size_t walker,size_t slot,double beta,bool sampling) {
-            const double change=-2*energies[walker];
-            // A full two-state heat bath would redraw the exact distribution
-            // every sweep and hide exchange errors. Retain temporal dependence.
-            if (random()<.2 && random()<1/(1+std::exp(beta*change))) energies[walker]=-energies[walker];
-            if (sampling) {sum[slot]+=energies[walker];square[slot]+=energies[walker]*energies[walker];++counts[slot];}
+        state.step([&](auto const& walkers,auto const& betas,bool sampling) {
+            for (size_t slot=0;slot<walkers.size();++slot) {
+                auto walker=walkers[slot];auto beta=betas[slot];
+                const double change=-2*energies[walker];
+                // A full two-state heat bath would redraw the exact distribution
+                // every sweep and hide exchange errors. Retain temporal dependence.
+                if (random()<.2 && random()<1/(1+std::exp(beta*change))) energies[walker]=-energies[walker];
+                if (sampling) {sum[slot]+=energies[walker];square[slot]+=energies[walker]*energies[walker];++counts[slot];}
+            }
         },[&]{return energies;},log_weight,[](size_t,char const*,double){});
     }
     for (size_t i=0;i<3;++i) {
@@ -62,7 +68,7 @@ void identity_diagnostics() {
     // the hottest slot; after eight sweeps walker 2 returns there instead.
     for (size_t step=1;step<=8;++step) {
         size_t returns=0;
-        state.step([](size_t,size_t,double,bool){},[]{return std::vector<double>(3,0.);},log_weight,
+        state.step([](auto const&,auto const&,bool){},[]{return std::vector<double>(3,0.);},log_weight,
         [&](size_t index,char const* name,double value) {
             const std::string label(name);
             if (label=="EXMC: Acceptance Rate")

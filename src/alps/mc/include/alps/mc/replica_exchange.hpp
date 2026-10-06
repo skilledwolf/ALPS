@@ -209,15 +209,15 @@ public:
       }
     }
   }
-  // Update(walker,slot,beta,sampling) routes the physical sample to its slot.
-  // Weights() returns physical-walker weights only when an exchange is due;
-  // applications may gather them from distributed workers in that callback.
+  // Update(walkers,betas,sampling) advances the whole ensemble, allowing
+  // applications to execute physical walkers concurrently before exchange.
+  // Weights() returns physical-walker weights only when an exchange is due.
   template<class Update,class Weights,class LogWeight,class Record>
   void step(Update const& update,Weights const& weights,LogWeight const& log_weight,Record const& record) {
     bool sampling=ready_,was_optimizing=optimizing();
     ++steps_;if (was_optimizing) ++stage_count_;
+    update(walker_at_,grid_.values(),sampling);
     for (size_t i=0;i<size();++i) {
-      update(walker_at_[i],i,grid_[i],sampling);
       if (grid_[i]>0) record(i,"EXMC: Temperature",1/grid_[i]);
       record(i,"EXMC: Inverse Temperature",grid_[i]);
     }

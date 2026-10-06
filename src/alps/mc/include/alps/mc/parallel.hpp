@@ -3,6 +3,9 @@
 #include <alps/config.h>
 #include <alps/hdf5/archive.hpp>
 #include <alps/params.hpp>
+#include <alps/run_config.hpp>
+#include <array>
+#include <set>
 #include <boost/filesystem.hpp>
 #include <fstream>
 #include <memory>
@@ -28,6 +31,7 @@ struct parallel {
     int rank() const { return 0; }
     int size() const { return 1; }
 #endif
+    void configure(alps::run_configuration const&) {}
     bool owns(size_t id) const { return id%size()==size_t(rank()); }
     template<class Simulation>
     auto make(alps::params const& p,size_t bins,size_t id) const {
@@ -55,7 +59,7 @@ struct parallel {
 #endif
         if (!message.empty()) throw std::runtime_error(message);
     }
-    template<class Chains> void synchronize(Chains& chains) const {
+    template<class Save,class Load> void transport(Save const& save,Load const& load) const {
 #ifdef ALPS_HAVE_MPI
         if (size()==1) return;
         // Transport the native checkpoint bytes, not a second state schema.
@@ -72,10 +76,7 @@ struct parallel {
             auto path=(temporary.directory/"chains.h5").string();
             {
                 alps::hdf5::archive ar(path,"w");
-                for (size_t id=0;id<chains.size();++id) if (owns(id)) {
-                    ar.set_context("/clones/"+std::to_string(id));
-                    chains[id]->save(ar);
-                }
+                save(ar);
             }
             std::ifstream file(path,std::ios::binary);
             if (!file) throw std::runtime_error("Cannot read MPI checkpoint spool");
@@ -95,14 +96,71 @@ struct parallel {
                     file.close();
                 }
                 alps::hdf5::archive ar(path);
-                for (size_t id=owner;id<chains.size();id+=size()) {
-                    ar.set_context("/clones/"+std::to_string(id));
-                    chains[id]->load(ar);
-                }
+                load(ar,owner);
             }
         });
 #else
-        (void)chains;
+        (void)save;(void)load;
+#endif
+    }
+    template<class Chains> void synchronize(Chains& chains) const {
+        transport([&](auto& ar) {
+            for (size_t id=0;id<chains.size();++id) if (owns(id)) {
+                ar.set_context("/clones/"+std::to_string(id));chains[id]->save(ar);
+            }
+        },[&](auto& ar,int owner) {
+            for (size_t id=owner;id<chains.size();id+=size()) {
+                ar.set_context("/clones/"+std::to_string(id));chains[id]->load(ar);
+            }
+        });
+    }
+};
+
+// Collective workers must agree before entering any physical communication.
+// Construction and checkpoint validation remain local until this preflight.
+struct collective : parallel {
+    bool owns(size_t) const {return true;}
+    bool stopped(bool local) const {return any(local);}
+    template<class Runs> void verify(Runs const& runs,bool validate=false) const {
+#ifdef ALPS_HAVE_MPI
+        if (size()==1) return;
+        std::vector<std::string> local,expected;
+        checked([&] {
+            local.push_back(validate ? "validate" : "execute");
+            for (auto const& run:runs) local.push_back(alps::format_run_configuration(run));
+            if (rank()==0) expected=local;
+        });
+        boost::mpi::broadcast(world,expected,0);
+        checked([&] {
+            if (local!=expected) throw std::invalid_argument("Collective ranks require identical run configurations");
+        });
+        // Matching paths alone do not guarantee matching rank-local input
+        // files. Compare bytes once before any physical collective, keeping
+        // the existing schemas and bounded memory even for large checkpoints.
+        std::set<std::string> inputs;
+        checked([&] {for (auto const& run:runs) for (auto const& [key,value]:run.input)
+            for (auto const& path:alps::run_paths(value)) inputs.insert(path);});
+        for (auto const& path:inputs) {
+            std::ifstream file(path,std::ios::binary);
+            checked([&] {if (!file) throw std::runtime_error("Cannot read collective input: "+path);});
+            std::array<char,65536> actual{},reference{};
+            bool different=false;
+            for (;;) {
+                int count=0;
+                if (rank()==0) {file.read(reference.data(),reference.size());count=int(file.gcount());}
+                boost::mpi::broadcast(world,count,0);
+                if (!count) break;
+                boost::mpi::broadcast(world,reference.data(),count,0);
+                if (rank()!=0) {
+                    file.read(actual.data(),count);
+                    different=different || file.gcount()!=count || !std::equal(actual.begin(),actual.begin()+count,reference.begin());
+                }
+            }
+            different=different || file.bad() || file.peek()!=std::char_traits<char>::eof();
+            checked([&] {if (different) throw std::invalid_argument("Collective ranks require identical input files: "+path);});
+        }
+#else
+        (void)runs;(void)validate;
 #endif
     }
 };

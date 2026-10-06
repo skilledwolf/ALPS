@@ -68,8 +68,12 @@ results report `BETA = 0` and omit infinite-valued temperature diagnostics.
 Native checkpoints retain all physical walkers, RNG streams, partial batches
 and feedback history. Production can be extended with a larger `SWEEPS`.
 MPI distributes independent chains/ladders and permits changing process count
-on restart. The separate legacy `exchange` example still supplies distributed
-replicas and nested replica/spatial execution until those ports are complete.
+on restart. Set `execution.parallel = "replicas"` to advance physical walkers concurrently
+across MPI ranks; `"chains"` remains the default independent-ladder layout.
+Each temperature keeps its original sample order and autocorrelation history,
+and checkpoints can resume in either layout at a different rank count.
+The separate legacy `exchange` example still supplies quantum and nested
+replica/spatial execution until those ports are complete.
 
 The [classical energy Wang–Landau example](parapack/wanglandau/README.md) also
 uses native TOML runs and ALEA. It retains density-of-states learning, overlapping

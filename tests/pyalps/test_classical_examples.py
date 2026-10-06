@@ -17,7 +17,7 @@ def model(request):
 
 
 def run(directory, model, name, *, exchange=True, parameters=None, budget=0,
-        checkpoint=None, rng='mt19937', chains=2, processes=1, launcher=None):
+        checkpoint=None, rng='mt19937', chains=2, processes=1, launcher=None, parallel='chains'):
     executable = str(tutorials_build() / f'00-examples/parapack/{model}/{model}')
     p = dict(ALGORITHM=model + ('; exchange' if exchange else ''), GRAPH='test',
              J=.7, J0=.8, J2=-.4, SWEEPS=127, THERMALIZATION=17)
@@ -35,7 +35,7 @@ def run(directory, model, name, *, exchange=True, parameters=None, budget=0,
                          for a, b, t in edges) + '</GRAPH></LATTICES>')
     path = write_run_file(directory/(name+'.toml'), parameters=p,
         input=dict(lattice_library=str(graph), **({'checkpoint': str(checkpoint)} if checkpoint else {})),
-        execution=dict(seed=71831, bins=16, rng=rng, chains=chains, max_sweeps=budget),
+        execution=dict(seed=71831, bins=16, rng=rng, chains=chains, max_sweeps=budget, parallel=parallel),
         output=dict(results=name+'.h5', checkpoint=name+'.checkpoint.h5'))
     invoke(launcher, executable, path, processes=processes)
     return directory/(name+'.h5'), directory/(name+'.checkpoint.h5')
@@ -166,3 +166,66 @@ def test_validate_rejects_invalid_models_without_writing(model, tmp_path, fault)
     process = subprocess.run([str(executable), '--validate', str(path)], capture_output=True, timeout=60)
     assert process.returncode != 0
     assert destination.read_bytes() == b'existing scientific results'
+
+
+@pytest.mark.parametrize('mode', ['fixed', 'rate', 'population'])
+@pytest.mark.parametrize('rng', ['mt19937', 'lagged_fibonacci607'])
+def test_mpi_distributed_replicas_preserve_chronology(model, tmp_path, launcher, mode, rng):
+    p = dict(RANDOM_EXCHANGE=True, EXCHANGE_INTERVAL=3)
+    if mode != 'fixed':
+        p.update(OPTIMIZE_TEMPERATURE=True, OPTIMIZATION_TYPE=mode,
+                 INITIAL_BLOCK_SWEEPS=17, OPTIMIZATION_ITERATIONS=1,
+                 INVERSE_TEMPERATURE_SET=[.1, .3, .9])
+    options = dict(chains=2 if mode == 'fixed' else 1, parameters=p, rng=rng)
+    full, full_state = run(tmp_path, model, 'full', **options)
+    _, partial = run(tmp_path, model, 'part', budget=41, parallel='replicas',
+                     processes=2, launcher=launcher, **options)
+    result, restored = run(tmp_path, model, 'resume', checkpoint=partial,
+                          parallel='replicas', processes=4, launcher=launcher, **options)
+    compare(full, result); compare(full_state, restored)
+    # Execution layout is not scientific state: resume a serial checkpoint
+    # across MPI teams, and the MPI checkpoint back on one process.
+    _, serial_partial = run(tmp_path, model, 'serial-part', budget=107, **options)
+    result, restored = run(tmp_path, model, 'mpi-resume', checkpoint=serial_partial,
+                          parallel='replicas', processes=3, launcher=launcher, **options)
+    compare(full, result); compare(full_state, restored)
+    result, restored = run(tmp_path, model, 'serial-resume', checkpoint=partial, **options)
+    compare(full, result); compare(full_state, restored)
+
+
+@pytest.mark.parametrize('fault', ['fixed', 'spatial', 'indivisible', 'chains'])
+def test_mpi_invalid_replica_layout_preserves_outputs(model, tmp_path, launcher, fault):
+    executable = str(tutorials_build()/f'00-examples/parapack/{model}/{model}')
+    p = dict(ALGORITHM=model+'; exchange', LATTICE='chain lattice', L=7,
+             INVERSE_TEMPERATURE_SET=[0., .3, .9], SWEEPS=31)
+    execution = dict(parallel='replicas', ranks_per_replica=1)
+    if fault == 'fixed':
+        del p['INVERSE_TEMPERATURE_SET']
+        p.update(ALGORITHM=model, BETA=.3)
+    else:
+        execution['ranks_per_replica'] = 3 if fault == 'indivisible' else 2
+        if fault == 'chains': execution['parallel'] = 'chains'
+    output = tmp_path/'keep.h5'
+    output.write_bytes(b'Existing scientific output')
+    path = write_run_file(tmp_path/'bad.toml', parameters=p, execution=execution,
+                          output=dict(results=output.name))
+    failed = invoke(launcher, executable, path, processes=2, success=False)
+    message = ('parallel = replicas requires an exchange algorithm' if fault == 'fixed' else
+               'This model requires ranks_per_replica = 1' if fault == 'spatial' else
+               'ranks_per_replica must divide')
+    assert message in failed.stdout + failed.stderr
+    assert output.read_bytes() == b'Existing scientific output'
+
+
+def test_mpi_replica_layout_requires_consensus(model, tmp_path, launcher):
+    from test_spatial_ising_example import mpmd_failure
+    executable = str(tutorials_build()/f'00-examples/parapack/{model}/{model}')
+    p = dict(ALGORITHM=model+'; exchange', LATTICE='chain lattice', L=7,
+             INVERSE_TEMPERATURE_SET=[0., .3, .9], SWEEPS=31)
+    paths = [write_run_file(tmp_path/(mode+'.toml'), parameters=p,
+                           execution=dict(parallel=mode), output=dict(results='keep.h5'))
+             for mode in ('chains', 'replicas')]
+    output = tmp_path/'keep.h5'
+    output.write_bytes(b'Existing scientific output')
+    mpmd_failure(executable, launcher, [[path] for path in paths])
+    assert output.read_bytes() == b'Existing scientific output'

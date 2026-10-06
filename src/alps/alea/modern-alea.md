@@ -393,6 +393,16 @@ models. Classical models explicitly allow beta zero; temperature-coordinate
 grids and population feedback still require positive beta.
 The generic `alps::mc` runner supplies execution and transport; an application
 still has to implement its ensemble's physical state and measurements.
+`ising` and `heisenberg` support `execution.parallel = "replicas"` to distribute
+physical walkers across MPI ranks, while the default `"chains"` distributes
+independent ladders. Each temperature retains its chronological sample stream,
+including autocorrelation and partial batches; rank-local fragments are never
+merged as independent runs. Both layouts use the same native checkpoints and
+may be changed on restart. Replica execution currently retains a full ladder's
+storage on each rank, though only the owning rank advances each walker.
+`replica_parallel.hpp` reuses the runner's native HDF5 transport and collective
+input validation; no additional exchange engine or wire-state schema is used.
+Spatial teams remain a separate capability until the exchange worker is ported.
 
 Port and validate these behaviors before deleting their workers or the legacy
 Parapack MC framework. Validation must distinguish independent-chain MPI,

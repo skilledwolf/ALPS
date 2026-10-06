@@ -4,6 +4,7 @@
 #include "single/native.hpp"
 #include "classical_schema.hpp"
 #include <alps/mc/replica_exchange.hpp>
+#include <alps/mc/replica_parallel.hpp>
 #include <array>
 #include <optional>
 
@@ -23,7 +24,8 @@ template<size_t Dimension> class classical_walker {
         }
     }
 public:
-    classical_walker(alps::params const& p,size_t offset):random_(p["SEED"].as<int>()+offset,p["RNG"].as<std::string>()) {
+    classical_walker(alps::params const& p,size_t offset,alps::mc::replica_parallel const& group):random_(p["SEED"].as<int>()+offset,p["RNG"].as<std::string>()) {
+        if (group.ranks_per_replica!=1) throw std::invalid_argument("This model requires ranks_per_replica = 1");
         alps::graph_helper<> graph(alps::make_deprecated_parameters(p));
         if (!graph.num_sites()) throw std::invalid_argument("The lattice must contain sites");
         neighbors_.resize(graph.num_sites());
@@ -37,6 +39,8 @@ public:
         }
         for (size_t i=0;i<neighbors_.size();++i) spins_.push_back(proposal());
     }
+    void initialize(alps::mc::replica_parallel const&) {}
+    void synchronize() {}
     static auto names() {
         std::vector<std::string> result{"Number of Sites","Energy","Energy^2",
             Dimension==1 ? "Magnetization" : "Magnetization Z","Magnetization^2","Magnetization^4"};
@@ -93,11 +97,12 @@ public:
     }
 };
 
-template<size_t Dimension> class classical_application {
+template<class Walker> class classical_application {
     alps::params parameters_;
     size_t bins_,chain_;
     uint64_t steps_=0;
-    std::vector<classical_walker<Dimension>> walkers_;
+    std::vector<Walker> walkers_;
+    alps::mc::replica_parallel group_;
     std::vector<spin_statistics> stats_;
     std::vector<std::map<std::string,alps::mc::batch>> diagnostics_;
     std::optional<alps::mc::replica_exchange<double>> exchange_;
@@ -114,17 +119,18 @@ template<size_t Dimension> class classical_application {
         return i%2 ? last-first-even : even;
     }
 public:
-    classical_application(alps::params const& p,size_t bins,size_t chain):parameters_(p),bins_(bins),chain_(chain) {
+    classical_application(alps::params const& p,size_t bins,size_t chain,alps::mc::replica_parallel group):parameters_(p),bins_(bins),chain_(chain),group_(std::move(group)) {
         if (p["ALGORITHM"].as<std::string>().find("exchange")!=std::string::npos) exchange_.emplace(p,chain,0.,true);
+        if (group_.distributed && !exchange_) throw std::invalid_argument("parallel = replicas requires an exchange algorithm");
         const size_t n=exchange_ ? exchange_->size() : 1;
         for (size_t i=0;i<n;++i) {
-            walkers_.emplace_back(p,exchange_ ? chain*(n+1)+i : chain);
+            walkers_.emplace_back(p,exchange_ ? chain*(n+1)+i : chain,group_);
             stats_.emplace_back(bins,names().size());
         }
         diagnostics_.resize(n);
         if (exchange_) exchange_->init_diagnostics([&](size_t i,char const* name){diagnostics_[i].emplace(name,alps::mc::batch(1,bins));});
     }
-    static auto names() {return classical_walker<Dimension>::names();}
+    static auto names() {return Walker::names();}
     static alps::params checkpoint_parameters(alps::params p) {p.erase("SWEEPS");return p;}
     size_t stages() const {return walkers_.size();}
     double inverse_temperature(size_t i) const {return exchange_ ? exchange_->beta(i) : parameters_["BETA"].template as<double>();}
@@ -133,18 +139,41 @@ public:
     auto const& diagnostics(size_t i) const {return diagnostics_.at(i);}
     uint64_t completed_sweeps() const {return exchange_ ? exchange_->completed_sweeps() : steps_;}
     double fraction_completed() const {return double(production())/parameters_["SWEEPS"].template as<uint64_t>();}
+    void initialize() {
+        group_.initialize();
+        for (size_t w=0;w<stages();++w) if (group_.owns_walker(w)) walkers_[w].initialize(group_);
+    }
+    void synchronize() {
+        initialize();
+        for (size_t w=0;w<stages();++w) if (group_.owns_walker(w)) walkers_[w].synchronize();
+        group_.synchronize_walkers(walkers_);
+    }
     void update() {
+        initialize();
         if (!exchange_) {
             walkers_[0].step(parameters_["BETA"].template as<double>());++steps_;
             if (production()) stats_[0].add(walkers_[0].sample());
             return;
         }
         bool sampling=false;
-        exchange_->step([&](size_t w,size_t i,double beta,bool record) {
-            sampling=record;walkers_[w].step(beta);
-            if (record) stats_[i].add(walkers_[w].sample());
-        },[&] {
-            std::vector<double> energies;for (auto const& walker:walkers_) energies.push_back(walker.energy());return energies;
+        std::vector<double> energies(stages());
+        exchange_->step([&](auto const& walkers,auto const& betas,bool record) {
+            sampling=record;
+            const auto components=names().size();
+            std::vector<double> samples(stages()*components);
+            group_.update([&] {
+                for (size_t i=0;i<stages();++i) if (group_.owns_walker(walkers[i])) {
+                    auto& walker=walkers_[walkers[i]];walker.step(betas[i]);
+                    auto sample=walker.sample();
+                    if (group_.head()) std::copy(sample.begin(),sample.end(),samples.begin()+i*components);
+                }
+            });
+            group_.collect(samples);
+            for (size_t i=0;i<stages();++i) {
+                energies[walkers[i]]=samples[i*components+1];
+                if (record) stats_[i].add(std::vector<double>(samples.begin()+i*components,samples.begin()+(i+1)*components));
+            }
+        },[&] {return energies;
         },[](double energy,double beta){return -beta*energy;},
         [&](size_t i,char const* name,double value) {if (sampling) diagnostics_[i].at(name)<<alps::alea::column<double>{value};});
     }
@@ -188,10 +217,10 @@ public:
     }
 };
 
-template<size_t Dimension> int classical_main(int argc,char** argv,char const* command) {
-    using simulation=classical_application<Dimension>;
-    auto schema=std::string(classical_schema)+spin_common_schema+alps::mc::replica_exchange_schema;
-    return alps::mc::main<simulation>(argc,argv,command,schema.c_str(),
+template<class Walker,class Group=alps::mc::replica_parallel> int classical_main(int argc,char** argv,char const* command) {
+    using simulation=classical_application<Walker>;
+    auto schema=std::string(classical_schema)+spin_common_schema+alps::mc::replica_exchange_schema+alps::mc::replica_parallel_schema;
+    return alps::mc::main<simulation,Group>(argc,argv,command,schema.c_str(),
         [](std::string const& key)->char const* {
             return key.size()>1 && key[0]=='J' && key.find_first_not_of("0123456789",1)==std::string::npos ? "float64" : nullptr;
         },[=](alps::params& p,alps::run_configuration const& run) {

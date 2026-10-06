@@ -37,9 +37,7 @@ public:
     void load(alps::hdf5::archive& ar) {ar["steps"]>>steps_;}
 };
 
-struct collective_group : alps::mc::parallel {
-    bool owns(size_t) const {return true;}
-    bool stopped(bool local) const {return any(local);}
+struct collective_group : alps::mc::collective {
     template<class Simulation>
     auto make(alps::params const& p,size_t bins,size_t id) const {
         return std::make_unique<Simulation>(p,bins,id,&world);

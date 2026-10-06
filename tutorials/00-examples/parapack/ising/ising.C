@@ -13,4 +13,4 @@
 
 #include "../classical.hpp"
 
-int main(int argc,char** argv) {return classical_main<1>(argc,argv,"ising");}
+int main(int argc,char** argv) {return classical_main<classical_walker<1>>(argc,argv,"ising");}

@@ -246,6 +246,8 @@ int main(int argc, char** argv, char const* application, char const* base_schema
 #endif
         Group group;
         std::vector<alps::run_configuration> runs;
+        std::vector<Group> groups;
+        groups.reserve(files.size()); // Workers may borrow their group's communicator.
         std::vector<chains_type<Simulation>> simulations;
         std::set<std::filesystem::path> protected_paths, destinations;
         group.checked([&] {
@@ -262,7 +264,8 @@ int main(int argc, char** argv, char const* application, char const* base_schema
             for (auto const& [name,fallback]:alps::select_parameters(libraries,base_schema,"input"))
                 runs.back().input[name]=std::filesystem::weakly_canonical(alps::search_xml_library_path(
                     runs.back().input.value_or<std::string>(name,fallback.as<std::string>()))).string();
-            simulations.push_back(prepare_chains<Simulation>(runs.back(), prepare, group));
+            groups.push_back(group);groups.back().configure(runs.back());
+            simulations.push_back(prepare_chains<Simulation>(runs.back(), prepare, groups.back()));
             for (auto const& [key, value] : runs.back().input)
                 for (auto const& path : alps::run_paths(value)) protected_paths.insert(std::filesystem::weakly_canonical(path));
         }
@@ -286,7 +289,7 @@ int main(int argc, char** argv, char const* application, char const* base_schema
         group.verify(runs,validate);
         for (std::size_t index = 0; index < runs.size(); ++index) {
             if (validate) { if (group.rank()==0) std::cout << "Valid " << application << " configuration: " << files[index].string() << '\n'; }
-            else execute(runs[index], simulations[index], prepare, publish, snapshot, group);
+            else execute(runs[index], simulations[index], prepare, publish, snapshot, groups[index]);
         }
         return 0;
     } catch (std::exception const& error) {

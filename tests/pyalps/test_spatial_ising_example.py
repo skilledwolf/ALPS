@@ -158,7 +158,7 @@ def mpmd_failure(mpi_executable, launcher, arguments):
         command.extend(['-n', '1', mpi_executable, *map(str, args)])
     failure = subprocess.run(command, capture_output=True, text=True, timeout=60)
     assert failure.returncode != 0, failure.stdout+failure.stderr
-    assert 'Spatial ranks require identical run configurations' in failure.stdout+failure.stderr
+    assert 'Collective ranks require identical run configurations' in failure.stdout+failure.stderr
 
 
 @pytest.mark.parametrize('field,value', [('L', 7), ('chains', 2), ('rng', 'lagged_fibonacci607')])

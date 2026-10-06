@@ -45,9 +45,11 @@ public:
   auto temperatures() const {return exchange_->values();}
   void update() {
     if (!exchange_) {visit(0,[](auto& value){value.update();});return;}
-    exchange_->step([&](size_t w,size_t i,double beta,bool sampling) {
-      auto& stats=statistics(i);stats.record_measurements(sampling);
-      visit(w,[&](auto& value){value.run(stats,beta);});
+    exchange_->step([&](auto const& walkers,auto const& betas,bool sampling) {
+      for (size_t i=0;i<replicas();++i) {
+        auto& stats=statistics(i);stats.record_measurements(sampling);
+        visit(walkers[i],[&](auto& value){value.run(stats,betas[i]);});
+      }
     },[&] {
       std::vector<weight> weights(replicas());
       for (size_t w=0;w<replicas();++w) weights[w]=visit(w,[](auto const& value){return value.weight_parameter();});
