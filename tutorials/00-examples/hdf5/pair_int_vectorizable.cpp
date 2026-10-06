@@ -29,8 +29,6 @@ namespace alps {
 
         template<> struct is_continuous<std::pair<int, int> > : public boost::true_type {};
 
-        template<> struct has_complex_elements<std::pair<int, int> > : public boost::false_type {};
-
         namespace detail {
 
             template<> struct get_extent<std::pair<int, int> > {
