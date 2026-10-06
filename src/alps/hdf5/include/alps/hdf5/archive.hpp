@@ -142,6 +142,11 @@ namespace alps {
 
                 void create_group(std::string path) const;
 
+                // Copy a native group or dataset, including its attributes.
+                // Paths use each archive's context; the destination must be new.
+                void copy(std::string source_path, archive & destination,
+                          std::string destination_path) const;
+
                 void delete_data(std::string path) const;
                 void delete_group(std::string path) const;
                 void delete_attribute(std::string path) const;

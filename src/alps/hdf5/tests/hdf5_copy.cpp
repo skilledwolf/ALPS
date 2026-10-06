@@ -1,96 +1,75 @@
-/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
- *                                                                                 *
- * ALPS Project: Algorithms and Libraries for Physics Simulations                  *
- *                                                                                 *
- * ALPS Libraries                                                                  *
- *                                                                                 *
- * Copyright (C) 2010 - 2012 by Lukas Gamper <gamperl@gmail.com>                   *
- *                                                                                 *
- * ALPS Project: https://alps.comp-phys.org/                                       *
- * SPDX-License-Identifier: MIT                                                    *
- *                                                                                 *
- * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
-
-
+// Copyright (C) 2010-2012 Lukas Gamper; 2026 ALPS Collaboration.
+// SPDX-License-Identifier: MIT
 #include <alps/hdf5/archive.hpp>
-#include <alps/hdf5/pair.hpp>
 #include <alps/hdf5/complex.hpp>
 #include <alps/hdf5/vector.hpp>
-
+#include <cstdio>
 #include <iostream>
-#include <memory>
+#include <stdexcept>
 
-namespace detail {
-    void copy_data(alps::hdf5::archive & tar, alps::hdf5::archive & sar, std::string const & segment) {
-        if (false);
-        #define CHECK_TYPE(T)                                                                                                                   \
-            else if (sar.is_datatype<T>(segment) && sar.is_null(segment))                                                                       \
-                tar[segment] = std::vector<T>();                                                                                                \
-            else if (sar.is_datatype<T>(segment) && sar.is_scalar(segment)) {                                                                   \
-                T value;                                                                                                                        \
-                sar[segment] >> value;                                                                                                          \
-                tar[segment] = value;                                                                                                           \
-            } else if (sar.is_datatype<T>(segment)) {                                                                                           \
-                std::vector<std::size_t> extent = sar.extent(segment);                                                                          \
-                std::size_t size = std::accumulate(extent.begin(), extent.end(), std::size_t(1), std::multiplies<std::size_t>());               \
-                std::unique_ptr<T[]> array(new T[size]);                                                                                       \
-                std::pair<T *, std::vector<std::size_t> > value(array.get(), extent);                                                           \
-                sar[segment] >> value;                                                                                                          \
-                tar[segment] = value;                                                                                                           \
-            }
-        ALPS_NGS_FOREACH_NATIVE_HDF5_TYPE(CHECK_TYPE)
-        #undef CHECK_TYPE
-        else
-            throw std::runtime_error("Unknown type in path: " + sar.complete_path(segment) + ALPS_STACKTRACE);
-    }
+namespace {
+void require(bool condition) {
+    if (!condition) throw std::runtime_error("Native HDF5 copy contract failed");
 }
-
-void copy(alps::hdf5::archive & tar, std::string const & tpath, alps::hdf5::archive & sar, std::string const & spath) {
-    std::string tcontext = tar.get_context();
-    std::string scontext = sar.get_context();
-    tar.set_context(tar.complete_path(tpath));
-    sar.set_context(sar.complete_path(spath));
-
-    std::vector<std::string> children = sar.list_children("");
-    for (std::vector<std::string>::const_iterator it = children.begin(); it != children.end(); ++it)
-        if (sar.is_group(*it))
-            copy(tar, *it, sar, *it);
-        else {
-            detail::copy_data(tar, sar, *it);
-            std::vector<std::string> attributes = sar.list_attributes(*it);
-            for (std::vector<std::string>::const_iterator jt = attributes.begin(); jt != attributes.end(); ++jt)
-                detail::copy_data(tar, sar, *it + "/@" + *jt);
-        }
-    std::vector<std::string> attributes = sar.list_attributes("");
-    for (std::vector<std::string>::const_iterator it = attributes.begin(); it != attributes.end(); ++it)
-        detail::copy_data(tar, sar, "@" + *it);
-
-    tar.set_context(tcontext);
-    sar.set_context(scontext);
+template<class F> void rejects(F const& operation) {
+    try {operation();}
+    catch (alps::hdf5::archive_error const&) {return;}
+    throw std::runtime_error("Invalid HDF5 copy was accepted");
+}
+template<class T> T read(alps::hdf5::archive& ar,std::string const& path) {
+    T value;ar[path]>>value;return value;
+}
 }
 
 int main() {
+    const char* source_file="test_hdf5_copy.h5";
+    const char* target_file="test_hdf5_copy2.h5";
     try {
-        std::vector<std::vector<int> > a(4);
-        a[0] = std::vector<int>(1, 2);
-        a[1] = std::vector<int>(3, 4);
-        a[2] = std::vector<int>(5, 6);
-
+        const std::vector<std::vector<int>> values{{2},{4,4,4},{6,6,6,6,6},{}};
+        const std::vector<std::string> labels{"α","Energy"};
+        const std::complex<double> complex(1.,-2.);
         {
-            alps::hdf5::archive ar("test_hdf5_copy.h5", "w");
-            ar["/dat/vec"] = a;
-            ar["/dat/vec/@foo"] = 10;
-            ar["/dat/cpx"] = std::complex<double>(1., 1.);
-            ar["/int"] = 2;
+            alps::hdf5::archive ar(source_file,"w");
+            ar["/dat/vec"]<<values;
+            ar["/dat/vec/@foo"]<<10;
+            ar["/dat/cpx"]<<complex;
+            ar["/dat/empty"]<<std::vector<double>{};
+            ar["/dat/labels"]<<labels;
+            ar["/dat/@version"]<<2;
+            ar["/int"]<<7;
         }
         {
-            alps::hdf5::archive tar("test_hdf5_copy2.h5", "w");
-            alps::hdf5::archive sar("test_hdf5_copy.h5", "r");
-            copy(tar, "/cpy", sar, "/dat");
+            alps::hdf5::archive source(source_file),target(target_file,"w");
+            source.set_context("/dat");target.set_context("/nested");
+            source.copy("",target,"copy");
+            source.copy("../int",target,"int");
+            require(source.get_context()=="/dat" && target.get_context()=="/nested");
+            require(read<std::vector<std::vector<int>>>(target,"copy/vec")==values);
+            require(read<int>(target,"copy/vec/@foo")==10);
+            require(read<std::complex<double>>(target,"copy/cpx")==complex);
+            require(target.is_complex("copy/cpx"));
+            require(read<std::vector<double>>(target,"copy/empty").empty());
+            require(read<std::vector<std::string>>(target,"copy/labels")==labels);
+            require(read<int>(target,"copy/@version")==2);
+            require(read<int>(target,"int")==7);
+            rejects([&] {source.copy("cpx",target,"int");});
+            require(read<int>(target,"int")==7);
+            rejects([&] {source.copy("missing",target,"missing");});
+            rejects([&] {source.copy("@version",target,"attribute");});
+            rejects([&] {source.copy("cpx",target,"copy/@attribute");});
+            target.close();
+            rejects([&] {source.copy("cpx",target,"closed");});
         }
-    } catch (std::runtime_error e) {
-        std::cerr << "Exception: " << e.what() << std::endl;
-        std::abort();
+        {
+            alps::hdf5::archive source(source_file),target(target_file);
+            rejects([&] {source.copy("/dat",target,"/readonly");});
+            source.close();
+            rejects([&] {source.copy("/dat",target,"/closed");});
+        }
+        std::remove(source_file);std::remove(target_file);
+    } catch (std::exception const& error) {
+        std::cerr<<error.what()<<'\n';
+        std::remove(source_file);std::remove(target_file);
+        return 1;
     }
-    return 0;
- }
+}

@@ -465,6 +465,25 @@ void archive::create_group(std::string path) const {
         c.file.createGroup(target.object);
     });
 }
+void archive::copy(std::string source_path, archive& destination, std::string destination_path) const {
+    detail::location source(complete_path(source_path)), target(destination.complete_path(destination_path));
+    if (source.is_attribute || target.is_attribute)
+        throw invalid_path("copy requires group or dataset paths");
+    detail::access(context_, [&](auto& from) {
+        detail::access(destination.context_, [&](auto& to) {
+            if (!to.writable) throw archive_error("the destination archive is not writable");
+            if (!from.file.exist(source.object)) throw path_not_found("no object at " + source.object);
+            auto type=from.file.getObjectType(source.object);
+            if (type!=detail::hf::ObjectType::Group && type!=detail::hf::ObjectType::Dataset)
+                throw wrong_type("copy requires a group or dataset");
+            if (to.file.exist(target.object)) throw invalid_path("copy destination already exists: " + target.object);
+            auto parent=target.object.substr(0,target.object.find_last_of('/'));
+            if (!parent.empty() && !to.file.exist(parent)) to.file.createGroup(parent);
+            if (H5Ocopy(from.file.getId(),source.object.c_str(),to.file.getId(),target.object.c_str(),H5P_DEFAULT,H5P_DEFAULT)<0)
+                throw archive_error("cannot copy " + source.object + " to " + target.object);
+        });
+    });
+}
 void archive::delete_data(std::string path) const {
     if (is_group(path)) throw invalid_path("dataset path contains a group");
     detail::access(context_, [&](auto& c) { if (!c.writable) throw archive_error("the archive is not writable"); if (is_data(path)) c.file.unlink(complete_path(path)); });
