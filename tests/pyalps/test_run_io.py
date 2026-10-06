@@ -45,6 +45,23 @@ max = 4294967295
 '''
 
 
+def test_path_lists_resolve_and_protect_every_input(tmp_path):
+    schema = SCHEMA + '\n[input.weights]\ntype="path[]"\n'
+    file = write_run_file(tmp_path/'list.toml', parameters={'SWEEPS': 2},
+                          input={'weights': ['first.h5', 'sub/../second.h5']},
+                          output={'results': 'result.h5'}, schema=schema)
+    run = run_config.load(file, schema)
+    assert list(run.input['weights']) == [str(tmp_path/'first.h5'), str(tmp_path/'second.h5')]
+    before = file.read_bytes()
+    with pytest.raises(ValueError, match='overwrite input.weights'):
+        write_run_files(tmp_path/'batch', [
+            {'parameters': {'SWEEPS': 2}, 'input': {'weights': ['first.h5', 'second.h5']},
+             'output': {'results': 'new.h5'}},
+            {'parameters': {'SWEEPS': 2}, 'output': {'results': './second.h5'}}], schema)
+    assert file.read_bytes() == before
+    assert list(tmp_path.iterdir()) == [file]
+
+
 @pytest.mark.parametrize("section,key", [("output", "results"), ("input", "data")])
 def test_snapshot_namespace_cannot_replace_another_run_file(tmp_path, section, key):
     schema = SCHEMA + '\n[output.snapshot_prefix]\ntype="path"\n'

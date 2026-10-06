@@ -88,8 +88,9 @@ chains_type<Simulation> prepare_chains(alps::run_configuration const& run, Prepa
     if (execution.value_or<std::uint64_t>("snapshot_interval", 0) && !run.output.exists("snapshot_prefix"))
         throw std::invalid_argument("Snapshots require output.snapshot_prefix");
     for (auto const& [key, value] : run.input)
-        if (!std::filesystem::is_regular_file(value.as<std::string>()))
-            throw std::invalid_argument("Missing input." + key + " file: " + value.as<std::string>());
+        for (auto const& path : alps::run_paths(value))
+            if (!std::filesystem::is_regular_file(path))
+                throw std::invalid_argument("Missing input." + key + " file: " + path);
     for (auto const& [key, value] : run.output) {
         const auto path = std::filesystem::weakly_canonical(value.as<std::string>());
         if (std::filesystem::is_directory(path) || !std::filesystem::is_directory(path.parent_path()))
@@ -262,7 +263,8 @@ int main(int argc, char** argv, char const* application, char const* base_schema
                 runs.back().input[name]=std::filesystem::weakly_canonical(alps::search_xml_library_path(
                     runs.back().input.value_or<std::string>(name,fallback.as<std::string>()))).string();
             simulations.push_back(prepare_chains<Simulation>(runs.back(), prepare, group));
-            for (auto const& [key, value] : runs.back().input) protected_paths.insert(std::filesystem::weakly_canonical(value.as<std::string>()));
+            for (auto const& [key, value] : runs.back().input)
+                for (auto const& path : alps::run_paths(value)) protected_paths.insert(std::filesystem::weakly_canonical(path));
         }
         for (auto const& run : runs)
             for (auto const& [key, value] : run.output) {

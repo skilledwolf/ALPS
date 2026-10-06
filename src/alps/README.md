@@ -170,6 +170,9 @@ All first-party public headers have explicit CMake `HEADERS` file sets. These de
 `ALPS::params` owns ALPSCore-derived dictionary/value storage and explicit `alps.params.v2` checkpoints. Native datatype and scalar/vector rank identify values; indexed name/value entries preserve parameter names without duplicate type tags. It links HDF5 and Boost.Serialization; MPI builds also use MPI and Boost.MPI. Python values are eagerly copied into native storage. The file constructor, XML reader, proxies and Python `paramvalue_source` interface are removed. The remaining `params/adapters/` function converts typed scalars to the older model/lattice `Parameters` API for live internal callers; it is compiled into `ALPS::alps`.
 
 `ALPS::run_config` applies separate application TOML schemas, defaults, type/range checks, relative-path resolution and run provenance. It uses toml++ headers privately in one translation unit, including when the package manager provides a compiled toml++ library. Parsing and application orchestration do not belong to the dictionary.
+Schemas use `path` for one file and `path[]` for ordered file lists. Both resolve
+relative to the run file and protect every input from output collisions; the
+native MC runner also checks that all input files exist before execution.
 
 `ALPS::osiris` owns dump/process APIs, XDR symbols and the communication state used by `comm_init()` and `is_master()`. It links Boost.Serialization/Filesystem and, when enabled, MPI. This gives communication state one owner and permits MaxEnt to preserve existing diagnostic gating without linking the simulation runtime.
 

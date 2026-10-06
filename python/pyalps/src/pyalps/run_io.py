@@ -67,16 +67,18 @@ def _check_output_paths(runs, targets):
         for section in ("input", "output"):
             values = getattr(resolved, section)
             for key, rule in rules.get(section, {}).items():
-                if rule.get("type") != "path" or key not in values:
+                if rule.get("type") not in ("path", "path[]") or key not in values:
                     continue
                 # Sidecar directories are used only when text output is enabled.
                 if section == "output" and key == "text_directory" and (
                         "text" not in values or not values["text"]):
                     continue
-                destination = (path.parent / values[key]).resolve()
-                paths.append((destination, f"{section}.{key}", index))
-                if section == "input":
-                    protected.setdefault(destination, f"input.{key} of {path.name}")
+                filenames = [values[key]] if rule["type"] == "path" else values[key]
+                for filename in filenames:
+                    destination = (path.parent / filename).resolve()
+                    paths.append((destination, f"{section}.{key}", index))
+                    if section == "input":
+                        protected.setdefault(destination, f"input.{key} of {path.name}")
     owners = set()
     for destination, key, _ in paths:
         if not key.startswith("output."):

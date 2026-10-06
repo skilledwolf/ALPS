@@ -143,7 +143,7 @@ void validate_rule(const toml::table &rule, const std::string &key) {
     const auto type = text(rule["type"], key);
     const std::set<std::string> types{"int64",  "float64",    "bool",        "string",
                                       "path",   "complex128", "int64[]",     "float64[]",
-                                      "bool[]", "string[]",   "complex128[]"};
+                                      "bool[]", "string[]",   "complex128[]", "path[]"};
     if (!types.count(type))
         fail(key, "unsupported schema type '" + type + "'");
     if (rule.contains("required") && !rule["required"].is_boolean())
@@ -231,11 +231,14 @@ params resolve(const params &supplied, const toml::table &rules, const std::file
         else
             continue;
         check_rule(*rule, out[key], qualified);
-        if (type == "path" && !base.empty()) {
-            auto path = std::filesystem::path(out[key].as<std::string>());
-            if (path.is_relative())
-                path = base / path;
-            out[key] = path.lexically_normal().string();
+        if ((type == "path" || type == "path[]") && !base.empty()) {
+            auto paths = run_paths(out[key]);
+            for (auto& filename : paths) {
+                auto path = std::filesystem::path(filename);
+                filename = (path.is_relative() ? base / path : path).lexically_normal().string();
+            }
+            if (type == "path") out[key] = paths.front();
+            else out[key] = paths;
         }
         if (origins)
             (*origins)[qualified] = supplied.exists(key) ? "input" : "default";
@@ -264,14 +267,15 @@ void check_outputs(const run_configuration &run, const toml::table &schema) {
         for (const auto &[name, node] : definitions(schema, section)) {
             const std::string key(name.str()), qualified = section + "." + key;
             const auto *rule = node.as_table();
-            if (!rule || (*rule)["type"].value_or(std::string()) != "path" || !values->exists(key))
+            if (!rule || !values->exists(key))
                 continue;
-            const std::filesystem::path path((*values)[key].as<std::string>());
-            if (path.is_relative())
-                continue;
-            const auto [claim, added] = claimed.emplace(std::filesystem::weakly_canonical(path), qualified);
-            if (!added && section == "output")
-                fail(qualified, "output must not replace " + claim->second);
+            const auto type = (*rule)["type"].value_or(std::string());
+            if (type != "path" && type != "path[]") continue;
+            for (std::filesystem::path path : run_paths((*values)[key])) {
+                if (path.is_relative()) continue;
+                const auto [claim, added] = claimed.emplace(std::filesystem::weakly_canonical(path), qualified);
+                if (!added && section == "output") fail(qualified, "output must not replace " + claim->second);
+            }
         }
 }
 run_configuration resolve_run(const run_configuration &supplied, const toml::table &schema,

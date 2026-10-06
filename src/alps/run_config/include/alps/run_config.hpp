@@ -7,6 +7,11 @@
 #include <map>
 #include <string_view>
 namespace alps {
+// A path field is either one filename or an ordered list of filenames.
+inline std::vector<std::string> run_paths(params::value_type const& value) {
+    return value.isType<std::string>() ? std::vector<std::string>{value.as<std::string>()}
+                                      : value.as<std::vector<std::string>>();
+}
 // Application schemas are TOML supplied by the application. Parser types stay
 // private; native and language-binding callers share the same validation.
 // Identity and version come from the schema, not the user-written run file.

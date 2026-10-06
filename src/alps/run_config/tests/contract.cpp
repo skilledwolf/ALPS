@@ -23,6 +23,8 @@ type="bool[]"
 type="complex128"
 [input.data]
 type="path"
+[input.weights]
+type="path[]"
 [output.results]
 type="path"
 default="results.h5"
@@ -64,6 +66,13 @@ int main() {
     require(run.origins.at("parameters.count") == "input");
     require(run.input["data"].as<std::string>() ==
             (std::filesystem::current_path() / "data.h5").string());
+    auto windows = load("[parameters]\ncount=1\n[input]\nweights=['a.h5','sub/../b.h5']\n");
+    require(alps::run_paths(windows.input["weights"]) == std::vector<std::string>{
+        (std::filesystem::current_path()/"a.h5").string(), (std::filesystem::current_path()/"b.h5").string()});
+    require(alps::run_paths(load("[parameters]\ncount=1\n[input]\nweights=[]").input["weights"]).empty());
+    rejects([&] { load("[parameters]\ncount=1\n[input]\nweights=['a.h5','./results.h5']"); }, "replace input.weights");
+    rejects([&] { load("[parameters]\ncount=1\n[input]\nweights='a.h5'"); }, "weights");
+    rejects([&] { load("[parameters]\ncount=1\n[input]\nweights=['a.h5',2]"); }, "weights");
     rejects([&] { load("[parameters]\ncount=0"); }, "minimum");
     rejects([&] { load("[parameters]\ncount=true"); }, "count");
     rejects([&] { load("[parameters]\ncount=1\nrate=9007199254740993"); }, "exactly");

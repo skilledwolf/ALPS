@@ -36,7 +36,8 @@ struct spatial_group : ising_group {
         // files. Compare bytes once before any physical collective, keeping
         // the existing schemas and bounded memory even for large checkpoints.
         std::set<std::string> inputs;
-        checked([&] {for (auto const& run:runs) for (auto const& [key,value]:run.input) inputs.insert(value.template as<std::string>());});
+        checked([&] {for (auto const& run:runs) for (auto const& [key,value]:run.input)
+            for (auto const& path:alps::run_paths(value)) inputs.insert(path);});
         for (auto const& path:inputs) {
             std::ifstream file(path,std::ios::binary);
             checked([&] {if (!file) throw std::runtime_error("Cannot read spatial input: "+path);});
