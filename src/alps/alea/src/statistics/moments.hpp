@@ -55,9 +55,10 @@ void reduce_moments(Data& data, reducer const& r, Square square) {
     r.commit();
     uint64_t total = 0;
     bool overflow = false;
-    if (setup.have_result) for (auto weight : weights) {
-        overflow = overflow || weight > std::numeric_limits<uint64_t>::max() - total;
-        total += weight;
+    // Index the weights: Eigen 3.3 vectors have no begin()/end().
+    if (setup.have_result) for (Eigen::Index rank = 0; rank < weights.size(); ++rank) {
+        overflow = overflow || weights(rank) > std::numeric_limits<uint64_t>::max() - total;
+        total += weights(rank);
     }
     if (r.get_max(setup.have_result && (overflow || !valid_weight_count(total, data.count2()))))
         throw std::overflow_error("ALEA moment weight overflow");
