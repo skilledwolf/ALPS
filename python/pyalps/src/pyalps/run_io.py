@@ -12,6 +12,7 @@ import os
 from pathlib import Path
 import subprocess
 import tempfile
+import threading
 import tomllib
 
 from . import run_config
@@ -238,13 +239,60 @@ def _command(arguments, *, capture=False):
     return subprocess.run(arguments, check=True, text=True, capture_output=capture)
 
 
-def execute(application, runs, *, mpi=None, mpirun="mpirun"):
+def _run_all(commands, concurrency):
+    """Run commands with at most ``concurrency`` at once, starting none after a failure."""
+    if concurrency == 1:
+        # An interrupt stops the active run, as subprocess.run does.
+        for command in commands:
+            _command(command)
+        return
+    pending, failures, lock = iter(commands), [], threading.Lock()
+
+    def worker():
+        while True:
+            with lock:
+                command = None if failures else next(pending, None)
+            if command is None:
+                return
+            try:
+                _command(command)
+            except BaseException as error:
+                with lock:
+                    failures.append(error)
+
+    workers = [threading.Thread(target=worker) for _ in range(min(concurrency, len(commands)))]
+    for thread in workers:
+        thread.start()
+    try:
+        for thread in workers:
+            thread.join()
+    except BaseException as error:
+        # A terminal interrupt also reaches the runs in its process group.
+        # Start no further run and wait for the active ones to stop.
+        with lock:
+            failures.insert(0, error)
+        for thread in workers:
+            thread.join()
+    if failures:
+        raise failures[0]
+
+
+def execute(application, runs, *, mpi=None, mpirun="mpirun", concurrency=1):
     """Run TOML run files or job manifests with an application executable.
 
-    Every run is validated by the application before the first one starts,
-    and the runs then execute in order. Returns the absolute output.results
-    path of each run. A failing process raises subprocess.CalledProcessError.
-    Active text-output directories cannot contain another run's input or output.
+    Every run is validated by the application before the first one starts.
+    Up to ``concurrency`` runs then execute at the same time, in order of
+    submission, and their console output interleaves. Returns the absolute
+    output.results path of each run in input order. A failing process raises
+    subprocess.CalledProcessError after the other active runs finish; no
+    further run starts. With ``concurrency > 1``, an interrupt also waits for
+    the active runs. Active text-output directories cannot contain another
+    run's input or output.
+
+    With ``mpi``, each run starts its own ``mpirun -np mpi``. ``mpirun`` is an
+    executable or an argument list. Concurrent MPI runs must not share cores:
+    disable the launcher's default binding, for example with
+    ``mpirun=["mpirun", "--bind-to", "none"]``.
     """
     from .tools import check_existence
     application = os.fspath(application)
@@ -254,13 +302,19 @@ def execute(application, runs, *, mpi=None, mpirun="mpirun"):
     for path in runs:
         if path.suffix.lower() != ".toml":
             raise ValueError(f"expected a TOML run file or job manifest: {path}")
+    if isinstance(concurrency, bool) or operator.index(concurrency) < 1:
+        raise ValueError("concurrency must be a positive number of runs")
     check_existence(application)
     launcher = []
     if mpi is not None:
         if isinstance(mpi, bool) or operator.index(mpi) < 1:
             raise ValueError("mpi must be a positive process count")
-        check_existence(mpirun)
-        launcher = [os.fspath(mpirun), "-np", str(operator.index(mpi))]
+        launcher = ([os.fspath(mpirun)] if isinstance(mpirun, (str, os.PathLike))
+                    else [os.fspath(argument) for argument in mpirun])
+        if not launcher:
+            raise ValueError("mpirun must name a launcher")
+        check_existence(launcher[0])
+        launcher += ["-np", str(operator.index(mpi))]
     references, targets, seen = [], [], set()
     for path in runs:
         targets.append(path)
@@ -285,6 +339,6 @@ def execute(application, runs, *, mpi=None, mpirun="mpirun"):
     # Scientific inputs are checked by the application before any run writes.
     for file, _, _ in references:
         _command([application, "--validate", str(file)])
-    for file, _, _ in references:
-        _command(launcher + [application, str(file)])
+    _run_all([launcher + [application, str(file)] for file, _, _ in references],
+             operator.index(concurrency))
     return [str(Path(run.output["results"]).resolve()) for _, run, _ in references]

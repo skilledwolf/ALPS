@@ -64,6 +64,21 @@ def test_simplemc_restart_matches_complete_native_batches(executable, tmp_path, 
             assert archive[base + "/measurements"][()] == 37
 
 
+def test_concurrent_runs_match_sequential_runs(executable, tmp_path):
+    temperatures = (1.2, 1.8, 2.4)
+    sequential = [run_file(tmp_path, f"sequential{n}", parameters={"T": t}) for n, t in enumerate(temperatures)]
+    concurrent = [run_file(tmp_path, f"concurrent{n}", parameters={"T": t}) for n, t in enumerate(temperatures)]
+    execute(executable, sequential)
+    assert execute(executable, concurrent, concurrency=3) == [
+        str((tmp_path / f"concurrent{n}.h5").resolve()) for n in range(len(temperatures))]
+    for n in range(len(temperatures)):
+        expected = read_results(tmp_path / f"sequential{n}.h5")
+        actual = read_results(tmp_path / f"concurrent{n}.h5")
+        assert expected.keys() == actual.keys()
+        for name in expected:
+            np.testing.assert_array_equal(actual[name].batch_sums, expected[name].batch_sums)
+
+
 @pytest.mark.parametrize("thermalization,cut", [(0, 2), (3, 2)])
 def test_simplemc_zero_and_interrupted_thermalization(executable, tmp_path, thermalization, cut):
     full = run_file(tmp_path, "full", parameters={"THERMALIZATION": thermalization})

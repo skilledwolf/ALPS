@@ -2,6 +2,7 @@
 """Explicit jobs use the selected application's native schema and safe argv."""
 from pathlib import Path
 import subprocess
+import threading
 
 import pytest
 
@@ -156,6 +157,75 @@ def test_later_process_failure_propagates_and_stops_remaining_runs(tmp_path, com
         execute("hybridization", paths)
     assert failure.value.returncode == 9
     assert executed(commands) == [["hybridization", str(paths[0])], ["hybridization", str(paths[1])]]
+
+
+def concurrent_runs(directory, count):
+    return [write_run_file(directory.resolve() / f"run{n}.toml", SCHEMA,
+                           parameters={"count": n}, output={"results": f"result{n}.h5"})
+            for n in range(1, count + 1)]
+
+
+def test_concurrent_runs_overlap_and_return_results_in_input_order(tmp_path, commands, monkeypatch):
+    paths = concurrent_runs(tmp_path, 3)
+    original = subprocess.run
+    # Sequential execution would break the barrier at its timeout.
+    started = threading.Barrier(3, timeout=10)
+
+    def invoke(arguments, **kwargs):
+        if len(arguments) == 2:
+            started.wait()
+        return original(arguments, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", invoke)
+    assert execute("hybridization", paths, concurrency=3) == [
+        str(path.with_name(f"result{n}.h5")) for n, path in enumerate(paths, 1)]
+    assert sorted(executed(commands)) == [["hybridization", str(path)] for path in paths]
+    validations = [i for i, command in enumerate(commands) if "--validate" in command]
+    assert max(validations) < commands.index(executed(commands)[0])
+
+
+def test_concurrent_failure_waits_for_active_runs_and_starts_no_other(tmp_path, commands, monkeypatch):
+    paths = concurrent_runs(tmp_path, 4)
+    original = subprocess.run
+    started = threading.Barrier(2, timeout=10)
+    failing, finished = [], []
+
+    def invoke(arguments, **kwargs):
+        if len(arguments) == 2 and arguments[-1] == str(paths[0]):
+            failing.append(threading.current_thread())
+            started.wait()
+            commands.append(list(arguments))
+            raise subprocess.CalledProcessError(9, arguments)
+        if len(arguments) == 2 and arguments[-1] == str(paths[1]):
+            started.wait()
+            # The failed run's worker exits only after recording its failure.
+            failing[0].join(timeout=10)
+            assert not failing[0].is_alive()
+            finished.append(arguments[-1])
+        return original(arguments, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", invoke)
+    with pytest.raises(subprocess.CalledProcessError) as failure:
+        execute("hybridization", paths, concurrency=2)
+    assert failure.value.returncode == 9
+    assert finished == [str(paths[1])]
+    assert sorted(executed(commands)) == [["hybridization", str(path)] for path in paths[:2]]
+
+
+def test_concurrent_mpi_runs_accept_launcher_arguments(tmp_path, commands):
+    paths = concurrent_runs(tmp_path, 2)
+    execute("hybridization", paths, mpi=2, mpirun=["mpi launcher", "--bind-to", "none"], concurrency=2)
+    assert sorted(executed(commands)) == [
+        ["mpi launcher", "--bind-to", "none", "-np", "2", "hybridization", str(path)] for path in paths]
+
+
+@pytest.mark.parametrize("arguments", [dict(concurrency=0), dict(concurrency=True),
+                                       dict(mpi=1, mpirun=[])])
+def test_invalid_concurrency_or_launcher_is_rejected_before_any_command(tmp_path, commands, arguments):
+    paths = concurrent_runs(tmp_path, 2)
+    with pytest.raises(ValueError):
+        execute("hybridization", paths, **arguments)
+    assert commands == []
 
 
 def test_result_collisions_are_checked_for_existing_run_files(tmp_path, commands):

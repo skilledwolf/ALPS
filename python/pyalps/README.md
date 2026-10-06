@@ -371,10 +371,14 @@ in `execution.seed`, and refuses overwrites and colliding result/checkpoint
 paths. When a schema is supplied, it also checks all declared input/output paths
 across the job. Each active text-output directory is reserved for its run; other
 runs' input and output paths must stay outside it.
-`pyalps.run_io.execute(application, runs, mpi=None)` obtains each run's schema,
-rejects outputs that replace any run's inputs or other outputs, and validates every
-run file or manifest with the application executable, then runs them in order and
-returns their absolute result paths. Job execution through the legacy
+`pyalps.run_io.execute(application, runs, mpi=None, mpirun="mpirun", concurrency=1)`
+obtains each run's schema, rejects outputs that replace any run's inputs or other
+outputs, and validates every run file or manifest with the application executable.
+It then starts the runs in order, at most `concurrency` at a time, and returns their
+absolute result paths in input order. After a failure it starts no further run and
+raises once the active runs finish. With `mpi`, each run gets its own launcher;
+pass `mpirun=["mpirun", "--bind-to", "none"]` so that concurrent MPI runs do not
+bind to the same cores. Job execution through the legacy
 scheduler front remains pending migration for its remaining applications. `simplemc` now uses this native TOML workflow for all three
 classical spin models, independent chains, exact HDF5 restart and direct VTK
 snapshots; see the [simplemc guide](../../src/apps/mc/simple/README.md).

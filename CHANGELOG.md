@@ -60,6 +60,13 @@ User-facing changes and migration notes are recorded here, starting with the bui
   (`SIMULATION_PHASE=2` with external `LOGG_FILENAME` weights) has no
   replacement; `qwl` provides Wang–Landau and multicanonical sampling.
 
+- Run several TOML runs at once with
+  `pyalps.run_io.execute(application, runs, concurrency=N)`, restoring the
+  former schedulers' concurrent execution of a job's tasks. Every run is still
+  validated before the first starts, and no further run starts after a failure.
+  `mpirun` also accepts a launcher argument list, such as
+  `["mpirun", "--bind-to", "none"]` for concurrent MPI runs.
+
 - Port `loop` to native ALEA and the TOML CLI, retaining continuous-time/SSE,
   annealing, signed/improved/custom estimators, replica exchange and both
   temperature-feedback methods. Checkpoint physical walkers, exchange state,
