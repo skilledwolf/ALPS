@@ -179,7 +179,11 @@ endif()
         '  TARGET dmrg)\n'
         'file(GENERATE OUTPUT "${CMAKE_BINARY_DIR}/hdf5-system-$<CONFIG>.txt"\n'
         '  CONTENT "$<TARGET_PROPERTY:HDF5::HDF5,SYSTEM>;'
-        '$<TARGET_PROPERTY:hdf5::hdf5-shared,SYSTEM>")\n')
+        '$<TARGET_PROPERTY:hdf5::hdf5-shared,SYSTEM>")\n'
+        # alps_hdf5 reaches Boost.Filesystem only through ALPS::utilities.
+        'file(GENERATE OUTPUT "${CMAKE_BINARY_DIR}/boost-$<CONFIG>.txt"\n'
+        '  CONTENT "$<TARGET_PROPERTY:Boost::filesystem,TYPE>;'
+        '$<TARGET_FILE_DIR:Boost::filesystem>")\n')
     result = subprocess.run([
         "cmake", "-S", str(SOURCE), "-B", str(build),
         *json.loads(os.environ.get("ALPS_TEST_CMAKE_ARGS", "[]")),
@@ -199,6 +203,10 @@ endif()
         suffix = "/hdf5.dll" if os.name == "nt" else ""
         assert f"{provider.as_posix()}/{config}{suffix}" in runtime
         assert f"{provider.as_posix()}/{other}{suffix}" not in runtime
+        # ELF RUNPATH is not transitive: the library needs its indirect paths.
+        boost_type, boost_directory = (build / f"boost-{config}.txt").read_text().split(";")
+        if os.name != "nt" and boost_type == "SHARED_LIBRARY":
+            assert boost_directory in runtime
         if os.name != "nt":
             program_runtime = (build / f"program-runtime-{config}.txt").read_text().split(";")
             assert f"{provider.as_posix()}/{config}" in program_runtime
