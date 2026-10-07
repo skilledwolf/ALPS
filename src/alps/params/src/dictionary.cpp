@@ -4,6 +4,10 @@
 // See ALPSCore-LICENSE.txt for the original permission notice.
 #include <algorithm>
 #include <alps/dictionary.hpp>
+#include <cstdlib>
+#include <iomanip>
+#include <limits>
+#include <sstream>
 #ifdef ALPS_HAVE_MPI
 #include <boost/mpi/collectives/broadcast.hpp>
 #include <boost/serialization/complex.hpp>
@@ -31,6 +35,29 @@ bool dictionary::equals(const dictionary &rhs) const {
                return a.first == b.first && a.second.equals(b.second);
            });
 }
+namespace {
+// Print reals with the fewest significant digits (at least six) that read back exactly.
+void print(std::ostream &out, double x) {
+    std::ostringstream text;
+    text.imbue(std::locale::classic());
+    for (int digits = 6;; ++digits) {
+        text.str({});
+        text << std::setprecision(digits) << x;
+        if (digits == std::numeric_limits<double>::max_digits10 ||
+            std::strtod(text.str().c_str(), nullptr) == x)
+            break;
+    }
+    out << text.str();
+}
+void print(std::ostream &out, const std::complex<double> &x) {
+    out << '(';
+    print(out, x.real());
+    out << ',';
+    print(out, x.imag());
+    out << ')';
+}
+template <class T> void print(std::ostream &out, const T &x) { out << x; }
+} // namespace
 std::ostream &operator<<(std::ostream &out, const dictionary &values) {
     for (const auto &entry : values)
         out << entry.first << " = " << entry.second << '\n';
@@ -46,11 +73,11 @@ std::ostream &operator<<(std::ostream &out, const dict_value &value) {
             for (std::size_t i = 0; i < x.size(); ++i) {
                 if (i)
                     out << ", ";
-                out << x[i];
+                print(out, x[i]);
             }
             out << ']';
         } else
-            out << x;
+            print(out, x);
     });
     return out;
 }

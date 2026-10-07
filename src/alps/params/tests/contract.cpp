@@ -51,6 +51,11 @@ int main() {
     p["complex"] = std::complex<double>(1, 2);
     require(p["complex"].as<std::complex<double>>() == std::complex<double>(1, 2));
     rejects([&] { p["complex"].as<double>(); });
+    p["third"] = 1. / 3;
+    p["reals"] = std::vector<double>{.1, .1234567891};
+    std::ostringstream text;
+    text << p["real"] << ' ' << p["third"] << ' ' << p["reals"] << ' ' << p["complex"];
+    require(text.str() == "4.5 0.3333333333333333 [0.1, 0.1234567891] (1,2)");
     auto copy = p;
     copy["small"] = 5;
     require(p["small"].as<int>() == 4);
