@@ -165,9 +165,11 @@ def test_replica_continuation_and_loader(executable, tmp_path, mode):
              INITIAL_BLOCK_SWEEPS=100, OPTIMIZATION_ITERATIONS=1, **mode)
     rng = 'mt19937'
     run(executable, tmp_path, 'full', p, chains=1, bins=8, rng=rng)
-    phases = [('feedback', 31), ('production', 247)]
+    # Without temperature feedback the first stop would only interrupt warmup,
+    # which the single-ladder continuation covers.
+    phases = [('production', 247)]
     if mode.get('OPTIMIZE_TEMPERATURE'):
-        phases.append(('optimization', 151))
+        phases += [('feedback', 31), ('optimization', 151)]
     for phase, budget in phases:
         run(executable, tmp_path, phase, p, chains=1, bins=8, rng=rng, budget=budget)
         run(executable, tmp_path, phase + '-resumed', p, chains=1, bins=8, rng=rng,
