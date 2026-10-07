@@ -1,4 +1,3 @@
-#include <alps/testing/stream_fixture.hpp>
 /*****************************************************************************
 *
 * ALPS Project: Algorithms and Libraries for Physics Simulations
@@ -12,53 +11,51 @@
 *
 *****************************************************************************/
 
-// site coloring test program
-
+#include <gtest/gtest.h>
 #include <alps/lattice.h>
-#include <alps/parameter.h>
 #include <boost/graph/sequential_vertex_coloring.hpp>
-#include <iostream>
+#include <ostream>
+#include <vector>
 
-#ifdef BOOST_NO_ARGUMENT_DEPENDENT_LOOKUP
-using namespace alps;
-#endif
+namespace {
+struct ColoringScenario {
+  const char* name;
+  const char* lattice;
+  int length;
+  std::size_t count;
+  std::vector<std::size_t> colors;
+};
+void PrintTo(const ColoringScenario& scenario, std::ostream* out) { *out << scenario.name; }
+class LatticeColoring : public ::testing::TestWithParam<ColoringScenario> {};
 
-TEST(LatticeSerialization, Coloring) {
-    alps::testing::StreamFixture transcript(ALPS_TEST_SOURCE_DIR "/coloring.input");
-    { // Flush serialization objects before checking the captured stream.
-
-#ifndef BOOST_NO_EXCEPTIONS
-  try {
-#endif
-
-    typedef alps::graph_helper<> lattice_type;
-    typedef lattice_type::graph_type graph_type;
-    typedef boost::property_map<graph_type, alps::site_index_t>::const_type vertex_index_map;
-    alps::ParameterList params(std::cin);
-    BOOST_FOREACH(alps::Parameters const& p, params) {
-      lattice_type lattice(p);
-      std::vector<std::size_t> color(lattice.num_sites());
-      int nc = boost::sequential_vertex_coloring(lattice.graph(),
-        boost::iterator_property_map<std::size_t*, vertex_index_map>(&color.front(),
-          get(boost::vertex_index, lattice.graph())));
-      std::cout << "LATTICE = " << p["LATTICE"] << std::endl;
-      std::cout << "  number of colors = " << nc << std::endl;
-      std::cout << "  site colors =";
-      for (unsigned int s = 0; s < lattice.num_sites(); ++s) std::cout << ' ' << color[s];
-      std::cout << std::endl;
-    }
-
-#ifndef BOOST_NO_EXCEPTIONS
+TEST_P(LatticeColoring, PreservesColorsAndSeparatesBondEndpoints) {
+  const auto& scenario = GetParam();
+  alps::Parameters parameters;
+  parameters["LATTICE_LIBRARY"] = "lattices.xml";
+  parameters["LATTICE"] = scenario.lattice;
+  parameters["L"] = scenario.length;
+  alps::graph_helper<> lattice(parameters);
+  ASSERT_EQ(lattice.num_sites(), scenario.colors.size());
+  std::vector<std::size_t> colors(lattice.num_sites());
+  const auto count = boost::sequential_vertex_coloring(lattice.graph(),
+      boost::make_iterator_property_map(colors.begin(), get(boost::vertex_index, lattice.graph())));
+  EXPECT_EQ(count, scenario.count);
+  EXPECT_EQ(colors, scenario.colors);
+  const auto edges = boost::edges(lattice.graph());
+  for (auto edge = edges.first; edge != edges.second; ++edge) {
+    const auto source = boost::source(*edge, lattice.graph());
+    const auto target = boost::target(*edge, lattice.graph());
+    EXPECT_NE(colors[source], colors[target]) << "bond " << source << " -> " << target;
   }
-  catch (std::exception& e) {
-    std::cerr << "Caught exception: " << e.what() << "\n";
-    FAIL() << "Unexpected exception in serialization contract";
-  }
-  catch (...) {
-    std::cerr << "Caught unknown exception\n";
-    FAIL() << "Unexpected exception in serialization contract";
-  }
-#endif
-    }
-  transcript.expect_output(ALPS_TEST_SOURCE_DIR "/coloring.output");
+  for (const auto color : colors) EXPECT_LT(color, count);
 }
+
+// Preserve the four historical greedy-coloring results, including vertex order.
+// The triangular result is four colors for this ordering, not a claim of optimality.
+INSTANTIATE_TEST_SUITE_P(HistoricalLattices, LatticeColoring, ::testing::Values(
+  ColoringScenario{"Chain", "chain lattice", 8, 2, {0, 1, 0, 1, 0, 1, 0, 1}},
+  ColoringScenario{"Square", "square lattice", 4, 2, {0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0}},
+  ColoringScenario{"FrustratedSquare", "frustrated square lattice", 4, 4, {0, 1, 0, 1, 2, 3, 2, 3, 0, 1, 0, 1, 2, 3, 2, 3}},
+  ColoringScenario{"Triangular", "triangular lattice", 4, 4, {0, 1, 0, 1, 2, 3, 2, 3, 0, 1, 0, 1, 2, 3, 2, 3}}),
+  [](const ::testing::TestParamInfo<ColoringScenario>& info) { return info.param.name; });
+} // namespace

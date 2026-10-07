@@ -1,4 +1,3 @@
-#include <alps/testing/stream_fixture.hpp>
 /*****************************************************************************
 *
 * ALPS Project: Algorithms and Libraries for Physics Simulations
@@ -12,59 +11,31 @@
 *
 *****************************************************************************/
 
-/* $Id$ */
+#include "basis_checks.hpp"
 
-#include <alps/parser/xslt_path.h>
-#include <alps/model.h>
-#include <fstream>
-#include <iostream>
-
-void write_set(const std::string& name, const alps::ModelLibrary& lib, 
-               const alps::Parameters& p=alps::Parameters())
-{
-  alps::SiteBasisDescriptor<short> sitebasis=lib.get_site_basis(name);
-  sitebasis.set_parameters(p);
-  std::cout << "States of basis " << name << "=" << alps::site_basis<short>(sitebasis);
+TEST(ModelBasis, FermionEnumeratesBothOccupations) {
+  const alps::site_basis<short> basis(model_test::descriptor("fermion"));
+  model_test::expect_states(basis, {"Nup", "Ndown"}, {{0, 0}, {0, 1}, {1, 0}, {1, 1}});
 }
 
-TEST(ModelSerialization, Example2) {
-    alps::testing::StreamFixture transcript;
-    { // Flush serialization objects before checking the captured stream.
-
-
-#ifndef BOOST_NO_EXCEPTIONS
-  try {
-#endif
-    // create the library from an XML file
-    std::ifstream in(alps::search_xml_library_path("models.xml"));
-    alps::ModelLibrary lib(in);
-
-    // write all basis states
-    write_set("fermion",lib);
-    write_set("hardcore boson",lib);
-    alps::Parameters p;
-    p["local_spin"]=1;
-    write_set("spin",lib,p);
-    p["local_spin"]=0.5;
-    write_set("spin",lib,p);
-    p["local_spin"]=1.5;
-    write_set("spin",lib,p);
-    p["local_spin"]=2;
-    write_set("spin",lib,p);
-
-#ifndef BOOST_NO_EXCEPTIONS
+TEST(ModelBasis, HardcoreBosonHasEmptyAndOccupiedStates) {
+  const alps::site_basis<short> basis(model_test::descriptor("hardcore boson"));
+  model_test::expect_states(basis, {"N"}, {{0}, {1}});
 }
-catch (std::exception& e)
-{
-  std::cerr << "Caught exception: " << e.what() << "\n";
-  FAIL() << "Unexpected exception in serialization contract";
+
+namespace {
+void expect_spin_basis(double spin) {
+  alps::Parameters parameters;
+  parameters["local_spin"] = spin;
+  const alps::site_basis<short> basis(model_test::descriptor("spin", parameters));
+  model_test::States expected;
+  // Exactly 2*S+1 projections, in ascending order, with fixed total spin S.
+  for (int i = 0; i <= int(2 * spin); ++i) expected.push_back({spin, -spin + i});
+  model_test::expect_states(basis, {"S", "Sz"}, expected);
 }
-catch (...)
-{
-  std::cerr << "Caught unknown exception\n";
-  FAIL() << "Unexpected exception in serialization contract";
-}
-#endif
-    }
-  transcript.expect_output(ALPS_TEST_SOURCE_DIR "/example2.output");
-}
+} // namespace
+
+TEST(ModelBasis, SpinHalfProjections) { expect_spin_basis(0.5); }
+TEST(ModelBasis, SpinOneProjections) { expect_spin_basis(1); }
+TEST(ModelBasis, SpinThreeHalvesProjections) { expect_spin_basis(1.5); }
+TEST(ModelBasis, SpinTwoProjections) { expect_spin_basis(2); }

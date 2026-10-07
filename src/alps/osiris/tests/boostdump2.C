@@ -1,4 +1,3 @@
-#include <alps/testing/stream_fixture.hpp>
 /*****************************************************************************
 *
 * ALPS Project: Algorithms and Libraries for Physics Simulations
@@ -13,48 +12,26 @@
 *
 *****************************************************************************/
 
-/* $Id$ */
-
+#include <gtest/gtest.h>
 #include <alps/osiris.h>
-#include <iostream>
-#include <cstdlib>
 
-TEST(OsirisSerialization, Boostdump2) {
-    alps::testing::StreamFixture transcript(ALPS_TEST_BINARY_DIR "/boostdump2.input");
-    { // Flush serialization objects before checking the captured stream.
+TEST(OsirisSerialization, ArchiveAdapterReadsHistoricalXdrRecord) {
+  // Immutable legacy wire fixture: this check is independent of today's writer.
+  alps::IXDRFileDump id(boost::filesystem::path(ALPS_TEST_SOURCE_DIR "/xdrdump2.dump"));
+  alps::idump_archive archive(id);
 
-#ifndef BOOST_NO_EXCEPTIONS
-try {
-#endif
-
-  std::string file;
-  std::cin >> file;
-
-  alps::IXDRFileDump id=alps::IXDRFileDump(boost::filesystem::path(file));
-  alps::idump_archive ar(id);
-  std::cout << alps::get<bool>(ar) << ' ';
-  std::cout << static_cast<int32_t>(alps::get<int8_t>(ar)) << ' ';
-  std::cout << static_cast<int32_t>(alps::get<uint8_t>(ar)) << ' ';
-  std::cout << alps::get<int16_t>(ar) << ' ';
-  std::cout << alps::get<uint16_t>(ar) << ' ';
-  std::cout << alps::get<int32_t>(ar) << ' ';
-  std::cout << alps::get<uint32_t>(ar) << ' ';
-  int64_t i8 = alps::get<int64_t>(ar);
-  uint64_t i9(alps::get<uint64_t>(ar));
-  std::cout << i8 << ' '  << i9  << ' ';
-  double i10 = alps::get<double>(ar);
-  std::cout << i10 << ' ';
-  std::string str;
-  ar >> str;
-  std::cout << str << std::endl;
-  
-#ifndef BOOST_NO_EXCEPTIONS
-}
-catch (std::exception& exp) {
-  std::cerr << exp.what() << std::endl;
-  FAIL() << "Unexpected exception in serialization contract";
-}
-#endif
-    }
-  transcript.expect_output(ALPS_TEST_SOURCE_DIR "/boostdump2.output");
+  EXPECT_EQ(alps::get<bool>(archive), false);
+  EXPECT_EQ(alps::get<int8_t>(archive), 63);
+  EXPECT_EQ(alps::get<uint8_t>(archive), 201);
+  EXPECT_EQ(alps::get<int16_t>(archive), -699);
+  EXPECT_EQ(alps::get<uint16_t>(archive), 43299);
+  EXPECT_EQ(alps::get<int32_t>(archive), 847229);
+  EXPECT_EQ(alps::get<uint32_t>(archive), 4294967295u);
+  EXPECT_EQ(alps::get<int64_t>(archive), -1152921504606846976ll);
+  EXPECT_EQ(alps::get<uint64_t>(archive), 18446744073709551614ull);
+  // The wire and text archives preserve the full double, not six printed digits.
+  EXPECT_EQ(alps::get<double>(archive), 3.14159265358979323846);
+  std::string text;
+  archive >> text;
+  EXPECT_EQ(text, "test string");
 }

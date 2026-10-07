@@ -1,4 +1,3 @@
-#include <alps/testing/stream_fixture.hpp>
 /*****************************************************************************
 *
 * ALPS Project: Algorithms and Libraries for Physics Simulations
@@ -13,51 +12,29 @@
 *
 *****************************************************************************/
 
-/* $Id$ */
+#include "basis_checks.hpp"
 
-#include <alps/parser/xslt_path.h>
-#include <alps/model.h>
-#include <fstream>
-#include <iostream>
-#include <string>
-
-void write_set(const std::string& name, const alps::ModelLibrary& lib, 
-               const alps::Parameters& p=alps::Parameters())
-{
-  alps::SiteBasisDescriptor<short> sitebasis=lib.get_site_basis(name);
-  sitebasis.set_parameters(p);
-  std::cout << "States of basis " << name << "=" << alps::site_basis<short>(sitebasis);
+TEST(ModelBasis, DefaultSpinfulBosonStates) {
+  const alps::site_basis<short> basis(model_test::descriptor("spinful boson"));
+  model_test::expect_states(basis, {"N", "J", "Jz"},
+                            {{0, 0, 0}, {1, 0, 0}, {1, 1, -1}, {1, 1, 0}, {1, 1, 1}});
 }
 
-TEST(ModelSerialization, Example6) {
-    alps::testing::StreamFixture transcript;
-    { // Flush serialization objects before checking the captured stream.
+TEST(ModelBasis, SpinfulBosonHonorsSpinAndOccupationCutoff) {
+  alps::Parameters parameters;
+  parameters["boson_spin"] = 2;
+  parameters["NMax"] = 2;
+  const alps::site_basis<short> basis(model_test::descriptor("spinful boson", parameters));
+  ASSERT_EQ(basis.size(), 35u);
+  model_test::expect_states(basis, {"N", "J", "Jz"}, model_test::spinful_states(2, 2));
+}
 
-#ifndef BOOST_NO_EXCEPTIONS
-try {
-#endif
-  
-  std::ifstream in(alps::search_xml_library_path("models.xml"));
-  alps::ModelLibrary lib(in);
+TEST(ModelBasis, TJHasOnlyVacuumAndSingleParticleStates) {
+  const alps::site_basis<short> basis(model_test::descriptor("t-J"));
+  model_test::expect_states(basis, {"N", "S", "Sz"}, {{0, 0, 0}, {1, 0.5, -0.5}, {1, 0.5, 0.5}});
+}
 
-  alps::Parameters p;
-  write_set("spinful boson",lib);
-  p["boson_spin"]=2;
-  p["NMax"]=2;
-  write_set("spinful boson",lib,p);
-  write_set("t-J",lib);
-  write_set("alternative t-J",lib);
-#ifndef BOOST_NO_EXCEPTIONS
-}
-catch (std::exception& exc) {
-  std::cerr << exc.what() << "\n";
-  FAIL() << "Unexpected exception in serialization contract";
-}
-catch (...) {
-  std::cerr << "Fatal Error: Unknown Exception!\n";
-  FAIL() << "Unexpected exception in serialization contract";
-}
-#endif
-    }
-  transcript.expect_output(ALPS_TEST_SOURCE_DIR "/example6.output");
+TEST(ModelBasis, AlternativeTJExcludesDoubleOccupancy) {
+  const alps::site_basis<short> basis(model_test::descriptor("alternative t-J"));
+  model_test::expect_states(basis, {"Nup", "Ndown"}, {{0, 0}, {0, 1}, {1, 0}});
 }

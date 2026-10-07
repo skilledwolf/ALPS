@@ -1,4 +1,3 @@
-#include <alps/testing/stream_fixture.hpp>
 /*****************************************************************************
 *
 * ALPS Project: Algorithms and Libraries for Physics Simulations
@@ -13,52 +12,26 @@
 *
 *****************************************************************************/
 
-/* $Id$ */
+#include "basis_checks.hpp"
 
-#include <alps/parser/xslt_path.h>
-#include <alps/model.h>
-#include <fstream>
-#include <iostream>
-#include <string>
-
-void write_two_site_basis(const std::string& name, const alps::ModelLibrary& lib, 
-                          const alps::Parameters& p=alps::Parameters())
-{
-  alps::SiteBasisDescriptor<short> sitebasis=lib.get_site_basis(name),
-                                   sitebasis2=lib.get_site_basis(name);
-  sitebasis.set_parameters(p);
-  std::cout << "States of basis " << name << "=" << alps::site_basis<short>(sitebasis);
-  for(int i=0;i<sitebasis.size();++i)
-    sitebasis[i]+=sitebasis2[i];
-  std::cout << "States of basis " << name << "=" << alps::site_basis<short>(sitebasis);
+TEST(ModelBasis, SpinfulBosonOccupationTwoStates) {
+  alps::Parameters parameters;
+  parameters["NMax"] = 2;
+  const alps::site_basis<short> basis(model_test::descriptor("spinful boson", parameters));
+  ASSERT_EQ(basis.size(), 14u);
+  model_test::expect_states(basis, {"N", "J", "Jz"}, model_test::spinful_states(2, 1));
 }
 
-TEST(ModelSerialization, Example7) {
-    alps::testing::StreamFixture transcript;
-    { // Flush serialization objects before checking the captured stream.
-
-#ifndef BOOST_NO_EXCEPTIONS
-try {
-#endif
-  
-  std::ifstream in(alps::search_xml_library_path("models.xml"));
-  alps::ModelLibrary lib(in);
-  alps::Parameters p;
-  p["NMax"]=2;
-  write_two_site_basis("spinful boson",lib,p);
-
-#ifndef BOOST_NO_EXCEPTIONS
-}
-catch (std::exception& exc) {
-  std::cerr << exc.what() << "\n";
-  //alps::comm_exit(true);
-  FAIL() << "Unexpected exception in serialization contract";
-}
-catch (...) {
-  std::cerr << "Fatal Error: Unknown Exception!\n";
-  FAIL() << "Unexpected exception in serialization contract";
-}
-#endif
-    }
-  transcript.expect_output(ALPS_TEST_SOURCE_DIR "/example7.output");
+TEST(ModelBasis, AddingQuantumNumberDescriptorsExtendsOccupationRange) {
+  alps::Parameters parameters;
+  parameters["NMax"] = 2;
+  auto descriptor = model_test::descriptor("spinful boson", parameters);
+  const auto other = model_test::library().get_site_basis("spinful boson");
+  ASSERT_EQ(descriptor.size(), other.size());
+  for (std::size_t i = 0; i < descriptor.size(); ++i) descriptor[i] += other[i];
+  const alps::site_basis<short> basis(descriptor);
+  // Preserve the old example7 scenario: descriptor addition extends N to four.
+  // This is enumeration of the combined ranges, not a tensor-product basis.
+  ASSERT_EQ(basis.size(), 55u);
+  model_test::expect_states(basis, {"N", "J", "Jz"}, model_test::spinful_states(4, 1));
 }

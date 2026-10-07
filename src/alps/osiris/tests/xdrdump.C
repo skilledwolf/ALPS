@@ -1,5 +1,3 @@
-#include <alps/testing/stream_fixture.hpp>
-#include <alps/testing/temporary_directory.hpp>
 /*****************************************************************************
 *
 * ALPS Project: Algorithms and Libraries for Physics Simulations
@@ -14,68 +12,48 @@
 *
 *****************************************************************************/
 
-/* $Id$ */
-
+#include <gtest/gtest.h>
 #include <alps/osiris.h>
-#include <iostream>
-#include <cstdlib>
+#include <alps/testing/temporary_directory.hpp>
 
-TEST(OsirisSerialization, Xdrdump) {
-    alps::testing::TemporaryDirectory directory;
-    alps::testing::StreamFixture transcript;
-    { // Flush serialization objects before checking the captured stream.
-
-#ifndef BOOST_NO_EXCEPTIONS
-try {
-#endif
-
-  bool o1 = false;
-  int8_t o2 = 63;
-  uint8_t o3 = 201;
-  int16_t o4 = -699;
-  uint16_t o5 = 43299;
-  int32_t o6 = 847229;
-  uint32_t o7 = 4294967295u;
-  int64_t o8 = -1152921504606846976ll;
-  int64_t o9 = 343434545665ll;
-  uint64_t o10 = 18446744073709551614ull;
-  double o11 = 3.14159265358979323846;
-  std::string o12 = "test string";
-  std::complex<double> o13(1,2);
-
+TEST(OsirisSerialization, PreservesScalarAndComplexValues) {
+  alps::testing::TemporaryDirectory directory;
+  const auto path = directory.path() / "record.dump";
   {
-    alps::OXDRFileDump od(boost::filesystem::path((directory.path() / "xdrdump.dump").string()));
-    od << o1 << o2 << o3 << o4 << o5 << o6 << o7 << o8 << o9 << o10 << o11 << o12 <<o13;
+    alps::OXDRFileDump dump(boost::filesystem::path(path.string()));
+    auto& output = dump;
+    output << bool(false);
+    output << int8_t(63);
+    output << uint8_t(201);
+    output << int16_t(-699);
+    output << uint16_t(43299);
+    output << int32_t(847229);
+    output << uint32_t(4294967295u);
+    output << int64_t(-1152921504606846976ll);
+    output << int64_t(343434545665ll);
+    output << uint64_t(18446744073709551614ull);
+    output << double(3.14159265358979323846);
+    output << std::string("test string");
+    output << std::complex<double>(1, 2);
   }
-  
-  alps::IXDRFileDump id(boost::filesystem::path((directory.path() / "xdrdump.dump").string()));
-  std::cout << id.get<bool>() << ' ';
-  std::cout << static_cast<int32_t>(id.get<int8_t>()) << ' ';
-  std::cout << static_cast<int32_t>(id.get<uint8_t>()) << ' ';
-  std::cout << id.get<int16_t>() << ' ';
-  std::cout << id.get<uint16_t>() << ' ';
-  std::cout << static_cast<int32_t>(id) << ' ';
-  std::cout << static_cast<uint32_t>(id) << ' ';
-  int64_t i8 = id;
-  int64_t i9 = id;
-  uint64_t i10(id);
-  std::cout << i8 << ' '  << i9  << ' ' << i10 << ' ';
-  double i11 = static_cast<double>(id);
-  std::cout << i11 << ' ';
-  std::string str;
-  id >> str;
-  std::cout << str << ' ';
-  std::complex<double> i13;
-  id >> i13;
-  std::cout << i13 << std::endl;
-  
-#ifndef BOOST_NO_EXCEPTIONS
-}
-catch (std::exception& exp) {
-  std::cerr << exp.what() << std::endl;
-  FAIL() << "Unexpected exception in serialization contract";
-}
-#endif
-    }
-  transcript.expect_output(ALPS_TEST_SOURCE_DIR "/xdrdump.output");
+  alps::IXDRFileDump id(boost::filesystem::path(path.string()));
+
+  EXPECT_EQ(id.get<bool>(), false);
+  EXPECT_EQ(id.get<int8_t>(), 63);
+  EXPECT_EQ(id.get<uint8_t>(), 201);
+  EXPECT_EQ(id.get<int16_t>(), -699);
+  EXPECT_EQ(id.get<uint16_t>(), 43299);
+  EXPECT_EQ(static_cast<int32_t>(id), 847229);
+  EXPECT_EQ(static_cast<uint32_t>(id), 4294967295u);
+  EXPECT_EQ(static_cast<int64_t>(id), -1152921504606846976ll);
+  EXPECT_EQ(static_cast<int64_t>(id), 343434545665ll);
+  EXPECT_EQ(static_cast<uint64_t>(id), 18446744073709551614ull);
+  // The wire and text archives preserve the full double, not six printed digits.
+  EXPECT_EQ(static_cast<double>(id), 3.14159265358979323846);
+  std::string text;
+  id >> text;
+  EXPECT_EQ(text, "test string");
+  std::complex<double> number;
+  id >> number;
+  EXPECT_EQ(number, std::complex<double>(1, 2));
 }

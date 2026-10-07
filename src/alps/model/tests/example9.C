@@ -1,4 +1,3 @@
-#include <alps/testing/stream_fixture.hpp>
 /*****************************************************************************
 *
 * ALPS Project: Algorithms and Libraries for Physics Simulations
@@ -12,60 +11,20 @@
 *
 *****************************************************************************/
 
-/* $Id$ */
+#include "basis_checks.hpp"
 
-#include <alps/parser/xslt_path.h>
-#include <alps/model.h>
-#include <fstream>
-#include <iostream>
-
-void write_set(const std::string& name, const alps::ModelLibrary& lib, 
-               const alps::Parameters& p=alps::Parameters())
-{
-  alps::SiteBasisDescriptor<short> sitebasis=lib.get_site_basis(name);
-  sitebasis.set_parameters(p);
-  std::cout << "States of basis " << name << "=" 
-            << alps::site_basis<short,alps::single_qn_site_state<short> >(sitebasis);
+TEST(ModelBasis, SingleQuantumNumberHardcoreBoson) {
+  const alps::site_basis<short, alps::single_qn_site_state<short>> basis(
+      model_test::descriptor("hardcore boson"));
+  ASSERT_NO_FATAL_FAILURE(model_test::expect_states(basis, {"N"}, {{0}, {1}}));
+  EXPECT_FALSE(alps::is_fermionic(basis, 0));
+  EXPECT_FALSE(alps::is_fermionic(basis, 1));
 }
 
-TEST(ModelSerialization, Example9) {
-    alps::testing::StreamFixture transcript;
-    { // Flush serialization objects before checking the captured stream.
-
-
-#ifndef BOOST_NO_EXCEPTIONS
-  try {
-#endif
-    // create the library from an XML file
-    std::ifstream in(alps::search_xml_library_path("models.xml"));
-    alps::ModelLibrary lib(in);
-
-    // write all basis states
-    write_set("hardcore boson",lib);
-    write_set("spinless fermion",lib);
-/*    alps::Parameters p;
-    p["local_spin"]=1;
-    write_set("spin",lib,p);
-    write_set("spin",lib);
-    p["local_spin"]=1.5;
-    write_set("spin",lib,p);
-    p["local_spin"]=2;
-    write_set("spin",lib,p);
-*/
-
-#ifndef BOOST_NO_EXCEPTIONS
-}
-catch (std::exception& e)
-{
-  std::cerr << "Caught exception: " << e.what() << "\n";
-  FAIL() << "Unexpected exception in serialization contract";
-}
-catch (...)
-{
-  std::cerr << "Caught unknown exception\n";
-  FAIL() << "Unexpected exception in serialization contract";
-}
-#endif
-    }
-  transcript.expect_output(ALPS_TEST_SOURCE_DIR "/example9.output");
+TEST(ModelBasis, SingleQuantumNumberSpinlessFermion) {
+  const alps::site_basis<short, alps::single_qn_site_state<short>> basis(
+      model_test::descriptor("spinless fermion"));
+  ASSERT_NO_FATAL_FAILURE(model_test::expect_states(basis, {"N"}, {{0}, {1}}));
+  EXPECT_FALSE(alps::is_fermionic(basis, 0));
+  EXPECT_TRUE(alps::is_fermionic(basis, 1));
 }

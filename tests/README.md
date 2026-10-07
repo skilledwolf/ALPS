@@ -105,9 +105,9 @@ autocorrelation treatment, thresholds and combined false-failure probability.
 Do not retry failed numerical tests until they happen to pass.
 
 Textual serialization contracts can use `StreamFixture`: it supplies an input
-fixture and compares captured output explicitly inside GoogleTest. Existing
-model/lattice transcripts are retained as compatibility evidence. They should
-be supplemented with semantic assertions when changing the underlying behavior.
+fixture and compares captured output explicitly inside GoogleTest. Remaining
+model/lattice serialization transcripts are retained as compatibility evidence.
+They should be supplemented with semantic assertions when changing the underlying behavior.
 The remaining CMake process runner is for executable/CLI/tutorial contracts.
 
 ## CI policy and evidence
@@ -147,7 +147,7 @@ historical behavior needing a consolidation decision:
 | Params | [Typed access, persistence and adapter contracts](../src/alps/params/tests/README.md). |
 | Graph | [Canonicalization, embedding and extensive-test inventory](../src/alps/graph/tests/README.md). |
 | MPI | [Rank topologies, assertions and remaining manual drivers](mpi.md). |
-| Model, lattice, XML, Osiris | Existing transcript oracles remain exact GoogleTest compatibility checks; Release-disabled assertions are replaced and dump files are isolated. |
+| Model, lattice, XML, Osiris | Basis enumeration, sign classifications, coloring/parity and decoded dump values use [semantic assertions](migration.md#model-lattice-and-osiris-semantic-assertions). Remaining XML/symbolic transcripts retain exact compatibility checks. Dump files are isolated and the historical XDR fixture remains versioned. |
 | Utilities, CLI, portability and random | Direct API, wire-format, seeded sampling and platform assertions replace ad hoc mains or printed smoke output. |
 | DMFT, DMRG, MaxEnt | Native regression tests use GoogleTest; executable behavior stays under CTest. MaxEnt's Python scientific oracle is shared with its binding tests. |
 | Monte Carlo runners | The formerly unregistered scalar/vector examples check completion, stopping, collection and HDF5 persistence. Test counters are initialized; MPI scheduling is deterministic. |

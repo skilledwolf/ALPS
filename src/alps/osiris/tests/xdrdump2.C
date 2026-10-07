@@ -1,4 +1,3 @@
-#include <alps/testing/stream_fixture.hpp>
 /*****************************************************************************
 *
 * ALPS Project: Algorithms and Libraries for Physics Simulations
@@ -13,47 +12,25 @@
 *
 *****************************************************************************/
 
-/* $Id$ */
-
+#include <gtest/gtest.h>
 #include <alps/osiris.h>
-#include <iostream>
-#include <cstdlib>
 
-TEST(OsirisSerialization, Xdrdump2) {
-    alps::testing::StreamFixture transcript(ALPS_TEST_BINARY_DIR "/xdrdump2.input");
-    { // Flush serialization objects before checking the captured stream.
+TEST(OsirisSerialization, ReadsHistoricalXdrRecord) {
+  // Immutable legacy wire fixture: this check is independent of today's writer.
+  alps::IXDRFileDump id(boost::filesystem::path(ALPS_TEST_SOURCE_DIR "/xdrdump2.dump"));
 
-#ifndef BOOST_NO_EXCEPTIONS
-try {
-#endif
-
-  std::string file;
-  std::cin >> file;
-
-  alps::IXDRFileDump id=alps::IXDRFileDump(boost::filesystem::path(file));
-  std::cout << id.get<bool>() << ' ';
-  std::cout << static_cast<int32_t>(id.get<int8_t>()) << ' ';
-  std::cout << static_cast<int32_t>(id.get<uint8_t>()) << ' ';
-  std::cout << id.get<int16_t>() << ' ';
-  std::cout << id.get<uint16_t>() << ' ';
-  std::cout << static_cast<int32_t>(id) << ' ';
-  std::cout << static_cast<uint32_t>(id) << ' ';
-  int64_t i8 = id;
-  uint64_t i9(id);
-  std::cout << i8 << ' '  << i9  << ' ';
-  double i10 = static_cast<double>(id);
-  std::cout << i10 << ' ';
-  std::string str;
-  id >> str;
-  std::cout << str << std::endl;
-  
-#ifndef BOOST_NO_EXCEPTIONS
-}
-catch (std::exception& exp) {
-  std::cerr << exp.what() << std::endl;
-  FAIL() << "Unexpected exception in serialization contract";
-}
-#endif
-    }
-  transcript.expect_output(ALPS_TEST_SOURCE_DIR "/xdrdump2.output");
+  EXPECT_EQ(id.get<bool>(), false);
+  EXPECT_EQ(id.get<int8_t>(), 63);
+  EXPECT_EQ(id.get<uint8_t>(), 201);
+  EXPECT_EQ(id.get<int16_t>(), -699);
+  EXPECT_EQ(id.get<uint16_t>(), 43299);
+  EXPECT_EQ(static_cast<int32_t>(id), 847229);
+  EXPECT_EQ(static_cast<uint32_t>(id), 4294967295u);
+  EXPECT_EQ(static_cast<int64_t>(id), -1152921504606846976ll);
+  EXPECT_EQ(static_cast<uint64_t>(id), 18446744073709551614ull);
+  // The wire and text archives preserve the full double, not six printed digits.
+  EXPECT_EQ(static_cast<double>(id), 3.14159265358979323846);
+  std::string text;
+  id >> text;
+  EXPECT_EQ(text, "test string");
 }

@@ -1,5 +1,3 @@
-#include <alps/testing/stream_fixture.hpp>
-#include <alps/testing/temporary_directory.hpp>
 /*****************************************************************************
 *
 * ALPS Project: Algorithms and Libraries for Physics Simulations
@@ -14,72 +12,51 @@
 *
 *****************************************************************************/
 
-/* $Id$ */
-
+#include <gtest/gtest.h>
 #include <alps/osiris.h>
+#include <alps/testing/temporary_directory.hpp>
 #include <alps/osiris/archivedump.h>
-#include <boost/archive/text_oarchive.hpp>
 #include <boost/archive/text_iarchive.hpp>
-#include <iostream>
-#include <cstdlib>
+#include <boost/archive/text_oarchive.hpp>
 #include <fstream>
 
-TEST(OsirisSerialization, Boostdump) {
-    alps::testing::TemporaryDirectory directory;
-    alps::testing::StreamFixture transcript;
-    { // Flush serialization objects before checking the captured stream.
-
-#ifndef BOOST_NO_EXCEPTIONS
-try {
-#endif
-
-  bool o1 = false;
-  int8_t o2 = 63;
-  uint8_t o3 = 201;
-  int16_t o4 = -699;
-  uint16_t o5 = 43299;
-  int32_t o6 = 847229;
-  uint32_t o7 = 4294967295u;
-  int64_t o8 = -1152921504606846976ll;
-  uint64_t o9 = 18446744073709551614ull;
-  double o10 = 3.14159265358979323846;
-  std::string o11 = "test string";
-
+TEST(OsirisSerialization, TextArchivePreservesScalarValues) {
+  alps::testing::TemporaryDirectory directory;
+  const auto path = directory.path() / "record.dump";
   {
-    std::ofstream of(directory.path() / "textdump.dump");
-    ASSERT_TRUE(of.good());
-	boost::archive::text_oarchive oa(of);//of,boost::archive::no_codecvt);
-    alps::archive_odump<boost::archive::text_oarchive> od(oa);
-    od << o1 << o2 << o3 << o4 << o5 << o6 << o7 << o8 << o9 << o10 << o11;
+    std::ofstream stream(path);
+    ASSERT_TRUE(stream.good());
+    boost::archive::text_oarchive archive(stream);
+    alps::archive_odump<boost::archive::text_oarchive> output(archive);
+    output << bool(false);
+    output << int8_t(63);
+    output << uint8_t(201);
+    output << int16_t(-699);
+    output << uint16_t(43299);
+    output << int32_t(847229);
+    output << uint32_t(4294967295u);
+    output << int64_t(-1152921504606846976ll);
+    output << uint64_t(18446744073709551614ull);
+    output << double(3.14159265358979323846);
+    output << std::string("test string");
   }
+  std::ifstream stream(path);
+  ASSERT_TRUE(stream.good());
+  boost::archive::text_iarchive archive(stream);
+  alps::archive_idump<boost::archive::text_iarchive> id(archive);
 
-  std::ifstream inf(directory.path() / "textdump.dump");
-  boost::archive::text_iarchive ia(inf);
-  alps::archive_idump<boost::archive::text_iarchive> id(ia);
-
-  std::cout << id.get<bool>() << ' ';
-  std::cout << static_cast<int32_t>(id.get<int8_t>()) << ' ';
-  std::cout << static_cast<int32_t>(id.get<uint8_t>()) << ' ';
-  std::cout << id.get<int16_t>() << ' ';
-  std::cout << id.get<uint16_t>() << ' ';
-  std::cout << static_cast<int32_t>(id) << ' ';
-  std::cout << static_cast<uint32_t>(id) << ' ';
-  int64_t i8 = id;
-  uint64_t i9(id);
-  std::cout << i8 << ' '  << i9  << ' ';
-  double i10 = static_cast<double>(id);
-  std::cout << i10 << ' ';
-  std::string str;
-  id >> str;
-  std::cout << str << std::endl;
-
-#ifndef BOOST_NO_EXCEPTIONS
-}
-catch (std::exception& exp) {
-  std::cerr << exp.what() << std::endl;
-  FAIL() << "Unexpected exception in serialization contract";
-}
-#endif
-    }
-  transcript.expect_output(ALPS_TEST_SOURCE_DIR "/boostdump.output");
+  EXPECT_EQ(id.get<bool>(), false);
+  EXPECT_EQ(id.get<int8_t>(), 63);
+  EXPECT_EQ(id.get<uint8_t>(), 201);
+  EXPECT_EQ(id.get<int16_t>(), -699);
+  EXPECT_EQ(id.get<uint16_t>(), 43299);
+  EXPECT_EQ(static_cast<int32_t>(id), 847229);
+  EXPECT_EQ(static_cast<uint32_t>(id), 4294967295u);
+  EXPECT_EQ(static_cast<int64_t>(id), -1152921504606846976ll);
+  EXPECT_EQ(static_cast<uint64_t>(id), 18446744073709551614ull);
+  // The wire and text archives preserve the full double, not six printed digits.
+  EXPECT_EQ(static_cast<double>(id), 3.14159265358979323846);
+  std::string text;
+  id >> text;
+  EXPECT_EQ(text, "test string");
 }

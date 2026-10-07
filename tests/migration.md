@@ -139,3 +139,28 @@ comparison contract without changing production operators.
 See [native MPI tests](mpi.md) for newly activated parameter/observable transport,
 parapack process/locking/metadata tests, scheduler tests, and the explicitly
 unregistered manual Ising checkpoint/restart drivers.
+
+## Model, lattice, and Osiris semantic assertions
+
+The follow-up to `a357f73ad` replaces 13 transcript cases with 38 semantic cases
+in the same executables. Their expected values come from the pre-existing
+fixtures at that commit; none were regenerated from current test output.
+The removed input files are represented explicitly by named cases and parameters.
+
+| Executable(s) | Preserved contracts and additional checks |
+| --- | --- |
+| `model_example2` | Six cases cover fermion occupations, hardcore bosons, and spin 1/2, 1, 3/2 and 2. Quantum-number names, ordered states, and exact half-integer values replace printed basis listings. Index lookup and sortedness are also checked. |
+| `model_example6` | Four cases retain default and spin-2 spinful bosons (occupation cutoff 2), t-J and alternative t-J. The spinful reference enumerates integer `(N, J, Jz)` tuples with `0 <= J <= N*spin` and `-J <= Jz <= J`; the explicit 5- and 35-state contracts are unchanged. |
+| `model_example7` | Separate 14-state and 55-state cases preserve enumeration before and after quantum-number descriptor addition. The combined range reaches occupation 4; this is not a tensor-product state-count claim. |
+| `model_example8` | All eight historical sign-problem classifications are separately discoverable with named lattice, exchange and field parameters. Unspecified diagonal coupling and field still use model defaults. These are historical classifications, not a general proof that arbitrary models have no sign problem. |
+| `model_example9` | Hardcore boson and spinless fermion single-quantum-number representations retain their ordered empty/occupied states. Fermion parity is checked explicitly too. |
+| `coloring` | All four lattices retain the exact historical greedy color assignment and count. Every bond must also connect different colors, and all color indices must be valid. The four-color triangular result describes this vertex ordering, not an optimal coloring. |
+| `parity` | All six backbone scenarios retain site parity, including the difference between absent and empty `BACKBONE_TYPES`. Direct assertions preserve graph dimensions, site types/coordinates, bond indices/endpoints/types/displacements and periodic wrapping previously present in the XML. Bipartiteness and the public numeric parity accessor are checked too. |
+| `xdrdump`, `xdrdump2`, `boostdump`, `boostdump2`, `boostdump3`, `boostdump4` | Six cases retain scalar width/sign, both large signed-integer scenarios, strings, complex values, and native/Boost adapter paths. Double values now compare at full precision instead of six printed significant digits. Both historical readers still consume the immutable `xdrdump2.dump`; adapter output must also match its exact bytes, independently of the current reader. |
+
+The small component-local `basis_checks.hpp` reports failures by state and
+quantum-number name; it does not extend the shared testing framework. Numerical
+enumeration references use integer/half-integer arithmetic and need no tolerance.
+Exact XML serialization and remaining symbolic-expression fixtures are retained
+where their representation is the compatibility contract. Those cases still need
+additional semantic coverage when their underlying behavior is changed.
