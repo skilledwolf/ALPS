@@ -34,12 +34,11 @@ def build_and_run(build, *targets, environment=None):
                    check=True, env=environment)
 
 
-@pytest.mark.parametrize("standard", (17, 20))
-def test_installed_sdk_preserves_parent_settings(tmp_path, standard):
-    configure(tmp_path, f"-DCMAKE_CXX_STANDARD={standard}",
-              "-DCMAKE_FIND_PACKAGE_PREFER_CONFIG=ON")
-    # The relocation contract compiles every component; this checks the parent
-    # language standard and flags with the public simulation/archive headers.
+def test_installed_sdk_preserves_parent_settings(tmp_path):
+    configure(tmp_path, "-DCMAKE_CXX_STANDARD=20", "-DCMAKE_FIND_PACKAGE_PREFER_CONFIG=ON")
+    # The relocation contract compiles every component; this checks a parent
+    # language standard above the C++17 floor that the other contracts use,
+    # and flags with the public simulation/archive headers.
     build_and_run(tmp_path, "sdk_contract")
 
 
