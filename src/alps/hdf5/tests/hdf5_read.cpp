@@ -17,16 +17,22 @@ void require(bool condition) {
         throw std::runtime_error("HDF5 read contract failed");
 }
 
+// The archive keeps a few recently used objects open, so a first rejection may
+// leave its object cached. Repeating it must not open anything more.
 template <typename Exception, typename Read>
 void rejects(Read read) {
+    auto const attempt = [&] {
+        try {
+            read();
+        } catch (Exception const &) {
+            return;
+        }
+        throw std::runtime_error("HDF5 read did not reject invalid input");
+    };
+    attempt();
     auto const objects_before = H5Fget_obj_count(H5F_OBJ_ALL, H5F_OBJ_ALL);
-    try {
-        read();
-    } catch (Exception const &) {
-        require(H5Fget_obj_count(H5F_OBJ_ALL, H5F_OBJ_ALL) == objects_before);
-        return;
-    }
-    throw std::runtime_error("HDF5 read did not reject invalid input");
+    attempt();
+    require(H5Fget_obj_count(H5F_OBJ_ALL, H5F_OBJ_ALL) == objects_before);
 }
 
 template <typename T>

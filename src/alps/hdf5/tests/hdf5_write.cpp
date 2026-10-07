@@ -18,16 +18,22 @@ void require(bool condition) {
         throw std::runtime_error("HDF5 write contract failed");
 }
 
+// The archive keeps a few recently used objects open, so a first rejection may
+// change what it caches. Repeating it must not open anything more.
 template <typename Write>
 void rejects(Write write) {
+    auto const attempt = [&] {
+        bool rejected = false;
+        try {
+            write();
+        } catch (std::exception const &) {
+            rejected = true;
+        }
+        require(rejected);
+    };
+    attempt();
     auto const objects_before = H5Fget_obj_count(H5F_OBJ_ALL, H5F_OBJ_ALL);
-    bool rejected = false;
-    try {
-        write();
-    } catch (std::exception const &) {
-        rejected = true;
-    }
-    require(rejected);
+    attempt();
     require(H5Fget_obj_count(H5F_OBJ_ALL, H5F_OBJ_ALL) == objects_before);
 }
 

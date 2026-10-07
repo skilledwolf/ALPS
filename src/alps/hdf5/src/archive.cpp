@@ -9,6 +9,7 @@
 #include <iostream>
 #include <limits>
 #include <mutex>
+#include <optional>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -62,14 +63,16 @@ struct archivecontext {
           file(filename, mode == "r" ? hf::File::ReadOnly :
                          mode == "a" ? hf::File::OpenOrCreate : hf::File::Truncate) {}
 
-    // Writes resolve names relative to recently used groups instead of walking
-    // every group from the root; resolving deep checkpoint paths dominated
-    // saving. Every unlink through this archive and closing the file forget
-    // these open groups.
+    // Names resolve relative to recently used groups instead of walking every
+    // group from the root; resolving deep checkpoint paths dominated saving
+    // and loading. Every unlink through this archive and closing the file
+    // forget these open objects.
     hf::Group* cached(std::string const& path) {
-        for (auto entry = groups.rbegin(); entry != groups.rend(); ++entry)
-            if (entry->first == path) return &entry->second;
-        return nullptr;
+        auto entry = std::find_if(groups.rbegin(), groups.rend(),
+                                  [&](auto const& group) { return group.first == path; });
+        if (entry == groups.rend()) return nullptr;
+        std::rotate(entry.base() - 1, entry.base(), groups.end());
+        return &groups.back().second;
     }
     // Returns the group at path, creating it and its missing parents.
     hf::Group group(std::string const& path) {
@@ -77,17 +80,52 @@ struct archivecontext {
         auto const split = path.find_last_of('/');
         auto const parent = split ? cached(path.substr(0, split)) : cached("/");
         auto const name = path.substr(split + 1);
-        auto opened = path == "/" ? file.getGroup(path) :
+        return remember(path, path == "/" ? file.getGroup(path) :
             parent ? (parent->exist(name) ? parent->getGroup(name) : parent->createGroup(name)) :
-            file.exist(path) ? file.getGroup(path) : file.createGroup(path);
-        if (groups.size() == 8) groups.erase(groups.begin());
+            file.exist(path) ? file.getGroup(path) : file.createGroup(path));
+    }
+    // The type of the object at path, if there is one; creates nothing.
+    std::optional<hf::ObjectType> type(std::string const& path) {
+        if (path == "/" || cached(path)) return hf::ObjectType::Group;
+        if (last && last->first == path) return hf::ObjectType::Dataset;
+        auto const split = path.find_last_of('/');
+        auto const parent = existing(split ? path.substr(0, split) : "/");
+        auto const name = path.substr(split + 1);
+        if (!parent || !parent->exist(name)) return std::nullopt;
+        return parent->getObjectType(name);
+    }
+    std::optional<hf::Group> existing(std::string const& path) {
+        if (auto found = cached(path)) return *found;
+        if (path == "/") return remember(path, file.getGroup(path));
+        if (type(path) != hf::ObjectType::Group) return std::nullopt;
+        auto const split = path.find_last_of('/');
+        return remember(path, existing(split ? path.substr(0, split) : "/")->getGroup(path.substr(split + 1)));
+    }
+    // Loaders query a dataset's shape, type and values in turn, so the last
+    // dataset stays open until anything changes through this archive.
+    hf::DataSet dataset(std::string const& path) {
+        if (last && last->first == path) return last->second;
+        if (path == "/") throw wrong_type("expected dataset at " + path);
+        auto const split = path.find_last_of('/');
+        auto const parent = existing(split ? path.substr(0, split) : "/");
+        auto const name = path.substr(split + 1);
+        if (!parent || !parent->exist(name)) throw path_not_found("no dataset at " + path);
+        // Opening the dataset directly checks its type with one lookup.
+        try { last.emplace(path, parent->getDataSet(name)); }
+        catch (hf::Exception const&) { throw wrong_type("expected dataset at " + path); }
+        return last->second;
+    }
+    void modified() { last.reset(); }
+    void forget() { groups.clear(); last.reset(); }
+
+private:
+    hf::Group remember(std::string const& path, hf::Group const& opened) {
+        if (groups.size() == 16) groups.erase(groups.begin());
         groups.emplace_back(path, opened);
         return opened;
     }
-    void forget() { groups.clear(); }
-
-private:
     std::vector<std::pair<std::string, hf::Group>> groups;
+    std::optional<std::pair<std::string, hf::DataSet>> last;
 };
 
 // Called under mutex. Finalize every view of this file, even if flushing fails;
@@ -134,14 +172,14 @@ struct location {
 };
 
 template<class F> decltype(auto) node(archivecontext& context, std::string const& path, F&& fn) {
-    auto& file = context.file;
-    if (!file.exist(path)) throw path_not_found("no object at " + path);
-    if (file.getObjectType(path) == hf::ObjectType::Group) {
-        auto group = file.getGroup(path);
+    auto const type = context.type(path);
+    if (!type) throw path_not_found("no object at " + path);
+    if (*type == hf::ObjectType::Group) {
+        auto group = *context.existing(path);
         return fn(group);
     }
-    if (file.getObjectType(path) == hf::ObjectType::Dataset) {
-        auto dataset = file.getDataSet(path);
+    if (*type == hf::ObjectType::Dataset) {
+        auto dataset = context.dataset(path);
         return fn(dataset);
     }
     throw wrong_type("expected group or dataset at " + path);
@@ -155,10 +193,7 @@ template<class F> decltype(auto) stored(archivecontext& context, location const&
             auto attr = parent.getAttribute(path.attribute);
             return fn(attr);
         });
-    if (!context.file.exist(path.object)) throw path_not_found("no dataset at " + path.object);
-    if (context.file.getObjectType(path.object) != hf::ObjectType::Dataset)
-        throw wrong_type("expected dataset at " + path.object);
-    auto dataset = context.file.getDataSet(path.object);
+    auto dataset = context.dataset(path.object);
     return fn(dataset);
 }
 
@@ -265,6 +300,7 @@ template<class T>
 void write(archivecontext& context, location const& path, T const* values, bool scalar,
            std::vector<size_t> size = {}, std::vector<size_t> count = {}, std::vector<size_t> offset = {}) {
     if (!context.writable) throw archive_error("the archive is not writable");
+    context.modified();
     if (!scalar && size.empty()) throw archive_error("array writes require an explicit shape, including empty arrays");
     if (!scalar) {
         if (count.empty()) count = size;
@@ -454,19 +490,18 @@ std::string archive::decode_segment(std::string text) const {
 bool archive::is_data(std::string path) const {
     detail::location target(complete_path(path));
     if (target.is_attribute) throw invalid_path("not a dataset path: " + path);
-    return detail::access(context_, [&](auto& c) { return c.file.exist(target.object) && c.file.getObjectType(target.object) == detail::hf::ObjectType::Dataset; });
+    return detail::access(context_, [&](auto& c) { return c.type(target.object) == detail::hf::ObjectType::Dataset; });
 }
 bool archive::is_group(std::string path) const {
     detail::location target(complete_path(path));
     return detail::access(context_, [&](auto& c) {
-        return !target.is_attribute && (c.cached(target.object) ||
-            (c.file.exist(target.object) && c.file.getObjectType(target.object) == detail::hf::ObjectType::Group));
+        return !target.is_attribute && c.type(target.object) == detail::hf::ObjectType::Group;
     });
 }
 bool archive::is_attribute(std::string path) const {
     detail::location target(complete_path(path));
     return detail::access(context_, [&](auto& c) {
-        return target.is_attribute && c.file.exist(target.object) && detail::node(c, target.object, [&](auto& object) { return object.hasAttribute(target.attribute); });
+        return target.is_attribute && c.type(target.object) && detail::node(c, target.object, [&](auto& object) { return object.hasAttribute(target.attribute); });
     });
 }
 bool archive::is_scalar(std::string path) const {
@@ -484,7 +519,11 @@ std::vector<size_t> archive::extent(std::string path) const {
 }
 size_t archive::dimensions(std::string path) const { return extent(path).size(); }
 std::vector<std::string> archive::list_children(std::string path) const {
-    return detail::access(context_, [&](auto& c) { return c.file.getGroup(complete_path(path)).listObjectNames(); });
+    return detail::access(context_, [&](auto& c) {
+        auto const target = complete_path(path);
+        if (auto group = c.existing(target)) return group->listObjectNames();
+        return c.file.getGroup(target).listObjectNames();
+    });
 }
 std::vector<std::string> archive::list_attributes(std::string path) const {
     detail::location target(complete_path(path));
@@ -496,9 +535,10 @@ void archive::create_group(std::string path) const {
     if (target.is_attribute) throw invalid_path("not a group path: " + path);
     detail::access(context_, [&](auto& c) {
         if (!c.writable) throw archive_error("the archive is not writable");
-        if (c.cached(target.object)) return;
-        if (c.file.exist(target.object)) {
-            if (c.file.getObjectType(target.object) == detail::hf::ObjectType::Group) return;
+        c.modified();
+        auto const type = c.type(target.object);
+        if (type == detail::hf::ObjectType::Group) return;
+        if (type) {
             c.forget();
             c.file.unlink(target.object);
         }
@@ -512,6 +552,7 @@ void archive::copy(std::string source_path, archive& destination, std::string de
     detail::access(context_, [&](auto& from) {
         detail::access(destination.context_, [&](auto& to) {
             if (!to.writable) throw archive_error("the destination archive is not writable");
+            to.modified();
             if (!from.file.exist(source.object)) throw path_not_found("no object at " + source.object);
             auto type=from.file.getObjectType(source.object);
             if (type!=detail::hf::ObjectType::Group && type!=detail::hf::ObjectType::Dataset)
@@ -537,6 +578,7 @@ void archive::delete_attribute(std::string path) const {
     if (!target.is_attribute) throw invalid_path("not an attribute path: " + path);
     detail::access(context_, [&](auto& c) {
         if (!c.writable) throw archive_error("the archive is not writable");
+        c.modified();
         detail::node(c, target.object, [&](auto& parent) { if (parent.hasAttribute(target.attribute)) parent.deleteAttribute(target.attribute); });
     });
 }
