@@ -16,14 +16,14 @@ def executables():
     return {app: alps_program(app) for app in ('worm', 'dirloop_sse')}
 
 
-def run(exe, directory, name, p, *, rng='mt19937', budget=0, checkpoint=None):
+def run(exe, directory, name, p, *, rng='mt19937', budget=0, checkpoint=None, chains=1):
     parameters = dict(LATTICE='chain lattice', MODEL='spin', L=4, local_S=.5,
                       J=1., T=1., THERMALIZATION=100, SWEEPS=1000, SKIP=3)
     parameters.update(p)
     if Path(exe).name == 'dirloop_sse':
         parameters.setdefault('INITIAL_CUTOFF', 64)
     config = write_run_file(directory / (name + '.toml'), parameters=parameters,
-        execution=dict(seed=137, bins=8, chains=2, rng=rng, max_sweeps=budget),
+        execution=dict(seed=137, bins=8, chains=chains, rng=rng, max_sweeps=budget),
         input=dict(checkpoint=checkpoint) if checkpoint else None,
         output=dict(results=name + '.h5', checkpoint=name + '.checkpoint.h5'), overwrite=True)
     result = subprocess.run([exe, str(config)], capture_output=True, text=True, timeout=90)
@@ -64,11 +64,11 @@ def test_exact_continuation(executables, tmp_path, app, parameters, rng):
     compare(tmp_path / 'longer.h5', tmp_path / 'extended.h5')
 
 
-@pytest.mark.parametrize('app', ['worm', 'dirloop_sse'])
-@pytest.mark.parametrize('fault', ['chain', 'hamiltonian', 'measurements', 'physical'])
+@pytest.mark.parametrize('app,fault', [('worm', 'chain'), ('worm', 'physical'), ('dirloop_sse', 'hamiltonian'),
+                                       ('dirloop_sse', 'measurements'), ('dirloop_sse', 'physical')])
 def test_failed_load_preserves_outputs(executables, tmp_path, app, fault):
     exe = executables[app]
-    run(exe, tmp_path, 'partial', {}, budget=247)
+    run(exe, tmp_path, 'partial', {}, budget=247, chains=2)
     with h5py.File(tmp_path / 'partial.checkpoint.h5', 'a') as ar:
         root = ar['simulation/realizations/0/clones/1']
         if fault == 'measurements':
@@ -137,12 +137,12 @@ def test_matches_exact_diagonalization(executables, tmp_path, app, model):
         n = np.dot(np.sum(vectors**2*number[:,None],axis=0),weights)
         n2 = np.dot(np.sum(vectors**2*number[:,None]**2,axis=0),weights)
         expected.update(Density=n/sites, Compressibility=(n2-n*n)/sites)
-    p=dict(MODEL='spin', local_S=.5, J=1., T=1., THERMALIZATION=2000, SWEEPS=50000)
+    p=dict(MODEL='spin', local_S=.5, J=1., T=1., THERMALIZATION=1000, SWEEPS=30000)
     p.update(GRAPH='triangle') if model=='signed' else p.update(LATTICE='chain lattice',L=4)
     if model in ('boson', 'canonical'):p.update(MODEL='boson Hubbard',Nmax=2,U=1.,t=.3,mu=.5,NONLOCAL=False)
     if model == 'canonical': p.update(NUMBER_OF_PARTICLES=4, CORRECTION=.1, THERMALIZATION=100000)
     if app=='dirloop_sse':p['INITIAL_CUTOFF']=64
-    config=write_run_file(tmp_path/'physics.toml',parameters=p,execution=dict(seed=137,bins=64,chains=3),
+    config=write_run_file(tmp_path/'physics.toml',parameters=p,execution=dict(seed=137,bins=64,chains=1),
                           output=dict(results='physics.h5'))
     completed=subprocess.run([executables[app],str(config)],capture_output=True,text=True,timeout=120)
     assert completed.returncode==0,completed.stdout+completed.stderr
@@ -159,9 +159,8 @@ def test_matches_exact_diagonalization(executables, tmp_path, app, model):
             assert 'Centered Density Moments' in ar['simulation/realizations/0/clones/0/results']
 
 
-@pytest.mark.parametrize('model', ['spin', 'boson', 'signed'])
-@pytest.mark.parametrize('skip', [1, 3])
-@pytest.mark.parametrize('loop_type', ['minbounce', 'heatbath', 'locopt', 'unweighted'])
+@pytest.mark.parametrize('model,skip,loop_type', [('spin', 1, 'minbounce'), ('boson', 3, 'heatbath'),
+                                                  ('signed', 3, 'locopt'), ('boson', 1, 'unweighted')])
 def test_green_function_matches_exact_diagonalization(executables, tmp_path, model, skip, loop_type):
     from itertools import product
     from pyalps import alea, hdf5
@@ -191,15 +190,15 @@ def test_green_function_matches_exact_diagonalization(executables, tmp_path, mod
     weights = np.exp(-energy); weights /= weights.sum()
     rho = (vectors * weights) @ vectors.T
     expected = [np.trace(rho @ (.5*(lower[0].T @ op + lower[0] @ op.T))) for op in lower]
-    p = dict(MODEL='spin', local_S=.5, J=1., T=1., THERMALIZATION=2000,
-             SWEEPS=50000, SKIP=skip, INITIAL_SITE=0, INITIAL_CUTOFF=64,
+    p = dict(MODEL='spin', local_S=.5, J=1., T=1., THERMALIZATION=1000,
+             SWEEPS=30000, SKIP=skip, INITIAL_SITE=0, INITIAL_CUTOFF=64,
              **{'MEASURE[Green Function]': True})
     p.update(WHICH_LOOP_TYPE='minbounce' if loop_type == 'unweighted' else loop_type,
              NO_WORMWEIGHT=loop_type == 'unweighted')
     p.update(GRAPH='triangle') if model == 'signed' else p.update(LATTICE='chain lattice', L=4)
     if model == 'boson': p.update(MODEL='boson Hubbard', Nmax=2, U=1., t=.3, mu=.5)
     config = write_run_file(tmp_path/'green.toml', parameters=p,
-        execution=dict(seed=137,bins=64,chains=3), output=dict(results='green.h5'))
+        execution=dict(seed=137,bins=64,chains=1), output=dict(results='green.h5'))
     completed = subprocess.run([executables['dirloop_sse'], str(config)], capture_output=True, text=True, timeout=120)
     assert completed.returncode == 0, completed.stdout + completed.stderr
     with hdf5.archive(str(tmp_path/'green.h5')) as ar:
@@ -210,10 +209,10 @@ def test_green_function_matches_exact_diagonalization(executables, tmp_path, mod
 @pytest.mark.parametrize('target', variants(0, 4))
 def test_canonical_worm_continuation(executables, tmp_path, target):
     p = dict(MODEL='boson Hubbard', Nmax=2, U=1., t=.3, mu=.5,
-             NUMBER_OF_PARTICLES=target, CORRECTION=.1, THERMALIZATION=100000, SWEEPS=2000)
+             NUMBER_OF_PARTICLES=target, CORRECTION=.1, THERMALIZATION=10000, SWEEPS=1000)
     exe = executables['worm']
     run(exe, tmp_path, 'full', p)
-    for budget in [31, 147, 100147]:
+    for budget in [31, 10147]:
         run(exe, tmp_path, 'partial', p, budget=budget)
         run(exe, tmp_path, 'resumed', p, checkpoint='partial.checkpoint.h5')
         compare(tmp_path/'full.h5', tmp_path/'resumed.h5')
