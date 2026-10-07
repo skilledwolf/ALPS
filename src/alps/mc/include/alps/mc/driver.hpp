@@ -91,10 +91,12 @@ chains_type<Simulation> prepare_chains(alps::run_configuration const& run, Prepa
         for (auto const& path : alps::run_paths(value))
             if (!std::filesystem::is_regular_file(path))
                 throw std::invalid_argument("Missing input." + key + " file: " + path);
-    for (auto const& [key, value] : run.output) {
-        const auto path = std::filesystem::weakly_canonical(value.as<std::string>());
+    // Name map entries here: GCC 11 treats a structured binding in a template
+    // as dependent and then parses binding.as<T>() as a comparison.
+    for (auto const& entry : run.output) {
+        const auto path = std::filesystem::weakly_canonical(entry.second.as<std::string>());
         if (std::filesystem::is_directory(path) || !std::filesystem::is_directory(path.parent_path()))
-            throw std::invalid_argument("output." + key + " must name a file in an existing directory");
+            throw std::invalid_argument("output." + entry.first + " must name a file in an existing directory");
     }
     const alps::params p = parameters(run, prepare);
     if (p.exists("SWEEPS") && p.exists("THERMALIZATION") &&
@@ -261,17 +263,17 @@ int main(int argc, char** argv, char const* application, char const* base_schema
             alps::params libraries;
             libraries["lattice_library"]="lattices.xml";
             libraries["model_library"]="models.xml";
-            for (auto const& [name,fallback]:alps::select_parameters(libraries,base_schema,"input"))
-                runs.back().input[name]=std::filesystem::weakly_canonical(alps::search_xml_library_path(
-                    runs.back().input.value_or<std::string>(name,fallback.as<std::string>()))).string();
+            for (auto const& library:alps::select_parameters(libraries,base_schema,"input"))
+                runs.back().input[library.first]=std::filesystem::weakly_canonical(alps::search_xml_library_path(
+                    runs.back().input.value_or<std::string>(library.first,library.second.as<std::string>()))).string();
             groups.push_back(group);groups.back().configure(runs.back());
             simulations.push_back(prepare_chains<Simulation>(runs.back(), prepare, groups.back()));
             for (auto const& [key, value] : runs.back().input)
                 for (auto const& path : alps::run_paths(value)) protected_paths.insert(std::filesystem::weakly_canonical(path));
         }
         for (auto const& run : runs)
-            for (auto const& [key, value] : run.output) {
-                const auto path = std::filesystem::weakly_canonical(value.as<std::string>());
+            for (auto const& entry : run.output) {
+                const auto path = std::filesystem::weakly_canonical(entry.second.as<std::string>());
                 if (protected_paths.count(path) || !destinations.insert(path).second)
                     throw std::invalid_argument("Output paths must be distinct and must not replace any run or input file");
             }
