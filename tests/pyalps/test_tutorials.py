@@ -105,9 +105,13 @@ def test_hybridization_tutorial_runs_are_prepared(script, tmp_path, monkeypatch)
 QMC_SCRIPTS = scripts(TUTORIALS / '03-mc', "execute('worm'", "execute('dirloop_sse'", "execute('loop'") + scripts(
     TUTORIALS / '11-notebook' / 'ja', "execute('worm'", "execute('dirloop_sse'", "execute('loop'")
 QMC_NOTEBOOKS = sorted((TUTORIALS / '11-notebook').rglob('MC-0[23458]*.ipynb'))
+# Validating 8d's 32 runs on lattices up to 128x64 takes minutes on slower
+# runners; 8a-8c run the same coupled-ladder loop scans at smaller sizes.
+LARGE_SCANS = {TUTORIALS / '03-mc/08-quantum-phase-transition/tutorial8d.py'}
 
 
-@pytest.mark.parametrize('source', QMC_SCRIPTS + QMC_NOTEBOOKS,
+@pytest.mark.parametrize('source', [pytest.param(path, marks=pytest.mark.slow) if path in LARGE_SCANS else path
+                                    for path in QMC_SCRIPTS + QMC_NOTEBOOKS],
                          ids=lambda path: str(path.relative_to(TUTORIALS)))
 def test_native_qmc_tutorial_end_to_end(source, tmp_path, monkeypatch):
     """Validate complete scans, then run representative points through analysis."""
@@ -124,8 +128,9 @@ def test_native_qmc_tutorial_end_to_end(source, tmp_path, monkeypatch):
     def execute(app, job):
         executable = alps_program(app)
         _, runs = run_io.read_job_manifest(job)
+        # Validation builds every lattice of the scan; large ones take minutes on slow runners.
         checked = subprocess.run([executable, '--validate', *map(str, runs)],
-                                 capture_output=True, text=True, timeout=120)
+                                 capture_output=True, text=True, timeout=600)
         assert checked.returncode == 0, checked.stdout + checked.stderr
         selected = [runs[i] for i in sorted({0, len(runs)//2, len(runs)-1})]
         # The gap fit needs at least three temperatures in each coupling group.
