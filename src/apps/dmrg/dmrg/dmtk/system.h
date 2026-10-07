@@ -137,6 +137,15 @@ class FileList
          std::cout << "Creating temp file " << this->last_filename << std::endl;
          return this->last_filename.c_str();
       }
+
+    void remove_all()
+      {
+         for (auto const& entry : _tmp_filenames) {
+           boost::system::error_code ignored;
+           boost::filesystem::remove(entry.second, ignored);
+         }
+         _tmp_filenames.clear();
+      }
 };
 
 FileList tmp_files;

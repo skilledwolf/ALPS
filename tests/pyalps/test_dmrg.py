@@ -34,8 +34,11 @@ def run(directory, name, execution=None, **parameters):
 
 def test_energies_measurements_and_iterations(tmp_path):
     # Sixteen states per block make the eight-site chain exact.
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
     result, = execute(alps_program("dmrg"), run(tmp_path, "chain", NUMBER_EIGENVALUES=2, STATES=[8, 16, 16, 16],
-                                                 execution={"temporary_directory": str(tmp_path)}))
+                                                 execution={"temporary_directory": str(scratch)}))
+    assert not any(scratch.iterdir())
     sector = np.flatnonzero(np.diag(sum(SZ)) == 0)
     levels, vectors = np.linalg.eigh(HAMILTONIAN[np.ix_(sector, sector)])
     ground = np.zeros(len(HAMILTONIAN))

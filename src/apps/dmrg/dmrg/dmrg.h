@@ -247,6 +247,8 @@ template<class value_type>
 void DMRGTask<value_type>::run() 
 {
   dmtk::tmp_files.set_temp_dir(temporary_directory.c_str());
+  // The block and Lanczos files only live as long as the run.
+  struct remove_temporary_files { ~remove_temporary_files() { dmtk::tmp_files.remove_all(); } } cleanup;
   dmtk::Lattice l(num_sites(),dmtk::OBC);
   hami = dmtk::Hami<value_type >(l);
   site_block.resize(alps::maximum_vertex_type(graph())+1);
