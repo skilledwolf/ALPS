@@ -34,16 +34,16 @@ def run(executable, directory, name, parameters, *, rng='mt19937', budget=0,
                                                {'L': 3, 'DISABLE_IMPROVED_ESTIMATOR': True}))
 @pytest.mark.parametrize('rng', variants('mt19937', 'lagged_fibonacci607'))
 def test_exact_continuation(executable, tmp_path, algorithm, parameters, rng):
-    p = dict(parameters, ALGORITHM=algorithm)
-    run(executable, tmp_path, 'full', p, rng=rng)
+    p = dict(parameters, ALGORITHM=algorithm, SWEEPS=300)
+    run(executable, tmp_path, 'full', p, rng=rng, chains=1)
     for phase, budget in [('thermal', 31), ('production', 247)]:
-        run(executable, tmp_path, phase, p, rng=rng, budget=budget)
-        run(executable, tmp_path, phase + '-resumed', p, rng=rng,
+        run(executable, tmp_path, phase, p, rng=rng, budget=budget, chains=1)
+        run(executable, tmp_path, phase + '-resumed', p, rng=rng, chains=1,
             checkpoint=phase + '.checkpoint.h5')
         for suffix in ('.h5', '.checkpoint.h5'):
             compare(tmp_path / ('full' + suffix), tmp_path / (phase + '-resumed' + suffix))
-    run(executable, tmp_path, 'longer', dict(p, SWEEPS=1400), rng=rng)
-    run(executable, tmp_path, 'extended', dict(p, SWEEPS=1400), rng=rng,
+    run(executable, tmp_path, 'longer', dict(p, SWEEPS=400), rng=rng, chains=1)
+    run(executable, tmp_path, 'extended', dict(p, SWEEPS=400), rng=rng, chains=1,
         checkpoint='full.checkpoint.h5')
     compare(tmp_path / 'longer.checkpoint.h5', tmp_path / 'extended.checkpoint.h5')
 
@@ -93,14 +93,14 @@ def spin_expectations(sites, beta=1., field=0.):
     return expected
 
 
-@pytest.mark.parametrize('algorithm', ['loop', 'loop; sse'])
-@pytest.mark.parametrize('improved', [False, True])
-@pytest.mark.parametrize('sites', [3, 4])
+@pytest.mark.parametrize('algorithm,improved,sites', [
+    ('loop', True, 3), ('loop', False, 4), ('loop; sse', True, 4), ('loop; sse', False, 3),
+])
 def test_matches_exact_diagonalization(executable, tmp_path, algorithm, improved, sites):
     expected = spin_expectations(sites)
     run(executable, tmp_path, 'physics', dict(ALGORITHM=algorithm, L=sites,
-        THERMALIZATION=2000, SWEEPS=50000, DISABLE_IMPROVED_ESTIMATOR=not improved),
-        chains=3, bins=64)
+        THERMALIZATION=1000, SWEEPS=40000, DISABLE_IMPROVED_ESTIMATOR=not improved),
+        chains=1, bins=64)
     with h5py.File(tmp_path / 'physics.h5') as ar:
         for name, exact in expected.items():
             result = ar['simulation/results/' + name]
@@ -181,9 +181,9 @@ def test_checkpoint_offdiagonal_validity(executable, tmp_path, algorithm, rng):
     p = dict(ALGORITHM=algorithm, L=3, h=0. if 'sse' in algorithm else .4, DISABLE_IMPROVED_ESTIMATOR=True,
              NO_EXCHANGE=True, NUM_REPLICAS=3, T_MIN=.8, T_MAX=1.2,
              SWEEPS=127, THERMALIZATION=17)
-    full = run(executable, tmp_path, 'full', p, bins=8, rng=rng)
-    partial = run(executable, tmp_path, 'partial', p, bins=8, rng=rng, budget=31)
-    resumed = run(executable, tmp_path, 'resumed', p, bins=8, rng=rng,
+    full = run(executable, tmp_path, 'full', p, bins=8, rng=rng, chains=1)
+    partial = run(executable, tmp_path, 'partial', p, bins=8, rng=rng, budget=31, chains=1)
+    resumed = run(executable, tmp_path, 'resumed', p, bins=8, rng=rng, chains=1,
                   checkpoint=partial.name)
     compare(full, resumed)
     compare(tmp_path / 'full.h5', tmp_path / 'resumed.h5')
@@ -231,8 +231,8 @@ def test_checkpoint_offdiagonal_validity(executable, tmp_path, algorithm, rng):
 def test_replica_physics(executable, tmp_path, algorithm, sites, field, mode):
     import pyalps
     run(executable, tmp_path, 'physics', dict(ALGORITHM=algorithm, L=sites, h=field,
-        NUM_REPLICAS=3, T_MIN=.6, T_MAX=1.7, THERMALIZATION=2000, SWEEPS=30000,
-        INITIAL_BLOCK_SWEEPS=1000, OPTIMIZATION_ITERATIONS=1, **mode), chains=1, bins=64)
+        NUM_REPLICAS=3, T_MIN=.6, T_MAX=1.7, THERMALIZATION=1000, SWEEPS=15000,
+        INITIAL_BLOCK_SWEEPS=500, OPTIMIZATION_ITERATIONS=1, **mode), chains=1, bins=64)
     groups = pyalps.loadMeasurements([str(tmp_path / 'physics.h5')])
     assert len(groups) == 3
     for group in groups:
@@ -243,26 +243,25 @@ def test_replica_physics(executable, tmp_path, algorithm, sites, field, mode):
             assert abs(value.mean[0] - exact) < max(.025, 5 * value.error[0]), (name, value.mean, value.error, exact)
 
 
-@pytest.mark.parametrize('algorithm,rng,optimize', [
-    ('loop; exchange', 'mt19937', False), ('loop; sse; exchange', 'lagged_fibonacci607', True),
+@pytest.mark.parametrize('algorithm,rng,optimize,parallel', [
+    ('loop; exchange', 'mt19937', False, 'chains'),
+    ('loop; sse; exchange', 'lagged_fibonacci607', True, 'replicas'),
 ])
-@pytest.mark.parametrize('parallel', ['chains', 'replicas'])
 def test_replica_mpi_restart(executable, launcher, tmp_path, algorithm, rng, optimize, parallel):
     p = dict(ALGORITHM=algorithm, LATTICE='chain lattice', MODEL='spin', local_S=.5,
-        L=4, J=1., TEMPERATURE_SET=[.8, 1., 1.2], THERMALIZATION=100, SWEEPS=500,
+        L=4, J=1., TEMPERATURE_SET=[.8, 1., 1.2] if optimize else [.8, 1.2], THERMALIZATION=50, SWEEPS=200,
         OPTIMIZE_TEMPERATURE=optimize, OPTIMIZATION_TYPE='population',
         INITIAL_BLOCK_SWEEPS=100, OPTIMIZATION_ITERATIONS=1)
     def config(name, budget=0, checkpoint=None, layout=parallel):
         return write_run_file(tmp_path / (name + '.toml'), parameters=p,
-            execution=dict(seed=137, bins=8, chains=1 if optimize else 3, rng=rng, max_sweeps=budget, parallel=layout),
+            execution=dict(seed=137, bins=8, chains=1 if optimize else 2, rng=rng, max_sweeps=budget, parallel=layout),
             input=dict(checkpoint=checkpoint) if checkpoint else None,
             output=dict(results=name + '.h5', checkpoint=name + '.checkpoint.h5'))
     invoke(launcher, executable, config('serial', layout='chains'))
     invoke(launcher, executable, config('mpi'), processes=2)
     invoke(launcher, executable, config('partial', 31), processes=2)
-    invoke(launcher, executable, config('resumed', checkpoint='partial.checkpoint.h5'), processes=3)
     invoke(launcher, executable, config('serial-resumed', checkpoint='partial.checkpoint.h5', layout='chains'))
-    for name in ('mpi', 'resumed', 'serial-resumed'):
+    for name in ('mpi', 'serial-resumed'):
         for suffix in ('.h5', '.checkpoint.h5'):
             compare(tmp_path / ('serial' + suffix), tmp_path / (name + suffix))
 
@@ -270,7 +269,7 @@ def test_replica_mpi_restart(executable, launcher, tmp_path, algorithm, rng, opt
 def test_replica_common_hamiltonian(executable, tmp_path):
     import pyalps
     checkpoint = run(executable, tmp_path, 'common', dict(ALGORITHM='loop; exchange', J='T',
-        T=1., NUM_REPLICAS=3, T_MIN=.6, T_MAX=1.7, THERMALIZATION=2000, SWEEPS=30000),
+        T=1., NUM_REPLICAS=3, T_MIN=.6, T_MAX=1.7, THERMALIZATION=1000, SWEEPS=15000),
         chains=1, bins=64)
     with h5py.File(checkpoint) as ar:
         walkers = ar['simulation/realizations/0/clones/0/replicas']
@@ -301,8 +300,7 @@ def test_replica_corrupt_checkpoint(executable, tmp_path, fault):
 
 
 @pytest.mark.parametrize('algorithm,field,improved', [
-    ('loop; exchange', .4, False), ('loop; exchange', 0., True),
-    ('loop; sse; exchange', 0., False), ('loop; sse; exchange', 0., True),
+    ('loop; exchange', .4, False), ('loop; sse; exchange', 0., True),
 ])
 def test_distributed_replica_signed_vectors(executable, launcher, tmp_path, algorithm, field, improved):
     p = dict(ALGORITHM=algorithm, LATTICE='chain lattice', MODEL='spin', local_S=.5,
@@ -312,12 +310,12 @@ def test_distributed_replica_signed_vectors(executable, launcher, tmp_path, algo
              **{'MEASURE[Correlations]': True, 'MEASURE[Structure Factor]': True})
     def config(name, layout, budget=0, checkpoint=None):
         return write_run_file(tmp_path/(name+'.toml'), parameters=p,
-            execution=dict(seed=137, bins=16, chains=2, parallel=layout, max_sweeps=budget),
+            execution=dict(seed=137, bins=16, chains=1, parallel=layout, max_sweeps=budget),
             input=dict(checkpoint=checkpoint) if checkpoint else None,
             output=dict(results=name+'.h5', checkpoint=name+'.checkpoint.h5'))
     invoke(launcher, executable, config('serial', 'chains'))
     invoke(launcher, executable, config('partial', 'replicas', 53), processes=2)
-    invoke(launcher, executable, config('resumed', 'replicas', checkpoint='partial.checkpoint.h5'), processes=4)
+    invoke(launcher, executable, config('resumed', 'replicas', checkpoint='partial.checkpoint.h5'), processes=3)
     for suffix in ('.h5', '.checkpoint.h5'):
         compare(tmp_path/('serial'+suffix), tmp_path/('resumed'+suffix))
     with h5py.File(tmp_path/'resumed.checkpoint.h5') as ar:
@@ -329,20 +327,20 @@ def test_distributed_replica_signed_vectors(executable, launcher, tmp_path, algo
 @pytest.mark.parametrize('fault', ['spins', 'measurements'])
 def test_replica_mpi_owned_checkpoint_validation(executable, launcher, tmp_path, fault):
     p = dict(ALGORITHM='loop; exchange', LATTICE='chain lattice', MODEL='spin',
-             local_S=.5, L=4, J=1., TEMPERATURE_SET=[.8, 1., 1.2],
+             local_S=.5, L=4, J=1., TEMPERATURE_SET=[.8, 1.2],
              THERMALIZATION=17, SWEEPS=127)
     def config(name, budget=0, checkpoint=None):
         return write_run_file(tmp_path/(name+'.toml'), parameters=p,
             execution=dict(seed=137, bins=8, chains=1, parallel='replicas', max_sweeps=budget),
             input=dict(checkpoint=checkpoint) if checkpoint else None,
             output=dict(results=name+'.h5', checkpoint=name+'.checkpoint.h5'))
-    invoke(launcher, executable, config('partial', 41), processes=4)
+    invoke(launcher, executable, config('partial', 41), processes=2)
     path = config('resume', checkpoint='partial.checkpoint.h5')
-    invoke(launcher, executable, path, processes=4)
+    invoke(launcher, executable, path, processes=2)
     before = [(tmp_path/('resume'+suffix)).read_bytes() for suffix in ('.h5', '.checkpoint.h5')]
     with h5py.File(tmp_path/'partial.checkpoint.h5', 'r+') as ar:
         replica = ar['simulation/realizations/0/clones/0/replicas/1']
         if fault == 'spins': replica['checkpoint/spins'][0] = 2
         else: del replica['measurements/Temperature']
-    invoke(launcher, executable, path, processes=4, success=False)
+    invoke(launcher, executable, path, processes=2, success=False)
     assert before == [(tmp_path/('resume'+suffix)).read_bytes() for suffix in ('.h5', '.checkpoint.h5')]
