@@ -11,6 +11,9 @@
 #include <alps/osiris/xdrdump.h>
 #include <alps/numeric/functional.hpp>
 #include <boost/filesystem/operations.hpp>
+#ifdef ALPS_HAVE_MPI
+#include <boost/mpi/environment.hpp>
+#endif
 #include <vector>
 
 class simulation : public alps::mcbase {
@@ -27,6 +30,10 @@ private:
 };
 
 int main(int argc, char** argv) {
+#ifdef ALPS_HAVE_MPI
+    // alps::mc::parallel is the MPI group in an MPI-enabled SDK.
+    boost::mpi::environment environment(argc, argv);
+#endif
     if (argc == 2) {
         for (const char* resource : {"lattices.xml", "models.xml", "ALPS.xsl"}) {
             if (!boost::filesystem::equivalent(alps::search_xml_library_path(resource),
