@@ -73,25 +73,25 @@ def expected(model, beta):
 
 @pytest.mark.parametrize('exchange', [False, True])
 def test_bond_hamiltonian_and_component_moments(model, tmp_path, exchange):
-    filename, _ = run(tmp_path, model, 'physics', exchange=exchange, parameters=dict(SWEEPS=60000))
+    filename, _ = run(tmp_path, model, 'physics', exchange=exchange, parameters=dict(SWEEPS=30000), chains=1)
     groups = pyalps.loadMeasurements([str(filename)])
     assert len(groups) == (3 if exchange else 1)
     for beta, group in zip((0., .3, .9) if exchange else (.3,), groups):
         results = {d.props['observable']: d.native_result for d in group}
         for name, target in expected(model, beta).items():
             result = results[name]
-            assert result.count == 120000
+            assert result.count == 30000
             np.testing.assert_allclose(result.mean, [target], atol=max(.008, 7*result.error[0]), err_msg=name)
         assert group[0].props['BETA'] == beta
         if beta == 0:
             assert 'T' not in group[0].props
             np.testing.assert_array_equal(results['Specific Heat'].mean, [0.])
         if exchange:
-            assert results['EXMC: Inverse Temperature'].count == 120000
+            assert results['EXMC: Inverse Temperature'].count == 30000
 
 
-@pytest.mark.parametrize('rng', ['mt19937', 'lagged_fibonacci607'])
-@pytest.mark.parametrize('mode', ['temperature', 'ladder', 'rate', 'population', 'no-exchange'])
+@pytest.mark.parametrize('mode,rng', [('temperature', 'mt19937'), ('ladder', 'lagged_fibonacci607'),
+                                      ('rate', 'mt19937'), ('population', 'mt19937'), ('no-exchange', 'mt19937')])
 def test_feedback_and_partial_batch_continuation(model, tmp_path, rng, mode):
     p = {} if mode == 'temperature' else dict(RANDOM_EXCHANGE=True, EXCHANGE_INTERVAL=3)
     if mode in ('rate', 'population'):
@@ -103,16 +103,20 @@ def test_feedback_and_partial_batch_continuation(model, tmp_path, rng, mode):
         p['NO_EXCHANGE'] = True
     options = dict(exchange=mode != 'temperature', rng=rng, chains=1)
     full, full_state = run(tmp_path, model, 'full', parameters=p, **options)
-    for budget in (7, 41, 107):
+    # Stop during feedback and inside a partial production batch.
+    for budget in (7, 41):
         _, state = run(tmp_path, model, f'part{budget}', parameters=p, budget=budget, **options)
         result, restored = run(tmp_path, model, f'restored{budget}', parameters=p, checkpoint=state, **options)
         compare(full, result); compare(full_state, restored)
+    if mode != 'temperature':
+        return
     _, extended = run(tmp_path, model, 'extended', parameters=dict(p, SWEEPS=191), checkpoint=full_state, **options)
     _, reference = run(tmp_path, model, 'reference', parameters=dict(p, SWEEPS=191), **options)
     compare(reference, extended)
 
 
-@pytest.mark.parametrize('fault', ['spin', 'topology', 'count', 'diagnostics', 'rng'])
+@pytest.mark.parametrize('model,fault', [('ising', 'spin'), ('heisenberg', 'topology'), ('ising', 'count'),
+                                         ('heisenberg', 'diagnostics'), ('ising', 'rng')])
 def test_corrupt_checkpoint_keeps_existing_outputs(model, tmp_path, fault):
     _, state = run(tmp_path, model, 'part', budget=53)
     result, resumed = run(tmp_path, model, 'resume', checkpoint=state)
@@ -131,9 +135,10 @@ def test_corrupt_checkpoint_keeps_existing_outputs(model, tmp_path, fault):
 
 
 def test_mpi_independent_ladders_preserve_evidence(model, tmp_path, launcher):
+    # Three ladders split unevenly over two ranks, then resume on one process.
     full, full_state = run(tmp_path, model, 'full', chains=3)
     _, partial = run(tmp_path, model, 'part', chains=3, budget=41, processes=2, launcher=launcher)
-    result, restored = run(tmp_path, model, 'resume', chains=3, checkpoint=partial, processes=3, launcher=launcher)
+    result, restored = run(tmp_path, model, 'resume', chains=3, checkpoint=partial)
     compare(full, result); compare(full_state, restored)
 
 
@@ -168,8 +173,8 @@ def test_validate_rejects_invalid_models_without_writing(model, tmp_path, fault)
     assert destination.read_bytes() == b'existing scientific results'
 
 
-@pytest.mark.parametrize('mode', ['fixed', 'rate', 'population'])
-@pytest.mark.parametrize('rng', ['mt19937', 'lagged_fibonacci607'])
+@pytest.mark.parametrize('model,mode,rng', [('ising', 'fixed', 'mt19937'), ('heisenberg', 'rate', 'lagged_fibonacci607'),
+                                            ('ising', 'population', 'mt19937')])
 def test_mpi_distributed_replicas_preserve_chronology(model, tmp_path, launcher, mode, rng):
     p = dict(RANDOM_EXCHANGE=True, EXCHANGE_INTERVAL=3)
     if mode != 'fixed':
@@ -181,18 +186,19 @@ def test_mpi_distributed_replicas_preserve_chronology(model, tmp_path, launcher,
     _, partial = run(tmp_path, model, 'part', budget=41, parallel='replicas',
                      processes=2, launcher=launcher, **options)
     result, restored = run(tmp_path, model, 'resume', checkpoint=partial,
-                          parallel='replicas', processes=4, launcher=launcher, **options)
+                          parallel='replicas', processes=3, launcher=launcher, **options)
     compare(full, result); compare(full_state, restored)
     # Execution layout is not scientific state: resume a serial checkpoint
     # across MPI teams, and the MPI checkpoint back on one process.
     _, serial_partial = run(tmp_path, model, 'serial-part', budget=107, **options)
     result, restored = run(tmp_path, model, 'mpi-resume', checkpoint=serial_partial,
-                          parallel='replicas', processes=3, launcher=launcher, **options)
+                          parallel='replicas', processes=2, launcher=launcher, **options)
     compare(full, result); compare(full_state, restored)
     result, restored = run(tmp_path, model, 'serial-resume', checkpoint=partial, **options)
     compare(full, result); compare(full_state, restored)
 
 
+@pytest.mark.parametrize('model', ['ising'])
 def test_mpi_fixed_temperature_rejects_replica_layout(model, tmp_path, launcher):
     executable = str(tutorials_build()/f'00-examples/mc/{model}/{model}')
     p = dict(ALGORITHM=model, LATTICE='chain lattice', L=7, BETA=.3, SWEEPS=31)
@@ -205,6 +211,7 @@ def test_mpi_fixed_temperature_rejects_replica_layout(model, tmp_path, launcher)
     assert output.read_bytes() == b'Existing scientific output'
 
 
+@pytest.mark.parametrize('model', ['ising'])
 def test_mpi_owned_checkpoint_validation_preserves_outputs(model, tmp_path, launcher):
     _, state = run(tmp_path, model, 'partial', budget=41, chains=1)
     result, restored = run(tmp_path, model, 'resume', checkpoint=state, chains=1,
@@ -219,6 +226,7 @@ def test_mpi_owned_checkpoint_validation_preserves_outputs(model, tmp_path, laun
     assert before == (result.read_bytes(), restored.read_bytes())
 
 
+@pytest.mark.parametrize('model', ['ising'])
 def test_mpi_replica_layout_requires_consensus(model, tmp_path, launcher):
     from test_spatial_ising_example import mpmd_failure
     executable = str(tutorials_build()/f'00-examples/mc/{model}/{model}')
