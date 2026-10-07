@@ -8,7 +8,7 @@ import h5py
 import numpy as np
 import pytest
 from pyalps.run_io import write_run_file
-from conftest import alps_program
+from conftest import alps_program, variants
 
 
 @pytest.fixture
@@ -46,7 +46,7 @@ def compare(left, right):
 
 
 @pytest.mark.parametrize("app", ["simplemc", "spinmc", "qwl", "worm", "dirloop_sse", "loop"])
-@pytest.mark.parametrize("rng", ["mt19937", "lagged_fibonacci607"])
+@pytest.mark.parametrize("rng", variants("mt19937", "lagged_fibonacci607"))
 @pytest.mark.parametrize("chains", [1, 3])
 def test_mpi_native_chains_and_cross_process_restart(launcher, tmp_path, app, rng, chains):
     executable = alps_program(app)
@@ -55,8 +55,10 @@ def test_mpi_native_chains_and_cross_process_restart(launcher, tmp_path, app, rn
         p = dict(LATTICE="chain lattice", L=4, J=1., CUTOFF=12, SWEEPS=3000,
                  NUMBER_OF_WANG_LANDAU_STEPS=3)
     elif app in ("worm", "dirloop_sse", "loop"):
+        # The mpi run checkpoints at every opportunity, so its cost follows the
+        # sweep count. max_sweeps=13 below still stops during thermalization.
         p = dict(LATTICE="chain lattice", MODEL="spin", L=4, J=1., T=1.,
-                 SWEEPS=300, THERMALIZATION=100, SKIP=3)
+                 SWEEPS=60, THERMALIZATION=20, SKIP=3)
         if app == "dirloop_sse":
             p.update(INITIAL_CUTOFF=64, **{"MEASURE[Green Function]":True})
     else:
