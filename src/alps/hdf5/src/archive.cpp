@@ -10,6 +10,8 @@
 #include <limits>
 #include <mutex>
 #include <type_traits>
+#include <utility>
+#include <vector>
 
 namespace alps::hdf5 {
 namespace detail {
@@ -59,6 +61,33 @@ struct archivecontext {
         : filename(std::move(name)), writable(mode != "r"),
           file(filename, mode == "r" ? hf::File::ReadOnly :
                          mode == "a" ? hf::File::OpenOrCreate : hf::File::Truncate) {}
+
+    // Writes resolve names relative to recently used groups instead of walking
+    // every group from the root; resolving deep checkpoint paths dominated
+    // saving. Every unlink through this archive and closing the file forget
+    // these open groups.
+    hf::Group* cached(std::string const& path) {
+        for (auto entry = groups.rbegin(); entry != groups.rend(); ++entry)
+            if (entry->first == path) return &entry->second;
+        return nullptr;
+    }
+    // Returns the group at path, creating it and its missing parents.
+    hf::Group group(std::string const& path) {
+        if (auto found = cached(path)) return *found;
+        auto const split = path.find_last_of('/');
+        auto const parent = split ? cached(path.substr(0, split)) : cached("/");
+        auto const name = path.substr(split + 1);
+        auto opened = path == "/" ? file.getGroup(path) :
+            parent ? (parent->exist(name) ? parent->getGroup(name) : parent->createGroup(name)) :
+            file.exist(path) ? file.getGroup(path) : file.createGroup(path);
+        if (groups.size() == 8) groups.erase(groups.begin());
+        groups.emplace_back(path, opened);
+        return opened;
+    }
+    void forget() { groups.clear(); }
+
+private:
+    std::vector<std::pair<std::string, hf::Group>> groups;
 };
 
 // Called under mutex. Finalize every view of this file, even if flushing fails;
@@ -66,6 +95,7 @@ struct archivecontext {
 void finish(std::shared_ptr<archivecontext> const& context, bool flush) {
     if (!context || !context->file.isValid()) return;
     hf::SilenceHDF5 silence;
+    context->forget();
     std::exception_ptr failure;
     if (flush) {
         try { context->file.flush(); }
@@ -277,22 +307,27 @@ void write(archivecontext& context, location const& path, T const* values, bool 
         }
     };
     if (path.is_attribute) {
-        node(context, path.object, [&](auto& parent) {
+        auto assign = [&](auto& parent) {
             if (parent.hasAttribute(path.attribute) && !matches_target(parent.getAttribute(path.attribute)))
                 parent.deleteAttribute(path.attribute);
             auto attr = parent.hasAttribute(path.attribute) ? parent.getAttribute(path.attribute) :
                 parent.createAttribute(path.attribute, space, type);
             transfer(attr);
-        });
+        };
+        if (auto group = context.cached(path.object)) assign(*group);
+        else node(context, path.object, assign);
     } else {
-        auto& file = context.file;
-        if (file.exist(path.object)) {
-            bool same = file.getObjectType(path.object) == hf::ObjectType::Dataset &&
-                matches_target(file.getDataSet(path.object));
-            if (!same) file.unlink(path.object);
+        auto const split = path.object.find_last_of('/');
+        auto parent = context.group(split ? path.object.substr(0, split) : "/");
+        auto const name = path.object.substr(split + 1);
+        if (parent.exist(name)) {
+            bool same = parent.getObjectType(name) == hf::ObjectType::Dataset &&
+                matches_target(parent.getDataSet(name));
+            // A replaced group may itself be cached.
+            if (!same) { context.forget(); parent.unlink(name); }
         }
-        auto dataset = file.exist(path.object) ? file.getDataSet(path.object) :
-            file.createDataSet(path.object, space, type);
+        auto dataset = parent.exist(name) ? parent.getDataSet(name) :
+            parent.createDataSet(name, space, type);
         if (scalar) transfer(dataset);
         else if (n) { auto selected = dataset.select(offset, count); transfer(selected); }
     }
@@ -423,7 +458,10 @@ bool archive::is_data(std::string path) const {
 }
 bool archive::is_group(std::string path) const {
     detail::location target(complete_path(path));
-    return detail::access(context_, [&](auto& c) { return !target.is_attribute && c.file.exist(target.object) && c.file.getObjectType(target.object) == detail::hf::ObjectType::Group; });
+    return detail::access(context_, [&](auto& c) {
+        return !target.is_attribute && (c.cached(target.object) ||
+            (c.file.exist(target.object) && c.file.getObjectType(target.object) == detail::hf::ObjectType::Group));
+    });
 }
 bool archive::is_attribute(std::string path) const {
     detail::location target(complete_path(path));
@@ -458,11 +496,13 @@ void archive::create_group(std::string path) const {
     if (target.is_attribute) throw invalid_path("not a group path: " + path);
     detail::access(context_, [&](auto& c) {
         if (!c.writable) throw archive_error("the archive is not writable");
+        if (c.cached(target.object)) return;
         if (c.file.exist(target.object)) {
             if (c.file.getObjectType(target.object) == detail::hf::ObjectType::Group) return;
+            c.forget();
             c.file.unlink(target.object);
         }
-        c.file.createGroup(target.object);
+        c.group(target.object);
     });
 }
 void archive::copy(std::string source_path, archive& destination, std::string destination_path) const {
@@ -486,11 +526,11 @@ void archive::copy(std::string source_path, archive& destination, std::string de
 }
 void archive::delete_data(std::string path) const {
     if (is_group(path)) throw invalid_path("dataset path contains a group");
-    detail::access(context_, [&](auto& c) { if (!c.writable) throw archive_error("the archive is not writable"); if (is_data(path)) c.file.unlink(complete_path(path)); });
+    detail::access(context_, [&](auto& c) { if (!c.writable) throw archive_error("the archive is not writable"); if (is_data(path)) { c.forget(); c.file.unlink(complete_path(path)); } });
 }
 void archive::delete_group(std::string path) const {
     if (is_data(path)) throw invalid_path("group path contains a dataset");
-    detail::access(context_, [&](auto& c) { if (!c.writable) throw archive_error("the archive is not writable"); if (is_group(path)) c.file.unlink(complete_path(path)); });
+    detail::access(context_, [&](auto& c) { if (!c.writable) throw archive_error("the archive is not writable"); if (is_group(path)) { c.forget(); c.file.unlink(complete_path(path)); } });
 }
 void archive::delete_attribute(std::string path) const {
     detail::location target(complete_path(path));
