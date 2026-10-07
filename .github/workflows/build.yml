@@ -277,11 +277,11 @@ jobs:
           python .github/scripts/build_metrics.py run 'Editable bindings' python -m pip install --no-build-isolation --no-deps -e python/pyalps \
             --config-settings "build-dir=$PWD/_build/ci-python"
           python .github/scripts/build_metrics.py run --timeout 1800 'Bindings and SDK contracts' \
-            python -m pytest tests/pyalps tests/cmake tests/cli/test_hdf5_convert.py -q --junitxml=_build/ci/python.xml
+            python -m pytest tests/pyalps tests/cmake tests/cli/test_hdf5_convert.py -v -o console_output_style=times --junitxml=_build/ci/python.xml
           # Long comparisons with exact diagonalization and enumeration.
           if [[ "$PHYSICS" == true ]]; then
             ALPS_SLOW_TESTS=1 python .github/scripts/build_metrics.py run --timeout 3600 'Physics validation' \
-              python -m pytest tests/pyalps -m slow -q --junitxml=_build/ci/physics.xml
+              python -m pytest tests/pyalps -m slow -v -o console_output_style=times --junitxml=_build/ci/physics.xml
           fi
       - name: Test installed XML tools after relocation
         if: matrix.extras
@@ -374,7 +374,7 @@ jobs:
         run: |
           python -m pip install --no-build-isolation -e python/pyalps \
             --config-setting "build-dir=$PWD/_build/contributor-python"
-          python -m pytest tests/pyalps tests/cmake tests/cli/test_hdf5_convert.py -q --junitxml=_build/default/python.xml
+          python -m pytest tests/pyalps tests/cmake tests/cli/test_hdf5_convert.py -v -o console_output_style=times --junitxml=_build/default/python.xml
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: always()
         with:
