@@ -33,6 +33,9 @@ if(ALPS_BUILD_TESTING)
                                                             "Licensed under the MIT License")
   add_test(NAME fulldiag_evaluate_no_arguments COMMAND fulldiag_evaluate)
   set_tests_properties(fulldiag_evaluate_no_arguments PROPERTIES WILL_FAIL TRUE)
+  set_tests_properties(fulldiag_evaluate_help fulldiag_evaluate_license
+    fulldiag_evaluate_no_arguments PROPERTIES LABELS "fulldiag;cli" TIMEOUT 60
+    ENVIRONMENT "OMP_NUM_THREADS=1;OPENBLAS_NUM_THREADS=1")
 endif()
 
 alps_install_applications(fulldiag fulldiag_evaluate)

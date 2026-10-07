@@ -1,3 +1,4 @@
+#include <alps/testing/stream_fixture.hpp>
 /*****************************************************************************
 *
 * ALPS Project: Algorithms and Libraries for Physics Simulations
@@ -20,8 +21,10 @@
 using namespace alps;
 #endif
 
-int main()
-{
+TEST(LatticeSerialization, Label) {
+    alps::testing::StreamFixture transcript(ALPS_TEST_SOURCE_DIR "/label.input");
+    { // Flush serialization objects before checking the captured stream.
+
 
 #ifndef BOOST_NO_EXCEPTIONS
   try {
@@ -68,13 +71,14 @@ int main()
 catch (std::exception& e)
 {
   std::cerr << "Caught exception: " << e.what() << "\n";
-  exit(-1);
+  FAIL() << "Unexpected exception in serialization contract";
 }
 catch (...)
 {
   std::cerr << "Caught unknown exception\n";
-  exit(-2);
+  FAIL() << "Unexpected exception in serialization contract";
 }
 #endif
-  return 0;
+    }
+  transcript.expect_output(ALPS_TEST_SOURCE_DIR "/label.output");
 }

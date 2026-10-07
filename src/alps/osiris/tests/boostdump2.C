@@ -1,3 +1,4 @@
+#include <alps/testing/stream_fixture.hpp>
 /*****************************************************************************
 *
 * ALPS Project: Algorithms and Libraries for Physics Simulations
@@ -18,8 +19,10 @@
 #include <iostream>
 #include <cstdlib>
 
-int main()
-{
+TEST(OsirisSerialization, Boostdump2) {
+    alps::testing::StreamFixture transcript(ALPS_TEST_BINARY_DIR "/boostdump2.input");
+    { // Flush serialization objects before checking the captured stream.
+
 #ifndef BOOST_NO_EXCEPTIONS
 try {
 #endif
@@ -49,8 +52,9 @@ try {
 }
 catch (std::exception& exp) {
   std::cerr << exp.what() << std::endl;
-  std::abort();
+  FAIL() << "Unexpected exception in serialization contract";
 }
 #endif
-  return 0;
+    }
+  transcript.expect_output(ALPS_TEST_SOURCE_DIR "/boostdump2.output");
 }

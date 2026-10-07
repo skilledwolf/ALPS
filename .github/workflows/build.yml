@@ -7,6 +7,8 @@ on:
   pull_request:
     branches: [master]
   workflow_dispatch:
+  schedule:
+    - cron: '23 6 * * 1'
 
 permissions:
   contents: read
@@ -25,13 +27,19 @@ env:
 
 jobs:
   prepare:
-    name: Validate CI helpers
+    name: Validate helpers and select coverage
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+      profile: ${{ steps.matrix.outputs.profile }}
+      native: ${{ steps.matrix.outputs.native }}
+      developer_matrix: ${{ steps.matrix.outputs.developer_matrix }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
+          fetch-depth: 0
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: '3.12'
@@ -48,6 +56,9 @@ jobs:
         run: |
           python -m pip install pytest
           python -m pytest tests/ci -q --junitxml=ci-tests.xml
+      - name: Select source coverage
+        id: matrix
+        run: python .github/scripts/ci_matrix.py
       - name: Summarize helper tests
         if: always()
         run: python .github/scripts/junit_summary.py ci-tests.xml
@@ -57,47 +68,50 @@ jobs:
           name: ci-helper-tests
           path: ci-tests.xml
 
+  tutorials:
+    name: Standalone tutorials / ${{ matrix.numpy }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {python: '3.11', numpy: 'numpy==1.26.0', id: floor}
+          - {python: '3.14', numpy: numpy, id: current}
+    env:
+      OPENBLAS_NUM_THREADS: 1
+      OMP_NUM_THREADS: 1
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install standalone dependencies
+        env:
+          NUMPY_REQUIREMENT: ${{ matrix.numpy }}
+        run: python -m pip install pytest "$NUMPY_REQUIREMENT"
+      - name: Test numerical reference values and physical invariants
+        run: python -m pytest tests/tutorials -q --junitxml=tutorials.xml
+      - name: Summarize tutorial tests
+        if: always()
+        run: python .github/scripts/junit_summary.py tutorials.xml
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: always()
+        with:
+          name: standalone-tutorials-${{ matrix.id }}
+          path: tutorials.xml
+
   build:
     name: Source / ${{ matrix.id }}
+    if: needs.prepare.outputs.native == 'true'
     needs: prepare
     runs-on: ${{ matrix.os }}
     timeout-minutes: 120
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - {"id": "ubuntu-2204-gcc-12-boost91-py314-cxx17", "os": "ubuntu-22.04", "cc": "gcc-12", "cxx": "g++-12", "packages": "gcc-12 g++-12", "boost": "1.91.0", "python": "3.14", "standard": 17}
-          - {"id": "ubuntu-2404-gcc-14-boost91-py314-cxx17", "os": "ubuntu-24.04", "cc": "gcc-14", "cxx": "g++-14", "packages": "gcc-14 g++-14", "boost": "1.91.0", "python": "3.14", "standard": 17, "extras": true}
-          - {"id": "ubuntu-2204-clang-15-boost91-py314-cxx17", "os": "ubuntu-22.04", "cc": "clang-15", "cxx": "clang++-15", "packages": "clang-15", "boost": "1.91.0", "python": "3.14", "standard": 17}
-          - {"id": "ubuntu-2404-clang-18-boost91-py314-cxx17", "os": "ubuntu-24.04", "cc": "clang-18", "cxx": "clang++-18", "packages": "clang-18", "boost": "1.91.0", "python": "3.14", "standard": 17}
-          - {"id": "ubuntu-2204-gcc-11-boost91-py314-cxx17", "os": "ubuntu-22.04", "cc": "gcc-11", "cxx": "g++-11", "packages": "gcc-11 g++-11", "boost": "1.91.0", "python": "3.14", "standard": 17}
-          - {"id": "ubuntu-2404-gcc-13-boost91-py314-cxx17", "os": "ubuntu-24.04", "cc": "gcc-13", "cxx": "g++-13", "packages": "gcc-13 g++-13", "boost": "1.91.0", "python": "3.14", "standard": 17}
-          - {"id": "ubuntu-2404-gcc-15-boost91-py314-cxx17", "os": "ubuntu-24.04", "cc": "gcc-15", "cxx": "g++-15", "packages": "gcc-15 g++-15", "boost": "1.91.0", "python": "3.14", "standard": 17, "repository": "gcc"}
-          - {"id": "ubuntu-2204-clang-14-boost91-py314-cxx17", "os": "ubuntu-22.04", "cc": "clang-14", "cxx": "clang++-14", "packages": "clang-14", "boost": "1.91.0", "python": "3.14", "standard": 17}
-          - {"id": "ubuntu-2404-clang-16-boost91-py314-cxx17", "os": "ubuntu-24.04", "cc": "clang-16", "cxx": "clang++-16", "packages": "clang-16", "boost": "1.91.0", "python": "3.14", "standard": 17}
-          - {"id": "ubuntu-2404-clang-17-boost91-py314-cxx17", "os": "ubuntu-24.04", "cc": "clang-17", "cxx": "clang++-17", "packages": "clang-17", "boost": "1.91.0", "python": "3.14", "standard": 17}
-          - {"id": "ubuntu-2404-clang-19-boost91-py314-cxx17", "os": "ubuntu-24.04", "cc": "clang-19", "cxx": "clang++-19", "packages": "clang-19", "boost": "1.91.0", "python": "3.14", "standard": 17, "repository": "llvm"}
-          - {"id": "ubuntu-2404-clang-20-boost91-py314-cxx17", "os": "ubuntu-24.04", "cc": "clang-20", "cxx": "clang++-20", "packages": "clang-20", "boost": "1.91.0", "python": "3.14", "standard": 17, "repository": "llvm"}
-          - {"id": "ubuntu-2404-clang-21-boost91-py314-cxx17", "os": "ubuntu-24.04", "cc": "clang-21", "cxx": "clang++-21", "packages": "clang-21", "boost": "1.91.0", "python": "3.14", "standard": 17, "repository": "llvm"}
-          - {"id": "ubuntu-2404-clang-22-boost91-py314-cxx17", "os": "ubuntu-24.04", "cc": "clang-22", "cxx": "clang++-22", "packages": "clang-22", "boost": "1.91.0", "python": "3.14", "standard": 17, "repository": "llvm"}
-          - {"id": "ubuntu-2404-gcc-14-boost76-py314-cxx17", "os": "ubuntu-24.04", "cc": "gcc-14", "cxx": "g++-14", "packages": "gcc-14 g++-14", "boost": "1.76.0", "python": "3.14", "standard": 17}
-          - {"id": "ubuntu-2404-gcc-14-boost81-py314-cxx17", "os": "ubuntu-24.04", "cc": "gcc-14", "cxx": "g++-14", "packages": "gcc-14 g++-14", "boost": "1.81.0", "python": "3.14", "standard": 17}
-          - {"id": "ubuntu-2404-gcc-14-boost86-py314-cxx17", "os": "ubuntu-24.04", "cc": "gcc-14", "cxx": "g++-14", "packages": "gcc-14 g++-14", "boost": "1.86.0", "python": "3.14", "standard": 17}
-          - {"id": "ubuntu-2404-gcc-14-boost87-py314-cxx17", "os": "ubuntu-24.04", "cc": "gcc-14", "cxx": "g++-14", "packages": "gcc-14 g++-14", "boost": "1.87.0", "python": "3.14", "standard": 17}
-          - {"id": "ubuntu-2404-gcc-14-boost88-py314-cxx17", "os": "ubuntu-24.04", "cc": "gcc-14", "cxx": "g++-14", "packages": "gcc-14 g++-14", "boost": "1.88.0", "python": "3.14", "standard": 17}
-          - {"id": "ubuntu-2404-gcc-14-boost89-py314-cxx17", "os": "ubuntu-24.04", "cc": "gcc-14", "cxx": "g++-14", "packages": "gcc-14 g++-14", "boost": "1.89.0", "python": "3.14", "standard": 17}
-          - {"id": "ubuntu-2404-gcc-14-boost90-py314-cxx17", "os": "ubuntu-24.04", "cc": "gcc-14", "cxx": "g++-14", "packages": "gcc-14 g++-14", "boost": "1.90.0", "python": "3.14", "standard": 17}
-          - {"id": "ubuntu-2404-gcc-14-boost91-py311-cxx17", "os": "ubuntu-24.04", "cc": "gcc-14", "cxx": "g++-14", "packages": "gcc-14 g++-14", "boost": "1.91.0", "python": "3.11", "standard": 17}
-          - {"id": "ubuntu-2404-gcc-14-boost91-py312-cxx17", "os": "ubuntu-24.04", "cc": "gcc-14", "cxx": "g++-14", "packages": "gcc-14 g++-14", "boost": "1.91.0", "python": "3.12", "standard": 17}
-          - {"id": "ubuntu-2404-gcc-14-boost91-py313-cxx17", "os": "ubuntu-24.04", "cc": "gcc-14", "cxx": "g++-14", "packages": "gcc-14 g++-14", "boost": "1.91.0", "python": "3.13", "standard": 17}
-          - {"id": "ubuntu-2404-gcc-14-boost91-py314-cxx20", "os": "ubuntu-24.04", "cc": "gcc-14", "cxx": "g++-14", "packages": "gcc-14 g++-14", "boost": "1.91.0", "python": "3.14", "standard": 20, "extensive": true}
-          - {"id": "ubuntu-2404-gcc-14-boost91-py314-cxx23", "os": "ubuntu-24.04", "cc": "gcc-14", "cxx": "g++-14", "packages": "gcc-14 g++-14", "boost": "1.91.0", "python": "3.14", "standard": 23}
-          - {"id": "macos-14-clang-boost91-py314-cxx17", "os": "macos-14", "cc": "/usr/bin/clang", "cxx": "/usr/bin/clang++", "packages": "", "boost": "1.91.0", "python": "3.14", "standard": 17}
-          - {"id": "macos-15-clang-boost91-py314-cxx17", "os": "macos-15", "cc": "/usr/bin/clang", "cxx": "/usr/bin/clang++", "packages": "", "boost": "1.91.0", "python": "3.14", "standard": 17}
-          - {"id": "macos-15-intel-clang-boost91-py314-cxx17", "os": "macos-15-intel", "cc": "/usr/bin/clang", "cxx": "/usr/bin/clang++", "packages": "", "boost": "1.91.0", "python": "3.14", "standard": 17}
-          - {"id": "macos-26-clang-boost91-py314-cxx17", "os": "macos-26", "cc": "/usr/bin/clang", "cxx": "/usr/bin/clang++", "packages": "", "boost": "1.91.0", "python": "3.14", "standard": 17}
-          - {"id": "macos-15-gcc-13-boost91-py314-cxx17", "os": "macos-15", "cc": "gcc-13", "cxx": "g++-13", "packages": "gcc@13", "boost": "1.91.0", "python": "3.14", "standard": 17}
-          - {"id": "macos-15-gcc-14-boost91-py314-cxx17", "os": "macos-15", "cc": "gcc-14", "cxx": "g++-14", "packages": "gcc@14", "boost": "1.91.0", "python": "3.14", "standard": 17}
+      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
     env:
       # Keep the small macOS runners and memory-heavy jobs at two compilers.
       CMAKE_BUILD_PARALLEL_LEVEL: ${{ (startsWith(matrix.os, 'macos-') || matrix.extensive) && '2' || '4' }}
@@ -205,7 +219,10 @@ jobs:
       - name: Build SDK
         run: cmake --build _build/ci
       - name: Test SDK
-        run: ctest --test-dir _build/ci --output-on-failure --output-junit ctest.xml --no-tests=error
+        run: ctest --test-dir _build/ci -LE '^mpi$' --output-on-failure --output-junit ctest.xml --no-tests=error
+      - name: Require real native MPI coverage
+        if: matrix.mpi == 'ON'
+        run: ctest --test-dir _build/ci -L '^mpi$' --output-on-failure --output-junit mpi.xml --no-tests=error
       - name: Test bindings against the installed SDK
         env:
           ALPS_DIR: ${{ github.workspace }}/_build/ci/install/share/alps
@@ -219,7 +236,7 @@ jobs:
           python -m pip install --no-build-isolation --no-deps -e python/pyalps \
             --config-settings "build-dir=$PWD/_build/ci-python"
           python .github/scripts/run_with_timeout.py 900 \
-            python -m pytest tests/pyalps -q --junitxml=_build/ci/python.xml
+            python -m pytest tests/pyalps tests/cmake -q --junitxml=_build/ci/python.xml
       - name: Test installed XML tools after relocation
         if: matrix.extras
         env:
@@ -262,7 +279,7 @@ jobs:
           key: ${{ steps.compiler-cache.outputs.cache-primary-key }}
       - name: Summarize test results
         if: always()
-        run: python .github/scripts/junit_summary.py '_build/**/ctest.xml' _build/ci/cli.xml _build/ci/python.xml
+        run: python .github/scripts/junit_summary.py '_build/**/ctest.xml' '_build/**/test-work/**/gtest-rank*.xml' _build/ci/mpi.xml _build/ci/cli.xml _build/ci/python.xml
       - name: Retain test and configure evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
@@ -270,20 +287,69 @@ jobs:
           name: source-${{ matrix.id }}-reports
           path: |
             _build/**/ctest.xml
+            _build/ci/mpi.xml
             _build/ci/cli.xml
             _build/ci/python.xml
             _build/**/Testing/Temporary/**
+            _build/**/test-work/**/gtest-rank*.xml
+            _build/**/*.actual
             _build/**/CMakeFiles/CMakeConfigureLog.yaml
+
+  sanitizers:
+    name: Native address and undefined behavior sanitizers
+    if: needs.prepare.outputs.native == 'true'
+    needs: prepare
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      CC: clang-18
+      CXX: clang++-18
+      CMAKE_BUILD_PARALLEL_LEVEL: 2
+      ASAN_OPTIONS: detect_leaks=1:strict_string_checks=1
+      UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: '3.12'
+      - name: Install native prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-18 llvm-18 libboost-all-dev libhdf5-dev libblas-dev liblapack-dev
+          python -m pip install 'cmake>=3.27' ninja pytest numpy h5py
+      - name: Build instrumented components and tests
+        run: |
+          cmake -S . -B _build/sanitizers -G Ninja \
+            -DCMAKE_BUILD_TYPE=Debug -DALPS_BUILD_TESTING=ON \
+            -DALPS_BUILD_APPLICATIONS=OFF -DALPS_ENABLE_MPI=OFF \
+            -DALPS_ENABLE_SANITIZERS=ON
+          cmake --build _build/sanitizers
+      - name: Run instrumented native tests
+        run: ctest --test-dir _build/sanitizers --output-on-failure --output-junit ctest.xml --no-tests=error
+      - name: Summarize sanitizer tests
+        if: always()
+        run: python .github/scripts/junit_summary.py _build/sanitizers/ctest.xml
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: always()
+        with:
+          name: native-sanitizer-reports
+          path: |
+            _build/sanitizers/ctest.xml
+            _build/sanitizers/Testing/Temporary/**
+            _build/sanitizers/**/*.actual
+            _build/sanitizers/CMakeFiles/CMakeConfigureLog.yaml
 
   developer-setup:
     name: Contributor commands / ${{ matrix.os }}
+    if: needs.prepare.outputs.native == 'true'
     needs: prepare
     runs-on: ${{ matrix.os }}
     timeout-minutes: 120
     strategy:
       fail-fast: false
-      matrix:
-        os: [ubuntu-24.04, macos-15]
+      matrix: ${{ fromJSON(needs.prepare.outputs.developer_matrix) }}
     env:
       CMAKE_BUILD_PARALLEL_LEVEL: 2
       CMAKE_GENERATOR: Ninja
@@ -329,21 +395,28 @@ jobs:
             _build/default/ctest.xml
             _build/default/python.xml
             _build/default/Testing/Temporary/**
+            _build/default/**/test-work/**/gtest-rank*.xml
+            _build/default/**/*.actual
             _build/default/CMakeFiles/CMakeConfigureLog.yaml
 
   source-status:
     name: Source CI
     if: always()
-    needs: [prepare, build, developer-setup]
+    needs: [prepare, tutorials, build, developer-setup, sanitizers]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - name: Require successful validation and builds
+      - name: Require every selected source check
         env:
-          PREPARE_RESULT: ${{ needs.prepare.result }}
-          BUILD_RESULT: ${{ needs.build.result }}
-          DEVELOPER_RESULT: ${{ needs.developer-setup.result }}
+          RESULTS: ${{ toJSON(needs) }}
+          NATIVE: ${{ needs.prepare.outputs.native }}
         run: |
-          test "$PREPARE_RESULT" = success
-          test "$BUILD_RESULT" = success
-          test "$DEVELOPER_RESULT" = success
+          python - <<'PYCODE'
+          import json, os
+          jobs = json.loads(os.environ['RESULTS'])
+          for name in ('prepare', 'tutorials'):
+              assert jobs[name]['result'] == 'success', (name, jobs[name])
+          expected = 'success' if os.environ['NATIVE'] == 'true' else 'skipped'
+          for name in ('build', 'developer-setup', 'sanitizers'):
+              assert jobs[name]['result'] == expected, (name, jobs[name])
+          PYCODE

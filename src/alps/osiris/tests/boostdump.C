@@ -1,3 +1,5 @@
+#include <alps/testing/stream_fixture.hpp>
+#include <alps/testing/temporary_directory.hpp>
 /*****************************************************************************
 *
 * ALPS Project: Algorithms and Libraries for Physics Simulations
@@ -22,8 +24,11 @@
 #include <cstdlib>
 #include <fstream>
 
-int main()
-{
+TEST(OsirisSerialization, Boostdump) {
+    alps::testing::TemporaryDirectory directory;
+    alps::testing::StreamFixture transcript;
+    { // Flush serialization objects before checking the captured stream.
+
 #ifndef BOOST_NO_EXCEPTIONS
 try {
 #endif
@@ -41,15 +46,14 @@ try {
   std::string o11 = "test string";
 
   {
-    std::ofstream of("textdump.dump");
-	if (!of)
-		std::cerr << "Issue\n";
+    std::ofstream of(directory.path() / "textdump.dump");
+    ASSERT_TRUE(of.good());
 	boost::archive::text_oarchive oa(of);//of,boost::archive::no_codecvt);
     alps::archive_odump<boost::archive::text_oarchive> od(oa);
     od << o1 << o2 << o3 << o4 << o5 << o6 << o7 << o8 << o9 << o10 << o11;
   }
 
-  std::ifstream inf("textdump.dump");
+  std::ifstream inf(directory.path() / "textdump.dump");
   boost::archive::text_iarchive ia(inf);
   alps::archive_idump<boost::archive::text_iarchive> id(ia);
 
@@ -73,8 +77,9 @@ try {
 }
 catch (std::exception& exp) {
   std::cerr << exp.what() << std::endl;
-  std::abort();
+  FAIL() << "Unexpected exception in serialization contract";
 }
 #endif
-  return 0;
+    }
+  transcript.expect_output(ALPS_TEST_SOURCE_DIR "/boostdump.output");
 }

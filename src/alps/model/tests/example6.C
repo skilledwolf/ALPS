@@ -1,3 +1,4 @@
+#include <alps/testing/stream_fixture.hpp>
 /*****************************************************************************
 *
 * ALPS Project: Algorithms and Libraries for Physics Simulations
@@ -28,8 +29,10 @@ void write_set(const std::string& name, const alps::ModelLibrary& lib,
   std::cout << "States of basis " << name << "=" << alps::site_basis<short>(sitebasis);
 }
 
-int main()
-{
+TEST(ModelSerialization, Example6) {
+    alps::testing::StreamFixture transcript;
+    { // Flush serialization objects before checking the captured stream.
+
 #ifndef BOOST_NO_EXCEPTIONS
 try {
 #endif
@@ -48,12 +51,13 @@ try {
 }
 catch (std::exception& exc) {
   std::cerr << exc.what() << "\n";
-  return -1;
+  FAIL() << "Unexpected exception in serialization contract";
 }
 catch (...) {
   std::cerr << "Fatal Error: Unknown Exception!\n";
-  return -2;
+  FAIL() << "Unexpected exception in serialization contract";
 }
 #endif
-  return 0;
+    }
+  transcript.expect_output(ALPS_TEST_SOURCE_DIR "/example6.output");
 }

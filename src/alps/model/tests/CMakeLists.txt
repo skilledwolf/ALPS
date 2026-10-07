@@ -40,9 +40,5 @@ foreach(
   add_executable(model_${name} ${name}.C)
 
   target_link_libraries(model_${name} PRIVATE ALPS::alps)
-  alps_add_test(
-    model_${name}
-    INPUT ${name}
-    OUTPUT ${name})
-  set_property(TEST model_${name} PROPERTY LABELS model)
+  alps_add_gtest(model_${name} COMPONENT model LABELS compatibility)
 endforeach()

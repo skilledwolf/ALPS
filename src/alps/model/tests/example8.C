@@ -1,3 +1,4 @@
+#include <alps/testing/stream_fixture.hpp>
 /*****************************************************************************
 *
 * ALPS Project: Algorithms and Libraries for Physics Simulations
@@ -23,8 +24,10 @@
 using namespace alps;
 #endif
 
-int main()
-{
+TEST(ModelSerialization, Example8) {
+    alps::testing::StreamFixture transcript(ALPS_TEST_SOURCE_DIR "/example8.input");
+    { // Flush serialization objects before checking the captured stream.
+
 #ifndef BOOST_NO_EXCEPTIONS
   try {
 #endif
@@ -47,12 +50,13 @@ int main()
 }
 catch (std::exception& exc) {
   std::cerr << exc.what() << "\n";
-  return -1;
+  FAIL() << "Unexpected exception in serialization contract";
 }
 catch (...) {
   std::cerr << "Fatal Error: Unknown Exception!\n";
-  return -2;
+  FAIL() << "Unexpected exception in serialization contract";
 }
 #endif
-  return 0;
+    }
+  transcript.expect_output(ALPS_TEST_SOURCE_DIR "/example8.output");
 }

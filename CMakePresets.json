@@ -33,6 +33,42 @@
         "ALPS_BUILD_TESTING": "OFF"
       },
       "inherits": "default"
+    },
+    {
+      "name": "dev",
+      "inherits": "default",
+      "cacheVariables": {
+        "ALPS_BUILD_APPLICATIONS": "OFF",
+        "ALPS_BUILD_TESTING": "ON"
+      }
+    },
+    {
+      "name": "mpi",
+      "inherits": "default",
+      "cacheVariables": {
+        "ALPS_BUILD_APPLICATIONS": "OFF",
+        "ALPS_BUILD_TESTING": "ON",
+        "ALPS_ENABLE_MPI": "ON"
+      }
+    },
+    {
+      "name": "extensive",
+      "inherits": "default",
+      "cacheVariables": {
+        "ALPS_BUILD_APPLICATIONS": "OFF",
+        "ALPS_BUILD_TESTING": "ON",
+        "ALPS_BUILD_EXTENSIVE_TESTS": "ON"
+      }
+    },
+    {
+      "name": "sanitizers",
+      "inherits": "default",
+      "cacheVariables": {
+        "ALPS_BUILD_APPLICATIONS": "OFF",
+        "ALPS_BUILD_TESTING": "ON",
+        "CMAKE_BUILD_TYPE": "Debug",
+        "ALPS_ENABLE_SANITIZERS": "ON"
+      }
     }
   ],
   "buildPresets": [
@@ -50,12 +86,68 @@
       "targets": [
         "install"
       ]
+    },
+    {
+      "name": "dev",
+      "configurePreset": "dev"
+    },
+    {
+      "name": "mpi",
+      "configurePreset": "mpi"
+    },
+    {
+      "name": "extensive",
+      "configurePreset": "extensive"
+    },
+    {
+      "name": "sanitizers",
+      "configurePreset": "sanitizers"
     }
   ],
   "testPresets": [
     {
       "name": "default",
       "configurePreset": "default",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "dev",
+      "configurePreset": "dev",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "mpi",
+      "configurePreset": "mpi",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "extensive",
+      "configurePreset": "extensive",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "sanitizers",
+      "configurePreset": "sanitizers",
       "output": {
         "outputOnFailure": true
       },

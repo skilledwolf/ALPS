@@ -22,6 +22,5 @@ foreach(name fixed_capacity_deque fixed_capacity_traits fixed_capacity_vector te
   add_executable(${name} ${name}.C)
 
   target_link_libraries(${name} PRIVATE ALPS::alps)
-  alps_add_test(${name})
-  set_property(TEST ${name} PROPERTY LABELS fixed_capacity)
+  alps_add_gtest(${name} COMPONENT fixed_capacity)
 endforeach()

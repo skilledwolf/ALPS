@@ -33,13 +33,11 @@ foreach(
   add_executable(${name} ${name}.C)
 
   target_link_libraries(${name} PRIVATE ALPS::osiris)
-  alps_add_test(${name})
-  set_property(TEST ${name} PROPERTY LABELS osiris)
+  alps_add_gtest(${name} COMPONENT osiris LABELS compatibility)
 endforeach()
 
 target_link_libraries(os PRIVATE ALPS::utilities)
 
 add_executable(osiris_comm_contract comm_contract.cpp)
 target_link_libraries(osiris_comm_contract PRIVATE ALPS::osiris)
-alps_add_test(osiris_comm_contract)
-set_property(TEST osiris_comm_contract PROPERTY LABELS osiris)
+alps_add_gtest(osiris_comm_contract COMPONENT osiris LABELS compatibility)
