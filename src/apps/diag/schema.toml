@@ -1,15 +1,7 @@
 # Copyright (C) 2026 ALPS Collaboration. SPDX-License-Identifier: MIT
-schema_version = 1
-[parameters.LATTICE]
-type = "string"
-[parameters.GRAPH]
-type = "string"
-[parameters.MODEL]
-type = "string"
-required = true
-# Quantum numbers whose sectors are diagonalized separately, e.g. "N,Sz".
-[parameters.CONSERVED_QUANTUMNUMBERS]
-type = "string"
+# Diagonalization is deterministic and runs to completion, so it has no
+# execution settings. Each conserved quantum-number sector is diagonalized
+# separately.
 # A single momentum sector, e.g. "0" or "3.14159 0"; by default all momenta.
 [parameters.TOTAL_MOMENTUM]
 type = "string"
@@ -25,12 +17,3 @@ default = false
 [parameters.MEASURE_ENERGY]
 type = "bool"
 default = true
-[input.lattice_library]
-type = "path"
-[input.model_library]
-type = "path"
-[output.results]
-type = "path"
-required = true
-# Diagonalization is deterministic and runs to completion.
-[execution]

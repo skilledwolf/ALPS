@@ -17,7 +17,7 @@
 #   FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 #   DEALINGS IN THE SOFTWARE.
 
-alps_diag_application(fulldiag)
+alps_lattice_model_application(fulldiag SCHEMAS ../schema.toml)
 add_executable(fulldiag_evaluate fulldiag_evaluate.C)
 target_link_libraries(fulldiag_evaluate PRIVATE ALPS::alps)
 

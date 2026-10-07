@@ -18,5 +18,5 @@
 
 int main(int argc, char** argv)
 {
-  return diag::main<SparseDiagMatrix>(argc, argv, "sparsediag", diag_schema);
+  return lattice_model::main<diag::application<SparseDiagMatrix>>(argc, argv, "sparsediag", run_schema);
 }

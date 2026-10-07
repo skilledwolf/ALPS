@@ -19,5 +19,5 @@
 
 int main(int argc, char** argv)
 {
-  return diag::main<FullDiagMatrix>(argc, argv, "fulldiag", diag_schema);
+  return lattice_model::main<diag::application<FullDiagMatrix>>(argc, argv, "fulldiag", run_schema);
 }

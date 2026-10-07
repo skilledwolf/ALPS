@@ -17,4 +17,4 @@
 #   FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 #   DEALINGS IN THE SOFTWARE.
 
-alps_diag_application(sparsediag)
+alps_lattice_model_application(sparsediag SCHEMAS ../schema.toml schema.toml)

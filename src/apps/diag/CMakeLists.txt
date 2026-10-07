@@ -17,27 +17,5 @@
 #   FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 #   DEALINGS IN THE SOFTWARE.
 
-function(alps_diag_application target)
-  set(schemas "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/schema.toml")
-  if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/schema.toml")
-    list(APPEND schemas "${CMAKE_CURRENT_SOURCE_DIR}/schema.toml")
-  endif()
-  set(DIAG_SCHEMA "application = \"${target}\"\n")
-  foreach(schema IN LISTS schemas)
-    file(READ "${schema}" text)
-    string(APPEND DIAG_SCHEMA "${text}")
-  endforeach()
-  set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${schemas})
-  configure_file("${CMAKE_CURRENT_FUNCTION_LIST_DIR}/schema.hpp.in" schema.hpp @ONLY)
-  file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/${target}.toml" "${DIAG_SCHEMA}")
-
-  add_executable(${target} ${target}.C)
-  target_include_directories(${target} PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
-  target_link_libraries(${target} PRIVATE ALPS::alps ALPS::run_config)
-  alps_install_applications(${target})
-  install(FILES "${CMAKE_CURRENT_BINARY_DIR}/${target}.toml"
-    DESTINATION ${CMAKE_INSTALL_DATADIR}/alps/schemas COMPONENT applications)
-endfunction()
-
 add_subdirectory(sparsediag)
 add_subdirectory(fulldiag)

@@ -61,6 +61,15 @@ public:
   typedef typename super_type::operator_matrix_type operator_matrix_type;
   
   explicit FullDiagMatrix (alps::Parameters const& p) : super_type(p) {}
+  static void print_copyright(std::ostream& out)
+  {
+    out << "ALPS full diagonalization application version 1.1\n"
+        << "  available from https://alps.comp-phys.org/\n"
+        << "  copyright (c) 2003-2007 by Matthias Troyer <troyer@comp-phys.org>\n"
+        << "                          and Andreas Honecker <ahoneck@uni-goettingen.de>\n"
+        << " for details see the publication:\n"
+        << "  A.F. Albuquerque et al., J. of Magn. and Magn. Materials 310, 1187 (2007).\n\n";
+  }
   void print_eigenvectors(std::ostream& os) const;
 private:
   void do_subspace();
