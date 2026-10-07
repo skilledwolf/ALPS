@@ -338,6 +338,7 @@ Numerical persistence now requires an explicit adapter: include `<alps/hdf5/matr
 
 - Correct the Ising tutorials' Metropolis sign to match their ferromagnetic energy, accepting flips with probability `min(1, exp(-beta * delta_energy))`.
 - Print real parameter values with the fewest digits that read back exactly, so TOML run-file couplings reach the lattice and model engines unrounded instead of at six significant digits.
+- Regroup every level in `pyalps.groupSets` for nested input; grouping already grouped data returned it unchanged, which broke the next-nearest-neighbor chain tutorial's critical-point analysis.
 - Reclaim HDF5 variable-length string buffers and vector-attribute parent handles on conversion failure, preserving the conversion exception and partial-selection memory extents.
 - Consolidate HDF5 writes with validation before replacement: reject malformed ranks, out-of-bounds or overflowing extents, and null buffers for nonempty transfers. Correct scalar/array attribute replacement and root attributes; restore serializer contexts when user hooks throw.
 - Reject programmatic MaxEnt and CT-QMC input/output aliases after resolving paths against the preparation directory.

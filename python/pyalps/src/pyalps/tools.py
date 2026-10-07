@@ -734,7 +734,8 @@ def groupSets(groups, for_each = []):
         hgroups[idx] = list(for_each_sets.values())
 
     if dd > 1:
-        return groups
+        # flatten copies the top level, so the regrouped levels are in its data.
+        return hgroups.data()
     else:
         return hgroups[0]
 

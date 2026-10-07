@@ -10,7 +10,9 @@
 # SPDX-License-Identifier: MIT
 # 
 # ****************************************************************************
+from pyalps.dataset import DataSet
 from pyalps.hlist import HList
+from pyalps.tools import groupSets
 
 
 def test_hlist():
@@ -54,6 +56,20 @@ def test_hlist():
     print(hl[4])
     assert hl[4] == 13
     # 13
+
+
+
+def test_group_sets_regroups_each_level():
+    sets = []
+    for a in (1, 2):
+        for b in (1, 2):
+            sets.append(DataSet())
+            sets[-1].props.update(a=a, b=b)
+    by_a = groupSets(sets, ['a'])
+    assert [[s.props['a'] for s in group] for group in by_a] == [[1, 1], [2, 2]]
+    nested = groupSets(by_a, ['b'])
+    assert [[[(s.props['a'], s.props['b']) for s in group] for group in outer] for outer in nested] == \
+        [[[(1, 1)], [(1, 2)]], [[(2, 1)], [(2, 2)]]]
 
 
 if __name__ == '__main__':
