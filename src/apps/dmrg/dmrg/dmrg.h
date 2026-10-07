@@ -3,6 +3,7 @@
 * ALPS Project Applications
 *
 * Copyright (C) 1994-2006 by Matthias Troyer <troyer@comp-phys.org>
+* Modifications (C) 2026 ALPS Collaboration
 *
 * ALPS Project: https://alps.comp-phys.org/
 * SPDX-License-Identifier: MIT
@@ -18,14 +19,12 @@
 
 #include <alps/model.h>
 #include <alps/lattice.h>
-#include <alps/scheduler/task.h>
 #include <alps/scheduler/measurement_operators.h>
 #include <alps/numeric/real.hpp>
 #include <alps/utility/os.hpp>
 
 #include <boost/tokenizer.hpp>
 #include <boost/algorithm/string/replace.hpp>
-#include <boost/archive/tmpdir.hpp>
 #include <boost/foreach.hpp>
 
 
@@ -55,31 +54,38 @@ inline void print_dmrg_copyright(std::ostream& os)
 
 #include <alps/hdf5.hpp>
 
+// The lattice, model and measurement helpers are constructed from the
+// parameters, so they come first.
+struct DMRGParameters
+{
+  explicit DMRGParameters(alps::Parameters const& p) : parms(p) {}
+  alps::Parameters parms;
+};
+
 template<class value_type>
 class DMRGTask 
- : public alps::scheduler::Task
+ : private DMRGParameters
  , public alps::graph_helper<>
  , public alps::model_helper<>
  , protected alps::EigenvectorMeasurements<value_type >
 {
 public:  
   typedef alps::half_integer<short> half_integer_type;
-  DMRGTask<value_type>(const alps::ProcessList& , const boost::filesystem::path& );
-  DMRGTask<value_type>(const alps::ProcessList& w, const alps::Parameters& p);
-  void dostep();
-  void write_xml_body(alps::oxstream&, const boost::filesystem::path&,bool) const;
+  // DMTK keeps its block matrices in files in temporary_directory.
+  DMRGTask(alps::Parameters const& p, std::string const& temporary_directory);
 
-  static void print_copyright(std::ostream& os = std::cout) 
-  {
-    print_dmrg_copyright(os);
-  }
-
+  // Sweep, then measure each target state.
+  void run();
+  // Write the energies, eigenstate measurements and iteration history.
   void save(alps::hdf5::archive &) const;
+
+  alps::Parameters const& get_parameters() const { return parms; }
 
   // iteration measurements
   std::map<std::string,std::vector<double> > iteration_measurements;
 
 private:
+  using DMRGParameters::parms;
 
   alps::SiteOperator make_site_term(std::string x)
   {
@@ -118,12 +124,7 @@ private:
   int maxstates;
   double error;
   double lanczos_tol;
-
-  // For resuming a previous run
-  int start_sweep;
-  int start_dir;
-  int start_iter;
-
+  std::string temporary_directory;
 };
 
 
@@ -144,21 +145,12 @@ handler(dmtk::System<value_type>& S, size_t signal_id, void *data)
 }
 
 template<class value_type>
-DMRGTask<value_type>::DMRGTask(const alps::ProcessList& w,const boost::filesystem::path& fn)
-  : alps::scheduler::Task(w,fn)
+DMRGTask<value_type>::DMRGTask(alps::Parameters const& p, std::string const& temporary_directory)
+  : DMRGParameters(p)
   , alps::graph_helper<>(parms) 
   , alps::model_helper<>(*this,parms)
   , alps::EigenvectorMeasurements<value_type >(*this)
-{
-  init();
-}
-
-template<class value_type>
-DMRGTask<value_type>::DMRGTask(const alps::ProcessList& w,const alps::Parameters& p)
-  : alps::scheduler::Task(w,p) 
-  , alps::graph_helper<>(parms) 
-  , alps::model_helper<>(*this,parms)
-  , alps::EigenvectorMeasurements<value_type >(*this)
+  , temporary_directory(temporary_directory)
 {
   init();
 }
@@ -167,12 +159,6 @@ DMRGTask<value_type>::DMRGTask(const alps::ProcessList& w,const alps::Parameters
 template<class value_type>
 void DMRGTask<value_type>::init()
 {
-  if (parms.defined("TEMP_DIRECTORY")) {
-    std::string temp_dir = parms["TEMP_DIRECTORY"];
-    dmtk::tmp_files.set_temp_dir(temp_dir.c_str());
-  } else {
-    dmtk::tmp_files.set_temp_dir(alps::temp_directory_path().string().c_str());
-  }
 
   num_eigenvalues = this->parms.value_or_default("NUMBER_EIGENVALUES",1);
    
@@ -182,12 +168,6 @@ void DMRGTask<value_type>::init()
   dmtk::QN::init();
   // read number of sweeps
   num_sweeps = parms.value_or_default("SWEEPS",4);
-  start_sweep = parms.value_or_default("START_SWEEP",0);
-  start_dir = parms.value_or_default("START_DIR",0);
-  if(start_dir != 0 && start_dir != 1){
-    boost::throw_exception(std::runtime_error("START_DIR can assume the values 0 (left-to-right) or 1 (right-to-left)"));
-  }
-  start_iter = parms.value_or_default("START_ITER",1);
   verbose = parms.value_or_default("VERBOSE",0);
 
   // read number of states
@@ -264,11 +244,9 @@ std::string simplify_name(const SiteOp &op)
 }
 
 template<class value_type>
-void DMRGTask<value_type>::dostep() 
+void DMRGTask<value_type>::run() 
 {
-  if (finished()) 
-    return;
-  
+  dmtk::tmp_files.set_temp_dir(temporary_directory.c_str());
   dmtk::Lattice l(num_sites(),dmtk::OBC);
   hami = dmtk::Hami<value_type >(l);
   site_block.resize(alps::maximum_vertex_type(graph())+1);
@@ -474,11 +452,7 @@ void DMRGTask<value_type>::dostep()
       nstates(j,i) = num_states[i*2+j];
     }
   S.start(num_sweeps, nstates); 
-  if(start_sweep != 0) {
-    S.resume(start_sweep, start_dir, start_iter);
-  } else {
-    S.run(nwarmup);
-  }
+  S.run(nwarmup);
   if(S.store_products()) S.set_full_sweep(true);
   S.corr += meas_terms;
   S.final_sweep(num_states[num_states.size()-1], dmtk::RIGHT2LEFT, 1, true); 
@@ -493,7 +467,6 @@ void DMRGTask<value_type>::dostep()
     this->average_values["Energy"].push_back(S.energy[i]);
   }
   this->average_values["Truncation error"].push_back(S.truncation_error());
-  finish();
 }
 
 
@@ -538,12 +511,10 @@ DMRGTask<value_type>::save_results()
     std::cerr << "Did not get right number of measurements\n";
 }
     
-#ifdef ALPS_HAVE_HDF5
 template<class value_type>
 void DMRGTask<value_type>::save(alps::hdf5::archive & ar) const
 {
   using alps::numeric::real;
-  alps::scheduler::Task::save(ar);
   typename std::map<std::string,std::vector<value_type> >::const_iterator it = this->average_values.find("Energy");
   if (it != this->average_values.end()) {
     std::vector<double> energies = real(it->second);
@@ -560,21 +531,6 @@ void DMRGTask<value_type>::save(alps::hdf5::archive & ar) const
   typedef typename std::map<std::string,std::vector<double> >::const_iterator IT;
   for (IT it=iteration_measurements.begin(); it != iteration_measurements.end();++it)
       ar["simulation/results/Iteration "+alps::hdf5_name_encode(it->first)+"/mean/value"] << it->second;
-}
-#endif
-
-template<class value_type>
-void DMRGTask<value_type>::write_xml_body(alps::oxstream& out, const boost::filesystem::path& p, bool writeallxml) const
-{
-  if (writeallxml) {
-    out << alps::start_tag("EIGENSTATES") << alps::attribute("number",num_eigenvalues);
-    for (int j=0;j<num_eigenvalues;++j) {
-      out << alps::start_tag("EIGENSTATE") << alps::attribute("number",j);
-      this->write_xml_one_vector(out,p,j);
-      out << alps::end_tag("EIGENSTATE");   
-    }
-    out << alps::end_tag("EIGENSTATES");
-  }
 }
 
 

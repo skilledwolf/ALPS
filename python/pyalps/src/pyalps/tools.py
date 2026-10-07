@@ -103,56 +103,6 @@ def executeCommandLogged(cmdline,logfile):
     log(cmd)
     return subprocess.call(cmd, shell=True, stdout=open(logfile, 'w'), stderr=subprocess.STDOUT)
 
-# These programs read TOML run files; pyalps.run_io.execute validates and
-# launches them. runApplication keeps the scheduler XML command line.
-_RUN_FILE_APPLICATIONS = frozenset((
-    "spinmc", "simplemc", "loop", "worm", "dirloop_sse", "qwl", "sparsediag", "fulldiag",
-    "dmft", "hybridization", "interaction", "hirschfye", "maxent"))
-
-
-def runApplication(appname, parmfiles, T=None, Tmin=None, Tmax=None, writexml=False, MPI=None, mpirun='mpirun'):
-    """ run the XML scheduler application dmrg
-
-        appname: the name of the application
-        parmfiles: the name of the main XML input file, or a list of them
-        writexml: also write results to the XML files in addition to the HDF5 files
-        T: time limit in seconds
-        Tmin, Tmax: minimum and maximum time in seconds between checks whether a simulation is finished
-        MPI: number of MPI processes; MPI is not used if this is None
-        mpirun: the MPI launcher, by default 'mpirun'
-
-        Applications that read TOML run files are run with pyalps.run_io.execute.
-    """
-    if isinstance(parmfiles, (str, os.PathLike)):
-      parmfiles = [parmfiles]
-    parmfiles = [os.fspath(parmfile) for parmfile in parmfiles]
-    if (os.path.basename(appname) in _RUN_FILE_APPLICATIONS
-            or any(parmfile.lower().endswith('.toml') for parmfile in parmfiles)):
-      raise ValueError(f"{appname} reads TOML run files; use pyalps.run_io.execute({appname!r}, run_files)")
-    check_existence(appname)
-
-    for parmfile in parmfiles:
-      cmdline = []
-      if MPI is not None:
-          cmdline += [mpirun,'-np',str(MPI)]
-      cmdline += [appname]
-      if MPI is not None:
-          cmdline += ['--mpi','--Nmax','1']
-      cmdline += [parmfile]
-      if T:
-        cmdline += ['-T',str(T)]
-      if Tmin:
-        cmdline += ['--Tmin',str(Tmin)]
-      if Tmax:
-        cmdline += ['--Tmax',str(Tmax)]
-      if writexml:
-        cmdline += ['--write-xml']
-      if parmfile.find('.xml') != -1:
-        return (executeCommand(cmdline),parmfile.replace('.in.xml','.out.xml'))  # no iteration for xml i/o
-      if parmfile.find('.h5') != -1:
-        executeCommand(cmdline);
-
-
 def _load_plots(infiles):
     """ load the XML plots <prefix>.plot.*.xml written for each result file """
     datasets = []

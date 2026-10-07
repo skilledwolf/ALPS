@@ -17,7 +17,5 @@
 #   FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 #   DEALINGS IN THE SOFTWARE.
 
-add_executable(dmrg dmrg.C factory.C)
+alps_lattice_model_application(dmrg SCHEMAS schema.toml)
 target_include_directories(dmrg PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
-target_link_libraries(dmrg PRIVATE ALPS::alps)
-alps_install_applications(dmrg)

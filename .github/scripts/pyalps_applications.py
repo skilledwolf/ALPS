@@ -58,19 +58,13 @@ cases = {
         "NUMBER_EIGENVALUES": 1,
     },
 }
-if app != "dmrg":
-    from pyalps.run_io import execute, write_run_files
-    parameters = {key: value for key, value in cases[app].items() if key != "SEED"}
-    # Exact diagonalization is deterministic and has no execution settings.
-    execution = {} if app in ("sparsediag", "fulldiag") else {"seed": 42, "time_limit": 45.0}
-    manifest = write_run_files("test", [{"parameters": parameters, "execution": execution,
-        "output": {"results": "test.task1.out.h5"}}])
-    files = execute(app, manifest)
-else:
-    input_file = pyalps.writeInputFiles("test", [cases[app]])
-    status = pyalps.runApplication(app, input_file, Tmin=1, T=45, writexml=True)
-    assert status[0] == 0, (app, status)
-    files = pyalps.getResultFiles(prefix="test")
+from pyalps.run_io import execute, write_run_files
+parameters = {key: value for key, value in cases[app].items() if key != "SEED"}
+# Diagonalization and DMRG are deterministic and run to completion.
+execution = {} if app in ("sparsediag", "fulldiag", "dmrg") else {"seed": 42, "time_limit": 45.0}
+manifest = write_run_files("test", [{"parameters": parameters, "execution": execution,
+    "output": {"results": "test.task1.out.h5"}}])
+files = execute(app, manifest)
 assert files
 if app in ("loop", "spinmc", "dirloop_sse"):
     data = pyalps.loadMeasurements(files, ["Energy"])

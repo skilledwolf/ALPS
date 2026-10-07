@@ -306,23 +306,6 @@ def test_each_runs_schema_protects_cross_run_sidecar_inputs(tmp_path, commands, 
     assert scientific.read_bytes() == b"original measurements"
 
 
-def test_existing_scheduler_xml_path_is_preserved(monkeypatch):
-    recorded = []
-    monkeypatch.setattr(tools, "check_existence", lambda _: None)
-    monkeypatch.setattr(tools, "executeCommand", lambda args: recorded.append(args) or 0)
-    assert tools.runApplication("dmrg", "dmrg.in.xml", MPI=2, T=10, Tmax=30) == (0, "dmrg.out.xml")
-    assert recorded == [["mpirun", "-np", "2", "dmrg", "--mpi", "--Nmax", "1", "dmrg.in.xml",
-                         "-T", "10", "--Tmax", "30"]]
-
-
-@pytest.mark.parametrize("application, run", [("loop", "parm.in.xml"), ("/opt/alps/bin/spinmc", "parm.in.xml"),
-                                              ("custom", "run.toml")])
-def test_scheduler_launcher_refuses_toml_run_applications(monkeypatch, application, run):
-    monkeypatch.setattr(tools, "executeCommand", lambda args: pytest.fail("must not launch"))
-    with pytest.raises(ValueError, match="use pyalps.run_io.execute"):
-        tools.runApplication(application, run)
-
-
 def test_native_cthyb_launcher_roundtrip_when_cli_available(tmp_path, monkeypatch):
     executable = Path(alps_program("hybridization"))
     from pyalps import cthyb

@@ -1,0 +1,51 @@
+# Copyright (C) 2026 ALPS Collaboration. SPDX-License-Identifier: MIT
+# Directory for the block matrices DMTK stores during the sweeps; by default
+# the system temporary directory.
+[execution.temporary_directory]
+type = "path"
+[parameters.COMPLEX]
+type = "bool"
+default = false
+# Finite-size sweeps, each a left-to-right and a right-to-left half sweep.
+[parameters.SWEEPS]
+type = "int64"
+default = 4
+min = 1
+max = 2147483647
+# Target states; the lowest NUMBER_EIGENVALUES states in the conserved sector.
+[parameters.NUMBER_EIGENVALUES]
+type = "int64"
+default = 1
+min = 1
+max = 2147483647
+# States kept: STATES gives 2*SWEEPS values, one per half sweep; MAXSTATES
+# grows the basis in steps of MAXSTATES/(2*SWEEPS); NUMSTATES keeps a fixed
+# number throughout.
+[parameters.STATES]
+type = "int64[]"
+[parameters.MAXSTATES]
+type = "int64"
+min = 1
+max = 2147483647
+[parameters.NUMSTATES]
+type = "int64"
+min = 1
+max = 2147483647
+# States kept in the infinite-size warmup.
+[parameters.NUM_WARMUP_STATES]
+type = "int64"
+default = 20
+min = 1
+max = 2147483647
+# Truncation error that sets the states kept, bounded by MAXSTATES or NUMSTATES.
+[parameters.TRUNCATION_ERROR]
+type = "float64"
+min = 0.0
+[parameters.LANCZOS_TOLERANCE]
+type = "float64"
+min = 0.0
+[parameters.VERBOSE]
+type = "int64"
+default = 0
+min = 0
+max = 2147483647

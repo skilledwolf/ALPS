@@ -8,7 +8,7 @@ python -m pip install pyalps
 
 Matplotlib plotting helpers are included with `pyalps`. Install `pyalps[mpi]` for the mpi4py-backed `pyalps.mpi` compatibility layer.
 
-Wheels bundle simulation applications for `pyalps.runApplication`, but do not add them to your shell's `PATH` or include auxiliary tools such as `parameter2xml`, `printgraph`, and `alps-xml`. Install the [C++ SDK and tools](../../CONTRIBUTING.md#build) for those command-line workflows. Tutorial files are available in the [source collection](../../tutorials/README.md), with an optional SDK installation component.
+Wheels bundle simulation applications for `pyalps.run_io.execute`, but do not add them to your shell's `PATH` or include auxiliary tools such as `parameter2xml`, `printgraph`, and `alps-xml`. Install the [C++ SDK and tools](../../CONTRIBUTING.md#build) for those command-line workflows. Tutorial files are available in the [source collection](../../tutorials/README.md), with an optional SDK installation component.
 
 The bindings are built as a standalone `scikit-build-core` project using nanobind. A source build requires GIL-enabled CPython 3.11 or newer, CMake 3.27 or newer, Ninja, a C++17 compiler, BLAS/LAPACK, HDF5, and an installed shared ALPS C++ SDK. The SDK's numeric version must match `ALPS_VERSION.txt`; CMake rejects a mismatch before compiling. Point `ALPS_DIR` at the SDK's `share/alps` package directory.
 
@@ -33,7 +33,7 @@ All binding sources and build helpers live under this package directory. The sou
 
 The [Ising extension example](examples/ising/README.md) demonstrates exporting a simulation through nanobind against the installed SDK and pyalps wheel.
 
-`PYALPS_BUNDLE_APPLICATIONS=ON` independently controls inclusion of the ALPS command-line programs (`spinmc`, `dmrg`, `sparsediag`, `loop`, `qwl`, ...) in `pyalps/bin`. Required shared libraries are included even when this option is `OFF`. The `runApplication` helpers first honor programs already on `PATH`, then search `ALPS_BIN_PATH` and the bundled directory. A bindings-only installation can therefore use separately installed programs through either environment variable. XML resources come from the package unless `ALPS_XML_PATH` is set; installations contain no fallback paths to the machine that built the wheel.
+`PYALPS_BUNDLE_APPLICATIONS=ON` independently controls inclusion of the ALPS command-line programs (`spinmc`, `dmrg`, `sparsediag`, `loop`, `qwl`, ...) in `pyalps/bin`. Required shared libraries are included even when this option is `OFF`. `pyalps.run_io.execute` first honors programs already on `PATH`, then search `ALPS_BIN_PATH` and the bundled directory. A bindings-only installation can therefore use separately installed programs through either environment variable. XML resources come from the package unless `ALPS_XML_PATH` is set; installations contain no fallback paths to the machine that built the wheel.
 
 ## Editable development
 
