@@ -218,6 +218,27 @@ jobs:
             "-DCMAKE_CXX_STANDARD=$CXX_STANDARD" "${extra_args[@]}"
       - name: Build SDK
         run: python .github/scripts/build_metrics.py run 'SDK build' cmake --build _build/ci
+      # Temporary: measure the per-launch startup cost of MPI-built programs.
+      - name: Measure MPI program startup
+        if: matrix.extras && matrix.mpi == 'ON'
+        run: |
+          ompi_info --version | head -1
+          ompi_info --all --parsable 2>/dev/null | grep -iE 'singleton|:ess:|btl_base_exclude' | cut -c1-160 || true
+          program=_build/ci/bin/hirschfye
+          measure() {
+            local start end
+            start=$(date +%s%N)
+            for i in 1 2 3 4 5 6 7 8 9 10; do env "$@" "$program" missing.toml >/dev/null 2>&1 || true; done
+            end=$(date +%s%N)
+            echo "$(( (end - start) / 10000000 )) ms per launch: $*"
+          }
+          measure
+          measure OMP_NUM_THREADS=1
+          measure OMPI_MCA_ess_singleton_isolated=1
+          measure OMPI_MCA_btl=self,vader
+          measure OMPI_MCA_ess_singleton_isolated=1 OMPI_MCA_btl=self,vader
+          measure OMPI_MCA_ess_singleton_isolated=1 OMPI_MCA_btl=self,vader OMPI_MCA_pml=ob1 OMPI_MCA_osc=^ucx
+          "$program" missing.toml || true
       - name: Test SDK
         env:
           # Leak checking of uninstrumented system dependencies is separate from
