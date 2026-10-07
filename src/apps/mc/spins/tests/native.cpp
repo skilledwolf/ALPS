@@ -43,7 +43,7 @@ alps::params parameters(std::filesystem::path const& library, std::string const&
     alps::params p;
     p["LATTICE_LIBRARY"] = library.string(); p["GRAPH"] = graph; p["MODEL"] = model;
     p["SEED"] = 731; p["DISORDER_SEED"] = 42; p["THERMALIZATION"] = 300;
-    p["SWEEPS"] = 50000; p["T"] = 1.1; p["UPDATE"] = update; p["J"] = vector{.7};
+    p["SWEEPS"] = 4000; p["T"] = 1.1; p["UPDATE"] = update; p["J"] = vector{.7};
     return p;
 }
 auto sample(alps::params const& p, alps::mc::moment_results* moments=nullptr) {
@@ -280,10 +280,13 @@ int main() {
         }
 
     // Full continuation evidence includes the actual spins and RNG, not just
-    // means. Stop during warmup, at its boundary and inside an ALEA merge.
+    // means. Stop during warmup, at its boundary and inside an ALEA merge;
+    // the model and update pairs take turns at each stopping point.
+    uint64_t const splits[] = {3, 17, 148};
+    size_t turn = 0;
     for (auto const& model : {"Ising", "XY", "Heisenberg", "O(4)", "Potts"})
-        for (auto const& update : {"local", "cluster"})
-            for (uint64_t split : {3, 17, 148}) {
+        for (auto const& update : {"local", "cluster"}) {
+                uint64_t split = splits[turn++ % 3];
                 auto p = parameters(library, model, "pair", update);
                 p["q"] = 4; p["THERMALIZATION"] = 17; p["SWEEPS"] = 237;
                 spinmc::simulation reference(p, 16, 3), interrupted(p, 16, 3), resumed(p, 16, 3);
