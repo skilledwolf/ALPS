@@ -124,6 +124,9 @@ struct accumulator_checkpoint {
         if (!data.count() && !data.data().isZero(0))
             throw std::runtime_error("nonzero empty ALEA accumulator");
         if constexpr (!mean_only<A>) {
+            // Compare whole matrices: complex_op moments have no abs() for
+            // isZero, and Eigen 3.3 array-scalar == breaks C++20 rewriting.
+            using moment = std::decay_t<decltype(data.data2())>;
             deserialize(s,"centered_moment",data.data2());
             deserialize(s,"count2",data.count2());
             deserialize(s,"batch_size",staged.current_.target());
@@ -135,7 +138,7 @@ struct accumulator_checkpoint {
                 || (!partial.count() && !partial.sum().isZero(0))
                 || !valid_weight_count(data.count(),data.count2())
                 || data.count2()>double(data.count())*data.count()
-                || (!data.count() && !(data.data2().array() == typename std::decay_t<decltype(data.data2())>::Scalar(0)).all()))
+                || (!data.count() && data.data2()!=moment::Zero(data.data2().rows(),data.data2().cols())))
                 throw std::runtime_error("invalid ALEA centered-moment checkpoint");
         }
         acc=std::move(staged);

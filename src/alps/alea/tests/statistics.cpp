@@ -609,6 +609,15 @@ void bad_moment_checkpoints(std::string const& filename) {
         rejects([&] { deserialize(codec,"state",acc); });
         require(acc.result()==original,"invalid partial-bin checkpoint changed accumulator");
     }
+    {
+        aa::var_acc<double> empty(2,3);
+        alps::hdf5::archive ar(filename,"w"); aa::hdf5_serializer codec(ar,"/");
+        serialize(codec,"state",empty);
+        deserialize(codec,"state",empty);
+        ar["/state/centered_moment"] << std::vector<double>{0.,1.};
+        rejects([&] { deserialize(codec,"state",acc); });
+        require(acc.result()==original,"nonzero empty centered moment changed accumulator");
+    }
     aa::autocorr_acc<double> a(2,3,3);
     for (int i=0;i<37;++i) a << sample<double>(i,2);
     auto previous=a.result();
