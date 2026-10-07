@@ -90,8 +90,9 @@ def test_bond_hamiltonian_and_component_moments(model, tmp_path, exchange):
             assert results['EXMC: Inverse Temperature'].count == 30000
 
 
-@pytest.mark.parametrize('mode,rng', [('temperature', 'mt19937'), ('ladder', 'lagged_fibonacci607'),
-                                      ('rate', 'mt19937'), ('population', 'mt19937'), ('no-exchange', 'mt19937')])
+@pytest.mark.parametrize('model,mode,rng', [
+    ('ising', 'temperature', 'mt19937'), ('heisenberg', 'ladder', 'lagged_fibonacci607'),
+    ('ising', 'rate', 'mt19937'), ('heisenberg', 'population', 'mt19937'), ('ising', 'no-exchange', 'mt19937')])
 def test_feedback_and_partial_batch_continuation(model, tmp_path, rng, mode):
     p = {} if mode == 'temperature' else dict(RANDOM_EXCHANGE=True, EXCHANGE_INTERVAL=3)
     if mode in ('rate', 'population'):
