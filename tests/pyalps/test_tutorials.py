@@ -113,7 +113,8 @@ VALIDATED, SIMULATED = set(), {}
 def run_key(app, document, values=True):
     sections = {key: value for key, value in document.items() if key != 'output'}
     if not values:
-        sections['parameters'] = sorted(sections['parameters'])
+        # Scan points differ in parameter values and seeds only.
+        sections = {key: sorted(value) for key, value in sections.items()}
     return app + repr(sorted(sections.items()))
 
 
@@ -127,15 +128,13 @@ def test_native_qmc_tutorial_end_to_end(source, tmp_path, monkeypatch):
     import matplotlib.pyplot as plt
     import pyalps
     from pyalps import run_io
-    original_execute = run_io.execute
     outputs = []
 
     def execute(app, job):
         executable = alps_program(app)
         _, runs = run_io.read_job_manifest(job)
         documents = {path: tomllib.loads(path.read_text()) for path in runs}
-        # Runs of a scan differ in parameter values only. Validation builds the
-        # lattice, so checking the first run per parameter set skips the large ones.
+        # Validation builds the lattice, so check one run of each parameter set.
         kinds = {}
         for path, document in documents.items():
             kinds.setdefault(run_key(app, document, values=False), path)
@@ -171,8 +170,12 @@ def test_native_qmc_tutorial_end_to_end(source, tmp_path, monkeypatch):
                 shutil.copyfile(SIMULATED[run_key(app, document)], target)
             else:
                 pending.append(path)
-        for path, result in zip(pending, original_execute(executable, pending) if pending else []):
-            SIMULATED[run_key(app, documents[path])] = result
+        if pending:
+            # The kinds were validated above; one process runs every new point.
+            ran = subprocess.run([executable, *map(str, pending)], capture_output=True, text=True, timeout=60)
+            assert ran.returncode == 0, ran.stdout + ran.stderr
+        for path in pending:
+            SIMULATED[run_key(app, documents[path])] = path.parent / documents[path]['output']['results']
         outputs.extend(files)
         return files
 
