@@ -8,9 +8,9 @@ import h5py
 import numpy as np
 import pytest
 from pyalps import tools
-from pyalps.run_io import execute, write_run_file
+from pyalps.run_io import write_run_file
 from test_native_mpi import compare
-from conftest import alps_program
+from conftest import alps_program, launch
 
 
 @pytest.fixture
@@ -36,10 +36,10 @@ def test_exact_restart_and_extension(executable, tmp_path, rng, window, zhou, co
     e = dict(rng=rng, chains=2)
     full = run_file(tmp_path, "full", parameters=p, execution=e)
     partial = run_file(tmp_path, "partial", parameters=p, execution=dict(e, max_sweeps=137))
-    execute(executable, [full, partial])
+    launch(executable, full, partial)
     resumed = run_file(tmp_path, "resumed", parameters=p, execution=e,
                        input=dict(checkpoint="partial.checkpoint.h5"))
-    execute(executable, resumed)
+    launch(executable, resumed)
     compare(tmp_path / "full.out.h5", tmp_path / "resumed.out.h5")
     compare(tmp_path / "full.checkpoint.h5", tmp_path / "resumed.checkpoint.h5")
     # Completed-target extension is shared by these modes; the shifted window
@@ -49,30 +49,30 @@ def test_exact_restart_and_extension(executable, tmp_path, rng, window, zhou, co
     longer = run_file(tmp_path, "longer", parameters=dict(p, SWEEPS=7000), execution=e)
     extended = run_file(tmp_path, "extended", parameters=dict(p, SWEEPS=7000), execution=e,
                         input=dict(checkpoint="full.checkpoint.h5"))
-    execute(executable, [longer, extended])
+    launch(executable, longer, extended)
     compare(tmp_path / "longer.out.h5", tmp_path / "extended.out.h5")
     compare(tmp_path / "longer.checkpoint.h5", tmp_path / "extended.checkpoint.h5")
 
 
 def test_restart_during_multicanonical_production(executable, tmp_path):
     rng = "lagged_fibonacci607"
-    execute(executable, run_file(tmp_path, "full", execution=dict(rng=rng)))
+    launch(executable, run_file(tmp_path, "full", execution=dict(rng=rng)))
     state = "simulation/realizations/0/clones/0/checkpoint/"
     with h5py.File(tmp_path / "full.checkpoint.h5") as ar:
         refinement = int(ar[state + "sweeps"][()] - ar[state + "production_sweeps"][()])
-    execute(executable, run_file(tmp_path, "partial", execution=dict(rng=rng, max_sweeps=refinement + 137)))
+    launch(executable, run_file(tmp_path, "partial", execution=dict(rng=rng, max_sweeps=refinement + 137)))
     with h5py.File(tmp_path / "partial.checkpoint.h5") as ar:
         assert ar[state + "doing_multicanonical"][()]
         assert ar[state + "production_sweeps"][()] == 137
         assert not ar[state + "all_done"][()]
-    execute(executable, run_file(tmp_path, "resumed", execution=dict(rng=rng),
+    launch(executable, run_file(tmp_path, "resumed", execution=dict(rng=rng),
                                 input=dict(checkpoint="partial.checkpoint.h5")))
     compare(tmp_path / "full.out.h5", tmp_path / "resumed.out.h5")
     compare(tmp_path / "full.checkpoint.h5", tmp_path / "resumed.checkpoint.h5")
 
 
 def test_bad_checkpoint_preserves_outputs(executable, tmp_path):
-    execute(executable, run_file(tmp_path, "partial", execution=dict(max_sweeps=13)))
+    launch(executable, run_file(tmp_path, "partial", execution=dict(max_sweeps=13)))
     checkpoint = tmp_path / "partial.checkpoint.h5"
     original = checkpoint.read_bytes()
     for fault in ['g/values', 'state', 'missing_measurement']:
@@ -99,7 +99,7 @@ def test_thermodynamics_matches_exact_diagonalization(executable, tmp_path, coup
     run = run_file(tmp_path, "physics", parameters=dict(J=coupling, SWEEPS=40000,
         NUMBER_OF_WANG_LANDAU_STEPS=8, CUTOFF=24, INCLUDE_COMBINATORICS_FACTORS=combinatorics),
         execution=dict(chains=4))
-    execute(executable, run)
+    launch(executable, run)
     evaluator = str(Path(executable).with_name("qwl_evaluate"))
     result_path = tmp_path / "physics results.analysis"
     shutil.copyfile(tmp_path / "physics.out.h5", result_path)
@@ -137,7 +137,7 @@ def test_validation_and_incomplete_evaluation(executable, tmp_path):
         result = subprocess.run([executable, "--validate", str(run)], capture_output=True, timeout=20)
         assert result.returncode != 0, parameters
         assert not (tmp_path / "invalid.out.h5").exists()
-    execute(executable, run_file(tmp_path, "partial", execution=dict(max_sweeps=1)))
+    launch(executable, run_file(tmp_path, "partial", execution=dict(max_sweeps=1)))
     result = subprocess.run([evaluator, str(tmp_path / "partial.out.h5")], capture_output=True, timeout=20)
     assert result.returncode != 0
     assert not list(tmp_path.glob("*.plot.*.xml"))
@@ -148,7 +148,7 @@ def test_histogram_completion_without_magnetic_measurements(executable, tmp_path
         LATTICE="triangular lattice", MODEL="spin", L=3, J=-1., local_S=.5,
         CUTOFF=16, NUMBER_OF_WANG_LANDAU_STEPS=3, MEASURE_MAGNETIC_PROPERTIES=False),
         execution=dict(seed=137), output=dict(results="automatic.h5"))
-    execute(executable, run)
+    launch(executable, run)
     with h5py.File(tmp_path / "automatic.h5") as ar:
         assert ar["simulation/realizations/0/clones/0/complete"][()]
         assert "Uniform Structure Factor Coefficients" not in ar["simulation/results"]

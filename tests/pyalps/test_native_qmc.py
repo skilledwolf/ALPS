@@ -64,18 +64,13 @@ def test_exact_continuation(executables, tmp_path, app, parameters, rng):
     compare(tmp_path / 'longer.h5', tmp_path / 'extended.h5')
 
 
-@pytest.mark.parametrize('app,fault', [('worm', 'chain'), ('worm', 'physical'), ('dirloop_sse', 'hamiltonian'),
-                                       ('dirloop_sse', 'measurements'), ('dirloop_sse', 'physical')])
-def test_failed_load_preserves_outputs(executables, tmp_path, app, fault):
+@pytest.mark.parametrize('app,faults', [('worm', ['chain', 'physical']),
+                                        ('dirloop_sse', ['hamiltonian', 'measurements', 'physical'])])
+def test_failed_load_preserves_outputs(executables, tmp_path, app, faults):
     exe = executables[app]
+    checkpoint = tmp_path / 'partial.checkpoint.h5'
     run(exe, tmp_path, 'partial', {}, budget=247, chains=2)
-    with h5py.File(tmp_path / 'partial.checkpoint.h5', 'a') as ar:
-        root = ar['simulation/realizations/0/clones/1']
-        if fault == 'measurements':
-            del root['measurements/Energy']
-        else:
-            path = fault if fault != 'physical' else ('spins' if app == 'dirloop_sse' else 'initial_state')
-            root['checkpoint/' + path][...] = 255
+    intact = checkpoint.read_bytes()
     config = write_run_file(tmp_path / 'bad.toml', parameters=dict(
         LATTICE='chain lattice', MODEL='spin', L=4, local_S=.5, J=1., T=1.,
         THERMALIZATION=100, SWEEPS=1000, SKIP=3, **({'INITIAL_CUTOFF':64} if app=='dirloop_sse' else {})),
@@ -83,9 +78,18 @@ def test_failed_load_preserves_outputs(executables, tmp_path, app, fault):
         output=dict(results='keep.h5', checkpoint='keep.checkpoint.h5'))
     for name in ('keep.h5', 'keep.checkpoint.h5'):
         (tmp_path / name).write_bytes(b'original')
-    before = {p.name:p.read_bytes() for p in tmp_path.iterdir()}
-    assert subprocess.run([exe, str(config)], capture_output=True, timeout=30).returncode != 0
-    assert before == {p.name:p.read_bytes() for p in tmp_path.iterdir()}
+    for fault in faults:
+        checkpoint.write_bytes(intact)
+        with h5py.File(checkpoint, 'a') as ar:
+            root = ar['simulation/realizations/0/clones/1']
+            if fault == 'measurements':
+                del root['measurements/Energy']
+            else:
+                path = fault if fault != 'physical' else ('spins' if app == 'dirloop_sse' else 'initial_state')
+                root['checkpoint/' + path][...] = 255
+        before = {p.name:p.read_bytes() for p in tmp_path.iterdir()}
+        assert subprocess.run([exe, str(config)], capture_output=True, timeout=30).returncode != 0, fault
+        assert before == {p.name:p.read_bytes() for p in tmp_path.iterdir()}, fault
 
 
 def test_chain_density_square_uses_measured_density(executables, tmp_path):

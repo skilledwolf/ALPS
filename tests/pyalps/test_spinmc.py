@@ -8,8 +8,8 @@ import pytest
 
 import pyalps
 from pyalps import alea, hdf5
-from pyalps.run_io import execute, write_run_file
-from conftest import alps_program
+from pyalps.run_io import write_run_file
+from conftest import alps_program, launch
 
 
 @pytest.fixture
@@ -49,10 +49,10 @@ def test_spinmc_restart_retains_every_native_result(executable, tmp_path, parame
                     execution={"rng": rng}, output={"checkpoint": "full-checkpoint.h5"})
     stopped = run_file(tmp_path, "stopped", parameters=parameters,
                        execution={"max_sweeps": 14, "rng": rng}, output={"checkpoint": "partial.h5"})
-    execute(executable, [full, stopped])
+    launch(executable, full, stopped)
     resumed = run_file(tmp_path, "resumed", parameters=parameters,
                        execution={"rng": rng}, input={"checkpoint": "partial.h5"})
-    execute(executable, resumed)
+    launch(executable, resumed)
     expected, actual = results(tmp_path / "full.h5"), results(tmp_path / "resumed.h5")
     assert expected.keys() == actual.keys()
     assert {"Specific Heat", "Binder Cumulant", "Magnetization^2 slope"} <= expected.keys()
@@ -74,7 +74,7 @@ def test_spinmc_restart_retains_every_native_result(executable, tmp_path, parame
 def test_spinmc_later_chain_failure_preserves_outputs(executable, tmp_path, broken_path):
     stopped = run_file(tmp_path, "stopped", execution={"max_sweeps": 14},
                        output={"checkpoint": "broken.h5"})
-    execute(executable, stopped)
+    launch(executable, stopped)
     with h5py.File(tmp_path / "broken.h5", "a") as archive:
         del archive["simulation/realizations/0/clones/1/" + broken_path]
     resumed = run_file(tmp_path, "resumed", input={"checkpoint": "broken.h5"},
@@ -91,7 +91,7 @@ def test_spinmc_resume_can_change_stopping_and_diagnostics(executable, tmp_path)
     full = run_file(tmp_path, "full")
     stopped = run_file(tmp_path, "stopped", execution={"max_sweeps": 14},
                        output={"checkpoint": "partial.h5"})
-    execute(executable, [full, stopped])
+    launch(executable, full, stopped)
     resumed = run_file(tmp_path, "resumed", input={"checkpoint": "partial.h5"},
                        execution={"error_variable": "Energy", "error_limit": 1e-30,
                                   "print_sweeps": 2})
@@ -105,7 +105,7 @@ def test_spinmc_resume_can_change_stopping_and_diagnostics(executable, tmp_path)
 
     stop_early = run_file(tmp_path, "early", input={"checkpoint": "partial.h5"},
                           execution={"error_variable": "Energy", "error_limit": 1e9})
-    execute(executable, stop_early)
+    launch(executable, stop_early)
     assert results(tmp_path / "early.h5")["Energy"].count < 74
 
 
@@ -124,7 +124,7 @@ def test_spinmc_pools_independent_unequal_partial_bins(executable, tmp_path):
     second = run_file(tmp_path, "second", parameters=parameters,
                       execution={"chains": 1, "seed": 2874, "disorder_seed": 2873,
                                  "max_sweeps": 13}, input=graph)
-    execute(executable, [joint, first, second])
+    launch(executable, joint, first, second)
     pooled, left, right = (results(tmp_path / (name + ".h5")) for name in ("joint", "first", "second"))
     assert pooled["Bond-type Energy"].mean.size > 1
     for name in ("Energy", "Energy^2", "Magnetization^2", "Bond-type Energy"):
@@ -140,11 +140,11 @@ def test_spinmc_extend_completed_run(executable, tmp_path):
     full = run_file(tmp_path, "full", parameters=parameters)
     short = run_file(tmp_path, "short", parameters={**parameters, "SWEEPS": 8},
                      output={"checkpoint": "continuation.h5"})
-    execute(executable, [full, short])
+    launch(executable, full, short)
     resumed = run_file(tmp_path, "resumed", parameters=parameters,
                        input={"checkpoint": "continuation.h5"},
                        output={"checkpoint": "extended.h5"})
-    execute(executable, resumed)
+    launch(executable, resumed)
     expected, actual = results(tmp_path / "full.h5"), results(tmp_path / "resumed.h5")
     assert expected.keys() == actual.keys()
     for name in expected:
@@ -164,10 +164,10 @@ def test_native_diagnostics_retain_chronology_and_exact_hierarchy(executable, tm
     full = run_file(tmp_path, "diagnostics", execution={"bins": 64})
     stopped = run_file(tmp_path, "stopped", execution={"bins": 64, "max_sweeps": 14},
                        output={"checkpoint": "partial.h5"})
-    execute(executable, [full, stopped])
+    launch(executable, full, stopped)
     resumed = run_file(tmp_path, "resumed", execution={"bins": 64},
                        input={"checkpoint": "partial.h5"})
-    execute(executable, resumed)
+    launch(executable, resumed)
     for chain in range(2):
         base = f"/simulation/realizations/0/clones/{chain}"
         with hdf5.archive(tmp_path / "diagnostics.h5") as archive:
@@ -205,7 +205,7 @@ def test_native_diagnostics_retain_chronology_and_exact_hierarchy(executable, tm
 ])
 def test_undefined_estimates_have_explicit_reasons(executable, tmp_path, parameters, unavailable):
     run = run_file(tmp_path, "undefined", parameters=parameters, execution={"chains": 1})
-    execute(executable, run)
+    launch(executable, run)
     with h5py.File(tmp_path / "undefined.h5") as archive:
         reasons = {pyalps.hdf5_name_decode(name): value.asstr()[()]
                    for name, value in archive["simulation/unavailable"].items()}

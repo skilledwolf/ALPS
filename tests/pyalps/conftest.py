@@ -64,6 +64,17 @@ def alps_program(name):
     return str(Path(found).resolve())
 
 
+def launch(executable, *runs):
+    """Run TOML run files in one application process.
+
+    pyalps.run_io.execute starts a schema query, a validation and the run for
+    each file. Its own tests cover that path; the others need only the run.
+    """
+    import subprocess
+    result = subprocess.run([str(executable), *map(str, runs)], capture_output=True, text=True, timeout=120)
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
 def tutorials_build():
     """Return ALPS_TUTORIALS_BUILD_DIR, which mirrors the tutorials/ layout."""
     value = os.environ.get("ALPS_TUTORIALS_BUILD_DIR")

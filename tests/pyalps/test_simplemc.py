@@ -9,7 +9,7 @@ import pytest
 import pyalps
 from pyalps import alea, hdf5
 from pyalps.run_io import execute, write_run_file
-from conftest import alps_program
+from conftest import alps_program, launch
 
 
 @pytest.fixture
@@ -42,9 +42,9 @@ def test_simplemc_restart_matches_complete_native_batches(executable, tmp_path, 
     full = run_file(tmp_path, "full", model, execution={"rng": rng}, output={"checkpoint": "full-checkpoint.h5"})
     stopped = run_file(tmp_path, "stopped", model, execution={"max_sweeps": 14, "rng": rng},
                        output={"checkpoint": "stopped-checkpoint.h5"})
-    execute(executable, [full, stopped])
+    launch(executable, full, stopped)
     resumed = run_file(tmp_path, "resumed", model, execution={"rng": rng}, input={"checkpoint": "stopped-checkpoint.h5"})
-    execute(executable, resumed)
+    launch(executable, resumed)
     expected, actual = read_results(tmp_path / "full.h5"), read_results(tmp_path / "resumed.h5")
     assert expected.keys() == actual.keys()
     assert "Specific Heat" in expected and "Binder Ratio of Magnetization" in expected
@@ -84,12 +84,12 @@ def test_simplemc_zero_and_interrupted_thermalization(executable, tmp_path, ther
     full = run_file(tmp_path, "full", parameters={"THERMALIZATION": thermalization})
     stopped = run_file(tmp_path, "stopped", parameters={"THERMALIZATION": thermalization},
                        execution={"max_sweeps": cut}, output={"checkpoint": "stopped-checkpoint.h5"})
-    execute(executable, [full, stopped])
+    launch(executable, full, stopped)
     with h5py.File(tmp_path / "stopped.h5") as archive:
         assert archive["simulation/realizations/0/clones/0/measurements"][()] == max(0, cut - thermalization)
     resumed = run_file(tmp_path, "resumed", parameters={"THERMALIZATION": thermalization},
                        input={"checkpoint": "stopped-checkpoint.h5"})
-    execute(executable, resumed)
+    launch(executable, resumed)
     for name, expected in read_results(tmp_path / "full.h5").items():
         actual = read_results(tmp_path / "resumed.h5")[name]
         np.testing.assert_array_equal(actual.batch_sums, expected.batch_sums)
@@ -99,12 +99,12 @@ def test_simplemc_zero_and_interrupted_thermalization(executable, tmp_path, ther
 def test_simplemc_time_limit_keeps_resumable_state(executable, tmp_path):
     stopped = run_file(tmp_path, "stopped", execution={"time_limit": 1e-12},
                        output={"checkpoint": "stopped-checkpoint.h5"})
-    execute(executable, stopped)
+    launch(executable, stopped)
     with h5py.File(tmp_path / "stopped.h5") as archive:
         assert archive["simulation/realizations/0/clones/0/completed_sweeps"][()] == 0
     full = run_file(tmp_path, "full")
     resumed = run_file(tmp_path, "resumed", input={"checkpoint": "stopped-checkpoint.h5"})
-    execute(executable, [full, resumed])
+    launch(executable, full, resumed)
     np.testing.assert_array_equal(read_results(tmp_path / "full.h5")["Energy"].batch_sums,
                                   read_results(tmp_path / "resumed.h5")["Energy"].batch_sums)
 
@@ -112,7 +112,7 @@ def test_simplemc_time_limit_keeps_resumable_state(executable, tmp_path):
 def test_simplemc_malformed_later_chain_preserves_output(executable, tmp_path):
     stopped = run_file(tmp_path, "stopped", execution={"max_sweeps": 14},
                        output={"checkpoint": "broken.h5"})
-    execute(executable, stopped)
+    launch(executable, stopped)
     with h5py.File(tmp_path / "broken.h5", "a") as archive:
         del archive["simulation/realizations/0/clones/1/measurements/Energy"]
     resumed = run_file(tmp_path, "resumed", input={"checkpoint": "broken.h5"})
@@ -139,7 +139,7 @@ def test_simplemc_custom_graph_bindings_couplings_and_vtk(executable, tmp_path):
         input={"lattice_library": "custom.xml"},
         output={"results": "custom.h5", "snapshot_prefix": "spins"},
         execution={"seed": 9, "chains": 1, "bins": 4, "snapshot_interval": 8})
-    execute(executable, file)
+    launch(executable, file)
     result = read_results(tmp_path / "custom.h5")["Energy"]
     assert result.count == 8 and abs(result.mean[0]) <= 1.2 + 1e-12
     text = (tmp_path / "spins.clone1.8.vtk").read_text()
@@ -151,11 +151,11 @@ def test_simplemc_extend_completed_run(executable, tmp_path):
     full = run_file(tmp_path, "full", parameters=parameters)
     short = run_file(tmp_path, "short", parameters={**parameters, "SWEEPS": 8},
                      output={"checkpoint": "continuation.h5"})
-    execute(executable, [full, short])
+    launch(executable, full, short)
     resumed = run_file(tmp_path, "resumed", parameters=parameters,
                        input={"checkpoint": "continuation.h5"},
                        output={"checkpoint": "extended.h5"})
-    execute(executable, resumed)
+    launch(executable, resumed)
     expected, actual = read_results(tmp_path / "full.h5"), read_results(tmp_path / "resumed.h5")
     assert expected.keys() == actual.keys()
     for name in expected:
