@@ -34,11 +34,13 @@ for lattice in [32, 64, 96, 128]:
         })
 
 #write the input file and run the simulation
-input_file = pyalps.writeInputFiles('parm_spin_one_gap_multiple',parms)
-res = pyalps.runApplication('dmrg',input_file,writexml=True)
+from pyalps.run_io import execute, write_run_files
+runs = [dict(parameters=p, output=dict(results=f'parm_spin_one_gap_multiple.task{i+1}.out.h5'))
+        for i, p in enumerate(parms)]
+files = execute('dmrg', write_run_files('parm_spin_one_gap_multiple', runs, overwrite=True))
 
 #load all measurements for all lattices
-data = pyalps.loadEigenstateMeasurements(pyalps.getResultFiles(prefix='parm_spin_one_gap_multiple'))
+data = pyalps.loadEigenstateMeasurements(files)
 
 #sort results by the lattice length
 sorted_data = sorted(data, key=lambda x: x[0].props['L'])
@@ -46,7 +48,7 @@ sorted_data = sorted(data, key=lambda x: x[0].props['L'])
 # create data set for plot: gap vs. (1/L)^2
 gapplot = pyalps.DataSet()
 gapplot.props['xlabel']='$1/L^2$'
-gapplot.props['ylabel']='Gap $\Delta/J$'
+gapplot.props['ylabel']=r'Gap $\Delta/J$'
 gapplot.props['label']='D=200'
 gapplot.props['line']='.'
 

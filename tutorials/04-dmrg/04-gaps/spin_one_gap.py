@@ -29,11 +29,13 @@ parms = [ {
        } ]
 
 #write the input file and run the simulation
-input_file = pyalps.writeInputFiles('parm_spin_one_gap',parms)
-res = pyalps.runApplication('dmrg',input_file,writexml=True)
+from pyalps.run_io import execute, write_run_files
+runs = [dict(parameters=p, output=dict(results=f'parm_spin_one_gap.task{i+1}.out.h5'))
+        for i, p in enumerate(parms)]
+files = execute('dmrg', write_run_files('parm_spin_one_gap', runs, overwrite=True))
 
 #load all measurements for all states
-data = pyalps.loadEigenstateMeasurements(pyalps.getResultFiles(prefix='parm_spin_one_gap'))
+data = pyalps.loadEigenstateMeasurements(files)
 
 # print results:
 energies = np.empty(0)

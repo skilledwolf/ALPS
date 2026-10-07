@@ -20,7 +20,6 @@ import pyalps.plot
 parms = []
 for sz in [0,1,2]:
     parms.append( { 
-        'LATTICE_LIBRARY'           : 'my_lattice.xml',
         'LATTICE'                   : 'open chain lattice with special edges',
         'MODEL'                     : "spin",
         'local_S0'                  : '0.5',
@@ -35,11 +34,14 @@ for sz in [0,1,2]:
     } )
 
 #write the input file and run the simulation
-input_file = pyalps.writeInputFiles('parm_spin_one_capped',parms)
-res = pyalps.runApplication('dmrg',input_file,writexml=True)
+from pyalps.run_io import execute, write_run_files
+runs = [dict(parameters=p, input=dict(lattice_library='my_lattice.xml'),
+             output=dict(results=f'parm_spin_one_capped.task{i+1}.out.h5'))
+        for i, p in enumerate(parms)]
+files = execute('dmrg', write_run_files('parm_spin_one_capped', runs, overwrite=True))
 
 #load all measurements for all states
-data = pyalps.loadEigenstateMeasurements(pyalps.getResultFiles(prefix='parm_spin_one_capped'))
+data = pyalps.loadEigenstateMeasurements(files)
 
 # extract local magnetization data
 curves = []

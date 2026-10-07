@@ -197,14 +197,25 @@ def test_native_qmc_tutorial_end_to_end(source, tmp_path, monkeypatch):
         plt.close('all')
 
 
-ED_SCRIPTS = [path for path in sorted((TUTORIALS / '02-ed').rglob('*.py'))
-              + sorted((TUTORIALS / '11-notebook' / 'ja').glob('tutorial_ed*.py'))
-              if 'run_io import execute' in path.read_text(encoding='utf-8')]
-ED_NOTEBOOKS = sorted((TUTORIALS / '11-notebook').rglob('ED-*.ipynb'))
+LATTICE_MODEL_SCRIPTS = [path for path in sorted((TUTORIALS / '02-ed').rglob('*.py'))
+                         + sorted((TUTORIALS / '11-notebook' / 'ja').glob('tutorial_ed*.py'))
+                         + sorted((TUTORIALS / '04-dmrg').rglob('*.py'))
+                         if 'run_io import execute' in path.read_text(encoding='utf-8')]
+LATTICE_MODEL_NOTEBOOKS = sorted((TUTORIALS / '11-notebook').rglob('ED-*.ipynb')) + sorted(
+    (TUTORIALS / '11-notebook').rglob('DMRG-*.ipynb'))
+LATTICE_MODEL_APPLICATIONS = ('sparsediag', 'fulldiag', 'dmrg')
+
+
+def lattice_model_tutorial(notebook):
+    """A notebook shares its lattice and model files with the tutorial of the same number."""
+    kind, number = notebook.name.split('-')[:2]
+    if kind == 'ED':
+        return next((TUTORIALS / '02-ed').glob(number[:2] + '-*'))
+    return sorted(path for path in (TUTORIALS / '04-dmrg').iterdir() if path.is_dir())[int(number[:2]) - 1]
 
 
 @pytest.fixture
-def validate_ed(monkeypatch):
+def validate_lattice_model(monkeypatch):
     """Validate one run of each kind; the first execute() ends the tutorial."""
     import tomllib
     from pyalps import run_io
@@ -228,19 +239,23 @@ def validate_ed(monkeypatch):
     return validate
 
 
-@pytest.mark.parametrize('script', ED_SCRIPTS, ids=lambda path: str(path.relative_to(TUTORIALS)))
-def test_ed_tutorial_runs_validate(script, tmp_path, monkeypatch, validate_ed):
+@pytest.mark.parametrize('script', LATTICE_MODEL_SCRIPTS, ids=lambda path: str(path.relative_to(TUTORIALS)))
+def test_lattice_model_tutorial_runs_validate(script, tmp_path, monkeypatch, validate_lattice_model):
     for library in script.parent.glob('*.xml'):
         shutil.copy(library, tmp_path)
+    if 'my_lattice.xml' in script.read_text(encoding='utf-8'):
+        # The DMRG tutorials have the reader generate this lattice.
+        lattice = subprocess.run([sys.executable, script.parent / 'build_lattice.py', '32'],
+                                 capture_output=True, text=True, check=True)
+        (tmp_path / 'my_lattice.xml').write_text(lattice.stdout)
     monkeypatch.chdir(tmp_path)
     with pytest.raises(Prepared):
         runpy.run_path(str(script), run_name='__main__')
 
 
-@pytest.mark.parametrize('notebook', ED_NOTEBOOKS, ids=lambda path: str(path.relative_to(TUTORIALS)))
-def test_ed_notebook_runs_validate(notebook, tmp_path, monkeypatch, validate_ed):
-    # A notebook shares its lattice and model files with the tutorial of the same number.
-    in_copy(next((TUTORIALS / '02-ed').glob(notebook.name[3:5] + '-*')), tmp_path, monkeypatch)
+@pytest.mark.parametrize('notebook', LATTICE_MODEL_NOTEBOOKS, ids=lambda path: str(path.relative_to(TUTORIALS)))
+def test_lattice_model_notebook_runs_validate(notebook, tmp_path, monkeypatch, validate_lattice_model):
+    in_copy(lattice_model_tutorial(notebook), tmp_path, monkeypatch)
     namespace, prepared = {'__name__': '__main__'}, False
     for cell in code_cells(notebook):
         magic, _, body = cell.partition('\n')
@@ -249,8 +264,8 @@ def test_ed_notebook_runs_validate(notebook, tmp_path, monkeypatch, validate_ed)
         elif magic == '%%bash':
             # Command-line sections run the programs on their own run files.
             for command in (line.split() for line in body.splitlines()):
-                if command and command[0] in ('sparsediag', 'fulldiag'):
-                    validate_ed(command[0], command[1:])
+                if command and command[0] in LATTICE_MODEL_APPLICATIONS:
+                    validate_lattice_model(command[0], command[1:])
         elif not prepared:
             try:
                 exec(compile(cell, notebook.name, 'exec'), namespace)
