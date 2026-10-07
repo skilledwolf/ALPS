@@ -77,23 +77,20 @@ def test_mpi_restart_changes_layout(executable, launcher, tmp_path):
     compare(full, result); compare(full_state, state)
 
 
-@pytest.mark.parametrize('processes,team,lattice,length', [
-    pytest.param(3, 2, 'chain lattice', 12, id='indivisible'),
-    pytest.param(4, 4, 'chain lattice', 6, id='sites'),
-    pytest.param(2, 2, 'square lattice', 4, id='ring'),
-])
-def test_mpi_invalid_teams_preserve_outputs(executable, launcher, tmp_path, processes, team,
-                                            lattice, length):
+def test_mpi_invalid_teams_preserve_outputs(executable, launcher, tmp_path):
     results, state = run(executable, tmp_path, 'kept')
     before = results.read_bytes(), state.read_bytes()
-    path = write_run_file(tmp_path/'bad.toml', parameters=dict(
-        ALGORITHM='multiple parallel ising; exchange', LATTICE=lattice, L=length,
-        INVERSE_TEMPERATURE_SET=BETAS, SWEEPS=97),
-        execution=dict(parallel='replicas', processes_per_walker=team),
-        output=dict(results='kept.h5', checkpoint='kept.checkpoint.h5'))
-    failure = invoke(launcher, executable, path, processes=processes, success=False)
-    assert failure.stdout + failure.stderr
-    assert before == (results.read_bytes(), state.read_bytes())
+    # An indivisible rank count, more ranks than sites, and a team on a non-ring lattice.
+    for processes, team, lattice, length in [(3, 2, 'chain lattice', 12), (4, 4, 'chain lattice', 6),
+                                             (2, 2, 'square lattice', 4)]:
+        path = write_run_file(tmp_path/'bad.toml', parameters=dict(
+            ALGORITHM='multiple parallel ising; exchange', LATTICE=lattice, L=length,
+            INVERSE_TEMPERATURE_SET=BETAS, SWEEPS=97),
+            execution=dict(parallel='replicas', processes_per_walker=team),
+            output=dict(results='kept.h5', checkpoint='kept.checkpoint.h5'), overwrite=True)
+        failure = invoke(launcher, executable, path, processes=processes, success=False)
+        assert failure.stdout + failure.stderr
+        assert before == (results.read_bytes(), state.read_bytes()), (processes, team, lattice)
 
 
 @pytest.mark.slow

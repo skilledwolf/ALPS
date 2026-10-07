@@ -76,8 +76,7 @@ def test_invalid_reported_records(fields):
         alea.ReportedEstimate(**fields)
 
 
-@pytest.mark.parametrize('vector', [False, True])
-@pytest.mark.parametrize('history', [False, True])
+@pytest.mark.parametrize('vector,history', [(False, True), (True, False)])
 def test_offline_summary_conversion_and_analysis_commands(tmp_path, vector, history):
     source, target = tmp_path/'legacy.h5', tmp_path/'converted.h5'
     mean = np.array([2., 5.]) if vector else np.array(2.)

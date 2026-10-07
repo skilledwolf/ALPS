@@ -41,8 +41,9 @@ def run(executable, directory, name, *, scan=False, budget=0, checkpoint=None,
     return directory/(name+'.h5'),directory/(name+'.checkpoint.h5')
 
 
-@pytest.mark.parametrize('rng',['mt19937','lagged_fibonacci607'])
-@pytest.mark.parametrize('scan,budget',[(False,5),(False,38),(True,9),(True,71),(True,142),(True,301)])
+# Stops in fixed-temperature measurement, scan warmup, a later stage and the last stage.
+@pytest.mark.parametrize('scan,budget,rng',[(False,38,'mt19937'),(True,9,'lagged_fibonacci607'),
+                                            (True,142,'mt19937'),(True,301,'lagged_fibonacci607')])
 def test_exact_continuation(executable,tmp_path,rng,scan,budget):
     full,full_state=run(executable,tmp_path,'full',rng=rng,scan=scan)
     _,state=run(executable,tmp_path,'part',rng=rng,scan=scan,budget=budget)
@@ -50,22 +51,24 @@ def test_exact_continuation(executable,tmp_path,rng,scan,budget):
     compare(full,resumed);compare(full_state,resumed_state)
 
 
-@pytest.mark.parametrize('fault',['spin','count','topology','rng'])
-def test_extension_and_corrupt_checkpoint(executable,tmp_path,fault):
+def test_extension_and_corrupt_checkpoint(executable,tmp_path):
     full,full_state=run(executable,tmp_path,'full')
     _,state=run(executable,tmp_path,'short',sweeps=23)
     extended,extended_state=run(executable,tmp_path,'extended',checkpoint=state)
     compare(full,extended);compare(full_state,extended_state)
-    with h5py.File(state,'r+') as archive:
-        state=archive['simulation/realizations/0/clones/1/checkpoint']
-        if fault=='spin': state['spins'][0]=0
-        elif fault=='count': state['sweeps'][()]+=1
-        elif fault=='topology': state['topology'][1]=999
-        else: del state['engine']
+    intact=state.read_bytes()
     before=extended.read_bytes(),extended_state.read_bytes()
-    process=subprocess.run([executable,str(tmp_path/'extended.toml')],capture_output=True)
-    assert process.returncode!=0
-    assert before==(extended.read_bytes(),extended_state.read_bytes())
+    for fault in ['spin','count','topology','rng']:
+        state.write_bytes(intact)
+        with h5py.File(state,'r+') as archive:
+            checkpoint=archive['simulation/realizations/0/clones/1/checkpoint']
+            if fault=='spin': checkpoint['spins'][0]=0
+            elif fault=='count': checkpoint['sweeps'][()]+=1
+            elif fault=='topology': checkpoint['topology'][1]=999
+            else: del checkpoint['engine']
+        process=subprocess.run([executable,str(tmp_path/'extended.toml')],capture_output=True)
+        assert process.returncode!=0,fault
+        assert before==(extended.read_bytes(),extended_state.read_bytes()),fault
 
 
 @pytest.mark.parametrize('coupling',[1.,-1.])

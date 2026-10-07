@@ -90,7 +90,8 @@ def test_small_lattice_matches_exact_enumeration():
     np.testing.assert_allclose(sim.samples.result().mean, expected, atol=0.025)
 
 
-@pytest.mark.parametrize('script', ['solution/ising.py', 'solution/ising_binder.py', 'solution/run.py', 'ising-skeleton.py'])
+# The CLI test below runs the Binder solution.
+@pytest.mark.parametrize('script', ['solution/ising.py', 'solution/run.py', 'ising-skeleton.py'])
 def test_toml_validation_keeps_inputs_and_outputs_untouched(tmp_path, script):
     run = tmp_path/'run.toml'
     run_io.write_run_file(run, ising.SCHEMA, parameters={'L': 2, 'BETA': 0.2, 'SWEEPS': 17},
@@ -102,7 +103,7 @@ def test_toml_validation_keeps_inputs_and_outputs_untouched(tmp_path, script):
     assert sorted(p.name for p in tmp_path.iterdir()) == ['run.toml']
 
 
-@pytest.mark.parametrize('script', ['ising.py', 'ising_binder.py'])
+@pytest.mark.parametrize('script', ['ising_binder.py'])
 def test_cli_output_loads_and_collision_is_rejected(tmp_path, script):
     run = tmp_path/'run.toml'
     run_io.write_run_file(run, ising.SCHEMA,

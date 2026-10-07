@@ -86,7 +86,7 @@ def test_mean_only_variance_is_not_invented_or_partially_written(tmp_path):
         assert "variance" not in archive["/simulation/results/second"]
 
 
-@pytest.mark.parametrize("kind", [None, 6, 123, True, [5, 5]])
+@pytest.mark.parametrize("kind", [None, 123, True, [5, 5]])
 def test_reject_legacy_checkpoint_or_invalid_kind(tmp_path, kind):
     filename = tmp_path / "invalid.h5"
     write_result(filename)

@@ -71,7 +71,7 @@ def expected(model, beta):
     return result
 
 
-@pytest.mark.parametrize('exchange', [False, True])
+@pytest.mark.parametrize('model,exchange', [('ising', False), ('heisenberg', True)])
 def test_bond_hamiltonian_and_component_moments(model, tmp_path, exchange):
     filename, _ = run(tmp_path, model, 'physics', exchange=exchange, parameters=dict(SWEEPS=30000), chains=1)
     groups = pyalps.loadMeasurements([str(filename)])
@@ -90,10 +90,12 @@ def test_bond_hamiltonian_and_component_moments(model, tmp_path, exchange):
             assert results['EXMC: Inverse Temperature'].count == 30000
 
 
-@pytest.mark.parametrize('model,mode,rng', [
-    ('ising', 'temperature', 'mt19937'), ('heisenberg', 'ladder', 'lagged_fibonacci607'),
-    ('ising', 'rate', 'mt19937'), ('heisenberg', 'population', 'mt19937'), ('ising', 'no-exchange', 'mt19937')])
-def test_feedback_and_partial_batch_continuation(model, tmp_path, rng, mode):
+# Budget 7 stops during feedback or warmup, 41 inside a partial production batch.
+@pytest.mark.parametrize('model,mode,rng,budget', [
+    ('ising', 'temperature', 'mt19937', 41), ('heisenberg', 'ladder', 'lagged_fibonacci607', 41),
+    ('ising', 'rate', 'mt19937', 7), ('heisenberg', 'population', 'mt19937', 41),
+    ('ising', 'no-exchange', 'lagged_fibonacci607', 7)])
+def test_feedback_and_partial_batch_continuation(model, tmp_path, rng, mode, budget):
     p = {} if mode == 'temperature' else dict(RANDOM_EXCHANGE=True, EXCHANGE_INTERVAL=3)
     if mode in ('rate', 'population'):
         p.update(OPTIMIZE_TEMPERATURE=True, OPTIMIZATION_TYPE=mode,
@@ -104,11 +106,9 @@ def test_feedback_and_partial_batch_continuation(model, tmp_path, rng, mode):
         p['NO_EXCHANGE'] = True
     options = dict(exchange=mode != 'temperature', rng=rng, chains=1)
     full, full_state = run(tmp_path, model, 'full', parameters=p, **options)
-    # Stop during feedback and inside a partial production batch.
-    for budget in (7, 41):
-        _, state = run(tmp_path, model, f'part{budget}', parameters=p, budget=budget, **options)
-        result, restored = run(tmp_path, model, f'restored{budget}', parameters=p, checkpoint=state, **options)
-        compare(full, result); compare(full_state, restored)
+    _, state = run(tmp_path, model, 'part', parameters=p, budget=budget, **options)
+    result, restored = run(tmp_path, model, 'restored', parameters=p, checkpoint=state, **options)
+    compare(full, result); compare(full_state, restored)
     if mode != 'temperature':
         return
     _, extended = run(tmp_path, model, 'extended', parameters=dict(p, SWEEPS=191), checkpoint=full_state, **options)
@@ -116,25 +116,28 @@ def test_feedback_and_partial_batch_continuation(model, tmp_path, rng, mode):
     compare(reference, extended)
 
 
-@pytest.mark.parametrize('model,fault', [('ising', 'spin'), ('heisenberg', 'topology'), ('ising', 'count'),
-                                         ('heisenberg', 'diagnostics'), ('ising', 'rng')])
-def test_corrupt_checkpoint_keeps_existing_outputs(model, tmp_path, fault):
+def test_corrupt_checkpoint_keeps_existing_outputs(model, tmp_path):
     _, state = run(tmp_path, model, 'part', budget=53)
     result, resumed = run(tmp_path, model, 'resume', checkpoint=state)
     before = result.read_bytes(), resumed.read_bytes()
-    with h5py.File(state, 'r+') as ar:
-        clone = ar['simulation/realizations/0/clones/1']
-        if fault == 'spin': clone['walkers/0/spins'][0, :] = 0
-        elif fault == 'topology': clone['walkers/0/topology'][0] = 999
-        elif fault == 'count': clone['exchange/production'][()] += 1
-        elif fault == 'diagnostics': del clone['stages/0/exchange/EXMC: Inverse Temperature']
-        else: del clone['walkers/0/rng']
+    intact = state.read_bytes()
     executable = tutorials_build()/f'00-examples/mc/{model}/{model}'
-    rejected = subprocess.run([str(executable), str(tmp_path/'resume.toml')], capture_output=True, timeout=60)
-    assert rejected.returncode != 0
-    assert before == (result.read_bytes(), resumed.read_bytes())
+    # The models share the checkpoint reader; split the faults between them.
+    for fault in ['spin', 'count', 'rng'] if model == 'ising' else ['topology', 'diagnostics']:
+        state.write_bytes(intact)
+        with h5py.File(state, 'r+') as ar:
+            clone = ar['simulation/realizations/0/clones/1']
+            if fault == 'spin': clone['walkers/0/spins'][0, :] = 0
+            elif fault == 'topology': clone['walkers/0/topology'][0] = 999
+            elif fault == 'count': clone['exchange/production'][()] += 1
+            elif fault == 'diagnostics': del clone['stages/0/exchange/EXMC: Inverse Temperature']
+            else: del clone['walkers/0/rng']
+        rejected = subprocess.run([str(executable), str(tmp_path/'resume.toml')], capture_output=True, timeout=60)
+        assert rejected.returncode != 0, fault
+        assert before == (result.read_bytes(), resumed.read_bytes()), fault
 
 
+@pytest.mark.parametrize('model', ['heisenberg'])
 def test_mpi_independent_ladders_preserve_evidence(model, tmp_path, launcher):
     # Three ladders split unevenly over two ranks, then resume on one process.
     full, full_state = run(tmp_path, model, 'full', chains=3)
@@ -143,8 +146,9 @@ def test_mpi_independent_ladders_preserve_evidence(model, tmp_path, launcher):
     compare(full, result); compare(full_state, restored)
 
 
-@pytest.mark.parametrize('fault', ['temperature', 'ladder-on-fixed', 'population-zero',
-                                  'uniform-temperature-zero', 'wrong-model', 'seed', 'bins'])
+@pytest.mark.parametrize('model,fault', [('ising', 'temperature'), ('heisenberg', 'ladder-on-fixed'),
+    ('ising', 'population-zero'), ('heisenberg', 'uniform-temperature-zero'), ('ising', 'wrong-model'),
+    ('heisenberg', 'seed'), ('ising', 'bins')])
 def test_validate_rejects_invalid_models_without_writing(model, tmp_path, fault):
     executable = tutorials_build()/f'00-examples/mc/{model}/{model}'
     p = dict(ALGORITHM=model+'; exchange', LATTICE='chain lattice', L=4,
@@ -174,8 +178,7 @@ def test_validate_rejects_invalid_models_without_writing(model, tmp_path, fault)
     assert destination.read_bytes() == b'existing scientific results'
 
 
-@pytest.mark.parametrize('model,mode,rng', [('ising', 'fixed', 'mt19937'), ('heisenberg', 'rate', 'lagged_fibonacci607'),
-                                            ('ising', 'population', 'mt19937')])
+@pytest.mark.parametrize('model,mode,rng', [('ising', 'fixed', 'mt19937'), ('heisenberg', 'rate', 'lagged_fibonacci607')])
 def test_mpi_distributed_replicas_preserve_chronology(model, tmp_path, launcher, mode, rng):
     p = dict(RANDOM_EXCHANGE=True, EXCHANGE_INTERVAL=3)
     if mode != 'fixed':

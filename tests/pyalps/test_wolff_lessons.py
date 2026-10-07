@@ -78,6 +78,8 @@ def test_validation(lesson, tmp_path):
     assert run.read_bytes() == before
 
 
+# The lessons share the Wolff kernel; the later one also reads the lattice library.
+@pytest.mark.parametrize('lesson', ['08-lattice'], indirect=True)
 def test_original_square_lesson_means(lesson, tmp_path):
     name, executable = lesson
     run = tmp_path/'run.toml'

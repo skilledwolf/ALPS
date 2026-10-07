@@ -30,9 +30,10 @@ def run(executable, directory, name, *, sweeps=117, budget=0, checkpoint=None, r
     return directory/(name+'.h5'), directory/(name+'.checkpoint.h5')
 
 
-@pytest.mark.parametrize('rng', ['mt19937', 'lagged_fibonacci607'])
-@pytest.mark.parametrize('budget', [9, 43])
-def test_exact_continuation(executable, tmp_path, rng, budget):
+def test_exact_continuation(executable, tmp_path):
+    # The variants share the driver; spread warmup and measurement stops and both RNGs over them.
+    budget, rng = {'ising1': (9, 'mt19937'), 'ising2': (43, 'lagged_fibonacci607'),
+                   'ising3': (43, 'mt19937')}[executable.name]
     full, full_state = run(executable, tmp_path, 'full', rng=rng)
     _, state = run(executable, tmp_path, 'part', budget=budget, rng=rng)
     resumed, resumed_state = run(executable, tmp_path, 'resumed', checkpoint=state, rng=rng)
@@ -100,9 +101,10 @@ def test_lattice_square_and_validation(tmp_path):
     assert (tmp_path/'square.h5').read_bytes() == before
 
 
-@pytest.mark.parametrize('command,factor', [('evaluate', 1), ('evaluate2', 3)])
-def test_native_binder_analysis(executable, tmp_path, command, factor):
+def test_native_binder_analysis(executable, tmp_path):
     from pyalps import alea, hdf5
+    # The two evaluators differ only in the cumulant's factor; one variant each suffices.
+    command, factor = ('evaluate2', 3) if executable.name == 'ising3' else ('evaluate', 1)
     source, _ = run(executable, tmp_path, 'source')
     original = source.read_bytes()
     path = tmp_path/'analysis.toml'

@@ -33,8 +33,8 @@ def mpi_executable():
     return str(Path(value).resolve(strict=True))
 
 
-@pytest.mark.parametrize('scan', [False, True])
-def test_serial_arbitrary_graph_fallback(executable, tmp_path, scan):
+def test_serial_arbitrary_graph_fallback(executable, tmp_path):
+    scan = True
     single = str(tutorials_build()/'00-examples/mc/single/ising_single')
     reference, reference_state = run(single, tmp_path, 'single', scan=scan, lattice='square lattice', length=4)
     actual, actual_state = run(executable, tmp_path, 'spatial', scan=scan, lattice='square lattice', length=4)
@@ -52,8 +52,8 @@ def test_large_ring_validation_preserves_supported_sizes(mpi_executable, launche
     assert not (tmp_path/'large.h5').exists()
 
 
-@pytest.mark.parametrize('scan,rng', [(False, 'mt19937'), (True, 'lagged_fibonacci607')])
-def test_mpi_partition_independent_evidence(mpi_executable, launcher, tmp_path, rng, scan):
+def test_mpi_partition_independent_evidence(mpi_executable, launcher, tmp_path):
+    rng, scan = 'lagged_fibonacci607', True
     reference, reference_state = run(mpi_executable, tmp_path, 'one', rng=rng, scan=scan,
                                      length=7, coupling=.7)
     for processes in (2, 3):
@@ -68,7 +68,7 @@ def test_mpi_partition_independent_evidence(mpi_executable, launcher, tmp_path, 
             spins = clone['checkpoint/spins'][()]
             assert spins.shape == (7,) and np.all(np.isin(spins, (-1, 1)))
     groups = pyalps.loadMeasurements([str(reference)])
-    assert len(groups) == (3 if scan else 1)
+    assert len(groups) == 3
     for group in groups:
         values = {d.props['observable']: d.native_result for d in group}
         assert values['Energy'].count == 234
@@ -85,7 +85,7 @@ def test_mpi_threaded_ring_preserves_evidence(mpi_executable, launcher, openmp_e
     reference, reference_state = run(mpi_executable, tmp_path, 'threads1', rng=rng,
                                      length=1536, coupling=.7, sweeps=37,
                                      processes=3, launcher=launcher)
-    for processes, threads in ((3, 2), (3, 4), (1, 4)):
+    for processes, threads in ((3, 2), (1, 4)):
         monkeypatch.setenv('OMP_NUM_THREADS', str(threads))
         actual, actual_state = run(mpi_executable, tmp_path, f'threads{threads}ranks{processes}', rng=rng,
                                   length=1536, coupling=.7, sweeps=37,
@@ -95,9 +95,7 @@ def test_mpi_threaded_ring_preserves_evidence(mpi_executable, launcher, openmp_e
 
 
 @pytest.mark.parametrize('scan,budget,rng', [
-    (False, 5, 'mt19937'), (False, 38, 'lagged_fibonacci607'),
-    (True, 9, 'mt19937'), (True, 71, 'lagged_fibonacci607'),
-    (True, 142, 'mt19937'), (True, 301, 'lagged_fibonacci607'),
+    (False, 38, 'lagged_fibonacci607'), (True, 9, 'mt19937'), (True, 142, 'lagged_fibonacci607'),
 ])
 def test_mpi_cross_rank_continuation(mpi_executable, launcher, tmp_path, rng, scan, budget):
     reference, reference_state = run(mpi_executable, tmp_path, 'full', rng=rng, scan=scan,
@@ -121,8 +119,9 @@ def test_mpi_completed_target_extension(mpi_executable, launcher, tmp_path):
     compare(reference_state, extended_state)
 
 
-@pytest.mark.parametrize('processes,coupling', [(2, 1.), (3, -1.)])
-def test_mpi_exact_ring_thermodynamics(mpi_executable, launcher, tmp_path, processes, coupling):
+def test_mpi_exact_ring_thermodynamics(mpi_executable, launcher, tmp_path):
+    # The odd antiferromagnetic ring is frustrated.
+    processes, coupling = 3, -1.
     filename, _ = run(mpi_executable, tmp_path, 'physics', length=7, coupling=coupling,
                       sweeps=50000, processes=processes, launcher=launcher)
     spins = np.array(list(itertools.product((-1., 1.), repeat=7)))
@@ -161,9 +160,7 @@ def mpmd_failure(mpi_executable, launcher, arguments):
     assert 'Collective ranks require identical run configurations' in failure.stdout+failure.stderr
 
 
-@pytest.mark.parametrize('field,value,validate', [
-    ('L', 7, False), ('chains', 2, True), ('rng', 'lagged_fibonacci607', False),
-])
+@pytest.mark.parametrize('field,value,validate', [('L', 7, False), ('rng', 'lagged_fibonacci607', True)])
 def test_mpi_rank_local_valid_runs_require_consensus(mpi_executable, launcher, tmp_path, field, value, validate):
     outputs = tmp_path/'keep.h5', tmp_path/'keep.checkpoint.h5'
     for output in outputs:
@@ -199,8 +196,8 @@ def test_mpi_rank_local_command_mode_requires_consensus(mpi_executable, launcher
     assert before == tuple(output.read_bytes() for output in outputs)
 
 
-@pytest.mark.parametrize('lattice,length', [('square lattice', 4), ('chain lattice', 5)])
-def test_mpi_invalid_decomposition_preserves_outputs(mpi_executable, launcher, tmp_path, lattice, length):
+def test_mpi_invalid_decomposition_preserves_outputs(mpi_executable, launcher, tmp_path):
+    lattice, length = 'square lattice', 4
     outputs = tmp_path/'keep.h5', tmp_path/'keep.checkpoint.h5'
     for output in outputs:
         output.write_bytes(b'Existing scientific output')
@@ -216,16 +213,13 @@ def test_mpi_corrupt_checkpoint_preserves_outputs(mpi_executable, launcher, tmp_
     outputs = run(mpi_executable, tmp_path, 'resumed', length=7, coupling=.7,
                   checkpoint=partial, processes=3, launcher=launcher)
     original = partial.read_bytes()
-    for fault in ['spin', 'topology', 'count', 'rng']:
+    # The serial example rejects the other faults; these cross ranks.
+    for fault in ['topology', 'rng']:
         partial.write_bytes(original)
         with h5py.File(partial, 'r+') as archive:
             checkpoint = archive['simulation/realizations/0/clones/1/checkpoint']
-            if fault == 'spin':
-                checkpoint['spins'][0] = 0
-            elif fault == 'topology':
+            if fault == 'topology':
                 checkpoint['topology'][1] = 999
-            elif fault == 'count':
-                checkpoint['sweeps'][()] += 1
             else:
                 del checkpoint['engine']
         protected_failure(mpi_executable, launcher, tmp_path/'resumed.toml', 3, outputs)

@@ -45,12 +45,12 @@ def compare(left, right):
         a["simulation"].visititems(check)
 
 
-# Each solver's payload crosses MPI once. Idle ranks and uneven ownership are
-# shared driver behavior, so distribute those cases and RNGs across solvers.
+# Each solver's payload crosses MPI once; the loop tests cover loop. Idle ranks
+# and uneven ownership are shared driver behavior, so distribute those cases and
+# RNGs across solvers. Serial resumption of MPI checkpoints is tested per example.
 @pytest.mark.parametrize("app,chains,rng", [
     ("simplemc", 1, "mt19937"), ("spinmc", 3, "lagged_fibonacci607"),
-    ("qwl", 1, "mt19937"), ("worm", 3, "lagged_fibonacci607"),
-    ("dirloop_sse", 1, "mt19937"), ("loop", 3, "mt19937"),
+    ("qwl", 1, "mt19937"), ("worm", 3, "lagged_fibonacci607"), ("dirloop_sse", 1, "mt19937"),
 ])
 def test_mpi_native_chains_and_cross_process_restart(launcher, tmp_path, app, rng, chains):
     executable = alps_program(app)
@@ -58,7 +58,7 @@ def test_mpi_native_chains_and_cross_process_restart(launcher, tmp_path, app, rn
     if app == "qwl":
         p = dict(LATTICE="chain lattice", L=4, J=1., CUTOFF=12, SWEEPS=3000,
                  NUMBER_OF_WANG_LANDAU_STEPS=3)
-    elif app in ("worm", "dirloop_sse", "loop"):
+    elif app in ("worm", "dirloop_sse"):
         # max_sweeps=13 below stops during thermalization.
         p = dict(LATTICE="chain lattice", MODEL="spin", L=4, J=1., T=1.,
                  SWEEPS=60, THERMALIZATION=20, SKIP=3)
@@ -75,13 +75,10 @@ def test_mpi_native_chains_and_cross_process_restart(launcher, tmp_path, app, rn
     stopped = run("stopped", execution={"max_sweeps": 13,
         "checkpoint_interval": 1e-12 if app == "spinmc" else 0.})
     invoke(launcher, executable, stopped, processes=2)
-    resumed = run("resumed", input={"checkpoint": "stopped.checkpoint.h5"})
-    invoke(launcher, executable, resumed)
     repartitioned = run("repartitioned", input={"checkpoint": "stopped.checkpoint.h5"})
     invoke(launcher, executable, repartitioned, processes=3)
-    for name in ("resumed", "repartitioned"):
-        for suffix in (".h5", ".checkpoint.h5"):
-            compare(tmp_path / ("serial" + suffix), tmp_path / (name + suffix))
+    for suffix in (".h5", ".checkpoint.h5"):
+        compare(tmp_path / ("serial" + suffix), tmp_path / ("repartitioned" + suffix))
 
 
 def test_mpi_nonroot_failure_preserves_scientific_output(launcher, tmp_path):

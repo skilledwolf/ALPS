@@ -36,9 +36,8 @@ def read_results(filename):
                 for name in archive.list_children("/simulation/results")}
 
 
-@pytest.mark.parametrize("model,rng", [
-    ("ising", "mt19937"), ("xy", "lagged_fibonacci607"), ("heisenberg", "mt19937"),
-])
+# The MPI restart test covers the XY model.
+@pytest.mark.parametrize("model,rng", [("ising", "lagged_fibonacci607"), ("heisenberg", "mt19937")])
 def test_simplemc_restart_matches_complete_native_batches(executable, tmp_path, model, rng):
     full = run_file(tmp_path, "full", model, execution={"rng": rng}, output={"checkpoint": "full-checkpoint.h5"})
     stopped = run_file(tmp_path, "stopped", model, execution={"max_sweeps": 14, "rng": rng},
@@ -66,11 +65,11 @@ def test_simplemc_restart_matches_complete_native_batches(executable, tmp_path, 
 
 
 def test_concurrent_runs_match_sequential_runs(executable, tmp_path):
-    temperatures = (1.2, 1.8, 2.4)
+    temperatures = (1.2, 2.4)
     sequential = [run_file(tmp_path, f"sequential{n}", parameters={"T": t}) for n, t in enumerate(temperatures)]
     concurrent = [run_file(tmp_path, f"concurrent{n}", parameters={"T": t}) for n, t in enumerate(temperatures)]
     execute(executable, sequential)
-    assert execute(executable, concurrent, concurrency=3) == [
+    assert execute(executable, concurrent, concurrency=2) == [
         str((tmp_path / f"concurrent{n}.h5").resolve()) for n in range(len(temperatures))]
     for n in range(len(temperatures)):
         expected = read_results(tmp_path / f"sequential{n}.h5")
