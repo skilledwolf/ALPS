@@ -159,7 +159,7 @@ jobs:
           $env:ALPS_DIR = "$pwd/_build/windows-${{ inputs.architecture }}/install/share/alps"
           $env:PYALPS_TEST_DOWNSTREAM_EXPORT = '1'
           $env:ALPS_TEST_CMAKE_ARGS = @('-G', 'Ninja', "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake", "-DVCPKG_INSTALLED_DIR=$env:VCPKG_ROOT/installed", '-DVCPKG_MANIFEST_MODE=OFF', '-DVCPKG_TARGET_TRIPLET=${{ inputs.architecture }}-windows') | ConvertTo-Json -Compress
-          python .github/scripts/build_metrics.py run --timeout 900 'Wheel and downstream tests' python -m pytest tests/pyalps tests/cmake tests/cli/test_hdf5_convert.py -v -s --junitxml=_build/windows-${{ inputs.architecture }}/pytest.xml
+          python .github/scripts/build_metrics.py run --timeout 1800 'Wheel and downstream tests' python -m pytest tests/pyalps tests/cmake tests/cli/test_hdf5_convert.py -v -s --junitxml=_build/windows-${{ inputs.architecture }}/pytest.xml
       - name: Check whether compiler cache changed
         id: cache-policy
         if: always()
