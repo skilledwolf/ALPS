@@ -8,7 +8,7 @@ set_target_properties(alps_params PROPERTIES
   VERSION ${PROJECT_VERSION}
   SOVERSION ${PROJECT_VERSION_MAJOR}
   INSTALL_RPATH "${ALPS_LOADER_ORIGIN}")
-target_link_libraries(alps_params PUBLIC ALPS::configuration ALPS::hdf5 Boost::serialization)
+target_link_libraries(alps_params PUBLIC ALPS::configuration ALPS::hdf5 ALPS::utilities Boost::serialization)
 if(ALPS_ENABLE_MPI)
   target_link_libraries(alps_params PUBLIC MPI::MPI_CXX Boost::mpi)
 endif()
@@ -41,7 +41,7 @@ endif()
 alps_register_module(NAME params HEADER_SET params_headers
   HEADER_TARGETS alps_params alps_headers
   TARGETS alps alps_params
-  DEPENDS configuration hdf5 legacy_parameters
+  DEPENDS configuration hdf5 legacy_parameters utilities
   GENERATED_HEADERS alps/params_export.h
 )
 

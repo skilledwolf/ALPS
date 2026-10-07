@@ -105,6 +105,7 @@ target_sources(alps_utilities PUBLIC
     include/alps/utility/make_copy.hpp
     include/alps/utility/os.hpp
     include/alps/utility/resize.hpp
+    include/alps/utility/round_trip.hpp
     include/alps/utility/set_zero.hpp
     include/alps/utility/size.hpp
     include/alps/utility/temporary_filename.hpp

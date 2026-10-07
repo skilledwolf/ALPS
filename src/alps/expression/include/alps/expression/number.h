@@ -20,6 +20,7 @@
 #include <alps/expression/expression_fwd.h>
 #include <alps/expression/evaluate_helper.h>
 #include <alps/type_traits/real_type.hpp>
+#include <alps/utility/round_trip.hpp>
 #include <boost/call_traits.hpp>
 
 namespace alps {
@@ -46,13 +47,15 @@ typename Number<T>::value_type Number<T>::value(const Evaluator<T>&, bool) const
   return val_;
 }
 
+// Expressions are reparsed from their text, so numbers print exactly.
 template<class T>
 void Number<T>::output(std::ostream& os) const
 {
   if (evaluate_helper<T>::imag(val_) == 0)
-    os << evaluate_helper<T>::real(val_);
+    os << round_trip_string(evaluate_helper<T>::real(val_));
   else
-    os << val_;
+    os << '(' << round_trip_string(evaluate_helper<T>::real(val_)) << ','
+       << round_trip_string(evaluate_helper<T>::imag(val_)) << ')';
 }
 
 } // end namespace expression

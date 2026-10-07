@@ -4,10 +4,7 @@
 // See ALPSCore-LICENSE.txt for the original permission notice.
 #include <algorithm>
 #include <alps/dictionary.hpp>
-#include <cstdlib>
-#include <iomanip>
-#include <limits>
-#include <sstream>
+#include <alps/utility/round_trip.hpp>
 #ifdef ALPS_HAVE_MPI
 #include <boost/mpi/collectives/broadcast.hpp>
 #include <boost/serialization/complex.hpp>
@@ -36,25 +33,10 @@ bool dictionary::equals(const dictionary &rhs) const {
            });
 }
 namespace {
-// Print reals with the fewest significant digits (at least six) that read back exactly.
-void print(std::ostream &out, double x) {
-    std::ostringstream text;
-    text.imbue(std::locale::classic());
-    for (int digits = 6;; ++digits) {
-        text.str({});
-        text << std::setprecision(digits) << x;
-        if (digits == std::numeric_limits<double>::max_digits10 ||
-            std::strtod(text.str().c_str(), nullptr) == x)
-            break;
-    }
-    out << text.str();
-}
+// Print reals so that they read back exactly.
+void print(std::ostream &out, double x) { out << round_trip_string(x); }
 void print(std::ostream &out, const std::complex<double> &x) {
-    out << '(';
-    print(out, x.real());
-    out << ',';
-    print(out, x.imag());
-    out << ')';
+    out << '(' << round_trip_string(x.real()) << ',' << round_trip_string(x.imag()) << ')';
 }
 template <class T> void print(std::ostream &out, const T &x) { out << x; }
 } // namespace

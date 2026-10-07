@@ -10,7 +10,8 @@ from pyalps.run_io import execute, write_run_file
 from conftest import alps_program, launch
 
 L = 4
-PARAMETERS = dict(LATTICE="chain lattice", MODEL="spin", local_S=.5, J=1, L=L, h=.25, CONSERVED_QUANTUMNUMBERS="Sz")
+J = 1.2345678901  # more digits than the default stream precision
+PARAMETERS = dict(LATTICE="chain lattice", MODEL="spin", local_S=.5, J=J, L=L, h=.25, CONSERVED_QUANTUMNUMBERS="Sz")
 
 
 def site(operator, i):
@@ -19,8 +20,8 @@ def site(operator, i):
 
 SZ = [site(np.diag([.5, -.5]), i) for i in range(L)]
 SPLUS = [site(np.array([[0., 1.], [0., 0.]]), i) for i in range(L)]
-HAMILTONIAN = sum(SZ[i] @ SZ[(i + 1) % L] + .5 * (SPLUS[i] @ SPLUS[(i + 1) % L].T + SPLUS[i].T @ SPLUS[(i + 1) % L])
-                  for i in range(L)) - .25 * sum(SZ)
+HAMILTONIAN = J * sum(SZ[i] @ SZ[(i + 1) % L] + .5 * (SPLUS[i] @ SPLUS[(i + 1) % L].T + SPLUS[i].T @ SPLUS[(i + 1) % L])
+                      for i in range(L)) - .25 * sum(SZ)
 TOTAL = np.diag(sum(SZ))
 
 
