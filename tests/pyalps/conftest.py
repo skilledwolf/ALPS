@@ -4,7 +4,9 @@
 A program comes from ALPS_<NAME>_EXECUTABLE or the SDK named by ALPS_DIR
 (<prefix>/share/alps, programs in <prefix>/bin). PATH and the programs bundled
 in a wheel are not searched, so a test never picks up an unrelated ALPS
-installation, and wheel tests do not repeat these simulations.
+installation. ALPS_TEST_PROGRAMS=0 skips program tests while ALPS_DIR still
+serves downstream builds; wheel tests use this instead of repeating the
+source jobs' simulations for every interpreter.
 Tutorial programs come from ALPS_TUTORIALS_BUILD_DIR, where each tutorial
 project is built at its path relative to tutorials/.
 A missing requirement skips its tests locally. CI sets
@@ -49,6 +51,8 @@ def unavailable(reason):
 
 def alps_program(name):
     """Return the absolute path of an ALPS program, or skip/fail the test."""
+    if os.environ.get("ALPS_TEST_PROGRAMS") == "0":
+        pytest.skip("program tests are disabled by ALPS_TEST_PROGRAMS=0")
     variable = "ALPS_" + name.upper() + "_EXECUTABLE"
     explicit = os.environ.get(variable)
     if explicit:
