@@ -30,12 +30,16 @@ def invoke(launcher, executable, run, processes=1, success=True):
 
 def compare(left, right):
     with h5py.File(left) as a, h5py.File(right) as b:
+        # Restart outputs hold thousands of objects; look each one up only once.
+        expected = b["simulation"]
         def check(name, obj):
-            assert name in b["simulation"]
-            other = b["simulation"][name]
-            assert type(obj) is type(other)
-            for key in obj.attrs:
-                np.testing.assert_array_equal(obj.attrs[key], other.attrs[key], err_msg=name + "/@" + key)
+            try:
+                other = expected[name]
+            except KeyError:
+                raise AssertionError(name + " is missing") from None
+            assert type(obj) is type(other), name
+            for key, value in obj.attrs.items():
+                np.testing.assert_array_equal(value, other.attrs[key], err_msg=name + "/@" + key)
             if isinstance(obj, h5py.Dataset):
                 np.testing.assert_array_equal(obj[()], other[()], err_msg=name)
         a["simulation"].visititems(check)
