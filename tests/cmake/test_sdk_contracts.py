@@ -25,9 +25,12 @@ def configure(build, *options, success=True):
     return result.stdout + result.stderr
 
 
-def build_and_run(build, *, environment=None):
-    subprocess.run(["cmake", "--build", str(build), "--config", "Release", "--parallel", "2"], check=True)
-    subprocess.run([shutil.which("ctest"), "--test-dir", str(build), "-C", "Release", "--output-on-failure"],
+def build_and_run(build, *targets, environment=None):
+    subprocess.run(["cmake", "--build", str(build), "--config", "Release", "--parallel", "2",
+                    *(["--target", *targets] if targets else [])], check=True)
+    subprocess.run([shutil.which("ctest"), "--test-dir", str(build), "-C", "Release",
+                    "--output-on-failure", "--no-tests=error",
+                    *(["-R", "^(" + "|".join(targets) + ")$"] if targets else [])],
                    check=True, env=environment)
 
 
@@ -35,7 +38,9 @@ def build_and_run(build, *, environment=None):
 def test_installed_sdk_preserves_parent_settings(tmp_path, standard):
     configure(tmp_path, f"-DCMAKE_CXX_STANDARD={standard}",
               "-DCMAKE_FIND_PACKAGE_PREFER_CONFIG=ON")
-    build_and_run(tmp_path)
+    # The relocation contract compiles every component; this checks the parent
+    # language standard and flags with the public simulation/archive headers.
+    build_and_run(tmp_path, "sdk_contract")
 
 
 def test_embedded_defaults_and_mpi_isolation(tmp_path):
@@ -169,7 +174,7 @@ def test_sdk_exports_solver_libraries(tmp_path):
     if not (Path(os.environ["ALPS_DIR"]) / "ALPSApplicationTargets.cmake").is_file():
         pytest.skip("requires an SDK with solvers")
     configure(tmp_path, "-DEXPECT_SOLVERS=ON")
-    build_and_run(tmp_path)
+    build_and_run(tmp_path, "solver_contract", "maxent_independent_contract")
 
 
 def test_relocated_sdk(tmp_path):
