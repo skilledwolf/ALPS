@@ -12,7 +12,6 @@
 # ****************************************************************************
 import os
 import os.path
-import datetime
 import shutil
 import tempfile
 import subprocess
@@ -204,26 +203,6 @@ def copyStylesheet(dir):
     if not os.path.exists(target):
       shutil.copyfile(xslPath(), target)
 
-def writeTaskXMLFile(filename,parms):
-    f = open(filename,'w')
-    f.write('<?xml version="1.0" encoding="UTF-8"?>\n')
-    f.write('<?xml-stylesheet type="text/xsl" href="ALPS.xsl"?>\n')
-    f.write('<SIMULATION xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://xml.comp-phys.org/2003/8/QMCXML.xsd">\n')
-    f.write('  <PARAMETERS>\n')
-    for key in parms:
-      f.write('<PARAMETER name="'+str(key)+'">'+str(parms[key])+'</PARAMETER>\n')
-    f.write('  </PARAMETERS>\n')
-    f.write('</SIMULATION>\n')
-    f.close()
-
-def generateSeed():
-    """ generate a random seed based on the current time
-    """
-    now = datetime.datetime.now()
-    baseseed = now.microsecond+1000000*now.second+60000000*now.minute
-    baseseed = ((baseseed << 10) | (baseseed >> 22));
-    return baseseed
-
 def writeInputH5Files(filename_,params_list):
   """ This function writes the H5 input files for ALPS (NGS)
 
@@ -270,94 +249,6 @@ def getParameters(infiles_):
      params.append(params_dict);
 
    return params;
-
-
-def writeInputFiles(fname,parms, baseseed=None):
-    """ This function writes the XML input files for ALPS
-    
-         Parameters are:
-         fname: the base file name of the XML files that will be written
-         parms: a list of dicts containing the simulation parameters
-         baseseed: optional parameter giving a random number seed from which seeds for the individual simulations will be calculated. The default value is taken from the current time.
-    
-         The function returns the name of the main XML input file
-    """
-    dirname = os.path.dirname(fname)
-    base_name = os.path.basename(fname)
-    f = open(fname+'.in.xml','w')
-    f.write('<?xml version="1.0" encoding="UTF-8"?>\n')
-    f.write('<?xml-stylesheet type="text/xsl" href="ALPS.xsl"?>\n')
-    f.write('<JOB xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://xml.comp-phys.org/2003/8/job.xsd">\n')
-    f.write('  <OUTPUT file="'+base_name+'.out.xml"/>\n')
-   
-    bits = 31;
-    n = len(parms)
-    while n>0:
-      n //= 2
-      bits -= 1
-
-    if baseseed is None:
-      baseseed = generateSeed()
-     
-    count = 0
-    for p in parms:
-      count += 1
-      if not 'SEED' in p:
-        seed = baseseed
-        for j in range(0,32//bits+1):
-          seed ^= ((count-1) << (j * bits))
-          seed &= ((1<<30) | ((1<<30)-1))
-          p['SEED'] = seed
-      taskname = base_name+'.task'+str(count)
-      f.write('  <TASK status="new">\n')
-      f.write('    <INPUT file="'+taskname+'.in.xml"/>\n')
-      f.write('    <OUTPUT file="'+taskname+'.out.xml"/>\n')
-      f.write('  </TASK>\n')
-      writeTaskXMLFile(os.path.join(dirname,taskname+'.in.xml'),p) 
-
-    f.write('</JOB>\n')
-    f.close()
-    if (dirname==''):
-      copyStylesheet('.')
-    else:
-      copyStylesheet(dirname)
-    return fname+'.in.xml'
-        
-
-def writeParameterFile(fname,parms):
-    """ This function writes a text input file for simple ALPS applications like DMFT
-    
-        The arguments are:
-        
-          filename: the name of the parameter file to be written
-          parms: the parameter dict
-    """
-    f = open(fname,'w')
-    for key in parms:
-      value = parms[key]
-      if type(value) == str:
-        f.write(str(key)+' = "' + value + '"\n')
-      else:
-        f.write(str(key)+' = ' + str(value) + '\n')
-    f.close()
-    return fname
-
-def input2output(infile):
-    if   infile.find('.in.h5') != -1:
-      outfile = infile.replace('.in.h5', '.out.h5');
-    elif infile.find('.out.h5') != -1:
-      outfile = infile;
-    elif infile.find('.h5') != -1:
-      outfile = infile.replace('.h5', '.out.h5');
-    elif infile.find('.in.xml') != -1:
-      outfile = infile.replace('.in.xml', '.out.xml');
-    elif infile.find('.out.xml') != -1:
-      outfile = infile;
-    elif infile.find('.xml') != -1:
-      outfile = infile.replace('.xml', '.out.xml');
-    else:
-      outfile = infile;
-    return outfile;
 
 
 def recursiveGlob(dirname,pattern):

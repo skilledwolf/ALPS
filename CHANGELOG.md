@@ -318,6 +318,7 @@ Numerical persistence now requires an explicit adapter: include `<alps/hdf5/matr
 | `archive` (SQLite result index), `xml2archive`, `txt2archive` | Removed without replacement; load results with pyalps |
 | `spinmc_evaluate`, `loop --evaluate`, `pyalps.evaluateSpinMC`, `pyalps.evaluateLoop` | `spinmc` and `loop` write derived results at the end of each invocation; convert released results with `alps-hdf5-convert --alea-results` |
 | `pyalps.runApplication` | `pyalps.run_io.execute(application, runs)`; every application reads TOML run files |
+| `pyalps.writeInputFiles`, `writeTaskXMLFile`, `writeParameterFile`, `generateSeed`, `input2output` | `pyalps.run_io.write_run_files(prefix, runs)`; seeds are set in each run's `[execution]` section |
 | `sparsediag`/`fulldiag`/`dmrg` XML job files and `--write-xml` output; `LATTICE_LIBRARY`/`MODEL_LIBRARY` parameters | TOML runs with `pyalps.run_io.execute(application, runs)`; `input.lattice_library`/`input.model_library` |
 | XML-only averages: `sparsediag` "Ground State Energy"/"Energy Gap", `fulldiag` thermodynamics for a run's `T` or `beta` | Lowest energies from `pyalps.loadSpectra`; `fulldiag_evaluate --T value` (a `T` parameter of the run is its default) |
 | `fulldiag_evaluate` on scheduler results (`.out.xml`, ALPS ≤ 3.0 `.out.h5`) | Rerun `fulldiag` with a TOML run; `pyalps.loadSpectra` still reads the old spectra |
