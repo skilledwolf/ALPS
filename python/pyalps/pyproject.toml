@@ -77,9 +77,9 @@ build = ["cp311-*", "cp312-*", "cp313-*", "cp314-*"]
 manylinux-x86_64-image = "manylinux_2_28"
 test-requires = ["pytest", "ninja>=1.12", "nanobind==2.15.0", "scikit-build-core>=1.0"]
 # An external watchdog can stop native code even while it holds Python's GIL.
-# The source CI jobs run the application tests; wheels test the bindings and
-# downstream builds, which still use ALPS_DIR.
-test-command = 'ALPS_TEST_PROGRAMS=0 python {project}/.github/scripts/build_metrics.py run --timeout 900 "Wheel and downstream tests" python -m pytest -v -o faulthandler_timeout=300 "{project}/tests/pyalps" "{project}/tests/cmake"'
+# Source jobs own SDK/build contracts and application tests. Every interpreter
+# still checks bindings, the repaired payload and a downstream Python extension.
+test-command = 'ALPS_TEST_PROGRAMS=0 python {project}/.github/scripts/build_metrics.py run --timeout 300 "Wheel binding tests" python -m pytest -v -o faulthandler_timeout=240 "{project}/tests/pyalps"'
 
 # The ALPS C++ SDK is built once per platform in before-all via the distribution
 # CMake preset; ALPS_DIR points every wheel build at that install. The ccache

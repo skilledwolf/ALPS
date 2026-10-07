@@ -137,7 +137,7 @@ PYALPS_TEST_DOWNSTREAM_EXPORT=1 CMAKE_BUILD_PARALLEL_LEVEL=2 \
   python -m pytest tests/pyalps tests/cmake -q -rs
 ```
 
-Keep `ALPS_DIR` and any dependency prefixes set. The downstream flag enables tests that compile Python extensions against the installed SDK and pyalps runtime. These checks compile additional small projects and take longer than import tests. `tests/cmake` assumes an MPI-disabled LP64 SDK for its consumer contracts; use the default SDK for this command. If custom toolchain arguments are needed by these temporary builds, `ALPS_TEST_CMAKE_ARGS` accepts a JSON array of CMake arguments.
+Keep `ALPS_DIR` and any dependency prefixes set. The downstream flag enables tests that compile Python extensions against the installed SDK and pyalps runtime. These checks compile additional small projects and take longer than import tests. `tests/cmake` accepts an MPI-enabled or MPI-disabled LP64 SDK. If custom toolchain arguments are needed by these temporary builds, `ALPS_TEST_CMAKE_ARGS` accepts a JSON array of CMake arguments.
 
 Read the skip reasons: MPI tests need additional MPI setup, and some wheel checks apply only to repaired distribution artifacts. A successful local run with skips does not exercise every CI configuration. For a quick iteration, select native tests with `ctest --preset default -R <pattern>` or Python tests with `python -m pytest <test-file> -q`.
 
@@ -287,6 +287,10 @@ Plot/extraction formats are `text`, `html`, `gnuplot`, `matplotlib` and `grace`;
 Pull requests report aggregate `Source CI` and `Packaging CI` checks. Path-based selection limits documentation-only runs; build-system and public-header changes select broader coverage. The pull-request source build also builds every installed tutorial, including the MPI programs, and fails integration tests that would otherwise skip for a missing program. Scheduled and release runs use the full matrix. The [source workflow](.github/workflows/build.yml), [coverage matrix](.github/ci-matrix.json) and [packaging workflow](.github/workflows/build_wheels.yml) are the authoritative lists of tested configurations.
 
 Coverage includes Linux/macOS source builds, CMake 3.27, MPI/OpenMP, installed-SDK consumers, direct CMake/editable-pip contributor workflows and repaired wheels tested on fresh runners. Dependency providers in CI are runner configuration, not requirements to use that package manager locally. Wheel builds are per CPython interpreter; local editable tests do not replace wheel and source-distribution validation.
+
+The primary source job owns scientific application and tutorial integration tests, including for Python-only changes. Native SDK/build contracts run in source and contributor jobs; wheel jobs run the binding suite and downstream Python extension on each interpreter. Fresh-runner smoke checks cover the binding surface and wheel payload. Contributor jobs check system dependencies, installation and bindings without repeating application simulations.
+
+Prefer one test per distinct failure mode over Cartesian products of models, RNGs, rank counts and restart points. Shared driver behavior belongs in driver tests, with integration coverage for each solver's state and result representation. Retain independent physics references and meaningful statistical precision. Corrupt-input cases can reuse a valid fixture, restoring it before each fault, instead of repeating the simulation that produced it.
 
 ## Preparing a release
 

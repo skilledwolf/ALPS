@@ -49,13 +49,11 @@ def select(event, paths):
         or not path.startswith(("src/", "tests/", "python/", "tutorials/"))
         for path in paths
     )
-    python_only = all(path.startswith(("python/", "tests/pyalps/", "tests/packaging/"))
-                      for path in paths)
-    # Ordinary C++ edits get bindings and installed-SDK tests in the primary
-    # source job. Python edits additionally exercise a real repaired wheel.
+    # The primary source job owns executable integration tests, including those
+    # exercising Python run/analysis code. Wheel jobs deliberately skip them.
     python_changes = any(path.startswith(("python/", "tests/pyalps/", "tests/packaging/"))
                          for path in paths)
-    return {"source": broad or not python_only,
+    return {"source": True,
             "packaging": "full" if broad else "quick" if python_changes else "none"}
 
 

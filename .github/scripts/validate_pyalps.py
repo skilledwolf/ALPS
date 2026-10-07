@@ -1,4 +1,4 @@
-"""Run installed-pyalps checks and retain reproducible evidence; no SDK build."""
+"""Smoke-test installed bindings and wheel payload; retain installation evidence."""
 
 import argparse
 import hashlib
@@ -113,7 +113,11 @@ def main():
 
     success = False
     try:
-        tests = ["tests/pyalps"] + (["tests/packaging"] if args.packaging else [])
+        # The producing job already ran the full binding suite on each interpreter.
+        # A clean runner checks imports, cross-module use and repaired binaries.
+        tests = ["tests/pyalps/test_binding_surface.py", "tests/pyalps/test_wheel_payload.py"]
+        if args.packaging:
+            tests.append("tests/packaging")
         run(
             "pytest",
             [
