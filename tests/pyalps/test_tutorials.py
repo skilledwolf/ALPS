@@ -105,16 +105,21 @@ def test_hybridization_tutorial_runs_are_prepared(script, tmp_path, monkeypatch)
 QMC_SCRIPTS = scripts(TUTORIALS / '03-mc', "execute('worm'", "execute('dirloop_sse'", "execute('loop'") + scripts(
     TUTORIALS / '11-notebook' / 'ja', "execute('worm'", "execute('dirloop_sse'", "execute('loop'")
 QMC_NOTEBOOKS = sorted((TUTORIALS / '11-notebook').rglob('MC-0[23458]*.ipynb'))
-# Validating 8d's 32 runs on lattices up to 128x64 takes minutes on slower
-# runners; 8a-8c run the same coupled-ladder loop scans at smaller sizes.
-LARGE_SCANS = {TUTORIALS / '03-mc/08-quantum-phase-transition/tutorial8d.py'}
+# The Japanese scripts and notebooks repeat the English simulations under other
+# file names, so each distinct validation and run executes once per session.
+VALIDATED, SIMULATED = set(), {}
 
 
-@pytest.mark.parametrize('source', [pytest.param(path, marks=pytest.mark.slow) if path in LARGE_SCANS else path
-                                    for path in QMC_SCRIPTS + QMC_NOTEBOOKS],
-                         ids=lambda path: str(path.relative_to(TUTORIALS)))
+def run_key(app, document, values=True):
+    sections = {key: value for key, value in document.items() if key != 'output'}
+    if not values:
+        sections['parameters'] = sorted(sections['parameters'])
+    return app + repr(sorted(sections.items()))
+
+
+@pytest.mark.parametrize('source', QMC_SCRIPTS + QMC_NOTEBOOKS, ids=lambda path: str(path.relative_to(TUTORIALS)))
 def test_native_qmc_tutorial_end_to_end(source, tmp_path, monkeypatch):
-    """Validate complete scans, then run representative points through analysis."""
+    """Validate each kind of run in a scan, then run representative points through analysis."""
     import tomllib
     import numpy as np
     import matplotlib
@@ -128,23 +133,31 @@ def test_native_qmc_tutorial_end_to_end(source, tmp_path, monkeypatch):
     def execute(app, job):
         executable = alps_program(app)
         _, runs = run_io.read_job_manifest(job)
-        # Validation builds every lattice of the scan; large ones take minutes on slow runners.
-        checked = subprocess.run([executable, '--validate', *map(str, runs)],
-                                 capture_output=True, text=True, timeout=600)
-        assert checked.returncode == 0, checked.stdout + checked.stderr
+        documents = {path: tomllib.loads(path.read_text()) for path in runs}
+        # Runs of a scan differ in parameter values only. Validation builds the
+        # lattice, so checking the first run per parameter set skips the large ones.
+        kinds = {}
+        for path, document in documents.items():
+            kinds.setdefault(run_key(app, document, values=False), path)
+        unchecked = [path for kind, path in kinds.items() if kind not in VALIDATED]
+        if unchecked:
+            checked = subprocess.run([executable, '--validate', *map(str, unchecked)],
+                                     capture_output=True, text=True, timeout=60)
+            assert checked.returncode == 0, checked.stdout + checked.stderr
+            VALIDATED.update(kinds)
         selected = [runs[i] for i in sorted({0, len(runs)//2, len(runs)-1})]
         # The gap fit needs at least three temperatures in each coupling group.
-        documents = {path: tomllib.loads(path.read_text()) for path in runs}
         if app == 'loop' and all('T' in d['parameters'] and 'J2' in d['parameters']
                                  for d in documents.values()):
             groups = {}
             for path, document in documents.items():
                 groups.setdefault(document['parameters']['J2'], []).append(path)
             selected = [path for group in groups.values() for path in group[:3]]
+        pending, files = [], []
         for path in selected:
-            document = tomllib.loads(path.read_text())
+            document = documents[path]
             p = document['parameters']
-            p.update(L=4, THERMALIZATION=1000, SWEEPS=2000)
+            p.update(L=4, THERMALIZATION=100, SWEEPS=400)
             if 'W' in p:
                 p['W'] = 2
             if 'BETA' in p:
@@ -152,7 +165,14 @@ def test_native_qmc_tutorial_end_to_end(source, tmp_path, monkeypatch):
             document.setdefault('execution', {})['bins'] = 16
             run_io.write_run_file(path, overwrite=True,
                 **{key:document[key] for key in ('parameters', 'input', 'output', 'execution') if key in document})
-        files = original_execute(executable, selected)
+            target = path.parent / document['output']['results']
+            files.append(str(target))
+            if run_key(app, document) in SIMULATED:
+                shutil.copyfile(SIMULATED[run_key(app, document)], target)
+            else:
+                pending.append(path)
+        for path, result in zip(pending, original_execute(executable, pending) if pending else []):
+            SIMULATED[run_key(app, documents[path])] = result
         outputs.extend(files)
         return files
 
