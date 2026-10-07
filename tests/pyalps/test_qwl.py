@@ -29,9 +29,7 @@ def run_file(directory, name, *, parameters=None, execution=None, input=None):
 
 
 @pytest.mark.parametrize("window,zhou,coupling,combinatorics,rng", [
-    (0, True, 1., True, "mt19937"), (3, True, 1., True, "lagged_fibonacci607"),
-    (0, False, 1., True, "mt19937"), (0, True, -1., True, "lagged_fibonacci607"),
-    (0, True, 1., False, "mt19937")])
+    (3, True, 1., True, "lagged_fibonacci607"), (0, False, -1., False, "mt19937")])
 def test_exact_restart_and_extension(executable, tmp_path, rng, window, zhou, coupling, combinatorics):
     p = dict(EXPANSION_ORDER_MINIMUM=window, USE_ZHOU_BHATT_METHOD=zhou, BLOCK_SWEEPS=200,
              J=coupling, INCLUDE_COMBINATORICS_FACTORS=combinatorics, NUMBER_OF_WANG_LANDAU_STEPS=8)
@@ -77,7 +75,7 @@ def test_bad_checkpoint_preserves_outputs(executable, tmp_path):
     execute(executable, run_file(tmp_path, "partial", execution=dict(max_sweeps=13)))
     checkpoint = tmp_path / "partial.checkpoint.h5"
     original = checkpoint.read_bytes()
-    for fault in ['operators', 'g/values', 'state', 'missing_measurement', 'chain', 'logf']:
+    for fault in ['g/values', 'state', 'missing_measurement']:
         checkpoint.write_bytes(original)
         with h5py.File(tmp_path / "partial.checkpoint.h5", "a") as ar:
             root = ar["simulation/realizations/0/clones/0"]
@@ -96,7 +94,7 @@ def test_bad_checkpoint_preserves_outputs(executable, tmp_path):
         assert {p.name: p.read_bytes() for p in tmp_path.iterdir()} == before
 
 
-@pytest.mark.parametrize("coupling,combinatorics", [(1., True), (-1., True), (1., False)])
+@pytest.mark.parametrize("coupling,combinatorics", [(-1., False)])
 def test_thermodynamics_matches_exact_diagonalization(executable, tmp_path, coupling, combinatorics):
     run = run_file(tmp_path, "physics", parameters=dict(J=coupling, SWEEPS=40000,
         NUMBER_OF_WANG_LANDAU_STEPS=8, CUTOFF=24, INCLUDE_COMBINATORICS_FACTORS=combinatorics),

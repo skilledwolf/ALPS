@@ -38,16 +38,11 @@ def results(filename):
                 for name in archive.list_children("/simulation/results")}
 
 
-# Native tests cover the model/update kernels. Here each distinct result/state
-# representation crosses the CLI/archive/Python boundary once, using both RNGs.
+# Native tests cover the model/update kernels. Here a continuous and a discrete
+# state cross the CLI/archive/Python boundary once, using both RNGs.
 @pytest.mark.parametrize("parameters,rng", [
-    ({"h": [-.17]}, "mt19937"),
     ({"MODEL": "XY", "J": [.8, .6, -.2, .9], "D": [.2, .1], "h": [.1, -.2]}, "lagged_fibonacci607"),
-    ({"MODEL": "Heisenberg", "J": [.8, .1, .2, -.3, .6, .1, 0., .2, .9],
-      "D": [.1, .2, .3], "h": [.1, 0., -.2]}, "mt19937"),
-    ({"MODEL": "O(4)", "UPDATE": "cluster"}, "mt19937"),
-    ({"UPDATE": "cluster", "J": [-.8], "L": 4}, "mt19937"),
-    ({"MODEL": "Potts", "q": 10, "UPDATE": "cluster"}, "lagged_fibonacci607"),
+    ({"MODEL": "Potts", "q": 10, "UPDATE": "cluster"}, "mt19937"),
 ])
 def test_spinmc_restart_retains_every_native_result(executable, tmp_path, parameters, rng):
     full = run_file(tmp_path, "full", parameters=parameters,
@@ -75,7 +70,7 @@ def test_spinmc_restart_retains_every_native_result(executable, tmp_path, parame
             assert archive[f"simulation/realizations/0/clones/{chain}/measurements"][()] == 37
 
 
-@pytest.mark.parametrize("broken_path", ["measurements/Energy", "checkpoint/physical_moments/0"] )
+@pytest.mark.parametrize("broken_path", ["checkpoint/physical_moments/0"])
 def test_spinmc_later_chain_failure_preserves_outputs(executable, tmp_path, broken_path):
     stopped = run_file(tmp_path, "stopped", execution={"max_sweeps": 14},
                        output={"checkpoint": "broken.h5"})

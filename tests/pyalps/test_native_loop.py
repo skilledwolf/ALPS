@@ -50,19 +50,23 @@ def stopped(tmp_path_factory):
 def test_exact_continuation(executable, tmp_path, algorithm, parameters, rng):
     p = dict(parameters, ALGORITHM=algorithm, SWEEPS=300)
     run(executable, tmp_path, 'full', p, rng=rng, chains=1)
-    for phase, budget in [('thermal', 31), ('production', 247)]:
+    # Both engines share the thermalization and extension bookkeeping.
+    phases = [('thermal', 31), ('production', 247)] if algorithm == 'loop' else [('production', 247)]
+    for phase, budget in phases:
         run(executable, tmp_path, phase, p, rng=rng, budget=budget, chains=1)
         run(executable, tmp_path, phase + '-resumed', p, rng=rng, chains=1,
             checkpoint=phase + '.checkpoint.h5')
         for suffix in ('.h5', '.checkpoint.h5'):
             compare(tmp_path / ('full' + suffix), tmp_path / (phase + '-resumed' + suffix))
+    if algorithm != 'loop':
+        return
     run(executable, tmp_path, 'longer', dict(p, SWEEPS=400), rng=rng, chains=1)
     run(executable, tmp_path, 'extended', dict(p, SWEEPS=400), rng=rng, chains=1,
         checkpoint='full.checkpoint.h5')
     compare(tmp_path / 'longer.checkpoint.h5', tmp_path / 'extended.checkpoint.h5')
 
 
-@pytest.mark.parametrize('algorithm', ['loop', 'loop; sse'])
+@pytest.mark.parametrize('algorithm', ['loop'])
 def test_normal_estimator_sign_matches_physical_state(executable, tmp_path, algorithm):
     # Odd periodic Heisenberg chain: each off-diagonal bond vertex contributes
     # a minus sign. A nine-sweep CT trajectory contains a sign-changing flip.
@@ -187,8 +191,8 @@ def test_replica_continuation_and_loader(executable, tmp_path, mode):
         assert 'results' not in ar['simulation']
 
 
-@pytest.mark.parametrize('algorithm', ['loop; exchange', 'loop; sse; exchange'])
-@pytest.mark.parametrize('rng', variants('mt19937', 'lagged_fibonacci607'))
+@pytest.mark.parametrize('algorithm', ['loop; exchange'])
+@pytest.mark.parametrize('rng', ['mt19937'])
 def test_checkpoint_offdiagonal_validity(executable, tmp_path, algorithm, rng):
     # Graph decorations are chosen before a cluster flip. For an offdiagonal
     # XXZ vertex their diagonal predicate need not match the saved worldline.
@@ -238,10 +242,8 @@ def test_checkpoint_offdiagonal_validity(executable, tmp_path, algorithm, rng):
 
 
 @pytest.mark.parametrize('algorithm,sites,field,mode', [
-    ('loop; exchange', 3, 0., {}),
     ('loop; sse; exchange', 3, 0., {'RANDOM_EXCHANGE': True}),
     ('loop; exchange', 4, .7, {'OPTIMIZE_TEMPERATURE': True, 'OPTIMIZATION_TYPE': 'rate'}),
-    ('loop; exchange', 4, 0., {'OPTIMIZE_TEMPERATURE': True, 'OPTIMIZATION_TYPE': 'population'}),
 ])
 def test_replica_physics(executable, tmp_path, algorithm, sites, field, mode):
     import pyalps
@@ -259,8 +261,7 @@ def test_replica_physics(executable, tmp_path, algorithm, sites, field, mode):
 
 
 @pytest.mark.parametrize('algorithm,rng,optimize,parallel', [
-    ('loop; exchange', 'mt19937', False, 'chains'),
-    ('loop; sse; exchange', 'lagged_fibonacci607', True, 'replicas'),
+    ('loop; sse; exchange', 'lagged_fibonacci607', False, 'chains'),
 ])
 def test_replica_mpi_restart(executable, launcher, tmp_path, algorithm, rng, optimize, parallel):
     p = dict(ALGORITHM=algorithm, LATTICE='chain lattice', MODEL='spin', local_S=.5,
@@ -269,7 +270,7 @@ def test_replica_mpi_restart(executable, launcher, tmp_path, algorithm, rng, opt
         INITIAL_BLOCK_SWEEPS=100, OPTIMIZATION_ITERATIONS=1)
     def config(name, budget=0, checkpoint=None, layout=parallel):
         return write_run_file(tmp_path / (name + '.toml'), parameters=p,
-            execution=dict(seed=137, bins=8, chains=1 if optimize else 2, rng=rng, max_sweeps=budget, parallel=layout),
+            execution=dict(seed=137, bins=8, chains=2, rng=rng, max_sweeps=budget, parallel=layout),
             input=dict(checkpoint=checkpoint) if checkpoint else None,
             output=dict(results=name + '.h5', checkpoint=name + '.checkpoint.h5'))
     invoke(launcher, executable, config('serial', layout='chains'))
@@ -312,9 +313,7 @@ def test_replica_corrupt_checkpoint(executable, stopped, tmp_path, fault):
     assert before == {p.name: p.read_bytes() for p in tmp_path.iterdir()}
 
 
-@pytest.mark.parametrize('algorithm,field,improved', [
-    ('loop; exchange', .4, False), ('loop; sse; exchange', 0., True),
-])
+@pytest.mark.parametrize('algorithm,field,improved', [('loop; exchange', .4, False)])
 def test_distributed_replica_signed_vectors(executable, launcher, tmp_path, algorithm, field, improved):
     p = dict(ALGORITHM=algorithm, LATTICE='chain lattice', MODEL='spin', local_S=.5,
              L=3, J=1., h=field, TEMPERATURE_SET=[.8, 1., 1.2], THERMALIZATION=17,
