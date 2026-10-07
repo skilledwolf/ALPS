@@ -118,10 +118,9 @@ def test_commands_read_converted_released_core_results(tmp_path):
     for name, kind in selections.items():
         args.extend(["--core-alea", kind, "/results/" + name])
     subprocess.run(args, check=True, capture_output=True, text=True, timeout=30)
-    for name in selections:
-        for estimate in ("mean", "variance"):
-            if name == "mean" and estimate == "variance":
-                continue
-            result = command(estimate, "-v", "-p", "/results", "-n", name, output)
-            assert result.returncode == 0, result.stderr
-            assert "The " in result.stdout
+    for estimate in ("mean", "variance"):
+        names = [name for name in selections if not (name == "mean" and estimate == "variance")]
+        result = command(estimate, "-v", "-p", "/results", *(f"--name={name}" for name in names), output)
+        assert result.returncode == 0, result.stderr
+        for name in names:
+            assert f" of variable {name} in file " in result.stdout

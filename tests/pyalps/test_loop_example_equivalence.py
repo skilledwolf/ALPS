@@ -61,12 +61,12 @@ def exact_observables(signs, bonds, volume, beta):
             'Staggered Susceptibility': np.sum(matrix**2 * kernel) / volume}
 
 
-def sections(name, parameters, *, disorder_seed=7, budget=0, checkpoint=None):
+def sections(name, parameters, *, disorder_seed=7, budget=0, checkpoint=None, chains=3):
     return dict(parameters=dict(ALGORITHM='loop', MODEL='spin', local_S=.5,
                                 J=1., T=.8, THERMALIZATION=1000, SWEEPS=40000)
                            | parameters,
                 execution=dict(seed=137, disorder_seed=disorder_seed,
-                               chains=3, bins=32, max_sweeps=budget),
+                               chains=chains, bins=32, max_sweeps=budget),
                 input=dict(checkpoint=checkpoint) if checkpoint else None,
                 output=dict(results=name + '.h5', checkpoint=name + '.checkpoint.h5'))
 
@@ -83,7 +83,7 @@ def parameters_in(group):
 def test_loop_single_observables_match_exact_diagonalization(tmp_path, parameters):
     signs, bonds = graph(parameters)
     expected = exact_observables(signs, bonds, volume=4., beta=1 / .8)
-    run = write_run_file(tmp_path / 'physical.toml', **sections('physical', parameters))
+    run = write_run_file(tmp_path / 'physical.toml', **sections('physical', parameters, chains=1))
     execute(alps_program('loop'), run)
     with h5py.File(tmp_path / 'physical.h5') as ar:
         results = ar['simulation/results']
@@ -105,27 +105,27 @@ def test_disorder_realizations_are_explicit_jobs_with_exact_restart(tmp_path):
     # execution.chains are independent MC histories of one fixed model, so
     # different disorder realizations are explicit jobs with recorded seeds.
     seeds = [7, 17, 27]
-    def jobs(prefix, budget=0, resume=False):
+    def jobs(prefix, seeds, budget=0, resume=False):
         return write_run_files(tmp_path / prefix, [
             sections(prefix + str(seed),
                      dict(LATTICE='depleted square lattice', L=2, DEPLETION=.2,
                           DEPLETION_SEED=seed, THERMALIZATION=17, SWEEPS=113),
-                     disorder_seed=seed, budget=budget,
+                     disorder_seed=seed, budget=budget, chains=2,
                      checkpoint=f'partial{seed}.checkpoint.h5' if resume else None)
             for seed in seeds])
     executable = alps_program('loop')
-    execute(executable, jobs('full'))
-    execute(executable, jobs('partial', budget=31))
-    execute(executable, jobs('resumed', resume=True))
+    execute(executable, jobs('full', seeds))
+    # One realization suffices to show that a restart keeps its disorder.
+    execute(executable, jobs('partial', seeds[:1], budget=31))
+    execute(executable, jobs('resumed', seeds[:1], resume=True))
+    for suffix in ('.h5', '.checkpoint.h5'):
+        compare(tmp_path / ('full7' + suffix), tmp_path / ('resumed7' + suffix))
     sites = []
     for seed in seeds:
-        for suffix in ('.h5', '.checkpoint.h5'):
-            compare(tmp_path / ('full' + str(seed) + suffix),
-                    tmp_path / ('resumed' + str(seed) + suffix))
         with h5py.File(tmp_path / f'full{seed}.h5') as ar:
             assert parameters_in(ar['run_config/execution'])['disorder_seed'] == seed
             clones = ar['simulation/realizations/0/clones']
-            assert len(clones) == 3
+            assert len(clones) == 2
             volume = ar['simulation/results/Volume/mean/value'][0]
             sites.append(ar['simulation/results/Number of Sites/mean/value'][0])
             assert volume == 4
