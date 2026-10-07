@@ -91,6 +91,17 @@ struct batch_checkpoint {
 };
 
 struct accumulator_checkpoint {
+    // The per-level fields of an autocorrelation accumulator, levels as columns.
+    template<class T> struct level_fields {
+        using var_type=typename autocorr_acc<T>::var_type;
+        level_fields(size_t size, size_t levels)
+            : value(size,levels), partial_sum(size,levels), moment(size,levels), count(levels),
+              batch_size(levels), partial_count(levels), count2(levels) {}
+        typename eigen<T>::matrix value, partial_sum;
+        typename eigen<var_type>::matrix moment;
+        typename eigen<uint64_t>::row count, batch_size, partial_count;
+        typename eigen<double>::row count2;
+    };
     template<class T> static result_kind kind(mean_acc<T> const&) { return result_kind::mean_accumulator; }
     template<class T, class S> static result_kind kind(var_acc<T,S> const&) { return result_kind::variance_accumulator; }
     template<class T, class S> static result_kind kind(cov_acc<T,S> const&) { return result_kind::covariance_accumulator; }
@@ -121,18 +132,26 @@ struct accumulator_checkpoint {
         auto& data=*staged.store_;
         deserialize(s,"value",data.data());
         deserialize(s,"count",data.count());
+        if constexpr (!mean_only<A>) {
+            deserialize(s,"centered_moment",data.data2());
+            deserialize(s,"count2",data.count2());
+            deserialize(s,"batch_size",staged.current_.target());
+            deserialize(s,"partial_sum",staged.current_.sum());
+            deserialize(s,"partial_count",staged.current_.count());
+        }
+        check_loaded(staged);
+        acc=std::move(staged);
+    }
+    // Rejects states no accumulator reaches, for single and stacked checkpoints.
+    template<class A> static void check_loaded(A const& acc) {
+        auto const& data=*acc.store_;
         if (!data.count() && !data.data().isZero(0))
             throw std::runtime_error("nonzero empty ALEA accumulator");
         if constexpr (!mean_only<A>) {
             // Compare whole matrices: complex_op moments have no abs() for
             // isZero, and Eigen 3.3 array-scalar == breaks C++20 rewriting.
             using moment = std::decay_t<decltype(data.data2())>;
-            deserialize(s,"centered_moment",data.data2());
-            deserialize(s,"count2",data.count2());
-            deserialize(s,"batch_size",staged.current_.target());
-            deserialize(s,"partial_sum",staged.current_.sum());
-            deserialize(s,"partial_count",staged.current_.count());
-            auto const& partial=staged.current_;
+            auto const& partial=acc.current_;
             if (!partial.target() || partial.count()>=partial.target()
                 || partial.count()>std::numeric_limits<uint64_t>::max()-data.count()
                 || (!partial.count() && !partial.sum().isZero(0))
@@ -141,7 +160,6 @@ struct accumulator_checkpoint {
                 || (!data.count() && data.data2()!=moment::Zero(data.data2().rows(),data.data2().cols())))
                 throw std::runtime_error("invalid ALEA centered-moment checkpoint");
         }
-        acc=std::move(staged);
     }
     template<class T> static void save(serializer& s, std::string const& key, autocorr_acc<T> const& acc) {
         check_valid(acc);
@@ -151,8 +169,20 @@ struct accumulator_checkpoint {
         serialize(s,"count",uint64_t(acc.count_));
         serialize(s,"batch_size",uint64_t(acc.batch_size_));
         serialize(s,"granularity",uint64_t(acc.granularity_));
-        serializer_sentry levels(s,"levels");
-        for (size_t i=0;i<acc.nlevel();++i) save(s,std::to_string(i),acc.level_[i]);
+        // One dataset per level field, levels first, as in autocorr_result.
+        level_fields<T> levels(acc.size_,acc.nlevel());
+        for (size_t i=0;i<acc.nlevel();++i) {
+            auto const& level=acc.level_[i];
+            levels.value.col(i)=level.store_->data(); levels.count(i)=level.store_->count();
+            levels.moment.col(i)=level.store_->data2(); levels.count2(i)=level.store_->count2();
+            levels.batch_size(i)=level.current_.target();
+            levels.partial_sum.col(i)=level.current_.sum(); levels.partial_count(i)=level.current_.count();
+        }
+        serializer_sentry group_levels(s,"levels");
+        serialize(s,"value",levels.value); serialize(s,"count",levels.count);
+        serialize(s,"centered_moment",levels.moment); serialize(s,"count2",levels.count2);
+        serialize(s,"batch_size",levels.batch_size);
+        serialize(s,"partial_sum",levels.partial_sum); serialize(s,"partial_count",levels.partial_count);
     }
     template<class T> static void load(deserializer& s, std::string const& key, autocorr_acc<T>& acc) {
         result_reader_sentry group(s,key,result_kind::autocorr_accumulator);
@@ -166,11 +196,29 @@ struct accumulator_checkpoint {
         autocorr_acc<T> staged(size,base,granularity);
         staged.count_=count;
         while (count>=staged.nextlevel_) staged.add_level();
-        deserializer_sentry levels(s,"levels");
-        for (size_t i=0;i<staged.nlevel();++i) {
+        const size_t n=staged.nlevel();
+        level_fields<T> levels(size,n);
+        {
+            deserializer_sentry group_levels(s,"levels");
+            const std::vector<size_t> scalars{n}, fields{n,size_t(size)};
+            for (auto name : {"value","centered_moment","partial_sum"})
+                if (s.get_shape(name)!=fields) throw size_mismatch();
+            for (auto name : {"count","count2","batch_size","partial_count"})
+                if (s.get_shape(name)!=scalars) throw size_mismatch();
+            deserialize(s,"value",levels.value); deserialize(s,"count",levels.count);
+            deserialize(s,"centered_moment",levels.moment); deserialize(s,"count2",levels.count2);
+            deserialize(s,"batch_size",levels.batch_size);
+            deserialize(s,"partial_sum",levels.partial_sum); deserialize(s,"partial_count",levels.partial_count);
+        }
+        for (size_t i=0;i<n;++i) {
             auto width=staged.level_[i].batch_size();
             auto available=i ? count/staged.level_[i-1].batch_size()*staged.level_[i-1].batch_size() : count;
-            load(s,std::to_string(i),staged.level_[i]);
+            auto& stored=staged.level_[i];
+            stored.store_->data()=levels.value.col(i); stored.store_->count()=levels.count(i);
+            stored.store_->data2()=levels.moment.col(i); stored.store_->count2()=levels.count2(i);
+            stored.current_.target()=levels.batch_size(i);
+            stored.current_.sum()=levels.partial_sum.col(i); stored.current_.count()=levels.partial_count(i);
+            check_loaded(stored);
             auto const& level=staged.level_[i];
             auto full=available/width*width;
             if (level.size()!=size || level.batch_size()!=width || level.store().count()!=full

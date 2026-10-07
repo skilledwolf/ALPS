@@ -44,8 +44,10 @@ def test_released_core_alea_results_preserve_statistics_and_load_natively(conver
         assert archive["results/circular/cov"].dtype == np.dtype("complex128")
         assert archive["results/elliptic/cov"].shape == (2, 2, 2, 2)
         assert archive["results/elliptic/cov"].dtype == np.dtype("float64")
-        for group in archive["results/autocorr/level"].values():
-            assert group.attrs["version"] == 1 and group.attrs["kind"] == 2
+        levels = archive["results/autocorr"].attrs["nlevel"]
+        stacked = archive["results/autocorr/level"]
+        assert {name: stacked[name].shape for name in stacked} == {
+            "count": (levels,), "count2": (levels,), "mean": (levels, 3), "var": (levels, 3)}
     native = os.environ.get("ALPS_ALEA_MIGRATION_READER")
     if native:
         subprocess.run([native, str(output)], check=True)
@@ -1609,12 +1611,11 @@ def test_released_logbins_recover_partial_bins_and_native_diagnostics(converter,
             mean = np.atleast_1d(samples.mean(axis=0))
             expected = (np.sum(weights[:, None]*(means-mean)**2, axis=0)/(count - weights@weights/count)
                         if len(chunks) > 1 else np.full(mean.shape, np.inf))
-            level = group[f'level/{i}']
-            assert level['count'][()] == count
-            assert level['count2'][()] == weights@weights
-            np.testing.assert_allclose(level['mean/value'], mean)
-            np.testing.assert_allclose(level['var'], expected, atol=1e-12)
-            np.testing.assert_allclose(level['mean/error'], np.sqrt(expected*(weights@weights)/count**2), atol=1e-12)
+            level = group['level']
+            assert level['count'][i] == count
+            assert level['count2'][i] == weights@weights
+            np.testing.assert_allclose(level['mean'][i], mean)
+            np.testing.assert_allclose(level['var'][i], expected, atol=1e-12)
     if os.environ.get('ALPS_DIR'):
         import pyalps
         from pyalps import alea, hdf5

@@ -264,7 +264,9 @@ alps-hdf5-convert core.h5 converted.h5 \
 
 Kinds are `mean`, `variance`, `covariance`, `autocorr` and `batch`. The profile
 validates their field shapes and adds modern ALEA's `version=1` and estimator
-`kind` attributes, including variance results nested in autocorrelation levels.
+`kind` attributes. Autocorrelation levels, one Core variance group each, are
+validated and then stored as the native stacked `level/count`, `level/count2`,
+`level/mean` and `level/var` datasets.
 It preserves counts, squared weights, batch sums and per-batch counts, full
 covariance and Eigen's physical `[columns, rows]` axes. Complex circular
 covariance uses complex compounds; elliptic covariance keeps its real 2×2

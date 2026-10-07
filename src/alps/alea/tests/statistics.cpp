@@ -623,7 +623,9 @@ void bad_moment_checkpoints(std::string const& filename) {
     auto previous=a.result();
     {
         alps::hdf5::archive ar(filename,"w"); aa::hdf5_serializer codec(ar,"/");
-        serialize(codec,"state",a); ar["/state/levels/1/partial_count"] << uint64_t(1);
+        serialize(codec,"state",a);
+        std::vector<uint64_t> partial; ar["/state/levels/partial_count"] >> partial;
+        partial.at(1)=1; ar["/state/levels/partial_count"] << partial;
         rejects([&] { deserialize(codec,"state",a); });
     }
     require(a.result()==previous,"invalid hierarchy changed accumulator");

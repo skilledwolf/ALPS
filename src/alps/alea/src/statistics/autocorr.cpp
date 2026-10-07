@@ -271,10 +271,25 @@ void serialize(serializer &s, const std::string &key, const autocorr_result<T> &
     serialize(s, "@size", static_cast<uint64_t>(self.size()));
     serialize(s, "@nlevel", static_cast<uint64_t>(self.nlevel()));
 
+    // One dataset per level field, levels first: a group per level would
+    // multiply the HDF5 objects of every observable by its level count.
+    typename eigen<uint64_t>::row count(self.nlevel());
+    typename eigen<double>::row count2(self.nlevel());
+    typename eigen<T>::matrix mean(self.size(), self.nlevel());
+    typename eigen<typename autocorr_result<T>::var_type>::matrix var(self.size(), self.nlevel());
+    for (size_t i = 0; i != self.nlevel(); ++i) {
+        auto const& level = self.level_[i].store();
+        count(i) = level.count();
+        count2(i) = level.count2();
+        mean.col(i) = level.data();
+        var.col(i) = level.data2();
+    }
     {
     internal::serializer_sentry subgroup(s, "level");
-    for (size_t i = 0; i != self.nlevel(); ++i)
-        serialize(s, std::to_string(i), self.level_[i]);
+    serialize(s, "count", count);
+    serialize(s, "count2", count2);
+    serialize(s, "mean", mean);
+    serialize(s, "var", var);
     }
 
     {
@@ -299,16 +314,34 @@ void deserialize(deserializer &s, const std::string &key, autocorr_result<T> &se
     uint64_t new_nlevel;
     deserialize(s, "@nlevel", new_nlevel);
     if (!new_nlevel || new_nlevel > std::numeric_limits<size_t>::max()) throw size_mismatch();
-    staged.level_.resize(new_nlevel);
-
+    if (new_nlevel > uint64_t(std::numeric_limits<Eigen::Index>::max()) / new_size) throw size_mismatch();
+    const auto size = Eigen::Index(new_size), nlevel = Eigen::Index(new_nlevel);
+    typename eigen<uint64_t>::row count(nlevel);
+    typename eigen<double>::row count2(nlevel);
+    typename eigen<T>::matrix mean(size, nlevel);
+    typename eigen<var_type>::matrix var(size, nlevel);
     {
     internal::deserializer_sentry subgroup(s, "level");
-    for (size_t i = 0; i != staged.nlevel(); ++i)
-        deserialize(s, std::to_string(i), staged.level_[i]);
+    const std::vector<size_t> levels{size_t(nlevel)}, fields{size_t(nlevel), size_t(size)};
+    if (s.get_shape("count") != levels || s.get_shape("count2") != levels
+            || s.get_shape("mean") != fields || s.get_shape("var") != fields)
+        throw size_mismatch();
+    deserialize(s, "count", count);
+    deserialize(s, "count2", count2);
+    deserialize(s, "mean", mean);
+    deserialize(s, "var", var);
     }
-
-    for (auto const& level : staged.level_)
-        if (level.size() != new_size) throw size_mismatch();
+    staged.level_.reserve(new_nlevel);
+    for (Eigen::Index i = 0; i != nlevel; ++i) {
+        if (!internal::valid_weight_count(count(i), count2(i)))
+            throw std::runtime_error("invalid ALEA squared-weight count");
+        var_data<T, circular_var> level(new_size);
+        level.count() = count(i);
+        level.count2() = count2(i);
+        level.data() = mean.col(i);
+        level.data2() = var.col(i);
+        staged.level_.emplace_back(level);
+    }
     size_t scalar_size = staged.size();
     {
     internal::deserializer_sentry subgroup(s, "mean");

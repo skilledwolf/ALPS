@@ -561,6 +561,7 @@ def _core_alea(group, family):
             if _attribute(level, "size") != size:
                 raise ValueError(f"{level.name}: inconsistent autocorrelation component count")
             _core_alea(level, "variance")
+        _stack_levels(group, levels, size)
     elif family == "batch":
         batches = integer("num_batches", True)
         shaped("batch/sum", [(batches, size)])
@@ -580,6 +581,24 @@ def _core_alea(group, family):
             else: shaped("cov", [(size, size), (size, size, 2, 2)])
     group.attrs["version"] = np.uint64(1)
     group.attrs["kind"] = np.uint32(CORE_ALEA_KINDS[family])
+
+
+def _stack_levels(group, levels, size):
+    """Store validated autocorrelation levels as one dataset per field, levels first."""
+    dtype = group["level/0/mean/value"].dtype
+    stacked = group.create_group("level.stacked")
+    count = stacked.create_dataset("count", (levels,), dtype="u8")
+    count2 = stacked.create_dataset("count2", (levels,), dtype="f8")
+    mean = stacked.create_dataset("mean", (levels, size), dtype=dtype)
+    var = stacked.create_dataset("var", (levels, size), dtype="f8")
+    for i in range(levels):
+        level = group[f"level/{i}"]
+        if level["var"].shape != (size,) or level["mean/value"].dtype != dtype:
+            raise ValueError(f"{level.name}: autocorrelation levels need real variances of one value type")
+        count[i], count2[i] = level["count"][()], level["count2"][()]
+        mean[i], var[i] = level["mean/value"][()], level["var"][()]
+    del group["level"]
+    group.move("level.stacked", "level")
 
 
 def _preserve_alea(group):

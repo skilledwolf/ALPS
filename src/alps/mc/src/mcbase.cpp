@@ -108,7 +108,7 @@ namespace alps {
     mcbase::observable_type read_measurement(hdf5::archive& ar,alea::deserializer& codec,std::string const& name) {
         auto path="measurements/"+name;
         uint32_t kind; ar[path+"/@kind"] >> kind;
-        auto field=kind==6 ? "/batch/sum" : kind==10 ? "/levels/0/value" : "/value";
+        auto field=kind==6 ? "/batch/sum" : kind==10 ? "/levels/value" : "/value";
         bool complex=ar.is_complex(path+field);
         using C=std::complex<double>;
         switch (kind) {

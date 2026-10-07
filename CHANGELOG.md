@@ -55,6 +55,14 @@ User-facing changes and migration notes are recorded here, starting with the bui
   consumers migrated. `ALPS::statistics` is the only statistics library; the
   `fleas_correlated` sampling example now uses its autocorrelation estimator.
 
+- Store native autocorrelation levels as one dataset per field, levels first
+  (`level/count`, `level/count2`, `level/mean`, `level/var` in results and the
+  matching `levels/` fields in checkpoints) instead of one group per level.
+  An observable now takes about 9 HDF5 objects per chain instead of about 60,
+  which halves the time a short simulation spends writing its outputs.
+  `alps-hdf5-convert --core-alea autocorr` and `--alea-autocorr` write the
+  stacked levels.
+
 - Remove the unbuilt `src/apps/qmc/sse` and `sse2` sources, which the released
   QMC build already excluded and which no longer compiled. The installed
   `dirloop_sse` is unchanged. The `sse2` optimized-ensemble workflow

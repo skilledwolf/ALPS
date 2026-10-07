@@ -51,6 +51,10 @@ Each result group has unsigned scalar `@version=1` and `@kind`: mean 1,
 variance 2, covariance 3, autocorrelation 4, batch 5. Existing Core scientific
 field names, counts, squared weights and full covariance are retained. Derived
 error fields remain available for inspection and are validated when reading.
+Autocorrelation levels are stacked instead of Core's group per level:
+`level/count` and `level/count2` have one entry per level, `level/mean` and
+`level/var` are `[levels, components]`. A per-level group multiplied the HDF5
+objects of every observable and dominated the cost of writing results.
 
 `<alps/alea/checkpoint.hpp>` supplies actual resumable `batch_acc<T>`
 `serialize`/`deserialize` overloads, kind 6. Checkpoints retain sums, per-batch
@@ -68,8 +72,9 @@ covariance (9), and autocorrelation (10), including real, circular complex and
 elliptic complex moments. Moment checkpoints store centered sums without a
 round trip through normalized results and retain the unfinished batch. Counts
 include partial samples. Autocorrelation checkpoints retain each level's partial
-state and validate the hierarchy against the total sample count, base batch
-size and granularity. Restart therefore reproduces uninterrupted statistics.
+state, stacked like results: each moment field under `levels/` has one row per
+level. Loads validate every level as a moment checkpoint and the hierarchy
+against the total sample count, base batch size and granularity. Restart therefore reproduces uninterrupted statistics.
 Loading stages the complete state before replacement. Inserting an independent
 result into a live autocorrelation accumulator remains unsupported: a result
 cannot reconstruct a missing partial hierarchy.

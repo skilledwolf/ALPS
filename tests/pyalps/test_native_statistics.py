@@ -207,7 +207,7 @@ def test_error_convergence_preserves_rising_error_evidence(tmp_path, complex_val
     errors = [np.array([1., .85, .7]), np.ones(3), np.ones(3), np.ones(3)]
     with h5py.File(filename, 'a') as ar:
         for level, error in enumerate(errors):
-            ar[f'result/level/{level}/var'][...] = error**2 * (8192 // 2**level)
+            ar['result/level/var'][level] = error**2 * (8192 // 2**level)
     with hdf5.archive(filename) as ar:
         result = alea.read_result(ar, '/result')
     assert result.converged_errors.dtype.kind == 'i'
