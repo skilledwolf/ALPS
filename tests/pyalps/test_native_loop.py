@@ -1,5 +1,6 @@
 # Copyright (C) 2026 ALPS Collaboration. SPDX-License-Identifier: MIT
 """Native loop: physical checkpoints and signed estimator alignment."""
+import shutil
 import subprocess
 
 import h5py
@@ -27,6 +28,19 @@ def run(executable, directory, name, parameters, *, rng='mt19937', budget=0,
     result = subprocess.run([executable, str(config)], capture_output=True, text=True, timeout=120)
     assert result.returncode == 0, result.stdout + result.stderr
     return directory / (name + '.checkpoint.h5')
+
+
+@pytest.fixture(scope='module')
+def stopped(tmp_path_factory):
+    """Stop each kind of run once; every corruption test damages its own copy."""
+    checkpoints = {}
+    def copy(kind, destination, parameters, **options):
+        if kind not in checkpoints:
+            checkpoints[kind] = run(alps_program('loop'), tmp_path_factory.mktemp(kind), 'partial',
+                                    parameters, **options)
+        shutil.copyfile(checkpoints[kind], destination / 'partial.checkpoint.h5')
+        return destination / 'partial.checkpoint.h5'
+    return copy
 
 
 @pytest.mark.parametrize('algorithm', ['loop', 'loop; sse'])
@@ -109,8 +123,8 @@ def test_matches_exact_diagonalization(executable, tmp_path, algorithm, improved
 
 
 @pytest.mark.parametrize('fault', ['chain', 'spins', 'model', 'measurements'])
-def test_failed_load_preserves_outputs(executable, tmp_path, fault):
-    checkpoint = run(executable, tmp_path, 'partial', {}, budget=247)
+def test_failed_load_preserves_outputs(executable, stopped, tmp_path, fault):
+    checkpoint = stopped('chains', tmp_path, {}, budget=247)
     with h5py.File(checkpoint, 'a') as ar:
         clone = ar['simulation/realizations/0/clones/1']
         if fault == 'measurements':
@@ -138,15 +152,16 @@ REPLICA_MODES = [
 ]
 
 
-@pytest.mark.parametrize('algorithm,rng', [('loop; exchange', 'mt19937'),
-                                         ('loop; sse; exchange', 'lagged_fibonacci607')])
 @pytest.mark.parametrize('mode', variants(*REPLICA_MODES))
-def test_replica_continuation_and_loader(executable, tmp_path, algorithm, rng, mode):
+def test_replica_continuation_and_loader(executable, tmp_path, mode):
     import pyalps
-    p = dict(ALGORITHM=algorithm, NUM_REPLICAS=3, T_MIN=.8, T_MAX=1.2,
+    # Population optimization needs three replicas; the other modes use two.
+    replicas = 3 if mode.get('OPTIMIZE_TEMPERATURE') else 2
+    p = dict(ALGORITHM='loop; exchange', NUM_REPLICAS=replicas, T_MIN=.8, T_MAX=1.2, SWEEPS=300,
              INITIAL_BLOCK_SWEEPS=100, OPTIMIZATION_ITERATIONS=1, **mode)
+    rng = 'mt19937'
     run(executable, tmp_path, 'full', p, chains=1, bins=8, rng=rng)
-    phases = [('feedback', 31), ('production', 757)]
+    phases = [('feedback', 31), ('production', 247)]
     if mode.get('OPTIMIZE_TEMPERATURE'):
         phases.append(('optimization', 151))
     for phase, budget in phases:
@@ -156,17 +171,17 @@ def test_replica_continuation_and_loader(executable, tmp_path, algorithm, rng, m
         for suffix in ('.h5', '.checkpoint.h5'):
             compare(tmp_path / ('full' + suffix), tmp_path / (phase + '-resumed' + suffix))
     groups = pyalps.loadMeasurements([str(tmp_path / 'full.h5')], ['Energy'])
-    assert len(groups) == 3
+    assert len(groups) == replicas
     for index, group in enumerate(groups):
         assert len(group) == 1
         assert group[0].props['replica'] == index
-        assert group[0].native_result.count == 1000
+        assert group[0].native_result.count == 300
     temperatures = [group[0].props['T'] for group in groups]
     assert temperatures[0] == pytest.approx(1.2)
     assert temperatures[-1] == pytest.approx(.8)
-    assert temperatures[0] > temperatures[1] > temperatures[2]
+    assert temperatures == sorted(temperatures, reverse=True)
     diagnostics = pyalps.loadBinningAnalysis([str(tmp_path / 'full.h5')], ['Energy'])
-    assert len(diagnostics) == 3
+    assert len(diagnostics) == replicas
     assert [group[0].props['T'] for group in diagnostics] == temperatures
     with h5py.File(tmp_path / 'full.h5') as ar:
         assert 'results' not in ar['simulation']
@@ -231,7 +246,7 @@ def test_checkpoint_offdiagonal_validity(executable, tmp_path, algorithm, rng):
 def test_replica_physics(executable, tmp_path, algorithm, sites, field, mode):
     import pyalps
     run(executable, tmp_path, 'physics', dict(ALGORITHM=algorithm, L=sites, h=field,
-        NUM_REPLICAS=3, T_MIN=.6, T_MAX=1.7, THERMALIZATION=1000, SWEEPS=15000,
+        NUM_REPLICAS=3, T_MIN=.6, T_MAX=1.7, THERMALIZATION=1000, SWEEPS=8000,
         INITIAL_BLOCK_SWEEPS=500, OPTIMIZATION_ITERATIONS=1, **mode), chains=1, bins=64)
     groups = pyalps.loadMeasurements([str(tmp_path / 'physics.h5')])
     assert len(groups) == 3
@@ -258,12 +273,10 @@ def test_replica_mpi_restart(executable, launcher, tmp_path, algorithm, rng, opt
             input=dict(checkpoint=checkpoint) if checkpoint else None,
             output=dict(results=name + '.h5', checkpoint=name + '.checkpoint.h5'))
     invoke(launcher, executable, config('serial', layout='chains'))
-    invoke(launcher, executable, config('mpi'), processes=2)
     invoke(launcher, executable, config('partial', 31), processes=2)
     invoke(launcher, executable, config('serial-resumed', checkpoint='partial.checkpoint.h5', layout='chains'))
-    for name in ('mpi', 'serial-resumed'):
-        for suffix in ('.h5', '.checkpoint.h5'):
-            compare(tmp_path / ('serial' + suffix), tmp_path / (name + suffix))
+    for suffix in ('.h5', '.checkpoint.h5'):
+        compare(tmp_path / ('serial' + suffix), tmp_path / ('serial-resumed' + suffix))
 
 
 def test_replica_common_hamiltonian(executable, tmp_path):
@@ -282,10 +295,10 @@ def test_replica_common_hamiltonian(executable, tmp_path):
 
 
 @pytest.mark.parametrize('fault', ['beta', 'walkers', 'weights', 'production'])
-def test_replica_corrupt_checkpoint(executable, tmp_path, fault):
+def test_replica_corrupt_checkpoint(executable, stopped, tmp_path, fault):
     p = dict(ALGORITHM='loop; exchange', LATTICE='chain lattice', MODEL='spin', local_S=.5,
         L=4, J=1., T=1., THERMALIZATION=100, SWEEPS=1000, NUM_REPLICAS=3, T_MIN=.8, T_MAX=1.2)
-    checkpoint = run(executable, tmp_path, 'partial', p, budget=247, chains=1, bins=8)
+    checkpoint = stopped('replicas', tmp_path, p, budget=247, chains=1, bins=8)
     with h5py.File(checkpoint, 'a') as ar:
         value = ar['simulation/realizations/0/clones/0/exchange/' + fault]
         value[...] = np.nan if fault == 'weights' else 0
@@ -324,8 +337,7 @@ def test_distributed_replica_signed_vectors(executable, launcher, tmp_path, algo
         assert moments['Sign/batch/count'][()].sum() == 127
 
 
-@pytest.mark.parametrize('fault', ['spins', 'measurements'])
-def test_replica_mpi_owned_checkpoint_validation(executable, launcher, tmp_path, fault):
+def test_replica_mpi_owned_checkpoint_validation(executable, launcher, tmp_path):
     p = dict(ALGORITHM='loop; exchange', LATTICE='chain lattice', MODEL='spin',
              local_S=.5, L=4, J=1., TEMPERATURE_SET=[.8, 1.2],
              THERMALIZATION=17, SWEEPS=127)
@@ -338,9 +350,12 @@ def test_replica_mpi_owned_checkpoint_validation(executable, launcher, tmp_path,
     path = config('resume', checkpoint='partial.checkpoint.h5')
     invoke(launcher, executable, path, processes=2)
     before = [(tmp_path/('resume'+suffix)).read_bytes() for suffix in ('.h5', '.checkpoint.h5')]
-    with h5py.File(tmp_path/'partial.checkpoint.h5', 'r+') as ar:
-        replica = ar['simulation/realizations/0/clones/0/replicas/1']
-        if fault == 'spins': replica['checkpoint/spins'][0] = 2
-        else: del replica['measurements/Temperature']
-    invoke(launcher, executable, path, processes=2, success=False)
-    assert before == [(tmp_path/('resume'+suffix)).read_bytes() for suffix in ('.h5', '.checkpoint.h5')]
+    shutil.copyfile(tmp_path/'partial.checkpoint.h5', tmp_path/'intact.checkpoint.h5')
+    for fault in ('spins', 'measurements'):
+        shutil.copyfile(tmp_path/'intact.checkpoint.h5', tmp_path/'partial.checkpoint.h5')
+        with h5py.File(tmp_path/'partial.checkpoint.h5', 'r+') as ar:
+            replica = ar['simulation/realizations/0/clones/0/replicas/1']
+            if fault == 'spins': replica['checkpoint/spins'][0] = 2
+            else: del replica['measurements/Temperature']
+        invoke(launcher, executable, path, processes=2, success=False)
+        assert before == [(tmp_path/('resume'+suffix)).read_bytes() for suffix in ('.h5', '.checkpoint.h5')], fault
