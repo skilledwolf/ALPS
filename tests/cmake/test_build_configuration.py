@@ -247,7 +247,10 @@ def test_tutorials_are_an_explicit_install_component(tmp_path):
     }
     # Installed tutorial projects are compiled and exercised by source CI;
     # their internal file inventory is not a separate installation contract.
+    # Inputs without a recognized extension are installed by name.
     assert (tutorials / "README.md").is_file()
+    assert (tutorials / "05-dmft/08-lattices/DOS/DOS_Square_GRID4000").is_file()
+    assert (tutorials / "06-hybridization/hybdoc.pdf").is_file()
     assert (tutorials / "00-examples/CMakeLists.txt").is_file()
     assert (install / "share/alps/cmake/ALPSTesting.cmake").is_file()
     assert (install / "share/alps/cmake/run_test.cmake").is_file()

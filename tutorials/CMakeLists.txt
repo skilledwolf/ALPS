@@ -43,6 +43,8 @@ install(
   PATTERN "*.dat"
   PATTERN "*.parm"
   PATTERN "*.xml"
+  PATTERN "DOS_*"
+  PATTERN "hybdoc.pdf"
   PATTERN "*input*"
   PATTERN "*.pvsm"
   PATTERN "*.h"
