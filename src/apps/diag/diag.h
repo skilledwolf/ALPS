@@ -18,7 +18,7 @@
 #include <alps/lattice.h>
 #include <alps/model/model_helper.h>
 #include <alps/numeric/matrix/vector.hpp>
-#include <alps/scheduler/measurement_operators.h>
+#include <alps/model/measurement_operators.h>
 #include <alps/type_traits/norm_type.hpp>
 #include <boost/tuple/tuple.hpp>
 #include <boost/tuple/tuple_comparison.hpp>

@@ -2,6 +2,7 @@
 target_sources(alps PRIVATE
   src/model/bondterm.C
   src/model/globaloperator.C
+  src/model/measurement_operators.C
   src/model/modellibrary.C
   src/model/siteterm.C)
 
@@ -21,6 +22,7 @@ target_sources(alps_headers INTERFACE
     include/alps/model/hamiltonian.h
     include/alps/model/hamiltonian_matrix.hpp
     include/alps/model/integer_state.h
+    include/alps/model/measurement_operators.h
     include/alps/model/model_helper.h
     include/alps/model/modellibrary.h
     include/alps/model/operator.h
@@ -41,5 +43,5 @@ endif()
 
 alps_register_module(NAME model HEADER_SET model_headers
   TARGETS alps
-  DEPENDS configuration containers expression lattice legacy_parameters numerics utilities xml
+  DEPENDS configuration containers expression hdf5 lattice legacy_parameters numerics utilities xml
 )

@@ -16,7 +16,6 @@
 
 #include <alps/scheduler/scheduler.h>
 #include <alps/scheduler/task.h>
-#include <alps/scheduler/measurement_operators.h>
 
 
 /// \brief includes all headers in the alps/scheduler directory

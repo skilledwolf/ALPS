@@ -20,7 +20,7 @@
 #include <alps/model.h>
 #include <alps/ngs/make_deprecated_parameters.hpp>
 #include "simulation.hpp"
-#include <alps/scheduler/measurement_operators.h>
+#include <alps/model/measurement_operators.h>
 #include <set>
 
 #include <boost/optional.hpp>

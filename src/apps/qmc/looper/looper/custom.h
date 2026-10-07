@@ -13,7 +13,7 @@
 #define LOOPER_CUSTOM_H
 
 #include "measurement.h"
-#include <alps/scheduler/measurement_operators.h>
+#include <alps/model/measurement_operators.h>
 #include <boost/foreach.hpp>
 #include <boost/optional.hpp>
 #include <boost/tuple/tuple.hpp>

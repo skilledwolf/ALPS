@@ -14,7 +14,7 @@
 
 #include "custom.h"
 #include <alps/model.h>
-#include <alps/scheduler/measurement_operators.h>
+#include <alps/model/measurement_operators.h>
 #include <alps/numeric/is_nonzero.hpp>
 #include <boost/foreach.hpp>
 #include <boost/next_prior.hpp>

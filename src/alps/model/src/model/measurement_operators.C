@@ -14,7 +14,7 @@
 
 /* $Id$ */
 
-#include <alps/scheduler/measurement_operators.h>
+#include <alps/model/measurement_operators.h>
 
 // some file (probably a python header) defines a tolower macro ...
 #undef tolower

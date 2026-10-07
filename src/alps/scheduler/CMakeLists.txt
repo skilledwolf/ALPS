@@ -5,7 +5,6 @@ target_sources(alps PRIVATE
   src/scheduler/factory.C
   src/scheduler/info.C
   src/scheduler/master_scheduler.C
-  src/scheduler/measurement_operators.C
   src/scheduler/mpp_scheduler.C
   src/scheduler/options.C
   src/scheduler/remote_task.C
@@ -28,7 +27,6 @@ target_sources(alps_headers INTERFACE
     include/alps/scheduler/diag.hpp
     include/alps/scheduler/factory.h
     include/alps/scheduler/info.h
-    include/alps/scheduler/measurement_operators.h
     include/alps/scheduler/options.h
     include/alps/scheduler/scheduler.h
     include/alps/scheduler/signal.hpp

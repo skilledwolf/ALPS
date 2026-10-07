@@ -15,7 +15,7 @@
 #define ALPS_SCHEDULER_DIAG_HPP
 
 #include <alps/type_traits/norm_type.hpp>
-#include <alps/scheduler/measurement_operators.h>
+#include <alps/model/measurement_operators.h>
 #include <alps/model/model_helper.h>
 #include <alps/lattice/graph_helper.h>
 #include <alps/scheduler/task.h>
