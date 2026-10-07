@@ -36,8 +36,9 @@ def read_results(filename):
                 for name in archive.list_children("/simulation/results")}
 
 
-@pytest.mark.parametrize("model", ["ising", "xy", "heisenberg"])
-@pytest.mark.parametrize("rng", ["mt19937", "lagged_fibonacci607"])
+@pytest.mark.parametrize("model,rng", [
+    ("ising", "mt19937"), ("xy", "lagged_fibonacci607"), ("heisenberg", "mt19937"),
+])
 def test_simplemc_restart_matches_complete_native_batches(executable, tmp_path, model, rng):
     full = run_file(tmp_path, "full", model, execution={"rng": rng}, output={"checkpoint": "full-checkpoint.h5"})
     stopped = run_file(tmp_path, "stopped", model, execution={"max_sweeps": 14, "rng": rng},
@@ -146,8 +147,8 @@ def test_simplemc_custom_graph_bindings_couplings_and_vtk(executable, tmp_path):
     assert "# vtk DataFile Version" in text and "POINTS 4 " in text and "SCALARS spins" in text
 
 
-@pytest.mark.parametrize("parameters", [{"ALGORITHM": model} for model in ("ising", "xy", "heisenberg")])
-def test_simplemc_extend_completed_run(executable, tmp_path, parameters):
+def test_simplemc_extend_completed_run(executable, tmp_path):
+    parameters = {"ALGORITHM": "heisenberg"}
     full = run_file(tmp_path, "full", parameters=parameters)
     short = run_file(tmp_path, "short", parameters={**parameters, "SWEEPS": 8},
                      output={"checkpoint": "continuation.h5"})

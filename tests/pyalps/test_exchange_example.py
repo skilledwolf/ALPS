@@ -7,7 +7,7 @@ import numpy as np
 import pyalps
 import pytest
 from pyalps.run_io import write_run_file
-from conftest import tutorials_build, variants
+from conftest import tutorials_build
 from test_native_mpi import compare, invoke, launcher
 
 BETAS = [.2, .5, .9]
@@ -54,15 +54,12 @@ def test_mpi_spatial_example_input(executable, launcher, tmp_path):
     assert result.returncode == 0
 
 
-# Teams x processes per walker; every layout reproduces the serial ladder.
-LAYOUTS = variants((4, 2), (2, 1), (3, 3), (2, 2), (4, 4))
-
-
-@pytest.mark.parametrize('rng', ['mt19937', 'lagged_fibonacci607'])
-@pytest.mark.parametrize('processes,team', LAYOUTS)
-def test_mpi_layouts_reproduce_the_serial_ladder(executable, launcher, tmp_path, rng, processes, team):
+def test_mpi_layout_reproduces_the_serial_ladder(executable, launcher, tmp_path):
+    # Two spatial teams share three replicas; restart below covers one spatial
+    # team, one rank per replica, serial execution and the other RNG.
+    rng = 'lagged_fibonacci607'
     full, full_state = run(executable, tmp_path, 'serial', rng=rng)
-    result, state = run(executable, tmp_path, 'mpi', rng=rng, processes=processes, team=team,
+    result, state = run(executable, tmp_path, 'mpi', rng=rng, processes=4, team=2,
                         launcher=launcher)
     compare(full, result); compare(full_state, state)
 

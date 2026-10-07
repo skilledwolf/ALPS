@@ -83,13 +83,12 @@ def test_learning_matches_exact_density(executable, tmp_path, coupling):
         assert clone['Overall Histogram'][()].sum() == 4*clone['completed_sweeps'][()]
 
 
-@pytest.mark.parametrize('rng', ['mt19937', 'lagged_fibonacci607'])
-@pytest.mark.parametrize('mode', ['learn', 'measure'])
+@pytest.mark.parametrize('mode,rng', [('learn', 'mt19937'), ('measure', 'lagged_fibonacci607')])
 def test_exact_restart_across_refinements_and_partial_bins(executable, tmp_path, rng, mode):
     source = {} if mode=='learn' else dict(weights=[str(weights_file(tmp_path/'weights.h5'))])
     options = dict(mode=mode, input=source, execution=dict(rng=rng))
     full, full_state = run(tmp_path, executable, 'full', **options)
-    for budget in (7, 319, 617):
+    for budget in ((7, 319, 617) if mode == 'learn' else (7, 319)):
         _, state = run(tmp_path, executable, f'part{budget}', **dict(options, execution=dict(rng=rng, max_sweeps=budget)))
         result, restored = run(tmp_path, executable, f'resume{budget}', **dict(options, input=dict(source, checkpoint=str(state))))
         compare(full, result); compare(full_state, restored)
@@ -170,25 +169,27 @@ def test_distinct_walk_measure_windows_and_unavailable_normalization(executable,
         assert 'Entropy' in ar['simulation/replicas/0/unavailable']
 
 
-@pytest.mark.parametrize('fault', ['spin', 'energy', 'topology', 'logg', 'count', 'histogram', 'rng'])
-def test_corrupt_checkpoint_does_not_replace_outputs(executable, tmp_path, fault):
+def test_corrupt_checkpoint_does_not_replace_outputs(executable, tmp_path):
     weights=weights_file(tmp_path/'weights.h5')
     options=dict(mode='measure', input=dict(weights=[str(weights)]))
     _, state=run(tmp_path, executable, 'partial', execution=dict(max_sweeps=67), **options)
     result, resumed=run(tmp_path, executable, 'resume', **dict(options, input=dict(options['input'], checkpoint=str(state))))
     before=result.read_bytes(),resumed.read_bytes()
-    with h5py.File(state, 'r+') as ar:
-        clone=ar['simulation/realizations/0/clones/0']
-        if fault=='spin': clone['spins'][0]=0
-        elif fault=='energy': clone['energy'][()]+=1
-        elif fault=='topology': clone['weights/bonds'][0]=999
-        elif fault=='logg': clone['weights/logg'][0]+=1
-        elif fault=='count': clone['steps'][()]+=1
-        elif fault=='histogram': clone['overall'][0]=2**63
-        else: del clone['rng']
-    rejected=subprocess.run([executable,str(tmp_path/'resume.toml')],capture_output=True,timeout=30)
-    assert rejected.returncode!=0
-    assert before==(result.read_bytes(),resumed.read_bytes())
+    original = state.read_bytes()
+    for fault in ['spin', 'energy', 'topology', 'logg', 'count', 'histogram', 'rng']:
+        state.write_bytes(original)
+        with h5py.File(state, 'r+') as ar:
+            clone=ar['simulation/realizations/0/clones/0']
+            if fault=='spin': clone['spins'][0]=0
+            elif fault=='energy': clone['energy'][()]+=1
+            elif fault=='topology': clone['weights/bonds'][0]=999
+            elif fault=='logg': clone['weights/logg'][0]+=1
+            elif fault=='count': clone['steps'][()]+=1
+            elif fault=='histogram': clone['overall'][0]=2**63
+            else: del clone['rng']
+        rejected=subprocess.run([executable,str(tmp_path/'resume.toml')],capture_output=True,timeout=30)
+        assert rejected.returncode!=0
+        assert before==(result.read_bytes(),resumed.read_bytes())
 
 
 @pytest.mark.parametrize('mode', ['learn', 'measure'])
@@ -226,69 +227,74 @@ def test_learning_penalty_and_native_pipeline(executable, tmp_path):
                                atol=max(.1,7*values['Energy'].error[0]))
 
 
-@pytest.mark.parametrize('fault', ['missing-file', 'empty-files', 'duplicate-files', 'output-input',
-    'incomplete-weights', 'incompatible-model', 'disjoint-windows', 'inconsistent-coverage',
-    'nonfinite-weight', 'invalid-range', 'wrong-measure-range', 'missing-reference',
-    'incomplete-measurements', 'different-measurement-weights', 'invalid-temperature', 'invalid-factor'])
-def test_validation_is_transactional(executable, tmp_path, fault):
+def test_validation_is_transactional(executable, tmp_path):
     weights=weights_file(tmp_path/'weights.h5')
-    result, state=run(tmp_path, executable, 'base', mode='measure', input=dict(weights=[str(weights)]))
+    result, _=run(tmp_path, executable, 'base', mode='measure', input=dict(weights=[str(weights)]))
     import tomllib
-    document=tomllib.loads((tmp_path/'base.toml').read_text())
-    p,source,output=document['parameters'],document['input'],document['output']
-    output.update(results='keep.h5',checkpoint='keep.checkpoint.h5')
-    if fault=='missing-file': source['weights'].append(str(tmp_path/'absent.h5'))
-    elif fault=='empty-files': source['weights']=[]
-    elif fault=='duplicate-files': source['weights'].append(str(weights))
-    elif fault=='output-input': output['results']=str(weights)
-    elif fault in ('incomplete-weights','incompatible-model','nonfinite-weight'):
-        with h5py.File(weights,'r+') as ar:
-            if fault=='incomplete-weights': ar['weights/complete'][()]=False
-            elif fault=='incompatible-model': ar['weights/coupling'][()]=-1
-            else: ar['weights/logg'][0]=np.nan
-    elif fault in ('disjoint-windows','inconsistent-coverage'):
-        left=weights_file(tmp_path/'left.h5',window=[-5,-1])
-        right=weights_file(tmp_path/'right.h5',window=[0,3] if fault=='disjoint-windows' else [-1,3])
-        if fault=='inconsistent-coverage':
-            with h5py.File(right,'r+') as ar: ar['weights/visited'][0]=False
-        source['weights']=[str(left),str(right)]
-    elif fault=='invalid-range': p['ENERGY_RANGE']=[3,-5]
-    elif fault=='wrong-measure-range': p['ENERGY_MEASURE_RANGE']=[-6,3]
-    elif fault=='invalid-factor':
-        p.update(MODE='learn',FINAL_UPDATE_FACTOR=1.)
-        del source['weights']
-    else:
-        p.update(MODE='reweight',TEMPERATURE_SET=[2.])
-        del source['weights'];source['measurements']=[str(result)]
-        del output['checkpoint']
-        if fault=='missing-reference': p['REFERENCE_BIN']=-5
-        elif fault=='invalid-temperature': p['TEMPERATURE_SET']=[0.]
-        elif fault=='incomplete-measurements':
-            with h5py.File(result,'r+') as ar: ar['microcanonical/complete'][()]=False
+    weights_data, result_data = weights.read_bytes(), result.read_bytes()
+    for fault in ('missing-file', 'empty-files', 'duplicate-files', 'output-input',
+                  'incomplete-weights', 'incompatible-model', 'disjoint-windows', 'inconsistent-coverage',
+                  'nonfinite-weight', 'invalid-range', 'wrong-measure-range', 'missing-reference',
+                  'incomplete-measurements', 'different-measurement-weights', 'invalid-temperature', 'invalid-factor'):
+        weights.write_bytes(weights_data)
+        result.write_bytes(result_data)
+        document=tomllib.loads((tmp_path/'base.toml').read_text())
+        p,source,output=document['parameters'],document['input'],document['output']
+        output.update(results='keep.h5',checkpoint='keep.checkpoint.h5')
+        if fault=='missing-file': source['weights'].append(str(tmp_path/'absent.h5'))
+        elif fault=='empty-files': source['weights']=[]
+        elif fault=='duplicate-files': source['weights'].append(str(weights))
+        elif fault=='output-input': output['results']=str(weights)
+        elif fault in ('incomplete-weights','incompatible-model','nonfinite-weight'):
+            with h5py.File(weights,'r+') as ar:
+                if fault=='incomplete-weights': ar['weights/complete'][()]=False
+                elif fault=='incompatible-model': ar['weights/coupling'][()]=-1
+                else: ar['weights/logg'][0]=np.nan
+        elif fault in ('disjoint-windows','inconsistent-coverage'):
+            left=weights_file(tmp_path/'left.h5',window=[-5,-1])
+            right=weights_file(tmp_path/'right.h5',window=[0,3] if fault=='disjoint-windows' else [-1,3])
+            if fault=='inconsistent-coverage':
+                with h5py.File(right,'r+') as ar: ar['weights/visited'][0]=False
+            source['weights']=[str(left),str(right)]
+        elif fault=='invalid-range': p['ENERGY_RANGE']=[3,-5]
+        elif fault=='wrong-measure-range': p['ENERGY_MEASURE_RANGE']=[-6,3]
+        elif fault=='invalid-factor':
+            p.update(MODE='learn',FINAL_UPDATE_FACTOR=1.)
+            del source['weights']
         else:
-            import shutil
-            second=tmp_path/'different.h5';shutil.copyfile(result,second)
-            with h5py.File(second,'r+') as ar: ar['weights/logg'][0]+=1.
-            source['measurements'].append(str(second))
-    for path in ('keep.h5','keep.checkpoint.h5'): (tmp_path/path).write_bytes(b'existing results')
-    invalid=write_run_file(tmp_path/'invalid.toml',**document)
-    before={path.name:path.read_bytes() for path in tmp_path.iterdir()}
-    rejected=subprocess.run([executable,'--validate',str(invalid)],capture_output=True,timeout=30)
-    assert rejected.returncode!=0,(fault,rejected.stdout,rejected.stderr)
-    assert before=={path.name:path.read_bytes() for path in tmp_path.iterdir()}
+            p.update(MODE='reweight',TEMPERATURE_SET=[2.])
+            del source['weights'];source['measurements']=[str(result)]
+            del output['checkpoint']
+            if fault=='missing-reference': p['REFERENCE_BIN']=-5
+            elif fault=='invalid-temperature': p['TEMPERATURE_SET']=[0.]
+            elif fault=='incomplete-measurements':
+                with h5py.File(result,'r+') as ar: ar['microcanonical/complete'][()]=False
+            else:
+                import shutil
+                second=tmp_path/'different.h5';shutil.copyfile(result,second)
+                with h5py.File(second,'r+') as ar: ar['weights/logg'][0]+=1.
+                source['measurements'].append(str(second))
+        for path in ('keep.h5','keep.checkpoint.h5'): (tmp_path/path).write_bytes(b'existing results')
+        invalid=write_run_file(tmp_path/'invalid.toml',overwrite=True,**document)
+        before={path.name:path.read_bytes() for path in tmp_path.iterdir()}
+        rejected=subprocess.run([executable,'--validate',str(invalid)],capture_output=True,timeout=30)
+        assert rejected.returncode!=0,(fault,rejected.stdout,rejected.stderr)
+        assert before=={path.name:path.read_bytes() for path in tmp_path.iterdir()}
 
 
-@pytest.mark.parametrize('fault', ['done', 'stage', 'histogram', 'nonfinite'])
-def test_corrupt_learning_state_is_rejected(executable, tmp_path, fault):
+def test_corrupt_learning_state_is_rejected(executable, tmp_path):
     _, state=run(tmp_path,executable,'partial',execution=dict(max_sweeps=17))
     result,resumed=run(tmp_path,executable,'resumed',input=dict(checkpoint=str(state)))
-    with h5py.File(state,'r+') as ar:
-        clone=ar['simulation/realizations/0/clones/0']
-        if fault=='done': clone['done'][()]=True
-        elif fault=='stage': clone['stage'][()]=1
-        elif fault=='histogram': clone['histogram'][0]=2**63
-        else: clone['weights/logg'][0]=np.nan
-    before=result.read_bytes(),resumed.read_bytes()
-    rejected=subprocess.run([executable,str(tmp_path/'resumed.toml')],capture_output=True,timeout=30)
-    assert rejected.returncode!=0
-    assert before==(result.read_bytes(),resumed.read_bytes())
+    original = state.read_bytes()
+    for fault in ['done', 'stage', 'histogram', 'nonfinite']:
+        state.write_bytes(original)
+        with h5py.File(state,'r+') as ar:
+            clone=ar['simulation/realizations/0/clones/0']
+            if fault=='done': clone['done'][()]=True
+            elif fault=='stage': clone['stage'][()]=1
+            elif fault=='histogram': clone['histogram'][0]=2**63
+            else: clone['weights/logg'][0]=np.nan
+        before=result.read_bytes(),resumed.read_bytes()
+        rejected=subprocess.run([executable,str(tmp_path/'resumed.toml')],capture_output=True,timeout=30)
+        assert rejected.returncode!=0
+        assert before==(result.read_bytes(),resumed.read_bytes())

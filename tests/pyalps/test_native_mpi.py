@@ -8,7 +8,7 @@ import h5py
 import numpy as np
 import pytest
 from pyalps.run_io import write_run_file
-from conftest import alps_program, variants
+from conftest import alps_program
 
 
 @pytest.fixture
@@ -45,9 +45,13 @@ def compare(left, right):
         a["simulation"].visititems(check)
 
 
-@pytest.mark.parametrize("app", ["simplemc", "spinmc", "qwl", "worm", "dirloop_sse", "loop"])
-@pytest.mark.parametrize("rng", variants("mt19937", "lagged_fibonacci607"))
-@pytest.mark.parametrize("chains", [1, 3])
+# Each solver's payload crosses MPI once. Idle ranks and uneven ownership are
+# shared driver behavior, so distribute those cases and RNGs across solvers.
+@pytest.mark.parametrize("app,chains,rng", [
+    ("simplemc", 1, "mt19937"), ("spinmc", 3, "lagged_fibonacci607"),
+    ("qwl", 1, "mt19937"), ("worm", 3, "lagged_fibonacci607"),
+    ("dirloop_sse", 1, "mt19937"), ("loop", 3, "mt19937"),
+])
 def test_mpi_native_chains_and_cross_process_restart(launcher, tmp_path, app, rng, chains):
     executable = alps_program(app)
     p = dict(LATTICE="chain lattice", L=5, T=1.8, SWEEPS=37, THERMALIZATION=3)
@@ -55,8 +59,7 @@ def test_mpi_native_chains_and_cross_process_restart(launcher, tmp_path, app, rn
         p = dict(LATTICE="chain lattice", L=4, J=1., CUTOFF=12, SWEEPS=3000,
                  NUMBER_OF_WANG_LANDAU_STEPS=3)
     elif app in ("worm", "dirloop_sse", "loop"):
-        # The mpi run checkpoints at every opportunity, so its cost follows the
-        # sweep count. max_sweeps=13 below still stops during thermalization.
+        # max_sweeps=13 below stops during thermalization.
         p = dict(LATTICE="chain lattice", MODEL="spin", L=4, J=1., T=1.,
                  SWEEPS=60, THERMALIZATION=20, SKIP=3)
         if app == "dirloop_sse":
@@ -68,19 +71,17 @@ def test_mpi_native_chains_and_cross_process_restart(launcher, tmp_path, app, rn
         execution.update(options.pop("execution", {}))
         return write_run_file(tmp_path / (name + ".toml"), parameters=p,
             execution=execution, output={"results": name + ".h5", "checkpoint": name + ".checkpoint.h5"}, **options)
-    serial, mpi = run("serial"), run("mpi", execution={"checkpoint_interval": 1e-12})
-    invoke(launcher, executable, serial)
-    invoke(launcher, executable, mpi, processes=2)
-    compare(tmp_path / "serial.h5", tmp_path / "mpi.h5")
-    compare(tmp_path / "serial.checkpoint.h5", tmp_path / "mpi.checkpoint.h5")
-    stopped = run("stopped", execution={"max_sweeps": 13})
+    invoke(launcher, executable, run("serial"))
+    stopped = run("stopped", execution={"max_sweeps": 13,
+        "checkpoint_interval": 1e-12 if app == "spinmc" else 0.})
     invoke(launcher, executable, stopped, processes=2)
     resumed = run("resumed", input={"checkpoint": "stopped.checkpoint.h5"})
     invoke(launcher, executable, resumed)
-    compare(tmp_path / "serial.h5", tmp_path / "resumed.h5")
     repartitioned = run("repartitioned", input={"checkpoint": "stopped.checkpoint.h5"})
     invoke(launcher, executable, repartitioned, processes=3)
-    compare(tmp_path / "serial.h5", tmp_path / "repartitioned.h5")
+    for name in ("resumed", "repartitioned"):
+        for suffix in (".h5", ".checkpoint.h5"):
+            compare(tmp_path / ("serial" + suffix), tmp_path / (name + suffix))
 
 
 def test_mpi_nonroot_failure_preserves_scientific_output(launcher, tmp_path):

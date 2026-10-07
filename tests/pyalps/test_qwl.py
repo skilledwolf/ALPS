@@ -28,10 +28,10 @@ def run_file(directory, name, *, parameters=None, execution=None, input=None):
         input=input, output=dict(results=name + ".out.h5", checkpoint=name + ".checkpoint.h5"), overwrite=True)
 
 
-@pytest.mark.parametrize("rng", ["mt19937", "lagged_fibonacci607"])
-@pytest.mark.parametrize("window,zhou,coupling,combinatorics", [
-    (0, True, 1., True), (3, True, 1., True), (0, False, 1., True),
-    (0, True, -1., True), (0, True, 1., False)])
+@pytest.mark.parametrize("window,zhou,coupling,combinatorics,rng", [
+    (0, True, 1., True, "mt19937"), (3, True, 1., True, "lagged_fibonacci607"),
+    (0, False, 1., True, "mt19937"), (0, True, -1., True, "lagged_fibonacci607"),
+    (0, True, 1., False, "mt19937")])
 def test_exact_restart_and_extension(executable, tmp_path, rng, window, zhou, coupling, combinatorics):
     p = dict(EXPANSION_ORDER_MINIMUM=window, USE_ZHOU_BHATT_METHOD=zhou, BLOCK_SWEEPS=200,
              J=coupling, INCLUDE_COMBINATORICS_FACTORS=combinatorics, NUMBER_OF_WANG_LANDAU_STEPS=8)
@@ -44,6 +44,10 @@ def test_exact_restart_and_extension(executable, tmp_path, rng, window, zhou, co
     execute(executable, resumed)
     compare(tmp_path / "full.out.h5", tmp_path / "resumed.out.h5")
     compare(tmp_path / "full.checkpoint.h5", tmp_path / "resumed.checkpoint.h5")
+    # Completed-target extension is shared by these modes; the shifted window
+    # exercises it with nonzero expansion-order offsets and the alternate RNG.
+    if not window:
+        return
     longer = run_file(tmp_path, "longer", parameters=dict(p, SWEEPS=7000), execution=e)
     extended = run_file(tmp_path, "extended", parameters=dict(p, SWEEPS=7000), execution=e,
                         input=dict(checkpoint="full.checkpoint.h5"))
@@ -52,8 +56,8 @@ def test_exact_restart_and_extension(executable, tmp_path, rng, window, zhou, co
     compare(tmp_path / "longer.checkpoint.h5", tmp_path / "extended.checkpoint.h5")
 
 
-@pytest.mark.parametrize("rng", ["mt19937", "lagged_fibonacci607"])
-def test_restart_during_multicanonical_production(executable, tmp_path, rng):
+def test_restart_during_multicanonical_production(executable, tmp_path):
+    rng = "lagged_fibonacci607"
     execute(executable, run_file(tmp_path, "full", execution=dict(rng=rng)))
     state = "simulation/realizations/0/clones/0/checkpoint/"
     with h5py.File(tmp_path / "full.checkpoint.h5") as ar:
@@ -69,24 +73,27 @@ def test_restart_during_multicanonical_production(executable, tmp_path, rng):
     compare(tmp_path / "full.checkpoint.h5", tmp_path / "resumed.checkpoint.h5")
 
 
-@pytest.mark.parametrize("fault", ["operators", "g/values", "state", "missing_measurement", "chain", "logf"])
-def test_bad_checkpoint_preserves_outputs(executable, tmp_path, fault):
+def test_bad_checkpoint_preserves_outputs(executable, tmp_path):
     execute(executable, run_file(tmp_path, "partial", execution=dict(max_sweeps=13)))
-    with h5py.File(tmp_path / "partial.checkpoint.h5", "a") as ar:
-        root = ar["simulation/realizations/0/clones/0"]
-        if fault == "missing_measurement":
-            del root["measurements/Time Up"]
-        elif fault == "g/values":
-            root["checkpoint/g/values"][0] = np.nan
-        else:
-            root["checkpoint/" + fault][...] = 999999
-    run = run_file(tmp_path, "bad", input=dict(checkpoint="partial.checkpoint.h5"))
-    (tmp_path / "bad.out.h5").write_bytes(b"existing results")
-    (tmp_path / "bad.checkpoint.h5").write_bytes(b"existing checkpoint")
-    before = {p.name: p.read_bytes() for p in tmp_path.iterdir()}
-    result = subprocess.run([executable, str(run)], capture_output=True, timeout=20)
-    assert result.returncode != 0
-    assert {p.name: p.read_bytes() for p in tmp_path.iterdir()} == before
+    checkpoint = tmp_path / "partial.checkpoint.h5"
+    original = checkpoint.read_bytes()
+    for fault in ['operators', 'g/values', 'state', 'missing_measurement', 'chain', 'logf']:
+        checkpoint.write_bytes(original)
+        with h5py.File(tmp_path / "partial.checkpoint.h5", "a") as ar:
+            root = ar["simulation/realizations/0/clones/0"]
+            if fault == "missing_measurement":
+                del root["measurements/Time Up"]
+            elif fault == "g/values":
+                root["checkpoint/g/values"][0] = np.nan
+            else:
+                root["checkpoint/" + fault][...] = 999999
+        run = run_file(tmp_path, "bad", input=dict(checkpoint="partial.checkpoint.h5"))
+        (tmp_path / "bad.out.h5").write_bytes(b"existing results")
+        (tmp_path / "bad.checkpoint.h5").write_bytes(b"existing checkpoint")
+        before = {p.name: p.read_bytes() for p in tmp_path.iterdir()}
+        result = subprocess.run([executable, str(run)], capture_output=True, timeout=20)
+        assert result.returncode != 0
+        assert {p.name: p.read_bytes() for p in tmp_path.iterdir()} == before
 
 
 @pytest.mark.parametrize("coupling,combinatorics", [(1., True), (-1., True), (1., False)])

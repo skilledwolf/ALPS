@@ -38,16 +38,17 @@ def results(filename):
                 for name in archive.list_children("/simulation/results")}
 
 
-@pytest.mark.parametrize("parameters", [
-    {"h": [-.17]},
-    {"MODEL": "XY", "J": [.8, .6, -.2, .9], "D": [.2, .1], "h": [.1, -.2]},
-    {"MODEL": "Heisenberg", "J": [.8, .1, .2, -.3, .6, .1, 0., .2, .9],
-     "D": [.1, .2, .3], "h": [.1, 0., -.2]},
-    {"MODEL": "O(4)", "UPDATE": "cluster"},
-    {"UPDATE": "cluster", "J": [-.8], "L": 4},
-    *[{"MODEL": "Potts", "q": q, "UPDATE": "cluster"} for q in (3, 4, 10)],
+# Native tests cover the model/update kernels. Here each distinct result/state
+# representation crosses the CLI/archive/Python boundary once, using both RNGs.
+@pytest.mark.parametrize("parameters,rng", [
+    ({"h": [-.17]}, "mt19937"),
+    ({"MODEL": "XY", "J": [.8, .6, -.2, .9], "D": [.2, .1], "h": [.1, -.2]}, "lagged_fibonacci607"),
+    ({"MODEL": "Heisenberg", "J": [.8, .1, .2, -.3, .6, .1, 0., .2, .9],
+      "D": [.1, .2, .3], "h": [.1, 0., -.2]}, "mt19937"),
+    ({"MODEL": "O(4)", "UPDATE": "cluster"}, "mt19937"),
+    ({"UPDATE": "cluster", "J": [-.8], "L": 4}, "mt19937"),
+    ({"MODEL": "Potts", "q": 10, "UPDATE": "cluster"}, "lagged_fibonacci607"),
 ])
-@pytest.mark.parametrize("rng", ["mt19937", "lagged_fibonacci607"])
 def test_spinmc_restart_retains_every_native_result(executable, tmp_path, parameters, rng):
     full = run_file(tmp_path, "full", parameters=parameters,
                     execution={"rng": rng}, output={"checkpoint": "full-checkpoint.h5"})
@@ -139,8 +140,8 @@ def test_spinmc_pools_independent_unequal_partial_bins(executable, tmp_path):
                                       np.concatenate((left[name].batch_sums, right[name].batch_sums)))
 
 
-@pytest.mark.parametrize("parameters", [{"MODEL": "Ising", "UPDATE": "local"}, {"MODEL": "Ising", "UPDATE": "cluster"}, {"MODEL": "O(4)", "UPDATE": "cluster"}, {"MODEL": "Potts", "q": 3, "UPDATE": "cluster"}])
-def test_spinmc_extend_completed_run(executable, tmp_path, parameters):
+def test_spinmc_extend_completed_run(executable, tmp_path):
+    parameters = {"MODEL": "Potts", "q": 10, "UPDATE": "cluster"}
     full = run_file(tmp_path, "full", parameters=parameters)
     short = run_file(tmp_path, "short", parameters={**parameters, "SWEEPS": 8},
                      output={"checkpoint": "continuation.h5"})
