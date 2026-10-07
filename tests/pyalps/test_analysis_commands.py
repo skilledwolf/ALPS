@@ -1,5 +1,8 @@
 """Native result dispatch and the source-tree mean/variance command contracts."""
+import contextlib
+import io
 from pathlib import Path
+import runpy
 import subprocess
 import sys
 
@@ -29,9 +32,28 @@ def write_result(filename, family="Batch", path="/simulation/results/value"):
     return result
 
 
-def command(name, *args):
-    return subprocess.run([sys.executable, str(TOOLS/(name + ".py")), *map(str, args)],
-                          capture_output=True, text=True, timeout=30)
+def command(name, *args, process=False):
+    """Run an analysis command like its console script.
+
+    Starting Python and importing pyalps dominates a command, so most checks
+    run the script in this interpreter; an escaping exception fails the test
+    as a traceback would. process=True starts it as its own process.
+    """
+    script = TOOLS/(name + ".py")
+    if process:
+        return subprocess.run([sys.executable, str(script), *map(str, args)],
+                              capture_output=True, text=True, timeout=30)
+    stdout, stderr, code = io.StringIO(), io.StringIO(), 0
+    argv, path = sys.argv, list(sys.path)
+    sys.argv, sys.path[:0] = [str(script), *map(str, args)], [str(TOOLS)]
+    try:
+        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            runpy.run_path(str(script), run_name="__main__")
+    except SystemExit as exit:
+        code = exit.code if isinstance(exit.code, int) else int(exit.code is not None)
+    finally:
+        sys.argv, sys.path[:] = argv, path
+    return subprocess.CompletedProcess(sys.argv, code, stdout.getvalue(), stderr.getvalue())
 
 
 @pytest.mark.parametrize("family", FAMILIES)
@@ -78,7 +100,7 @@ def test_mean_only_variance_is_not_invented_or_partially_written(tmp_path):
     filename = tmp_path / "mixed.h5"
     write_result(filename, "Batch", "/simulation/results/first")
     write_result(filename, "Mean", "/simulation/results/second")
-    result = command("variance", "-w", filename)
+    result = command("variance", "-w", filename, process=True)
     assert result.returncode != 0
     assert "mean only" in result.stderr
     with h5py.File(filename) as archive:
@@ -95,7 +117,7 @@ def test_reject_legacy_checkpoint_or_invalid_kind(tmp_path, kind):
         del group.attrs["kind"]
         if kind is not None:
             group.attrs["kind"] = kind
-    result = command("mean", filename)
+    result = command("mean", filename, process=kind is None)
     assert result.returncode != 0
     assert "Traceback" not in result.stderr
     if kind is None:

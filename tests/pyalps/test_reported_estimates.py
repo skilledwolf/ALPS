@@ -10,6 +10,7 @@ import pytest
 import pyalps
 from pyalps import alea, hdf5
 from pyalps.dataset import DataSet
+from test_analysis_commands import command
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -91,9 +92,9 @@ def test_offline_summary_conversion_and_analysis_commands(tmp_path, vector, hist
             group['timeseries/data'] = np.stack([mean, mean*2])
             group['timeseries/data'].attrs.update(binsize=40, binningtype='linear')
     before = source.read_bytes()
-    command = [sys.executable, str(ROOT/'src/tools/hdf5/convert.py'), str(source), str(target),
-               '--alea-summary', '/simulation/results/E']
-    completed = subprocess.run(command, text=True, capture_output=True)
+    conversion = [sys.executable, str(ROOT/'src/tools/hdf5/convert.py'), str(source), str(target),
+                  '--alea-summary', '/simulation/results/E']
+    completed = subprocess.run(conversion, text=True, capture_output=True)
     assert completed.returncode == 0, completed.stderr
     assert source.read_bytes() == before
     data = pyalps.loadMeasurements([str(target)])[0][0]
@@ -110,8 +111,7 @@ def test_offline_summary_conversion_and_analysis_commands(tmp_path, vector, hist
         assert ('legacy/timeseries/data' in group) == history
         np.testing.assert_array_equal(group['legacy/mean/value'], mean)
     for tool in ('mean', 'variance'):
-        completed = subprocess.run([sys.executable, str(ROOT/f'src/tools/alea/{tool}.py'),
-                                    '-v', '-w', str(target)], text=True, capture_output=True)
+        completed = command(tool, '-v', '-w', target)
         assert completed.returncode == 0, completed.stderr
 
 
@@ -120,7 +120,6 @@ def test_missing_reported_variance_is_not_invented_by_cli(tmp_path):
     with hdf5.archive(path, 'w') as ar:
         alea.ReportedEstimate(count=12, mean=[2.], error=[.7]).save(ar, '/simulation/results/E')
     before = path.read_bytes()
-    completed = subprocess.run([sys.executable, str(ROOT/'src/tools/alea/variance.py'),
-                                '-w', str(path)], text=True, capture_output=True)
+    completed = command('variance', '-w', path)
     assert completed.returncode != 0 and 'variance cannot be recovered' in completed.stderr
     assert path.read_bytes() == before
