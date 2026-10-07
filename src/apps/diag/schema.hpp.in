@@ -1,0 +1,3 @@
+// Copyright (C) 2026 ALPS Collaboration. SPDX-License-Identifier: MIT
+#pragma once
+inline constexpr char diag_schema[]=R"toml(@DIAG_SCHEMA@)toml";

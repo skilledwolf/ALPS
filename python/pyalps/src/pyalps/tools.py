@@ -106,12 +106,12 @@ def executeCommandLogged(cmdline,logfile):
 # These programs read TOML run files; pyalps.run_io.execute validates and
 # launches them. runApplication keeps the scheduler XML command line.
 _RUN_FILE_APPLICATIONS = frozenset((
-    "spinmc", "simplemc", "loop", "worm", "dirloop_sse", "qwl",
+    "spinmc", "simplemc", "loop", "worm", "dirloop_sse", "qwl", "sparsediag", "fulldiag",
     "dmft", "hybridization", "interaction", "hirschfye", "maxent"))
 
 
 def runApplication(appname, parmfiles, T=None, Tmin=None, Tmax=None, writexml=False, MPI=None, mpirun='mpirun'):
-    """ run an XML scheduler application (sparsediag, fulldiag or dmrg)
+    """ run the XML scheduler application dmrg
 
         appname: the name of the application
         parmfiles: the name of the main XML input file, or a list of them
@@ -153,6 +153,14 @@ def runApplication(appname, parmfiles, T=None, Tmin=None, Tmax=None, writexml=Fa
         executeCommand(cmdline);
 
 
+def _load_plots(infiles):
+    """ load the XML plots <prefix>.plot.*.xml written for each result file """
+    datasets = []
+    for infile in infiles:
+      prefix = os.path.splitext(infile)[0].removesuffix('.out')
+      datasets.append([readAlpsXMLPlot(fn) for fn in glob.glob(glob.escape(prefix) + '.plot.*.xml')])
+    return datasets
+
 def evaluateQWL(infiles, appname='qwl_evaluate', DELTA_T=None, T_MIN=None, T_MAX=None):
     """ evaluate results of the quantum Wang-Landau application 
     
@@ -176,16 +184,7 @@ def evaluateQWL(infiles, appname='qwl_evaluate', DELTA_T=None, T_MIN=None, T_MAX
     res = subprocess.call(cmdline)
     if res != 0:
       raise RuntimeError("Execution error in evaluateQWL: " + str(res))
-    datasets = []
-    for infile in infiles:
-      datasets.append([])
-      prefix = os.path.splitext(infile)[0].removesuffix('.out')
-      ofname = glob.escape(prefix) + '.plot.*.xml'
-      for fn in glob.glob(ofname):
-        dataset = readAlpsXMLPlot(fn)
-        datasets[-1].append(dataset)
-        ylabel = dataset.props['ylabel']
-    return datasets
+    return _load_plots(infiles)
 
 def evaluateFulldiagVersusT(infiles, appname='fulldiag_evaluate', DELTA_T=None, T_MIN=None, T_MAX=None, H=None):
     """ evaluate results of the fulldiag application as a function of temperature
@@ -198,6 +197,7 @@ def evaluateFulldiagVersusT(infiles, appname='fulldiag_evaluate', DELTA_T=None, 
         
         This function returns a list of lists of DataSet objects, for the various properties evaluated for each of the input files.
     """
+    infiles = [os.fspath(path) for path in make_list(infiles)]
     cmdline = [appname]
     if DELTA_T is not None:
       cmdline += ['--DELTA_T',str(DELTA_T)]
@@ -207,19 +207,12 @@ def evaluateFulldiagVersusT(infiles, appname='fulldiag_evaluate', DELTA_T=None, 
       cmdline += ['--T_MAX',str(T_MAX)]
     if H is not None:
       cmdline += ['--H',str(H)]
-    cmdline += make_list(infiles)
-    res = executeCommand(cmdline)
+    cmdline += infiles
+    log(list2cmdline(cmdline))
+    res = subprocess.call(cmdline)
     if res != 0:
-      raise Exception("Execution error in evaluateFulldiagVersusT: " + str(res))
-    datasets = []
-    for infile in infiles:
-      datasets.append([])
-      ofname = infile.replace('.out.xml', '.plot.*.xml')
-      for fn in glob.glob(ofname):
-        dataset = readAlpsXMLPlot(fn)
-        datasets[-1].append(dataset)
-        ylabel = dataset.props['ylabel']
-    return datasets
+      raise RuntimeError("Execution error in evaluateFulldiagVersusT: " + str(res))
+    return _load_plots(infiles)
 
 def evaluateFulldiagVersusH(infiles, appname='fulldiag_evaluate', DELTA_H=None, H_MIN=None, H_MAX=None, T=None):
     """ evaluate results of the fulldiag application as a function of magnetic field h
@@ -232,6 +225,7 @@ def evaluateFulldiagVersusH(infiles, appname='fulldiag_evaluate', DELTA_H=None, 
         
         This function returns a list of lists of DataSet objects, for the various properties evaluated for each of the input files.
     """
+    infiles = [os.fspath(path) for path in make_list(infiles)]
     cmdline = [appname,'--versus', 'h']
     if DELTA_H is not None:
       cmdline += ['--DELTA_H',str(DELTA_H)]
@@ -241,19 +235,12 @@ def evaluateFulldiagVersusH(infiles, appname='fulldiag_evaluate', DELTA_H=None, 
       cmdline += ['--H_MAX',str(H_MAX)]
     if T is not None:
       cmdline += ['--T',str(T)]
-    cmdline += make_list(infiles)
-    res = executeCommand(cmdline)
+    cmdline += infiles
+    log(list2cmdline(cmdline))
+    res = subprocess.call(cmdline)
     if res != 0:
-      raise Exception("Execution error in evaluateFulldiagVersusH: " + str(res))
-    datasets = []
-    for infile in infiles:
-      datasets.append([])
-      ofname = infile.replace('.out.xml', '.plot.*.xml')
-      for fn in glob.glob(ofname):
-        dataset = readAlpsXMLPlot(fn)
-        datasets[-1].append(dataset)
-        ylabel = dataset.props['ylabel']
-    return datasets
+      raise RuntimeError("Execution error in evaluateFulldiagVersusH: " + str(res))
+    return _load_plots(infiles)
 
        
 def xslPath():

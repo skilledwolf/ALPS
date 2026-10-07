@@ -1,0 +1,12 @@
+# Copyright (C) 2026 ALPS Collaboration. SPDX-License-Identifier: MIT
+# Lowest eigenvalues computed in each sector.
+[parameters.NUMBER_EIGENVALUES]
+type = "int64"
+default = 1
+min = 1
+max = 2147483647
+# Lanczos iterations; by default min(10 * sector dimension, 1000).
+[parameters.MAX_ITERATIONS]
+type = "int64"
+min = 1
+max = 2147483647

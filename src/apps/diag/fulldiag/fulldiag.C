@@ -4,35 +4,20 @@
 *
 * Copyright (C) 1994-2005 by Matthias Troyer <troyer@itp.phys.ethz.ch>,
 *                            Andreas Honecker <ahoneck@uni-goettingen.de>
+* Modifications (C) 2026 ALPS Collaboration
 *
 * ALPS Project: https://alps.comp-phys.org/
 * SPDX-License-Identifier: MIT
 *
 *****************************************************************************/
 
-/* $Id$ */
-
-#include "factory.h"
-#include <alps/scheduler/scheduler.h>
-#include <complex>
+// ALPS full diagonalization application; see A.F. Albuquerque et al.,
+// J. of Magn. and Magn. Materials 310, 1187 (2007).
+#include "fulldiag.h"
+#include "../application.hpp"
+#include "schema.hpp"
 
 int main(int argc, char** argv)
 {
-#ifndef BOOST_NO_EXCEPTIONS
-try {
-#endif
-
-   return alps::scheduler::start(argc,argv,FullDiagFactory());
-
-#ifndef BOOST_NO_EXCEPTIONS
-}
-catch (std::exception& exc) {
-  std::cerr << exc.what() << "\n";
-  return -1;
-}
-catch (...) {
-  std::cerr << "Fatal Error: Unknown Exception!\n";
-  return -2;
-}
-#endif
+  return diag::main<FullDiagMatrix>(argc, argv, "fulldiag", diag_schema);
 }

@@ -310,8 +310,8 @@ def test_existing_scheduler_xml_path_is_preserved(monkeypatch):
     recorded = []
     monkeypatch.setattr(tools, "check_existence", lambda _: None)
     monkeypatch.setattr(tools, "executeCommand", lambda args: recorded.append(args) or 0)
-    assert tools.runApplication("sparsediag", "ed.in.xml", MPI=2, T=10, Tmax=30) == (0, "ed.out.xml")
-    assert recorded == [["mpirun", "-np", "2", "sparsediag", "--mpi", "--Nmax", "1", "ed.in.xml",
+    assert tools.runApplication("dmrg", "dmrg.in.xml", MPI=2, T=10, Tmax=30) == (0, "dmrg.out.xml")
+    assert recorded == [["mpirun", "-np", "2", "dmrg", "--mpi", "--Nmax", "1", "dmrg.in.xml",
                          "-T", "10", "--Tmax", "30"]]
 
 

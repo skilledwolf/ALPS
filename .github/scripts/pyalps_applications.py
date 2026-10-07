@@ -58,11 +58,12 @@ cases = {
         "NUMBER_EIGENVALUES": 1,
     },
 }
-if app in ("spinmc", "loop", "dirloop_sse"):
+if app != "dmrg":
     from pyalps.run_io import execute, write_run_files
     parameters = {key: value for key, value in cases[app].items() if key != "SEED"}
-    manifest = write_run_files("test", [{"parameters": parameters,
-        "execution": {"seed": 42, "time_limit": 45.0},
+    # Exact diagonalization is deterministic and has no execution settings.
+    execution = {} if app in ("sparsediag", "fulldiag") else {"seed": 42, "time_limit": 45.0}
+    manifest = write_run_files("test", [{"parameters": parameters, "execution": execution,
         "output": {"results": "test.task1.out.h5"}}])
     files = execute(app, manifest)
 else:

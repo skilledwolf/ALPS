@@ -17,6 +17,4 @@
 #   FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 #   DEALINGS IN THE SOFTWARE.
 
-add_executable(sparsediag sparsediag.C factory.C)
-target_link_libraries(sparsediag PRIVATE ALPS::alps)
-alps_install_applications(sparsediag)
+alps_diag_application(sparsediag)

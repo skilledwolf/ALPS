@@ -3,35 +3,20 @@
 * ALPS Project Applications
 *
 * Copyright (C) 1994-2004 by Matthias Troyer <troyer@itp.phys.ethz.ch>
+* Modifications (C) 2026 ALPS Collaboration
 *
 * ALPS Project: https://alps.comp-phys.org/
 * SPDX-License-Identifier: MIT
 *
 *****************************************************************************/
 
-/* $Id$ */
-
-#include "factory.h"
-#include <alps/scheduler/scheduler.h>
-#include <complex>
+// ALPS sparse diagonalization application; see A.F. Albuquerque et al.,
+// J. of Magn. and Magn. Materials 310, 1187 (2007).
+#include "sparsediag.h"
+#include "../application.hpp"
+#include "schema.hpp"
 
 int main(int argc, char** argv)
 {
-#ifndef BOOST_NO_EXCEPTIONS
-try {
-#endif
-
-   return alps::scheduler::start(argc,argv,SparseDiagFactory());
-
-#ifndef BOOST_NO_EXCEPTIONS
-}
-catch (std::exception& exc) {
-  std::cerr << exc.what() << "\n";
-  return -1;
-}
-catch (...) {
-  std::cerr << "Fatal Error: Unknown Exception!\n";
-  return -2;
-}
-#endif
+  return diag::main<SparseDiagMatrix>(argc, argv, "sparsediag", diag_schema);
 }

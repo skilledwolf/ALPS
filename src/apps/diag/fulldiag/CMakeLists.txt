@@ -17,13 +17,9 @@
 #   FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 #   DEALINGS IN THE SOFTWARE.
 
-add_library(fulldiag_impl STATIC factory.C)
-target_link_libraries(fulldiag_impl PUBLIC ALPS::alps)
-
-add_executable(fulldiag fulldiag.C)
+alps_diag_application(fulldiag)
 add_executable(fulldiag_evaluate fulldiag_evaluate.C)
-target_link_libraries(fulldiag PRIVATE fulldiag_impl)
-target_link_libraries(fulldiag_evaluate PRIVATE fulldiag_impl)
+target_link_libraries(fulldiag_evaluate PRIVATE ALPS::alps)
 
 if(ALPS_BUILD_TESTING)
   add_test(NAME fulldiag_evaluate_help COMMAND fulldiag_evaluate --help)
@@ -35,4 +31,4 @@ if(ALPS_BUILD_TESTING)
   set_tests_properties(fulldiag_evaluate_no_arguments PROPERTIES WILL_FAIL TRUE)
 endif()
 
-alps_install_applications(fulldiag fulldiag_evaluate)
+alps_install_applications(fulldiag_evaluate)
