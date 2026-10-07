@@ -1,10 +1,13 @@
+[parameters]
 LATTICE = "ladder"
 MODEL = "spin"
 local_S = 0.5
 J0 = 1
 J1 = 1
+L = 6
 CONSERVED_QUANTUMNUMBERS = "Sz"
-Sz_total = 0
-{ L = 6; }
-{ L = 8; }
-{ L = 10; }
+T_MIN = 0.05
+T_MAX = 5.0
+DELTA_T = 0.05
+[output]
+results = "parm6b.out.h5"

@@ -28,11 +28,13 @@ parms = [{
         }]
 
 #write the input file and run the simulation
-input_file = pyalps.writeInputFiles('ed06b',parms)
-res = pyalps.runApplication('fulldiag',input_file)
+from pyalps.run_io import execute, write_run_files
+runs = [dict(parameters=p, output=dict(results=f'ed06b.task{i+1}.out.h5'))
+        for i, p in enumerate(parms)]
+files = execute('fulldiag', write_run_files('ed06b', runs, overwrite=True))
 
 #run the evaluation and load all the plots
-data = pyalps.evaluateFulldiagVersusT(pyalps.getResultFiles(prefix='ed06b'),DELTA_T=0.05, T_MIN=0.05, T_MAX=5.0)
+data = pyalps.evaluateFulldiagVersusT(files,DELTA_T=0.05, T_MIN=0.05, T_MAX=5.0)
 
 #make plot
 for s in pyalps.flatten(data):

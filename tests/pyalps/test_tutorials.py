@@ -195,3 +195,65 @@ def test_native_qmc_tutorial_end_to_end(source, tmp_path, monkeypatch):
             assert np.isfinite(data.y[0].error)
     finally:
         plt.close('all')
+
+
+ED_SCRIPTS = [path for path in sorted((TUTORIALS / '02-ed').rglob('*.py'))
+              + sorted((TUTORIALS / '11-notebook' / 'ja').glob('tutorial_ed*.py'))
+              if 'run_io import execute' in path.read_text(encoding='utf-8')]
+ED_NOTEBOOKS = sorted((TUTORIALS / '11-notebook').rglob('ED-*.ipynb'))
+
+
+@pytest.fixture
+def validate_ed(monkeypatch):
+    """Validate one run of each kind; the first execute() ends the tutorial."""
+    import tomllib
+    from pyalps import run_io
+
+    def validate(application, runs):
+        kinds = {}
+        for path in runs:
+            kinds.setdefault(run_key(application, tomllib.loads(Path(path).read_text()), values=False), path)
+        unchecked = [path for kind, path in kinds.items() if kind not in VALIDATED]
+        if unchecked:
+            checked = subprocess.run([alps_program(application), '--validate', *map(str, unchecked)],
+                                     capture_output=True, text=True, timeout=60)
+            assert checked.returncode == 0, checked.stdout + checked.stderr
+            VALIDATED.update(kinds)
+
+    def execute(application, runs, **_):
+        validate(application, run_io.read_job_manifest(runs)[1])
+        raise Prepared
+
+    monkeypatch.setattr(run_io, 'execute', execute)
+    return validate
+
+
+@pytest.mark.parametrize('script', ED_SCRIPTS, ids=lambda path: str(path.relative_to(TUTORIALS)))
+def test_ed_tutorial_runs_validate(script, tmp_path, monkeypatch, validate_ed):
+    for library in script.parent.glob('*.xml'):
+        shutil.copy(library, tmp_path)
+    monkeypatch.chdir(tmp_path)
+    with pytest.raises(Prepared):
+        runpy.run_path(str(script), run_name='__main__')
+
+
+@pytest.mark.parametrize('notebook', ED_NOTEBOOKS, ids=lambda path: str(path.relative_to(TUTORIALS)))
+def test_ed_notebook_runs_validate(notebook, tmp_path, monkeypatch, validate_ed):
+    # A notebook shares its lattice and model files with the tutorial of the same number.
+    in_copy(next((TUTORIALS / '02-ed').glob(notebook.name[3:5] + '-*')), tmp_path, monkeypatch)
+    namespace, prepared = {'__name__': '__main__'}, False
+    for cell in code_cells(notebook):
+        magic, _, body = cell.partition('\n')
+        if magic.startswith('%%writefile '):
+            Path(magic.split()[1]).write_text(body)
+        elif magic == '%%bash':
+            # Command-line sections run the programs on their own run files.
+            for command in (line.split() for line in body.splitlines()):
+                if command and command[0] in ('sparsediag', 'fulldiag'):
+                    validate_ed(command[0], command[1:])
+        elif not prepared:
+            try:
+                exec(compile(cell, notebook.name, 'exec'), namespace)
+            except Prepared:
+                prepared = True
+    assert prepared

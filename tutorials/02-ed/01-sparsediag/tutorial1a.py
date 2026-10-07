@@ -26,11 +26,13 @@ parms = [{
         }]
 
 #write the input file and run the simulation
-input_file = pyalps.writeInputFiles('parm1a',parms)
-res = pyalps.runApplication('sparsediag',input_file)
+from pyalps.run_io import execute, write_run_files
+runs = [dict(parameters=p, output=dict(results=f'parm1a.task{i+1}.out.h5'))
+        for i, p in enumerate(parms)]
+files = execute('sparsediag', write_run_files('parm1a', runs, overwrite=True))
 
 #load all measurements for all states
-data = pyalps.loadEigenstateMeasurements(pyalps.getResultFiles(prefix='parm1a'))
+data = pyalps.loadEigenstateMeasurements(files)
 
 # print properties of ground states in all sectors:
 for sector in data[0]:

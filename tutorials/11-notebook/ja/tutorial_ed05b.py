@@ -33,10 +33,12 @@ for L in [10,12]:
         'L'        : L
     })
 
-input_file = pyalps.writeInputFiles(prefix,parms)
-res = pyalps.runApplication('sparsediag', input_file)
+from pyalps.run_io import execute, write_run_files
+runs = [dict(parameters=p, output=dict(results=f'{prefix}.task{i+1}.out.h5'))
+        for i, p in enumerate(parms)]
+files = execute('sparsediag', write_run_files(prefix, runs, overwrite=True))
 
-data = pyalps.loadEigenstateMeasurements(pyalps.getResultFiles(prefix=prefix))
+data = pyalps.loadEigenstateMeasurements(files)
 
 E0 = {}
 E1 = {}

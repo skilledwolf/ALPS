@@ -19,7 +19,6 @@ import numpy as np
 #prepare the input parameters
 parms = [{ 
           'LATTICE'                   : "V15", 
-          'LATTICE_LIBRARY'           : "v15-graph.xml", 
           'MODEL'                     : "spin",
           'CONSERVED_QUANTUMNUMBERS'  : 'Sz',
           'local_S'                   : 0.5,
@@ -27,11 +26,14 @@ parms = [{
         }]
 
 #write the input file and run the simulation
-input_file = pyalps.writeInputFiles('ed06d',parms)
-res = pyalps.runApplication('fulldiag',input_file)
+from pyalps.run_io import execute, write_run_files
+runs = [dict(parameters=p, input=dict(lattice_library='v15-graph.xml'),
+             output=dict(results=f'ed06d.task{i+1}.out.h5'))
+        for i, p in enumerate(parms)]
+files = execute('fulldiag', write_run_files('ed06d', runs, overwrite=True))
 
 #run the evaluation and load all the plots
-data = pyalps.evaluateFulldiagVersusT(pyalps.getResultFiles(prefix='ed06d'),DELTA_T=0.05, T_MIN=0.05, T_MAX=5.0)
+data = pyalps.evaluateFulldiagVersusT(files,DELTA_T=0.05, T_MIN=0.05, T_MAX=5.0)
 
 #make plot
 for s in pyalps.flatten(data):

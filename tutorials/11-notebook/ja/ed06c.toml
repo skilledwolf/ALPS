@@ -1,0 +1,15 @@
+[parameters]
+LATTICE = "double dimer"
+MODEL = "dimerized spin"
+local_S0 = 1
+local_S1 = 0.5
+J0 = 1
+J1 = 0.4
+h = 0
+CONSERVED_QUANTUMNUMBERS = "Sz"
+T = 0.02
+[input]
+lattice_library = "dd-graph.xml"
+model_library = "model-dspin.xml"
+[output]
+results = "ed06c.out.h5"

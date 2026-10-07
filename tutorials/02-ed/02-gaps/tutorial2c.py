@@ -40,7 +40,7 @@ for s in [0.5,1]:
   gapplot.x = 1./np.sort(lengths)
   gapplot.y = [min_energies[(l,s,1)] -min_energies[(l,s,0)] for l in np.sort(lengths)]  
   gapplot.props['xlabel']='$1/L$'
-  gapplot.props['ylabel']='Triplet gap $\Delta/J$'
+  gapplot.props['ylabel']=r'Triplet gap $\Delta/J$'
   gapplot.props['label']='S='+str(s)
   pyalps.plot.plot(gapplot)
 

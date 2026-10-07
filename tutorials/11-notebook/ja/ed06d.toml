@@ -1,0 +1,13 @@
+[parameters]
+LATTICE = "V15"
+MODEL = "spin"
+local_S = 0.5
+J = 1
+CONSERVED_QUANTUMNUMBERS = "Sz"
+T_MIN = 0.05
+T_MAX = 5.0
+DELTA_T = 0.05
+[input]
+lattice_library = "v15-graph.xml"
+[output]
+results = "ed06d.out.h5"

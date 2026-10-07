@@ -18,9 +18,7 @@ import pyalps.plot
 #prepare the input parameters
 parms = [{ 
           'LATTICE'                   : "double dimer", 
-          'LATTICE_LIBRARY'           : "dd-graph.xml", 
           'MODEL'                     : "dimerized spin",
-          'MODEL_LIBRARY'             : "model-dspin.xml",
           'CONSERVED_QUANTUMNUMBERS'  : 'Sz',
           'local_S0'                  : 1,
           'local_S1'                  : 0.5,
@@ -29,11 +27,14 @@ parms = [{
         }]
 
 #write the input file and run the simulation
-input_file = pyalps.writeInputFiles('parm2c',parms)
-res = pyalps.runApplication('fulldiag',input_file)
+from pyalps.run_io import execute, write_run_files
+runs = [dict(parameters=p, input=dict(lattice_library='dd-graph.xml', model_library='model-dspin.xml'),
+             output=dict(results=f'parm2c.task{i+1}.out.h5'))
+        for i, p in enumerate(parms)]
+files = execute('fulldiag', write_run_files('parm2c', runs, overwrite=True))
 
 #run the evaluation and load all the plots
-data = pyalps.evaluateFulldiagVersusH(pyalps.getResultFiles(prefix='parm2c'),T = 0.02, DELTA_H=0.025, H_MIN=0., H_MAX=4.0)
+data = pyalps.evaluateFulldiagVersusH(files,T = 0.02, DELTA_H=0.025, H_MIN=0., H_MAX=4.0)
 
 #make plot
 for s in pyalps.flatten(data):

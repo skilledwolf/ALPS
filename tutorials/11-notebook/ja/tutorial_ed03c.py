@@ -32,11 +32,13 @@ for l in [6, 8, 10]:
     )
 
 #write the input file and run the simulation
-input_file = pyalps.writeInputFiles('ed03c',parms)
-res = pyalps.runApplication('sparsediag',input_file)
+from pyalps.run_io import execute, write_run_files
+runs = [dict(parameters=p, output=dict(results=f'ed03c.task{i+1}.out.h5'))
+        for i, p in enumerate(parms)]
+files = execute('sparsediag', write_run_files('ed03c', runs, overwrite=True))
 
 #load all measurements for all states
-data = pyalps.loadSpectra(pyalps.getResultFiles(prefix='ed03c'))
+data = pyalps.loadSpectra(files)
 
 # collect spectra over all momenta for every simulation
 spectra = {}

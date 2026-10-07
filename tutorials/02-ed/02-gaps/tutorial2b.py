@@ -32,11 +32,13 @@ for l in [4, 6, 8, 10, 12, 14]:
       )
 
 #write the input file and run the simulation
-input_file = pyalps.writeInputFiles('parm2b',parms)
-res = pyalps.runApplication('sparsediag',input_file)
+from pyalps.run_io import execute, write_run_files
+runs = [dict(parameters=p, output=dict(results=f'parm2b.task{i+1}.out.h5'))
+        for i, p in enumerate(parms)]
+files = execute('sparsediag', write_run_files('parm2b', runs, overwrite=True))
 
 #load all measurements for all states
-data = pyalps.loadSpectra(pyalps.getResultFiles(prefix='parm2b'))
+data = pyalps.loadSpectra(files)
 
 lengths = []
 min_energies = {}
@@ -57,7 +59,7 @@ gapplot = pyalps.DataSet()
 gapplot.x = 1./np.sort(lengths)
 gapplot.y = [min_energies[(l,1)] -min_energies[(l,0)] for l in np.sort(lengths)]  
 gapplot.props['xlabel']='$1/L$'
-gapplot.props['ylabel']='Triplet gap $\Delta/J$'
+gapplot.props['ylabel']=r'Triplet gap $\Delta/J$'
 gapplot.props['label']='S=1/2'
 
 plt.figure()

@@ -44,10 +44,11 @@ for L in [10,12]:
     })
 
 prefix = 'ed04a'
-input_file = pyalps.writeInputFiles(prefix, parms)
-# res = pyalps.runApplication('sparsediag', input_file, MPI=2, mpirun='mpirun')
-res = pyalps.runApplication('sparsediag', input_file)
-data = pyalps.loadEigenstateMeasurements(pyalps.getResultFiles(prefix=prefix))
+from pyalps.run_io import execute, write_run_files
+runs = [dict(parameters=p, output=dict(results=f'{prefix}.task{i+1}.out.h5'))
+        for i, p in enumerate(parms)]
+files = execute('sparsediag', write_run_files(prefix, runs, overwrite=True))
+data = pyalps.loadEigenstateMeasurements(files)
 
 # To perform CFT assignments, we need to calculate the ground state
 # and the first excited state for each L.
