@@ -286,8 +286,11 @@ jobs:
           python -m pip install build 'nanobind==2.15.0' 'scikit-build-core>=1.0' numpy scipy matplotlib h5py patchelf
           python .github/scripts/build_metrics.py run 'Editable bindings' python -m pip install --no-build-isolation --no-deps -e python/pyalps \
             --config-settings "build-dir=$PWD/_build/ci-python"
-          python .github/scripts/build_metrics.py run --timeout 1800 'Bindings and SDK contracts' \
-            python -m pytest tests/pyalps tests/cmake tests/cli/test_hdf5_convert.py -v -o console_output_style=times --junitxml=_build/ci/python.xml
+          python .github/scripts/build_metrics.py run --timeout 600 'Bindings and applications' \
+            python -m pytest tests/pyalps tests/cli/test_hdf5_convert.py -v -o console_output_style=times --junitxml=_build/ci/python.xml
+          # The build-system contracts compile parts of ALPS and have their own budget.
+          python .github/scripts/build_metrics.py run --timeout 300 'CMake contracts' \
+            python -m pytest tests/cmake -v -o console_output_style=times --junitxml=_build/ci/cmake.xml
       - name: Test installed XML tools after relocation
         if: matrix.extras
         env:
@@ -310,7 +313,7 @@ jobs:
         run: python .github/scripts/build_metrics.py summary
       - name: Summarize test results
         if: always()
-        run: python .github/scripts/junit_summary.py '_build/**/ctest.xml' _build/ci/cli.xml _build/ci/python.xml
+        run: python .github/scripts/junit_summary.py '_build/**/ctest.xml' _build/ci/cli.xml _build/ci/python.xml _build/ci/cmake.xml
       - name: Retain test and configure evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
@@ -320,6 +323,7 @@ jobs:
             _build/**/ctest.xml
             _build/ci/cli.xml
             _build/ci/python.xml
+            _build/ci/cmake.xml
             _build/**/Testing/Temporary/**
             _build/**/CMakeFiles/CMakeConfigureLog.yaml
             _build/metrics/**
