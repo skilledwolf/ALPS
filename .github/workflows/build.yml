@@ -223,7 +223,10 @@ jobs:
         run: ctest --test-dir _build/ci -LE '^mpi$' --output-on-failure --output-junit ctest.xml --no-tests=error
       - name: Require real native MPI coverage
         if: matrix.mpi == 'ON'
-        run: ctest --test-dir _build/ci -L '^mpi$' --output-on-failure --output-junit mpi.xml --no-tests=error
+        run: |
+          # Boost.MPI also needs sibling libraries from this private prefix.
+          LD_LIBRARY_PATH="$PWD/_build/boost-install/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
+            ctest --test-dir _build/ci -L '^mpi$' --output-on-failure --output-junit mpi.xml --no-tests=error
       - name: Test bindings against the installed SDK
         env:
           ALPS_DIR: ${{ github.workspace }}/_build/ci/install/share/alps
@@ -232,7 +235,7 @@ jobs:
           PYALPS_TEST_DOWNSTREAM_EXPORT: '1'
         run: |
           cmake --install _build/ci
-          python -m pip install build 'nanobind==2.15.0' 'scikit-build-core>=1.0' numpy scipy matplotlib lxml h5py
+          python -m pip install build 'nanobind==2.15.0' 'scikit-build-core>=1.0' numpy scipy matplotlib lxml h5py mpi4py
           if [[ "$RUNNER_OS" == Linux ]]; then python -m pip install patchelf; fi
           python -m pip install --no-build-isolation --no-deps -e python/pyalps \
             --config-settings "build-dir=$PWD/_build/ci-python"

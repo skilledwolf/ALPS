@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import copy
 import importlib
+import importlib.util
 import os
 import json
 from pathlib import Path
@@ -237,6 +238,10 @@ def test_optional_application_extension_surface():
     assert callable(ctint.solve)
 
 def test_ctqmc_solvers_restore_python_signal_handlers(tmp_path, monkeypatch):
+    # MPI-enabled SDK solvers require caller initialization, including when
+    # this test is selected without collecting the MPI adapter tests.
+    if importlib.util.find_spec("mpi4py") is not None:
+        import pyalps.mpi
     from pyalps import cthyb, ctint
     import pyalps.hdf5 as hdf5
 
