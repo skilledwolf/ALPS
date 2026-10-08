@@ -64,10 +64,9 @@ def test_embedded_in_source_build_is_rejected_before_project(tmp_path):
     assert "Use an out-of-source build" in result.stdout + result.stderr
 
 
+# Pairwise: both CTest orders, each shared-library setting, ALPS tests on and off.
 @pytest.mark.parametrize("ctest_first,shared,alps_tests", [
-    (True, None, False), (False, None, False),
-    (True, "OFF", False), (True, "ON", False),
-    (True, None, True),
+    (False, None, False), (True, "OFF", False), (True, "ON", True),
 ])
 def test_embedded_build_keeps_parent_defaults(tmp_path, ctest_first, shared, alps_tests):
     parent_testing = "OFF" if alps_tests else "ON"

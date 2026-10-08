@@ -158,21 +158,15 @@ def test_sdk_preserves_missing_dependency_diagnostic(tmp_path):
     configure(tmp_path, "-DEXPECT_MISSING_DEPENDENCY=ON", "-DCMAKE_DISABLE_FIND_PACKAGE_Boost=ON")
 
 
-def test_sdk_exports_installed_applications(tmp_path):
+def test_sdk_exports_applications_and_solver_libraries(tmp_path):
     if not (Path(os.environ["ALPS_DIR"]) / "ALPSApplicationTargets.cmake").is_file():
-        pytest.skip("requires an SDK with applications")
-    configure(tmp_path, "-DEXPECT_APPLICATIONS=ON")
+        pytest.skip("requires an SDK with applications and solvers")
+    configure(tmp_path, "-DEXPECT_APPLICATIONS=ON", "-DEXPECT_SOLVERS=ON")
     # Generator expressions resolve the selected configuration and suffix.
     paths = (tmp_path / "applications-Release.txt").read_text().splitlines()
     assert len(paths) == 17
     assert len(set(paths)) == len(paths)
     assert all(Path(path).is_file() for path in paths)
-
-
-def test_sdk_exports_solver_libraries(tmp_path):
-    if not (Path(os.environ["ALPS_DIR"]) / "ALPSApplicationTargets.cmake").is_file():
-        pytest.skip("requires an SDK with solvers")
-    configure(tmp_path, "-DEXPECT_SOLVERS=ON")
     build_and_run(tmp_path, "solver_contract", "maxent_independent_contract")
 
 
