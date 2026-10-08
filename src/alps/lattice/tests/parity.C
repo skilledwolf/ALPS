@@ -15,9 +15,11 @@
 /* $Id$ */
 
 #include <alps/lattice.h>
-#include <alps/parameter.h>
 #include <fstream>
 #include <iostream>
+#include <string>
+#include <utility>
+#include <vector>
 
 #ifdef BOOST_NO_ARGUMENT_DEPENDENT_LOOKUP
 using namespace alps;
@@ -30,15 +32,19 @@ int main() {
     typedef alps::coordinate_graph_type graph_t;
     typedef alps::parity_t parity_t;
 
-    // read parameters
-    alps::ParameterList parms;
-    std::cin >> parms;
-    
-    for (alps::ParameterList::const_iterator p = parms.begin();
-         p != parms.end(); ++p) {
+    // each lattice, optionally with its BACKBONE_TYPES
+    const std::vector<std::pair<std::string, char const*> > cases{
+      {"square lattice", nullptr}, {"frustrated square lattice", nullptr},
+      {"frustrated square lattice", ""}, {"frustrated square lattice", "0"},
+      {"frustrated square lattice", "1"}, {"frustrated square lattice", "0 1"}};
+    for (auto const& [name, backbone] : cases) {
+      alps::params p;
+      p["L"] = 4;
+      p["LATTICE"] = name;
+      if (backbone) p["BACKBONE_TYPES"] = std::string(backbone);
       // create the lattice
 
-      alps::graph_helper<> lattice(*p);
+      alps::graph_helper<> lattice(p);
       const graph_t& graph = lattice.graph();
       
       std::cout << graph;

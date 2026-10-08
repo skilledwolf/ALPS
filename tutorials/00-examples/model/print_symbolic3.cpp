@@ -14,20 +14,20 @@
 
 /* $Id$ */
 
+#include "run_parameters.h"
 #include <boost/numeric/ublas/matrix_sparse.hpp>
 #include <boost/numeric/ublas/io.hpp>
 
 #include <alps/model/hamiltonian_matrix.hpp>
 
-int main()
+int main(int argc, char** argv)
 {
 #ifndef BOOST_NO_EXCEPTIONS
 try {
 #endif
   using namespace boost::numeric::ublas ;
 
-  alps::Parameters parms;
-  std::cin >> parms;
+  alps::Parameters parms = run_parameters(argc, argv);
 
   alps::hamiltonian_matrix<compressed_matrix<alps::Expression,row_major> > matrix(parms);
 

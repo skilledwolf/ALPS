@@ -13,6 +13,7 @@
 
 /* $Id$ */
 
+#include "run_parameters.h"
 #include <alps/model/hamiltonian_matrix.hpp>
 
 #include <boost/numeric/ublas/matrix.hpp>
@@ -23,15 +24,14 @@
 using namespace alps;
 #endif
 
-int main()
+int main(int argc, char** argv)
 {
 #ifndef BOOST_NO_EXCEPTIONS
 try {
 #endif
 
   using namespace boost::numeric::ublas ;
-  alps::Parameters parms;
-  std::cin >> parms;
+  alps::Parameters parms = run_parameters(argc, argv);
   alps::hamiltonian_matrix<compressed_matrix<double,row_major> > ham(parms);
   std::cout << ham.matrix() << std::endl;
 

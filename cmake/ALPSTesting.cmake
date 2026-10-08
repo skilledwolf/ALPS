@@ -22,9 +22,9 @@
 #   FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 #   DEALINGS IN THE SOFTWARE.
 ##########################################################################
-# alps_add_test(<name> [TARGET <target>] [INPUT <file>] [OUTPUT <file>])
-#   Runs <target> (default: <name>) through run_test.cmake, feeding INPUT on
-#   stdin and comparing stdout byte-for-byte with OUTPUT. Does nothing unless
+# alps_add_test(<name> [TARGET <target>] [INPUT <file>] [OUTPUT <file>] [ARGS <arg>...])
+#   Runs <target> (default: <name>) with ARGS through run_test.cmake, feeding
+#   INPUT on stdin and comparing stdout byte-for-byte with OUTPUT. Does nothing unless
 #   ALPS_BUILD_TESTING is ON.
 include_guard(GLOBAL)
 
@@ -34,7 +34,7 @@ function(alps_add_test name)
   if(NOT ALPS_BUILD_TESTING)
     return()
   endif()
-  cmake_parse_arguments(PARSE_ARGV 1 TEST "" "TARGET;INPUT;OUTPUT" "")
+  cmake_parse_arguments(PARSE_ARGV 1 TEST "" "TARGET;INPUT;OUTPUT" "ARGS")
   if(TEST_UNPARSED_ARGUMENTS OR TEST_KEYWORDS_MISSING_VALUES)
     message(FATAL_ERROR "Invalid arguments to alps_add_test(${name})")
   endif()
@@ -48,7 +48,7 @@ function(alps_add_test name)
     COMMAND
       "${CMAKE_COMMAND}" "-Dname=${name}" "-Dcmd_path=$<TARGET_FILE:${TEST_TARGET}>"
       "-Dsourcedir=${CMAKE_CURRENT_SOURCE_DIR}" "-Dbinarydir=${CMAKE_CURRENT_BINARY_DIR}"
-      "-Dinput=${TEST_INPUT}" "-Doutput=${TEST_OUTPUT}" -P
+      "-Dinput=${TEST_INPUT}" "-Doutput=${TEST_OUTPUT}" "-Dargs=${TEST_ARGS}" -P
       "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/run_test.cmake")
   if(ALPS_DATA_DIR)
     set(xml_resources "${ALPS_DATA_DIR}/xml")

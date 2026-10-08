@@ -14,7 +14,9 @@
 // site coloring test program
 
 #include <alps/lattice.h>
-#include <alps/parameter.h>
+#include <string>
+#include <utility>
+#include <vector>
 #include <boost/graph/sequential_vertex_coloring.hpp>
 #include <iostream>
 
@@ -30,8 +32,13 @@ int main() {
     typedef alps::graph_helper<> lattice_type;
     typedef lattice_type::graph_type graph_type;
     typedef boost::property_map<graph_type, alps::site_index_t>::const_type vertex_index_map;
-    alps::ParameterList params(std::cin);
-    BOOST_FOREACH(alps::Parameters const& p, params) {
+    const std::vector<std::pair<std::string, int> > cases{
+      {"chain lattice", 8}, {"square lattice", 4},
+      {"frustrated square lattice", 4}, {"triangular lattice", 4}};
+    for (auto const& [name, length] : cases) {
+      alps::params p;
+      p["LATTICE"] = name;
+      p["L"] = length;
       lattice_type lattice(p);
       std::vector<std::size_t> color(lattice.num_sites());
       int nc = boost::sequential_vertex_coloring(lattice.graph(),

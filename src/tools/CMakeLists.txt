@@ -19,7 +19,6 @@
 
 
 # Each group owns its command sources, dependencies and installation rules.
-add_subdirectory(parameters)
 add_subdirectory(lattice)
 add_subdirectory(snapshot)
 add_subdirectory(diagnostics)

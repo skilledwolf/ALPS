@@ -28,8 +28,9 @@ int main()
 #endif
 
     // read parameters
-    alps::Parameters parameters;
-    std::cin >> parameters;
+    alps::params parameters;
+    parameters["LATTICE"] = "square lattice";
+    parameters["L"] = 4;
     // create a graph factory with default graph type
     alps::graph_helper<> lattice(parameters);
 

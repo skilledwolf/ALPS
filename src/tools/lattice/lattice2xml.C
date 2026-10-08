@@ -11,8 +11,10 @@
 *
 *****************************************************************************/
 
+#include "lattice_run.hpp"
 #include <alps/lattice.h>
 #include <alps/parser/xmlstream.h>
+#include <boost/algorithm/string/trim.hpp>
 
 #ifdef BOOST_NO_ARGUMENT_DEPENDENT_LOOKUP
 using namespace alps;
@@ -24,22 +26,27 @@ int main(int argc, char** argv) {
 try {
 #endif
 
-  // read parameters
+  // read parameters: a TOML run file, or a lattice name and KEY=VALUE pairs
   alps::Parameters parameters;
-  switch (argc) {
-  case 1 :
-    std::cin >> parameters;
-    break;
-  case 2 :
-    parameters["LATTICE"] = std::string(argv[1]);
-    break;
-  default :
+  const std::string first = argc > 1 ? argv[1] : "";
+  if (argc == 2 && std::filesystem::path(first).extension() == ".toml") {
+    parameters = lattice_run(first, "lattice2xml");
+  } else if (argc > 1) {
+    parameters["LATTICE"] = first;
     for (int i = 2; i < argc; ++i) {
-      std::istringstream iss(argv[i]);
-      parameters.parse(iss);
+      const std::string argument(argv[i]);
+      const auto equals = argument.find('=');
+      if (equals == std::string::npos || equals == 0)
+        throw std::invalid_argument("Expected KEY=VALUE, got: " + argument);
+      std::string key = boost::algorithm::trim_copy(argument.substr(0, equals));
+      std::string value = boost::algorithm::trim_copy(argument.substr(equals + 1));
+      if (value.size() > 1 && value.front() == '"' && value.back() == '"')
+        value = value.substr(1, value.size() - 2);
+      parameters[key] = value;
     }
-    parameters["LATTICE"] = std::string(argv[1]);
-    break;
+  } else {
+    std::cerr << "Usage: " << argv[0] << " run.toml | " << argv[0] << " LATTICE [KEY=VALUE ...]\n";
+    return 1;
   }
 
   // create a graph factory with default graph type

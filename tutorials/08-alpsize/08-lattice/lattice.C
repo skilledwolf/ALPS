@@ -28,14 +28,22 @@
 *
 *****************************************************************************/
 
-#include <alps/parameter.h>
 #include <alps/lattice.h>
+#include <alps/run_config.hpp>
 #include <boost/foreach.hpp>
 #include <iostream>
 
-int main() {
+int main(int argc, char** argv) {
 
-  alps::Parameters params(std::cin);
+  if (argc != 2) {
+    std::cerr << "Usage: " << argv[0] << " lattice.toml\n";
+    return 1;
+  }
+  // the [parameters] of the run file select the lattice and its size
+  const char schema[] = "application = \"lattice-tutorial\"\nschema_version = 1\n"
+                        "[input]\n[output]\n[execution]\n";
+  const alps::params params =
+    alps::load_run_configuration(argv[1], alps::extend_run_schema(argv[1], schema)).parameters;
   alps::graph_helper<> graph(params);
 
   std::cout << "lattice name = " << params["LATTICE"] << std::endl;

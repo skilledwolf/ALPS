@@ -1,0 +1,6 @@
+[parameters]
+LATTICE = "frustrated square lattice"
+MODEL = "spin"
+L = 4
+J = 1
+"J'" = 1

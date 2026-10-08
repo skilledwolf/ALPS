@@ -30,8 +30,9 @@ int main()
 #endif
 
     // read parameters
-    alps::Parameters parameters;
-    std::cin >> parameters;
+    alps::params parameters;
+    parameters["UNITCELL"] = "2band1d";
+    parameters["L"] = 5;
     // create a graph factory with default graph type
     alps::graph_helper<> lattice(parameters);
     // write the graph created from the input in XML

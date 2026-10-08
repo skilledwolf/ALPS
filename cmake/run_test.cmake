@@ -39,7 +39,7 @@ endif()
 set(actual "${binarydir}/${name}.actual")
 set(ENV{OMP_NUM_THREADS} 1)
 execute_process(
-  COMMAND "${cmd_path}" ${input_args}
+  COMMAND "${cmd_path}" ${args} ${input_args}
   OUTPUT_FILE "${actual}"
   ERROR_VARIABLE error
   RESULT_VARIABLE result

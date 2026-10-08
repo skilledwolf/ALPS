@@ -27,6 +27,16 @@ inline std::string schema(std::filesystem::path const& file, char const* base) {
     });
 }
 
+// Requires exactly one LATTICE or GRAPH and resolves the lattice and model
+// libraries, defaulting to the installed lattices.xml and models.xml.
+inline void resolve_libraries(alps::run_configuration& run) {
+    if (run.parameters.exists("LATTICE") == run.parameters.exists("GRAPH"))
+        throw std::invalid_argument("Specify exactly one parameters.LATTICE or parameters.GRAPH");
+    for (auto const& [key, fallback] : {std::pair{"lattice_library", "lattices.xml"}, std::pair{"model_library", "models.xml"}})
+        run.input[key] = std::filesystem::weakly_canonical(
+            alps::search_xml_library_path(run.input.value_or<std::string>(key, fallback))).string();
+}
+
 inline alps::Parameters parameters(alps::run_configuration const& run) {
     alps::Parameters p(run.parameters);
     p["LATTICE_LIBRARY"] = run.input["lattice_library"].as<std::string>();
@@ -64,11 +74,7 @@ int main(int argc, char** argv, char const* application, char const* base_schema
         for (auto const& file : files) protected_paths.insert(std::filesystem::weakly_canonical(file));
         for (auto const& file : files) {
             auto run = alps::load_run_configuration(file, schema(file, base_schema));
-            if (run.parameters.exists("LATTICE") == run.parameters.exists("GRAPH"))
-                throw std::invalid_argument("Specify exactly one parameters.LATTICE or parameters.GRAPH");
-            for (auto const& [key, fallback] : {std::pair{"lattice_library", "lattices.xml"}, std::pair{"model_library", "models.xml"}})
-                run.input[key] = std::filesystem::weakly_canonical(
-                    alps::search_xml_library_path(run.input.value_or<std::string>(key, fallback))).string();
+            resolve_libraries(run);
             for (auto const& [key, value] : run.input)
                 for (auto const& path : alps::run_paths(value)) {
                     if (!std::filesystem::is_regular_file(path))

@@ -23,13 +23,11 @@
 
 set(EXAMPLES print_numeric print_symbolic print_numeric2 print_symbolic2 print_numeric3
              print_symbolic3)
-set(INPUT parm_numeric parm_symbolic)
-
-foreach(file ${INPUT})
-  configure_file(${file}.in ${CMAKE_CURRENT_BINARY_DIR}/${file})
+foreach(file parm_numeric.toml parm_symbolic.toml)
+  configure_file(${file} ${CMAKE_CURRENT_BINARY_DIR}/${file} COPYONLY)
 endforeach()
 
 foreach(program ${EXAMPLES})
   add_executable(${program} ${program}.cpp)
-  target_link_libraries(${program} PRIVATE ALPS::alps)
+  target_link_libraries(${program} PRIVATE ALPS::alps ALPS::run_config)
 endforeach()

@@ -1,0 +1,7 @@
+[parameters]
+LATTICE = "chain lattice"
+L = 4
+MODEL = "spinless fermions"
+N_total = 2
+mu = 0
+t = 1

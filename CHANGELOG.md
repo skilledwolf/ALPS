@@ -6,6 +6,10 @@ User-facing changes and migration notes are recorded here, starting with the bui
 
 ### Changed
 
+- Read TOML run files in `checksign`, `printgraph` and `lattice2xml`, the model
+  examples and the `08-alpsize` parameter and lattice lessons. The lattice and model
+  library tests set their parameters in code. Nothing reads the older parameter
+  text grammar any longer apart from its own tests.
 - Convert typed parameters to the lattice and model libraries in one place.
   `graph_helper` and `model_helper` accept `alps::params`, `alps::seed_disorder`
   replaces five application copies of the disorder seeding, and `ALPS::params` no
@@ -328,6 +332,8 @@ Numerical persistence now requires an explicit adapter: include `<alps/hdf5/matr
 | `pyalps.runApplication` | `pyalps.run_io.execute(application, runs)`; every application reads TOML run files |
 | `pyalps.writeInputFiles`, `writeTaskXMLFile`, `writeParameterFile`, `generateSeed`, `input2output` | `pyalps.run_io.write_run_files(prefix, runs)`; seeds are set in each run's `[execution]` section |
 | `parameter2xml` | TOML run files, for example written with `pyalps.run_io.write_run_files(prefix, runs)` |
+| `parameter2hdf5`, `p2h5` and their `.in.h5` parameter files | TOML run files; `pyalps.run_io.write_run_files(prefix, runs)` writes them |
+| Parameter text on standard input or as a file for `checksign`, `printgraph` and `lattice2xml`; `checksign` XML jobs and `{ }` task lists | One TOML run file per argument, with the lattice and model in `[parameters]` and libraries in `input.lattice_library`/`input.model_library`; `lattice2xml LATTICE KEY=VALUE ...` is unchanged |
 | `convert2xml`, `pyalps.convert2xml` | Load HDF5 results with `pyalps.loadSpectra`, `pyalps.loadEigenstateMeasurements` or `pyalps.loadMeasurements` |
 | `alps::mcmpiadapter`, `alps::stop_callback(communicator, timelimit)` | `alps::mc::main` with `execution.chains` and `execution.time_limit` |
 | `tutorials/09-code/07-mcmain-mcbase/mpi_pscan.cpp` and the `tutorials/10-ngs/3_mpi` and `4_mpi_pscan` programs | `tutorials/09-code/07-mcmain-mcbase/mpi.cpp`, one run file per scan point |

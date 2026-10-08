@@ -5,7 +5,7 @@ find_package(ALPS CONFIG REQUIRED)
 
 # rule for generating lattice program
 add_executable(lattice lattice.C)
-target_link_libraries(lattice PRIVATE ALPS::alps)
+target_link_libraries(lattice PRIVATE ALPS::alps ALPS::run_config)
 
 # rule for generating wolff program
 add_executable(wolff wolff.C)

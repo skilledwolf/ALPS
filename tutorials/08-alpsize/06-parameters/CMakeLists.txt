@@ -5,4 +5,4 @@ find_package(ALPS CONFIG REQUIRED)
 
 # rule for generating wolff program
 add_executable(wolff wolff.C)
-target_link_libraries(wolff PRIVATE ALPS::alps)
+target_link_libraries(wolff PRIVATE ALPS::run_config)

@@ -23,7 +23,10 @@ int main()
   try {
 #endif
     alps::Parameters parms;
-    std::cin >> parms;
+    parms["L"] = 2;
+    parms["MODEL"] = "spin";
+    parms["LATTICE"] = "square lattice";
+    parms["Sz_total"] = 0;
     alps::ModelLibrary models(parms);
     alps::graph_helper<> lattices(parms);
     alps::HamiltonianDescriptor<short> ham(models.get_hamiltonian(parms["MODEL"]));

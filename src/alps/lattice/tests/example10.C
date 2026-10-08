@@ -30,8 +30,10 @@ int main()
 #endif
 
     // read parameters
-    alps::Parameters parameters;
-    std::cin >> parameters;
+    alps::params parameters;
+    parameters["LATTICE"] = "anisotropic square lattice";
+    parameters["L"] = 10;
+    parameters["W"] = 4;
     // create a graph factory with default graph type
     alps::graph_helper<> h(parameters);
     // iterate over all cells and test the index function

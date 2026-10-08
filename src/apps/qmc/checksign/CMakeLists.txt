@@ -18,5 +18,19 @@
 #   DEALINGS IN THE SOFTWARE.
 
 add_executable(checksign checksign.C)
-target_link_libraries(checksign PRIVATE ALPS::alps)
+target_include_directories(checksign PRIVATE "${PROJECT_SOURCE_DIR}/src/apps/lattice_model")
+target_link_libraries(checksign PRIVATE ALPS::alps ALPS::run_config)
 alps_install_applications(checksign)
+
+if(ALPS_BUILD_TESTING)
+  add_test(NAME checksign COMMAND checksign unfrustrated.toml frustrated.toml
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+  set_tests_properties(checksign PROPERTIES LABELS "qmc;cli;run_config" TIMEOUT 60
+    PASS_REGULAR_EXPRESSION "unfrustrated.toml: OK\nfrustrated.toml: SIGN PROBLEM\n"
+    ENVIRONMENT_MODIFICATION "ALPS_XML_PATH=set:${PROJECT_SOURCE_DIR}/src/alps/resources")
+  if(WIN32)
+    foreach(directory IN LISTS ALPS_RUNTIME_LIBRARY_DIRS)
+      set_property(TEST checksign APPEND PROPERTY ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${directory}")
+    endforeach()
+  endif()
+endif()

@@ -16,6 +16,7 @@
 #include <alps/model.h>
 #include <alps/lattice.h>
 #include <alps/parameter.h>
+#include <vector>
 #include <iostream>
 #include <string>
 
@@ -29,12 +30,25 @@ int main()
   try {
 #endif
 
-    alps::ParameterList parms;
-    std::cin >> parms;
-    for (int i=0;i<parms.size();++i) {
-      alps::ModelLibrary models(parms[i]);
-      alps::graph_helper<> lattice(parms[i]);
-      alps::HamiltonianDescriptor<short> ham(models.get_hamiltonian(lattice,parms[i],true));
+    // The cases share MODEL = "spin", J = 1 and L = 4.
+    const std::vector<std::vector<std::pair<std::string, std::string> > > cases{
+      {{"LATTICE", "square lattice"}},
+      {{"LATTICE", "frustrated square lattice"}},
+      {{"J'", "1"}, {"LATTICE", "frustrated square lattice"}},
+      {{"J'", "-1"}, {"LATTICE", "frustrated square lattice"}},
+      {{"LATTICE", "triangular lattice"}},
+      {{"LATTICE", "chain lattice"}},
+      {{"Gamma", "1"}, {"LATTICE", "chain lattice"}},
+      {{"J", "-1"}, {"Gamma", "1"}, {"LATTICE", "chain lattice"}}};
+    for (std::size_t i=0;i<cases.size();++i) {
+      alps::Parameters parms;
+      parms["MODEL"] = "spin";
+      parms["J"] = 1;
+      parms["L"] = 4;
+      for (auto const& [key, value] : cases[i]) parms[key] = value;
+      alps::ModelLibrary models(parms);
+      alps::graph_helper<> lattice(parms);
+      alps::HamiltonianDescriptor<short> ham(models.get_hamiltonian(lattice,parms,true));
       std::cout << ham;
     }
 

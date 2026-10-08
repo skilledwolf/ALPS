@@ -201,9 +201,13 @@ int main()
   try {
 #endif
 
-  // read parameters
-  alps::ParameterList plist(std::cin);
-  BOOST_FOREACH(alps::Parameters const& p, plist) {
+  alps::params square, chain;
+  square["LATTICE"] = "square lattice";
+  square["L"] = 6;
+  square["W"] = 4;
+  chain["LATTICE"] = "2 band chain lattice";
+  chain["L"] = 10;
+  for (alps::params const& p : {square, chain}) {
     // create a graph factory with default graph type
     alps::graph_helper<> lattice(p);
 

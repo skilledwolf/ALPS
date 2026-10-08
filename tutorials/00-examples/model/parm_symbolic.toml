@@ -1,0 +1,4 @@
+[parameters]
+LATTICE = "chain lattice"
+L = 4
+MODEL = "spin"

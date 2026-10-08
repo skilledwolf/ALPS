@@ -28,7 +28,8 @@ The lattice lesson accepts exactly one `parameters.LATTICE` or `parameters.GRAPH
 additional lattice parameters, and an optional `input.lattice_library` path.
 It constructs the lattice directly from the typed parameters. The run
 configuration and saved parameters use the consolidated typed API. The separate
-`lattice` executable in lesson 08 remains the original graph-iteration example.
+`lattice` executable in lesson 08 remains the original graph-iteration example;
+run it as `lattice 08-lattice/lattice.toml`.
 
 Results are written atomically to `output.results`. The three magnetization
 moments and `Binder Ratio of Magnetization` are native results under
@@ -41,8 +42,9 @@ Per-observable native autocorrelation levels are retained for
 Printed errors use batches; tau, when available, comes from the autocorrelation
 hierarchy. These output files are analysis results, not physical restart states.
 
-The obsolete `.ip`/`.op` pairs have been replaced by `run.toml` and physics/error
-regression checks. Released statistical archives can be migrated with the
+The obsolete `.ip`/`.op` inputs have been replaced by `run.toml` and physics/error
+regression checks. The earlier plain lesson `06-parameters` introduces the same
+TOML parameters, with schema defaults, without ALEA: `wolff 06-parameters/run.toml`. Released statistical archives can be migrated with the
 appropriate offline `alps-hdf5-convert` ALEA profile.
 
 Lesson [09-scheduler](09-scheduler/README.md) adds native independent-chain

@@ -28,7 +28,7 @@
 *
 *****************************************************************************/
 
-#include <alps/parameter.h>
+#include <alps/run_config.hpp>
 #include <boost/array.hpp>
 #include <boost/random.hpp>
 #include <chrono>
@@ -37,15 +37,48 @@
 #include <stack>
 #include <vector>
 
-int main() {
+// The run file's [parameters] may set any of these; the schema supplies the
+// defaults and checks the types.
+constexpr char schema[] = R"toml(application = "wolff-parameters"
+schema_version = 1
+[parameters.L]
+type = "int64"
+default = 32
+min = 2
+[parameters.T]
+type = "float64"
+default = 2.2
+min = 0.0
+[parameters.SWEEPS]
+type = "int64"
+default = 32768
+min = 1
+[parameters.THERMALIZATION]
+type = "int64"
+min = 0
+[parameters.SEED]
+type = "int64"
+default = 93812
+min = 0
+max = 4294967295
+[input]
+[output]
+[execution]
+)toml";
 
-  alps::Parameters params(std::cin);
-  const int L = params.value_or_default("L", 32);
+int main(int argc, char** argv) {
+
+  if (argc != 2) {
+    std::cerr << "Usage: " << argv[0] << " run.toml\n";
+    return 1;
+  }
+  const alps::params params = alps::load_run_configuration(argv[1], schema).parameters;
+  const int L = params["L"].as<int>();
   const int N = L * L;
-  const double T = params.value_or_default("T", 2.2);
-  const int MCSTEP = params.value_or_default("SWEEPS", 1 << 15);
-  const int MCTHRM = params.value_or_default("THERMALIZATION", MCSTEP >> 3);
-  const unsigned int SEED = params.value_or_default("SEED", 93812);
+  const double T = params["T"].as<double>();
+  const int MCSTEP = params["SWEEPS"].as<int>();
+  const int MCTHRM = params.value_or<int>("THERMALIZATION", MCSTEP >> 3);
+  const unsigned int SEED = params["SEED"].as<unsigned int>();
 
   // setting up square lattice
   std::vector<boost::array<int, 4> > nn(N);

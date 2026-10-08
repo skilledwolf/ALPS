@@ -30,8 +30,12 @@ int main()
 #endif
 
     // read parameters
-    alps::Parameters parameters;
-    std::cin >> parameters;
+    alps::params parameters;
+    parameters["LATTICE"] = "depleted square lattice";
+    parameters["L"] = 6;
+    parameters["W"] = 6;
+    parameters["DEPLETION_SEED"] = 423756;
+    parameters["DEPLETION"] = 0.2;
     // create a graph factory with default graph type
     alps::graph_helper<> lattice(parameters);
 

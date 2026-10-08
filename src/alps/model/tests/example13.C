@@ -26,7 +26,9 @@ int main()
   try {
 #endif
     alps::Parameters parms;
-    std::cin >> parms;
+    parms["L"] = 4;
+    parms["MODEL"] = "spin";
+    parms["LATTICE"] = "chain lattice";
     alps::ModelLibrary models(parms);
     alps::graph_helper<> lattices(parms);
     alps::HamiltonianDescriptor<short> ham(models.get_hamiltonian(parms["MODEL"]));
