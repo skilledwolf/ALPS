@@ -78,6 +78,7 @@ jobs:
         restore-keys: native-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-
     - name: Build and test native code
       run: |
+        ccache --zero-stats
         cmake --preset dev -B _build/ci \
           -DCMAKE_INSTALL_PREFIX="$PWD/_build/ci/install" \
           -DCMAKE_CXX_STANDARD=17 -DCMAKE_CXX_SCAN_FOR_MODULES=OFF -DALPS_BUILD_APPLICATIONS=ON -DALPS_ENABLE_MPI=OFF

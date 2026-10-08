@@ -270,9 +270,10 @@ Plot/extraction formats are `text`, `html`, `gnuplot`, `matplotlib` and `grace`;
 ## CI coverage
 
 The required checks are defined in [the PR workflow](.github/workflows/ci.yml).
-[Compatibility checks](.github/workflows/compatibility.yml) run weekly or manually;
-[release validation](.github/workflows/release.yml) tests the artifacts before
-publishing through the protected `pypi` environment. Consult these workflows for
+[Compatibility checks](.github/workflows/compatibility.yml) run weekly, manually,
+and as part of [release validation](.github/workflows/release.yml). Publication
+through the protected `pypi` environment requires those native checks and
+validation of the artifacts being published to pass. Consult these workflows for
 the current platform and dependency matrix.
 
 ## Preparing a release
