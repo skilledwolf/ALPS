@@ -14,8 +14,8 @@
 #include "ising.hpp"
 
 
-ising_sim::ising_sim(parameters_type const & parms, std::size_t seed_offset)
-    : alps::mcbase(parms, seed_offset)
+ising_sim::ising_sim(parameters_type const & parms, std::size_t bins, std::size_t chain)
+    : alps::mcbase(parms, chain)
     , length(parameters["L"])
     , sweeps(0)
     , thermalization_sweeps(int(parameters["THERMALIZATION"]))
@@ -26,8 +26,8 @@ ising_sim::ising_sim(parameters_type const & parms, std::size_t seed_offset)
     for(int i = 0; i < length; ++i)
         spins[i] = (random() < 0.5 ? 1 : -1);
     for (auto const* name : {"Energy", "Magnetization", "Magnetization^2", "Magnetization^4"})
-        measurements.emplace(name, std::make_shared<alps::alea::batch_acc<double>>(1, 64));
-    measurements.emplace("Correlations", std::make_shared<alps::alea::batch_acc<double>>(length, 64));
+        measurements.emplace(name, std::make_shared<alps::alea::batch_acc<double>>(1, bins));
+    measurements.emplace("Correlations", std::make_shared<alps::alea::batch_acc<double>>(length, bins));
 }
 
 void ising_sim::update() {

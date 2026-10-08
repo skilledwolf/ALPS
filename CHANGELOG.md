@@ -289,6 +289,8 @@ The unreferenced `alps::ngs_parapack` XML frontend is removed: all its reference
 
 The scheduler library is removed with its last XML-job applications: `<alps/scheduler/...>` task, worker and dispatch classes, `DiagTask`, and the `convert2xml` and `parameter2xml` commands. Every application reads TOML run files and writes HDF5 results that pyalps loads directly. `snap2vtk` remains for snapshot files written by released versions.
 
+`alps::mcmpiadapter` is removed with the communicator overload of `alps::stop_callback`: MPI simulations run on `alps::mc::main`, which spreads `execution.chains` independent chains over the ranks, stops them at `execution.time_limit` and pools their results. An `mcbase` simulation adds a `(parameters, bins, chain)` constructor, `checkpoint_parameters` and `completed_sweeps`, as in the [mcbase tutorial](tutorials/09-code/07-mcmain-mcbase/mpi.cpp). That tutorial's one MPI program also runs parameter scans and replaces the `10-ngs` MPI copies.
+
 The Python MaxEnt, CT-HYB and CT-INT modules expose `schema()`, `prepare(parameters, input, output, execution)` and `solve(run)`. CT-INT's `schema(parameters={})` expands its per-flavor settings. `solve` takes a run returned by `prepare` or loaded with `pyalps.run_config.load` instead of a combined parameter dictionary, and MaxEnt's `AnalyticContinuation` function is removed. `pyalps.runDMFT` is replaced by `pyalps.run_io.execute(application, runs)`, which validates every TOML run file or job manifest before running any; `write_run_file` and `write_run_files` take an optional schema. DMFT's in-process solvers and scheduler settings `NRUNS`, `CONVERGENCE_CHECK_PERIOD` and `SWEEP_MULTIPLICATOR` are removed.
 
 The old build interfaces are removed without compatibility aliases. Reconfigure existing build scripts and downstream projects using [CONTRIBUTING.md](CONTRIBUTING.md#getting-started-with-the-code).
@@ -323,6 +325,8 @@ Numerical persistence now requires an explicit adapter: include `<alps/hdf5/matr
 | `pyalps.writeInputFiles`, `writeTaskXMLFile`, `writeParameterFile`, `generateSeed`, `input2output` | `pyalps.run_io.write_run_files(prefix, runs)`; seeds are set in each run's `[execution]` section |
 | `parameter2xml` | TOML run files, for example written with `pyalps.run_io.write_run_files(prefix, runs)` |
 | `convert2xml`, `pyalps.convert2xml` | Load HDF5 results with `pyalps.loadSpectra`, `pyalps.loadEigenstateMeasurements` or `pyalps.loadMeasurements` |
+| `alps::mcmpiadapter`, `alps::stop_callback(communicator, timelimit)` | `alps::mc::main` with `execution.chains` and `execution.time_limit` |
+| `tutorials/09-code/07-mcmain-mcbase/mpi_pscan.cpp` and the `tutorials/10-ngs/3_mpi` and `4_mpi_pscan` programs | `tutorials/09-code/07-mcmain-mcbase/mpi.cpp`, one run file per scan point |
 | `sparsediag`/`fulldiag`/`dmrg` XML job files and `--write-xml` output; `LATTICE_LIBRARY`/`MODEL_LIBRARY` parameters | TOML runs with `pyalps.run_io.execute(application, runs)`; `input.lattice_library`/`input.model_library` |
 | XML-only averages: `sparsediag` "Ground State Energy"/"Energy Gap", `fulldiag` thermodynamics for a run's `T` or `beta` | Lowest energies from `pyalps.loadSpectra`; `fulldiag_evaluate --T value` (a `T` parameter of the run is its default) |
 | `fulldiag_evaluate` on scheduler results (`.out.xml`, ALPS ≤ 3.0 `.out.h5`) | Rerun `fulldiag` with a TOML run; `pyalps.loadSpectra` still reads the old spectra |

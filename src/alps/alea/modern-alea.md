@@ -17,11 +17,12 @@ Boost.MPI reduction bridge; the upstream codec plugins and build system would
 duplicate those facilities.
 
 `alps::mc` owns TOML application execution, independent chains, collective
-workers, atomic publication and restart. `mcbase` remains a simulation API
-used by those applications and the teaching examples; its `run`/`mcmpiadapter`
-entry points also remain available for custom embedding. These are deliberate
-ALPS interfaces, not a promise of drop-in ALPSCore Monte Carlo API compatibility.
-Tutorial front ends still need consolidation onto the shared TOML runner.
+workers, atomic publication and restart, including MPI runs. `mcbase` remains a
+simulation API used by those applications and the teaching examples; its `run`
+entry point also remains available for custom single-process embedding. This is
+a deliberate ALPS interface, not a promise of drop-in ALPSCore Monte Carlo API
+compatibility. The single-process tutorial front ends still need consolidation
+onto the shared TOML runner.
 
 ### Changes from the pinned ALEA source
 
@@ -145,9 +146,6 @@ link `MPI::MPI_CXX` alongside `ALPS::statistics`. The statistics library itself
 remains MPI-free. Construction and reductions are collective and must occur in
 the same order on every rank. Only the chosen root retains the combined result.
 Sample counts use unsigned 64-bit MPI arithmetic.
-`mcmpiadapter` checks matching result requests and estimator types before reducing every entry,
-including empty local accumulators. Only the root receives collected results.
-Local sampling and callback failures reach every rank at scheduled checks.
 Custom reducers must implement `reduce(view<uint64_t>)`; rebuild downstream
 binaries after this interface change. The combined sample count must fit in
 `uint64_t`.

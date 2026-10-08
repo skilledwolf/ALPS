@@ -22,8 +22,8 @@ Standalone CT-INT, CT-HYB and Hirsch-Fye use modern ALEA, pooling raw independen
 replicas before signed analysis and publishing canonical results atomically.
 CT-INT includes general multiband density interactions and their full density
 moments; DMFT uses only external solver processes. `loop`, `worm`, and `dirloop_sse` now use native estimators and exact physical checkpoints.
-The NGS `mcbase` framework and its MPI adapter support all native estimator
-families and real/complex strategies with the same checkpoint and result codecs.
+The NGS `mcbase` framework supports all native estimator families and
+real/complex strategies with the same checkpoint and result codecs.
 The SDK also supplies `<alps/mc/driver.hpp>` (`alps::mc`) through `ALPS::alps`.
 It is the runner used by the bundled solvers: TOML validation, independent
 serial/MPI chains, atomic checkpoints, and application-owned result publication.

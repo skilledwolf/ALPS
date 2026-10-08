@@ -1,0 +1,1 @@
+The MPI example is maintained in [the mcbase tutorial](../../09-code/07-mcmain-mcbase/mpi.cpp). It runs the single-core simulation's chains on the shared `alps::mc::main` driver: `execution.chains` independent chains spread over the MPI ranks, and several run files form a parameter scan.

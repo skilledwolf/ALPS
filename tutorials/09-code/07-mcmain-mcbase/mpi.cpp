@@ -11,64 +11,97 @@
  *                                                                                 *
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
+
 #include "ising.hpp"
 
-#include <alps/parseargs.hpp>
-#include <alps/mcmpiadapter.hpp>
-#include <alps/stop_callback.hpp>
-#include "spin_config.hpp"
+#include <alps/mc/driver.hpp>
 
-#include <boost/chrono.hpp>
-#include <boost/lexical_cast.hpp>
-#include <boost/filesystem/path.hpp>
-
-#include <string>
 #include <iostream>
 #include <stdexcept>
+#include <vector>
+
+// alps::mc::main runs execution.chains independent chains of each TOML run
+// file, spread over the MPI ranks, and checkpoints and restarts them:
+//
+//     mpiexec -n 2 ./mpi param.0.toml param.1.toml
+//
+// Several run files form a parameter scan; they run one after another, each
+// on all ranks. `./mpi --schema` prints the schema below.
+constexpr char schema[] = R"toml(
+application = "ising-tutorial"
+schema_version = 1
+[parameters.L]
+type = "int64"
+required = true
+min = 1
+[parameters.T]
+type = "float64"
+required = true
+min = 0.0
+[parameters.THERMALIZATION]
+type = "int64"
+required = true
+min = 0
+[parameters.SWEEPS]
+type = "int64"
+required = true
+min = 1
+[input.checkpoint]
+type = "path"
+[output.results]
+type = "path"
+required = true
+[output.checkpoint]
+type = "path"
+[execution.chains]
+type = "int64"
+default = 1
+min = 1
+max = 2147483647
+[execution.seed]
+type = "int64"
+default = 42
+min = 0
+max = 2147483647
+[execution.rng]
+type = "string"
+default = "mt19937"
+choices = ["mt19937", "lagged_fibonacci607"]
+[execution.bins]
+type = "int64"
+default = 64
+min = 2
+[execution.time_limit]
+type = "float64"
+default = 0.0
+min = 0.0
+[execution.checkpoint_interval]
+type = "float64"
+default = 3600.0
+min = 0.0
+[execution.max_sweeps]
+type = "int64"
+default = 0
+min = 0
+)toml";
 
 int main(int argc, char *argv[]) {
-
-    try {
-        boost::mpi::environment env(argc, argv);
-        boost::mpi::communicator comm;
-
-        alps::parseargs options(argc, argv);
-        std::string checkpoint_file = options.input_file.substr(0, options.input_file.find_last_of('.')) 
-                                    +  ".clone" + boost::lexical_cast<std::string>(comm.rank()) + ".h5";
-
-        alps::parameters_type<ising_sim>::type parameters;
-        if (comm.rank() > 0)
-            /* do nothing */ ;
-        else parameters = load_spin_parameters(options.input_file);
-
-        parameters.broadcast(comm, 0);
-
-        alps::mcmpiadapter<ising_sim> sim(parameters, comm, alps::check_schedule(options.tmin, options.tmax));
-
-        if (options.resume)
-            sim.load(checkpoint_file);
-
-        // TODO: how do we handle signels in mpi context? do we want to handle these in the callback or in the simulation?
-        // The adapter coordinates stopping at scheduled checks; use a local callback.
-        //  Additionally this causes a race cond and deadlocks as mcmpiadapter::run will always call the stop_callback broadcast
-        //  but only sometimes all_reduce on the fraction. Timers on different procs are not synchronized so they may not agree
-        //  on the mpi call.
-        sim.run(alps::stop_callback(comm, options.timelimit));
-
-        sim.save(checkpoint_file);
-
-        using alps::collect_results;
-        alps::results_type<ising_sim>::type results = collect_results(sim);
-
-        if (comm.rank() == 0) {
-            for (auto const& entry : results)
-                std::cout << entry.first << ": " << entry.second << '\n';
-            alps::save_results(results, sim.get_parameters(), options.output_file, "/simulation/results");
-        }
-
-    } catch (std::exception const & e) {
-        std::cerr << "Caught exception: " << e.what() << std::endl;
-        return EXIT_FAILURE;
-    }
-    return EXIT_SUCCESS;
+    auto prepare = [](alps::params & parameters, alps::run_configuration const &) {
+        if (!(parameters["T"].as<double>() > 0))
+            throw std::invalid_argument("T must be positive");
+    };
+    // Rank 0 publishes once all chains of a run are complete or stopped.
+    auto publish = [](alps::run_configuration const & run, auto const & chains, alps::params const &) {
+        std::vector<alps::mc::batch_results> results;
+        for (auto const & chain : chains)
+            results.push_back(chain->collect_results());
+        auto const pooled = alps::mc::pool(results);
+        for (auto const & entry : pooled)
+            std::cout << entry.first << ": " << entry.second << '\n';
+        alps::hdf5::save_checkpoint(run.output["results"].as<std::string>(), [&](alps::hdf5::archive & archive) {
+            alps::save_results(pooled, run.parameters, archive, "/simulation/results");
+            archive["/run_config"] << run;
+        });
+    };
+    return alps::mc::main<ising_sim>(argc, argv, "mpi", schema, {}, prepare, publish);
 }

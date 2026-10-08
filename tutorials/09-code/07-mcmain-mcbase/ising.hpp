@@ -22,6 +22,7 @@
 #include <boost/function.hpp>
 #include <boost/filesystem/path.hpp>
 
+#include <cstdint>
 #include <vector>
 #include <string>
 
@@ -34,7 +35,13 @@ class ising_sim : public alps::mcbase {
     }
 
         
-        ising_sim(parameters_type const & parms, std::size_t seed_offset = 0);
+        // alps::mc::main constructs chain `chain` with `bins` batches per observable.
+        ising_sim(parameters_type const & parms, std::size_t bins = 64, std::size_t chain = 0);
+
+        // A restart must repeat the run's parameters exactly: load() restores
+        // the checkpoint's sweep target.
+        static alps::params checkpoint_parameters(alps::params parms) { return parms; }
+        std::uint64_t completed_sweeps() const { return sweeps; }
 
         void update() override;
         void measure() override;

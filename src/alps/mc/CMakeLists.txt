@@ -19,7 +19,6 @@ target_sources(alps_headers INTERFACE
     include/alps/mc/temperature_grid.hpp
     include/alps/mc/replica_parallel.hpp
     include/alps/mc/replica_exchange.hpp
-    include/alps/mcmpiadapter.hpp
     include/alps/ngs.hpp
     include/alps/ngs/api.hpp
     include/alps/progress_callback.hpp
@@ -59,6 +58,38 @@ if(ALPS_BUILD_TESTING)
   alps_add_test(mcbase_heisenberg_boltzmann)
   set_property(TEST mcbase_heisenberg_boltzmann PROPERTY LABELS "mc;alea;tutorial")
 
+  # The MPI tutorial runs a two-temperature scan of two chains each, on two
+  # ranks when ALPS has MPI.
+  set(ising_scan "${CMAKE_CURRENT_BINARY_DIR}/mcbase_ising_scan")
+  foreach(temperature IN ITEMS 2 3)
+    file(WRITE "${ising_scan}/T${temperature}.toml"
+      "[parameters]\nL=8\nT=${temperature}\nTHERMALIZATION=10\nSWEEPS=400\n"
+      "[output]\nresults=\"T${temperature}.out.h5\"\ncheckpoint=\"T${temperature}.checkpoint.h5\"\n"
+      "[execution]\nchains=2\nbins=4\n")
+  endforeach()
+  add_executable(mcbase_ising_scan
+    "${PROJECT_SOURCE_DIR}/tutorials/09-code/07-mcmain-mcbase/mpi.cpp"
+    "${PROJECT_SOURCE_DIR}/tutorials/09-code/07-mcmain-mcbase/ising.cpp")
+  target_include_directories(mcbase_ising_scan PRIVATE
+    "${PROJECT_SOURCE_DIR}/tutorials/09-code/07-mcmain-mcbase")
+  target_link_libraries(mcbase_ising_scan PRIVATE ALPS::alps)
+  if(ALPS_ENABLE_MPI)
+    add_test(NAME mcbase_ising_scan COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2
+      ${MPIEXEC_PREFLAGS} $<TARGET_FILE:mcbase_ising_scan> ${MPIEXEC_POSTFLAGS} T2.toml T3.toml
+      WORKING_DIRECTORY "${ising_scan}")
+    set_tests_properties(mcbase_ising_scan PROPERTIES LABELS "mc;mpi;tutorial" PROCESSORS 2 TIMEOUT 60)
+  else()
+    add_test(NAME mcbase_ising_scan COMMAND mcbase_ising_scan T2.toml T3.toml
+      WORKING_DIRECTORY "${ising_scan}")
+    set_tests_properties(mcbase_ising_scan PROPERTIES LABELS "mc;tutorial" TIMEOUT 60)
+  endif()
+  if(WIN32)
+    foreach(directory IN LISTS ALPS_RUNTIME_LIBRARY_DIRS)
+      set_property(TEST mcbase_ising_scan APPEND PROPERTY ENVIRONMENT_MODIFICATION
+        "PATH=path_list_prepend:${directory}")
+    endforeach()
+  endif()
+
   set(heisenberg_tutorial "${PROJECT_SOURCE_DIR}/tutorials/09-code/07-mcmain-mcbase/heisenberg")
   foreach(variant IN ITEMS 1d_lattice nd_lattice o_n_model)
     set(test mcbase_heisenberg_${variant}_checkpoint)
@@ -83,11 +114,5 @@ if(ALPS_BUILD_TESTING)
     add_test(NAME mc_driver_mpi COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2
       ${MPIEXEC_PREFLAGS} $<TARGET_FILE:mc_driver_mpi> ${MPIEXEC_POSTFLAGS})
     set_tests_properties(mc_driver_mpi PROPERTIES LABELS "mc;mpi" PROCESSORS 2 TIMEOUT 60)
-
-    add_executable(mcbase_mpi tests/mpi.cpp)
-    target_link_libraries(mcbase_mpi PRIVATE ALPS::alps MPI::MPI_CXX)
-    add_test(NAME mcbase_mpi COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2
-      ${MPIEXEC_PREFLAGS} $<TARGET_FILE:mcbase_mpi> ${MPIEXEC_POSTFLAGS})
-    set_tests_properties(mcbase_mpi PROPERTIES LABELS "mc;alea;mpi" PROCESSORS 2 TIMEOUT 60)
   endif()
 endif()

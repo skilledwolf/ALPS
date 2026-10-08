@@ -3,3 +3,8 @@ L=100
 THERMALIZATION=1000
 SWEEPS=100000
 T=3
+[output]
+results="param.1.out.h5"
+checkpoint="param.1.checkpoint.h5"
+[execution]
+chains=2
