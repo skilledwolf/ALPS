@@ -101,6 +101,9 @@ endif()
 enable_testing()
 function(add_contract name source target)
   add_executable(${name}_contract ${source})
+  # These consumers use headers, not modules. GCC's module mode is incompatible
+  # with some Apple SDK headers even when no module is imported.
+  set_target_properties(${name}_contract PROPERTIES CXX_SCAN_FOR_MODULES OFF)
   target_link_libraries(${name}_contract PRIVATE ${target})
   add_test(NAME ${name}_contract COMMAND ${name}_contract)
 endfunction()
