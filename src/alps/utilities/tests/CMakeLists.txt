@@ -21,16 +21,14 @@ foreach(name vmusage bitops)
   add_executable(${name} ${name}.cpp)
 
   target_link_libraries(${name} PRIVATE ALPS::utilities)
-  alps_add_test(${name})
-  set_property(TEST ${name} PROPERTY LABELS utility)
+  alps_add_gtest(${name} COMPONENT utilities)
 endforeach()
 
 add_executable(ngs_hash ngs_hash.cpp)
 target_link_libraries(ngs_hash PRIVATE ALPS::utilities)
-alps_add_test(ngs_hash)
+alps_add_gtest(ngs_hash COMPONENT utilities)
 
 # This consumer has no aggregate or numerical include roots.
 add_executable(foundation_headers foundation_headers.cpp)
 target_link_libraries(foundation_headers PRIVATE ALPS::utilities)
-alps_add_test(foundation_headers)
-set_property(TEST foundation_headers PROPERTY LABELS utility architecture)
+alps_add_gtest(foundation_headers COMPONENT utilities LABELS architecture)

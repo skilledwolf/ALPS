@@ -21,6 +21,5 @@ foreach(name random_choice uniform_on_sphere_n)
   add_executable(${name} ${name}.C)
 
   target_link_libraries(${name} PRIVATE ALPS::alps)
-  alps_add_test(${name})
-  set_property(TEST ${name} PROPERTY LABELS random)
+  alps_add_gtest(${name} COMPONENT random LABELS scientific)
 endforeach()

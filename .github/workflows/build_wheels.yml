@@ -9,6 +9,8 @@ on:
   pull_request:
     branches: [master]
   workflow_dispatch:
+  schedule:
+    - cron: '53 6 * * 1'
 
 permissions:
   contents: read
@@ -25,21 +27,38 @@ jobs:
     name: Check release version
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    outputs:
+      native: ${{ steps.matrix.outputs.native }}
+      wheel_matrix: ${{ steps.matrix.outputs.wheel_matrix }}
+      smoke_matrix: ${{ steps.matrix.outputs.smoke_matrix }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
+          fetch-depth: 0
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: '3.13'
       - run: python -m pip install packaging pytest lxml "scikit-build-core>=1.0" "cmake>=3.27" ninja
       - name: Test release validation
-        run: python -m pytest tests/packaging -q
+        run: python -m pytest tests/packaging -q --junitxml=packaging-tests.xml
       - name: Check package, SDK, and tag versions
         run: python .github/scripts/check_release_version.py
+      - name: Select packaging coverage
+        id: matrix
+        run: python .github/scripts/ci_matrix.py
+      - name: Summarize packaging helper tests
+        if: always()
+        run: python .github/scripts/junit_summary.py packaging-tests.xml
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: always()
+        with:
+          name: packaging-helper-tests
+          path: packaging-tests.xml
 
   build_wheels:
     name: Build wheels / ${{ matrix.plat.family }}
+    if: needs.check_version.outputs.native == 'true'
     needs: [check_version, build_sdist]
     runs-on: ${{ matrix.plat.os }}
     timeout-minutes: 120
@@ -47,11 +66,7 @@ jobs:
       CMAKE_BUILD_PARALLEL_LEVEL: ${{ matrix.plat.family == 'macos' && '2' || '4' }}
     strategy:
       fail-fast: false
-      matrix:
-        plat:
-          - {os: ubuntu-24.04, target: '', arch: x86_64, family: manylinux, build: 'cp3{11,12,13,14}-manylinux*'}
-          - {os: ubuntu-24.04, target: '', arch: x86_64, family: musllinux, build: 'cp3{11,12,13,14}-musllinux*'}
-          - {os: macos-15, target: '15.0', arch: arm64, family: macos, build: 'cp3{11,12,13,14}-macosx*'}
+      matrix: ${{ fromJSON(needs.check_version.outputs.wheel_matrix) }}
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -80,6 +95,9 @@ jobs:
           key: pyalps-ccache-${{ matrix.plat.family }}-${{ matrix.plat.arch }}-${{ hashFiles('CMakeLists.txt', 'CMakePresets.json', 'cmake/**', 'src/**', 'third_party/**', 'tests/**', 'python/pyalps/**', '.github/dependencies.json', '.github/scripts/build-boost.sh', '.github/scripts/prepare_dependencies.py', '.github/workflows/build_wheels.yml') }}
           restore-keys: pyalps-ccache-${{ matrix.plat.family }}-${{ matrix.plat.arch }}-
 
+      - name: Create wheel report directory
+        run: mkdir -p _build/wheel-reports
+
       - name: Build wheels
         uses: pypa/cibuildwheel@1828c10ab37f080699c7b81cea34097c684a7074 # v4.2.0
         with:
@@ -92,7 +110,7 @@ jobs:
           CIBW_BUILD: ${{ matrix.plat.build }}
           # cibuildwheel copies /project; mount the compiler cache explicitly
           # so Linux builds update the directory that Actions saves afterward.
-          CIBW_CONTAINER_ENGINE: 'docker; create_args: --volume "${{ github.workspace }}/_build/boost-install:/project/_build/boost-install" --volume "${{ github.workspace }}/_build/ccache:/project/_build/ccache"'
+          CIBW_CONTAINER_ENGINE: 'docker; create_args: --volume "${{ github.workspace }}/_build/boost-install:/project/_build/boost-install" --volume "${{ github.workspace }}/_build/ccache:/project/_build/ccache" --volume "${{ github.workspace }}/_build/wheel-reports:/project/_build/wheel-reports"'
           MACOSX_DEPLOYMENT_TARGET: ${{ matrix.plat.target }}
 
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
@@ -126,6 +144,15 @@ jobs:
           path: _build/ccache
           key: ${{ steps.compiler-cache.outputs.cache-primary-key }}
 
+      - name: Summarize wheel build tests
+        if: always()
+        run: python .github/scripts/junit_summary.py '_build/wheel-reports/*.xml'
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: always()
+        with:
+          name: wheel-tests-${{ matrix.plat.family }}
+          path: _build/wheel-reports
+
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: cibw-wheels-${{ matrix.plat.family }}
@@ -134,6 +161,7 @@ jobs:
 
   build_sdist:
     name: Build source distribution
+    if: needs.check_version.outputs.native == 'true'
     needs: [check_version]
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -182,12 +210,8 @@ jobs:
     timeout-minutes: 30
     strategy:
       fail-fast: false
-      matrix:
-        plat:
-          - {os: ubuntu-24.04, architecture: x64, artifact: cibw-wheels-manylinux}
-          - {os: macos-15, architecture: arm64, artifact: cibw-wheels-macos}
-          - {os: macos-26, architecture: arm64, artifact: cibw-wheels-macos}
-        python: ['3.11', '3.12', '3.13', '3.14']
+      matrix: ${{ fromJSON(needs.check_version.outputs.smoke_matrix) }}
+
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -234,6 +258,7 @@ jobs:
   # collectives, requests and point-to-point traffic through pyalps.mpi.
   mpi_smoke:
     name: Smoke test MPI adapter with two ranks
+    if: needs.check_version.outputs.native == 'true'
     needs: [check_version, build_wheels]
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -263,7 +288,20 @@ jobs:
           python -m pip install --no-index --find-links wheelhouse pyalps
 
       - name: Run two-rank compatibility surface
-        run: mpiexec -n 2 python -m pytest -q tests/pyalps/test_binding_surface.py::test_mpi4py_compatibility_surface tests/pyalps/test_mpi_requests.py
+        run: |
+          python .github/scripts/run_with_timeout.py 300 \
+            mpiexec -n 2 python .github/scripts/run_mpi_pytest.py \
+            --ranks 2 --output _build/mpi \
+            tests/pyalps/test_binding_surface.py::test_mpi4py_compatibility_surface \
+            tests/pyalps/test_mpi_requests.py
+      - name: Summarize per-rank MPI tests
+        if: always()
+        run: python .github/scripts/junit_summary.py '_build/mpi/*.xml'
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: always()
+        with:
+          name: mpi-python-reports
+          path: _build/mpi
 
   packaging-status:
     name: Packaging CI
@@ -275,15 +313,17 @@ jobs:
       - name: Require every selected packaging check
         env:
           RESULTS: ${{ toJSON(needs) }}
+          NATIVE: ${{ needs.check_version.outputs.native }}
         run: |
           python - <<'PY'
           import json, os
           jobs = json.loads(os.environ['RESULTS'])
           assert jobs['check_version']['result'] == 'success', jobs
+          expected = 'success' if os.environ['NATIVE'] == 'true' else 'skipped'
           for name, job in jobs.items():
               if name == 'check_version':
                   continue
-              assert job['result'] == 'success', (name, job)
+              assert job['result'] == expected, (name, job)
           PY
 
   upload_pypi:

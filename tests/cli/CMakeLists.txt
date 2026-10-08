@@ -2,3 +2,4 @@
 # SPDX-License-Identifier: MIT
 
 alps_add_test(lattice2xml)
+set_property(TEST lattice2xml PROPERTY LABELS "cli;compatibility")
