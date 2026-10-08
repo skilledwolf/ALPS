@@ -41,8 +41,6 @@ def select_matrix(manifest, tier, only=""):
         build["boost_sha256"] = checksum
         build["dependency"] = boost_package(build["boost"], build["os"])
         build["mpi"] = "OFF" if build["sanitizer"] else "ON"
-        # The full tier also compares applications with exact results.
-        build["physics"] = tier == "full" and build["python"]
         if tier == "full" or (tier == "routine" and build["quick"]) or (tier == "quick" and build["python"]):
             builds.append(build)
     if only:

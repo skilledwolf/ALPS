@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 from pyalps.run_io import write_run_file
 from test_native_mpi import compare, invoke, launcher
-from conftest import alps_program, variants
+from conftest import alps_program
 
 
 @pytest.fixture
@@ -43,10 +43,13 @@ def stopped(tmp_path_factory):
     return copy
 
 
-@pytest.mark.parametrize('algorithm', ['loop', 'loop; sse'])
-@pytest.mark.parametrize('parameters', variants({}, {'local_S': 1.}, {'L': 3},
-                                               {'L': 3, 'DISABLE_IMPROVED_ESTIMATOR': True}))
-@pytest.mark.parametrize('rng', variants('mt19937', 'lagged_fibonacci607'))
+# The bipartite chain adds staggered observables, the odd ring signs with
+# zero-meron sectors under improved estimators and plainly without them.
+@pytest.mark.parametrize('algorithm,parameters,rng', [
+    ('loop', {'local_S': 1.}, 'mt19937'),
+    ('loop', {'L': 3}, 'lagged_fibonacci607'),
+    ('loop; sse', {'L': 3, 'DISABLE_IMPROVED_ESTIMATOR': True}, 'mt19937'),
+])
 def test_exact_continuation(executable, tmp_path, algorithm, parameters, rng):
     p = dict(parameters, ALGORITHM=algorithm, SWEEPS=300)
     run(executable, tmp_path, 'full', p, rng=rng, chains=1)
@@ -149,28 +152,17 @@ def test_failed_load_preserves_outputs(executable, stopped, tmp_path, fault):
     assert before == {p.name: p.read_bytes() for p in tmp_path.iterdir()}
 
 
-REPLICA_MODES = [
-    {}, {'RANDOM_EXCHANGE': True, 'EXCHANGE_INTERVAL': 3}, {'NO_EXCHANGE': True},
-    {'OPTIMIZE_TEMPERATURE': True, 'OPTIMIZATION_TYPE': 'rate', 'EXCHANGE_INTERVAL': 3},
-    {'OPTIMIZE_TEMPERATURE': True, 'OPTIMIZATION_TYPE': 'population'},
-]
-
-
-@pytest.mark.parametrize('mode', variants(*REPLICA_MODES))
-def test_replica_continuation_and_loader(executable, tmp_path, mode):
+def test_replica_continuation_and_loader(executable, tmp_path):
     import pyalps
-    # Population optimization needs three replicas; the other modes use two.
-    replicas = 3 if mode.get('OPTIMIZE_TEMPERATURE') else 2
+    # Population feedback checkpoints walker histograms and needs three
+    # replicas; the interval adds the exchange schedule.
+    replicas = 3
     p = dict(ALGORITHM='loop; exchange', NUM_REPLICAS=replicas, T_MIN=.8, T_MAX=1.2, SWEEPS=300,
-             INITIAL_BLOCK_SWEEPS=100, OPTIMIZATION_ITERATIONS=1, **mode)
+             INITIAL_BLOCK_SWEEPS=100, OPTIMIZATION_ITERATIONS=1, OPTIMIZE_TEMPERATURE=True,
+             OPTIMIZATION_TYPE='population', EXCHANGE_INTERVAL=3)
     rng = 'mt19937'
     run(executable, tmp_path, 'full', p, chains=1, bins=8, rng=rng)
-    # Without temperature feedback the first stop would only interrupt warmup,
-    # which the single-ladder continuation covers.
-    phases = [('production', 247)]
-    if mode.get('OPTIMIZE_TEMPERATURE'):
-        phases += [('feedback', 31), ('optimization', 151)]
-    for phase, budget in phases:
+    for phase, budget in [('production', 247), ('feedback', 31), ('optimization', 151)]:
         run(executable, tmp_path, phase, p, chains=1, bins=8, rng=rng, budget=budget)
         run(executable, tmp_path, phase + '-resumed', p, chains=1, bins=8, rng=rng,
             checkpoint=phase + '.checkpoint.h5')

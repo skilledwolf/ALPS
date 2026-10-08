@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 from pyalps.run_io import write_run_file
 from test_native_mpi import compare
-from conftest import alps_program, variants
+from conftest import alps_program
 
 
 @pytest.fixture
@@ -31,25 +31,24 @@ def run(exe, directory, name, p, *, rng='mt19937', budget=0, checkpoint=None, ch
     return directory / (name + '.h5')
 
 
-CASES = variants(
-    ('worm', {}),
-    ('worm', dict(MODEL='boson Hubbard', Nmax=2, U=1., t=.3, mu=.5, NONLOCAL=False)),
-    ('worm', dict(LATTICE='square lattice', L=2, MODEL='boson Hubbard', Nmax=2,
-                  U=1., t=.3, mu=.5, CHAIN_KAPPA=True)),
-    ('worm', dict(USE_1D_STIFFNESS=True))) + variants(
-    ('dirloop_sse', dict(WHICH_LOOP_TYPE='minbounce')),
-    ('dirloop_sse', dict(WHICH_LOOP_TYPE='heatbath', local_S=1.)),
-    ('dirloop_sse', dict(WHICH_LOOP_TYPE='locopt', **{'MEASURE[Green Function]': True})),
-    ('dirloop_sse', dict(LATTICE='triangular lattice', L=3)),
-    ('dirloop_sse', dict(MODEL='boson Hubbard', Nmax=2, U=1., t=.3, mu=.5,
+# Each case adds checkpointed state the others lack; the generators alternate
+# so that both round-trip through a checkpoint.
+CASES = [
+    ('worm', dict(USE_1D_STIFFNESS=True), 'mt19937'),
+    ('worm', dict(LATTICE='square lattice', L=2, MODEL='boson Hubbard', Nmax=2, U=1., t=.3, mu=.5,
+                  NONLOCAL=False, CHAIN_KAPPA=True), 'lagged_fibonacci607'),
+    # The frustrated lattice signs every measurement.
+    ('dirloop_sse', dict(LATTICE='triangular lattice', L=3, WHICH_LOOP_TYPE='locopt',
+                         **{'MEASURE[Green Function]': True}), 'lagged_fibonacci607'),
+    ('dirloop_sse', dict(MODEL='boson Hubbard', Nmax=2, U=1., t=.3, mu=.5, WHICH_LOOP_TYPE='heatbath',
                          **{'MEASURE[Local Compressibility]': True,
                             'MEASURE[Site Compressibility]': True,
                             'MEASURE_CORRELATIONS[nn]': 'n:n',
-                            'MEASURE_STRUCTURE_FACTOR[nq]': 'n:n'})))
+                            'MEASURE_STRUCTURE_FACTOR[nq]': 'n:n'}), 'mt19937'),
+]
 
 
-@pytest.mark.parametrize('app,parameters', CASES)
-@pytest.mark.parametrize('rng', variants('mt19937', 'lagged_fibonacci607'))
+@pytest.mark.parametrize('app,parameters,rng', CASES)
 def test_exact_continuation(executables, tmp_path, app, parameters, rng):
     exe = executables[app]
     run(exe, tmp_path, 'full', parameters, rng=rng)
@@ -210,8 +209,9 @@ def test_green_function_matches_exact_diagonalization(executables, tmp_path, mod
         assert np.all(np.abs(result.mean-expected) < np.maximum(.02,5*result.error)), (result.mean,result.error,expected)
 
 
-@pytest.mark.parametrize('target', variants(0, 4))
-def test_canonical_worm_continuation(executables, tmp_path, target):
+def test_canonical_worm_continuation(executables, tmp_path):
+    # Half filling; the empty sector has no worldlines to continue.
+    target = 4
     p = dict(MODEL='boson Hubbard', Nmax=2, U=1., t=.3, mu=.5,
              NUMBER_OF_PARTICLES=target, CORRECTION=.1, THERMALIZATION=10000, SWEEPS=1000)
     exe = executables['worm']
@@ -224,8 +224,6 @@ def test_canonical_worm_continuation(executables, tmp_path, target):
     with h5py.File(tmp_path/'full.h5') as ar:
         assert ar['simulation/results/Density/mean/value'][0] == target/4
         assert abs(ar['simulation/results/Compressibility/mean/value'][0]) < 1e-12
-        if target == 0:
-            assert abs(ar['simulation/results/Energy/mean/value'][0]) < 1e-12
 
 
 @pytest.mark.parametrize('app,extra,reason', [

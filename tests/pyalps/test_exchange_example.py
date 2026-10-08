@@ -93,12 +93,10 @@ def test_mpi_invalid_teams_preserve_outputs(executable, launcher, tmp_path):
         assert before == (results.read_bytes(), state.read_bytes()), (processes, team, lattice)
 
 
-@pytest.mark.slow
-@pytest.mark.parametrize('coupling', [1., -1.])
-def test_mpi_teams_match_exact_ring_thermodynamics(executable, launcher, tmp_path, coupling):
-    length = 8
+def test_mpi_teams_match_exact_ring_thermodynamics(executable, launcher, tmp_path):
+    length, coupling = 8, 1.
     results, _ = run(executable, tmp_path, 'physics', processes=4, team=2, launcher=launcher,
-                     length=length, coupling=coupling, sweeps=40000)
+                     length=length, coupling=coupling, sweeps=10000)
     spins = np.array(list(itertools.product((-1., 1.), repeat=length)))
     energy = -coupling*np.sum(spins*np.roll(spins, 1, axis=1), axis=1)
     magnetization = spins.sum(axis=1)

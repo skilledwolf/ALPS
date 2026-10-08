@@ -12,35 +12,12 @@ project is built at its path relative to tutorials/.
 A missing requirement skips its tests locally. CI sets
 ALPS_REQUIRE_INTEGRATION=1 so that a misconfigured job fails instead of
 passing by skipping.
-
-Tests marked `slow` run only with ALPS_SLOW_TESTS=1. variants() keeps one
-representative of an expensive parametrization in the default run.
 """
 import os
 from pathlib import Path
 import shutil
 
 import pytest
-
-
-def pytest_configure(config):
-    config.addinivalue_line("markers", "slow: long-running test; run with ALPS_SLOW_TESTS=1")
-
-
-def pytest_collection_modifyitems(config, items):
-    if os.environ.get("ALPS_SLOW_TESTS") == "1":
-        return
-    skip = pytest.mark.skip(reason="long-running test; set ALPS_SLOW_TESTS=1")
-    for item in items:
-        if "slow" in item.keywords:
-            item.add_marker(skip)
-
-
-def variants(*values, fast=1):
-    """Parametrize values; only the first `fast` run without ALPS_SLOW_TESTS."""
-    return [value if index < fast else
-            pytest.param(*(value if isinstance(value, tuple) else (value,)), marks=pytest.mark.slow)
-            for index, value in enumerate(values)]
 
 
 def unavailable(reason):

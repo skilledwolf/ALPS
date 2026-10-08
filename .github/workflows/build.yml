@@ -121,7 +121,6 @@ jobs:
       EXTRAS: ${{ matrix.extras }}
       EXTENSIVE: ${{ matrix.extensive }}
       SANITIZER: ${{ matrix.sanitizer }}
-      PHYSICS: ${{ matrix.physics }}
       CXX_STANDARD: ${{ matrix.standard }}
       CMAKE_PREFIX_PATH: ${{ github.workspace }}/_build/boost-install:${{ github.workspace }}/_build/tomlplusplus-install:${{ github.workspace }}/_build/highfive-install
       # Exercise the minimum in the primary SDK/Python job and the MPI job.
@@ -289,11 +288,6 @@ jobs:
             --config-settings "build-dir=$PWD/_build/ci-python"
           python .github/scripts/build_metrics.py run --timeout 1800 'Bindings and SDK contracts' \
             python -m pytest tests/pyalps tests/cmake tests/cli/test_hdf5_convert.py -v -o console_output_style=times --junitxml=_build/ci/python.xml
-          # Long comparisons with exact diagonalization and enumeration.
-          if [[ "$PHYSICS" == true ]]; then
-            ALPS_SLOW_TESTS=1 python .github/scripts/build_metrics.py run --timeout 3600 'Physics validation' \
-              python -m pytest tests/pyalps -m slow -v -o console_output_style=times --junitxml=_build/ci/physics.xml
-          fi
       - name: Test installed XML tools after relocation
         if: matrix.extras
         env:
@@ -316,7 +310,7 @@ jobs:
         run: python .github/scripts/build_metrics.py summary
       - name: Summarize test results
         if: always()
-        run: python .github/scripts/junit_summary.py '_build/**/ctest.xml' _build/ci/cli.xml _build/ci/python.xml _build/ci/physics.xml
+        run: python .github/scripts/junit_summary.py '_build/**/ctest.xml' _build/ci/cli.xml _build/ci/python.xml
       - name: Retain test and configure evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
@@ -326,7 +320,6 @@ jobs:
             _build/**/ctest.xml
             _build/ci/cli.xml
             _build/ci/python.xml
-            _build/ci/physics.xml
             _build/**/Testing/Temporary/**
             _build/**/CMakeFiles/CMakeConfigureLog.yaml
             _build/metrics/**

@@ -28,6 +28,14 @@ def invoke(launcher, executable, run, processes=1, success=True):
     return result
 
 
+def assert_same(value, other, name):
+    # Identical bytes settle almost every pair without NumPy's slower assertion.
+    value, other = np.asarray(value), np.asarray(other)
+    if (value.dtype.hasobject or value.dtype != other.dtype or value.shape != other.shape
+            or value.tobytes() != other.tobytes()):
+        np.testing.assert_array_equal(value, other, err_msg=name)
+
+
 def compare(left, right):
     with h5py.File(left) as a, h5py.File(right) as b:
         # Restart outputs hold thousands of objects; look each one up only once.
@@ -39,9 +47,9 @@ def compare(left, right):
                 raise AssertionError(name + " is missing") from None
             assert type(obj) is type(other), name
             for key, value in obj.attrs.items():
-                np.testing.assert_array_equal(value, other.attrs[key], err_msg=name + "/@" + key)
+                assert_same(value, other.attrs[key], name + "/@" + key)
             if isinstance(obj, h5py.Dataset):
-                np.testing.assert_array_equal(obj[()], other[()], err_msg=name)
+                assert_same(obj[()], other[()], name)
         a["simulation"].visititems(check)
 
 
