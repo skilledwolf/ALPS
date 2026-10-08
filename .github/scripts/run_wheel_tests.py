@@ -20,10 +20,10 @@ def main():
     reports.mkdir(parents=True, exist_ok=True)
     identifier = f"{platform.python_implementation()}-{platform.python_version()}-{platform.machine()}"
     (reports / f"{identifier}-import.txt").write_text(f"Python: {sys.executable}\npyalps: {package}\n")
-    # Compile SDK consumers for each distinct wheel ABI, then reuse those
-    # wheels on newer interpreters without recompiling the same consumers.
+    # The C++ SDK is identical across wheel ABIs. Compile its consumers once
+    # per platform; Python/downstream-extension tests still run on every ABI.
     suites = [str(ROOT / 'tests/pyalps')]
-    if sys.version_info[:2] in {(3, 11), (3, 12)}:
+    if sys.version_info[:2] == (3, 12):
         suites.append(str(ROOT / 'tests/cmake'))
     with tempfile.TemporaryDirectory(prefix="alps-wheel-tests-") as work:
         return subprocess.call([

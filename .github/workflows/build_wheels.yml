@@ -8,7 +8,9 @@ permissions:
   contents: read
 jobs:
   validate:
-    uses: ./.github/workflows/compatibility.yml
+    uses: ./.github/workflows/_wheels.yml
+    with:
+      full: true
   publish:
     needs:
     - validate

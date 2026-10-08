@@ -265,9 +265,9 @@ The [PR workflow](.github/workflows/build.yml) reports one required `CI` check. 
 
 The [weekly compatibility workflow](.github/workflows/compatibility.yml) tests six native configurations: GCC 11 with CMake 3.27 and Boost 1.76; C++20 with extensive tests, OpenMP and installed C/C++/Fortran tutorials; C++23; MPI-enabled Python 3.14; newer macOS; and Intel macOS. It also validates manylinux, musllinux and macOS wheels on Python 3.11–3.14. The minimum job checks the standalone numerical tutorial with NumPy 1.26. Manual runs support pre-merge or release investigation.
 
-The [release workflow](.github/workflows/build_wheels.yml) runs compatibility and artifact validation from the tag, then publishes those exact artifacts through the protected `pypi` environment using trusted publishing. A manual run validates without publishing. Wheels are repaired, checked for runtime dependencies and installed on fresh runners; the source distribution is rebuilt outside the checkout against an installed SDK. SDK consumers are compiled for the two distinct wheel ABIs (Python 3.11 and 3.12); newer interpreters still run the binding tests against the reused abi3 wheel.
+The [release workflow](.github/workflows/build_wheels.yml) runs full artifact validation from the tag, then publishes those exact artifacts through the protected `pypi` environment using trusted publishing. A manual run validates without publishing. Wheels are repaired, checked for runtime dependencies and installed on fresh runners; the source distribution is rebuilt outside the checkout against an installed SDK. The identical C++ SDK consumers are compiled once per platform on Python 3.12; binding and downstream-extension tests still run on every selected interpreter, including both wheel ABIs.
 
-Ordinary native CI uses APT/Homebrew dependencies, including installed GoogleTest where available. Source-built Boost is limited to its minimum-version check and the isolated manylinux builder. These providers are CI choices, not requirements for local builds. Persistent compiler caches are limited to frequent PR configurations and manylinux, with compiler/dependency identities and bounded cache sizes. Compatibility builds do not each receive a persistent compiler cache.
+Ordinary native CI uses APT/Homebrew dependencies, including installed GoogleTest where available. Source-built Boost is limited to its minimum-version check and the isolated manylinux builder. These providers are CI choices, not requirements for local builds. Persistent compiler caches are limited to the main Linux PR build and manylinux, with compiler/dependency identities and bounded cache sizes. Compatibility builds do not each receive a persistent compiler cache.
 
 ## Preparing a release
 
@@ -282,6 +282,6 @@ For maintainers:
    python .github/scripts/check_release_version.py --ref refs/tags/vX.Y.Z
    ```
 
-4. Merge and validate the release commit before tagging. Tag-triggered workflows validate source builds, wheels and the source distribution before the PyPI upload job. Publication also requires the repository's `pypi` environment and trusted-publisher configuration; a tag in an arbitrary fork is not sufficient. Manual validation runs do not publish.
+4. Merge and validate the release commit before tagging. Tag-triggered workflows validate wheels and the source distribution before the PyPI upload job. Publication also requires the repository's `pypi` environment and trusted-publisher configuration; a tag in an arbitrary fork is not sufficient. Manual validation runs do not publish.
 
 Keep published tags fixed. If a published release is wrong, correct the source and prepare a new version; do not use `skip-existing` to conceal mismatched artifacts.
