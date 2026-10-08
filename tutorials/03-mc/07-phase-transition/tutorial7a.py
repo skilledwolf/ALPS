@@ -71,7 +71,7 @@ plt.title('2D Ising model')
 plt.figure()
 pyalps.plot.plot(connected_susc)
 plt.xlabel('Temperature $T$')
-plt.ylabel('Connected Susceptibility $\chi_c$')
+plt.ylabel(r'Connected Susceptibility $\chi_c$')
 plt.title('2D Ising model')
 
 plt.figure()

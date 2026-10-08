@@ -43,7 +43,7 @@ for s in susceptibility:
 plt.figure()
 pyalps.plot.plot(susceptibility)
 plt.xlabel('Temperature $T/J$')
-plt.ylabel('Susceptibility $\chi J$')
+plt.ylabel(r'Susceptibility $\chi J$')
 plt.ylim(0,0.25)
 plt.legend()
 plt.show()

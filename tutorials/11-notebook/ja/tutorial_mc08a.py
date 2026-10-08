@@ -60,7 +60,7 @@ for data in susc1:
     print(prefactor,gap)
     
     lines += plt.plot(data.x, f(None, data.x, pars))
-    lines[-1].set_label('$J_2=%.4s$: $\chi = \frac{%.4s}{T}\exp(\frac{-%.4s}{T})$' % (data.props['J2'], prefactor,gap))
+    lines[-1].set_label('$J_2=%.4s$: $\\chi = \frac{%.4s}{T}\\exp(\frac{-%.4s}{T})$' % (data.props['J2'], prefactor,gap))
 
 plt.figure()
 pyalps.plot.plot(susc1)

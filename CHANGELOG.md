@@ -363,5 +363,6 @@ Numerical persistence now requires an explicit adapter: include `<alps/hdf5/matr
 - Report MaxEnt CLI help and input errors with normal exit codes instead of continuing into an empty input or aborting on an exception. Valid scientific runs are unchanged.
 - Reject unsupported native C++ parameter checkpoint datatypes with the dataset path in the diagnostic, instead of silently substituting zero. Existing supported types and custom readers retain their decoding behavior; a failed parameter reload preserves the previous values.
 - Generate XML plotting scripts compatible with Python 3 through the `alps-xml` CLI.
+- Run the remaining tutorial notebooks under Python 3: the DMFT-02 analysis, the Japanese Python primer, and DMFT-08's headings stored as code cells. Notebooks and scripts no longer rely on invalid string escapes in plot labels, and the notebooks no longer refer to the retired `alpspython` launcher.
 - Correct the Heisenberg tutorial's vector dot product and allow its vector implementation to compile without x86 SIMD support.
 - Remove undefined behavior in XDR callbacks and integer-range boundary checks exposed by sanitizers.
