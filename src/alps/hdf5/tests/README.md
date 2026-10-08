@@ -44,8 +44,11 @@ temperatures from 0 to 1. Ising checks compare archived values and parameters to
 the simulation, verify finite uncertainties and exact physical bounds, and do
 not introduce probabilistic pass/fail thresholds.
 
-The migration was validated across all 208 generated type families and all three
+The initial migration was validated across 208 generated type families and all three
 storage modes: 1,248 cases, with 999 passes and 249 named skips (214 unsupported
 attribute cases and 35 shared-array overwrite cases). SZIP encoding was available
 on that validation build, so supported compressed cases all ran. Optional codec
 availability can change skip counts on other installations.
+
+Removing 12 duplicate default-allocator spellings subsequently reduced the matrix
+to 196 distinct type families and 1,176 cases without removing type coverage.

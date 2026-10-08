@@ -213,6 +213,7 @@ jobs:
           cmake -S . -B _build/ci -G Ninja \
             -DCMAKE_BUILD_TYPE=Release -DALPS_BUILD_TESTING=ON \
             "-DALPS_ENABLE_MPI=$ALPS_BOOST_MPI" \
+            -DMPIEXEC_PREFLAGS=--oversubscribe \
             "-DCMAKE_PREFIX_PATH=$PWD/_build/boost-install" \
             "-DCMAKE_INSTALL_PREFIX=$PWD/_build/ci/install" \
             "-DCMAKE_CXX_STANDARD=$CXX_STANDARD" "${extra_args[@]}"
@@ -236,7 +237,7 @@ jobs:
           python -m pip install --no-build-isolation --no-deps -e python/pyalps \
             --config-settings "build-dir=$PWD/_build/ci-python"
           python .github/scripts/run_with_timeout.py 900 \
-            python -m pytest tests/pyalps tests/cmake -q --junitxml=_build/ci/python.xml
+            python -m pytest tests/pyalps tests/cmake -v --capture=tee-sys --junitxml=_build/ci/python.xml
       - name: Test installed XML tools after relocation
         if: matrix.extras
         env:
