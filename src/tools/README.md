@@ -6,9 +6,9 @@ group; executable names and installation components remain stable.
 
 | Group | Built or installed programs | Preserved inactive sources |
 | --- | --- | --- |
-| `parameters/` | `parameter2xml`, `parameter2hdf5`, `p2h5` | None |
+| `parameters/` | `parameter2hdf5`, `p2h5` | None |
 | `lattice/` | `lattice2xml`, `printgraph` | `pltgraph.py` and historical local fixtures |
-| `scheduler/` | `convert2xml`, `snap2vtk` | None |
+| `snapshot/` | `snap2vtk` | None |
 | `diagnostics/` | `pconfig` | None |
 | `hdf5/` | `alps-hdf5-convert` (Python, requires h5py and NumPy) | None |
 | `xml/` | `alps-xml` on Unix | `txt2archive.C` and all historical shell wrappers |
@@ -16,7 +16,7 @@ group; executable names and installation components remain stable.
 | `launchers/` | None | Historical `alpspython` shell and Windows templates |
 | `installer/` | None | Historical macOS postflight template |
 
-All eleven C++ commands and `alps-hdf5-convert` install in the `tools` component;
+All six C++ commands and `alps-hdf5-convert` install in the `tools` component;
 `alps-xml` installs in the `xml` component. `pconfig` links `ALPS::utilities`; the other C++ commands
 continue to use `ALPS::alps`. Source ownership is registered for all C++ groups,
 including inactive files, without enabling additional programs or dependencies.

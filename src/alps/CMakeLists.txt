@@ -132,7 +132,7 @@ alps_register_module(NAME configuration ROOT "${PROJECT_SOURCE_DIR}/cmake/config
   GENERATED_HEADERS alps/config.h alps/version.h alps/export.h)
 foreach(module IN ITEMS containers utilities cli numerics ietl solvers xml plotting
                         legacy_parameters expression graph lattice model random
-                        osiris hdf5 numeric_io params run_config alea mc scheduler fortran)
+                        osiris hdf5 numeric_io params run_config alea mc fortran)
   add_subdirectory(${module})
 endforeach()
 target_link_libraries(alps PUBLIC ALPS::utilities ALPS::osiris ALPS::hdf5 ALPS::params

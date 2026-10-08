@@ -22,7 +22,6 @@
 
 #include <boost/math/constants/constants.hpp>
 #include <alps/osiris.h>
-#include <alps/scheduler/types.h>
 #include <alps/utility/vectorio.hpp>
 #include <boost/filesystem.hpp>
 #include <boost/filesystem/fstream.hpp>
@@ -31,6 +30,9 @@
 #include <iostream>
 #include <string>
 #include <vector>
+
+// Snapshot files begin with the former scheduler's snapshot dump type.
+constexpr int snapshot_magic = 7;
 
 double angle(double x, double y) {
   double g = arg(std::complex<double>(x, y)) / (2 * boost::math::constants::pi<double>());
@@ -61,7 +63,7 @@ int main(int argc, char **argv) {
     alps::IXDRFileDump snap(snapfile);
     int magic;
     snap >> magic;
-    if (magic != alps::scheduler::MCDump_snapshot) {
+    if (magic != snapshot_magic) {
       std::cerr << "Invalid snapshot file\n";
       std::exit(127);
     }

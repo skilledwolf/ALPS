@@ -309,12 +309,10 @@ Converted analysis results do not constitute physical simulation checkpoints.
 
 ## Remaining consumer boundary
 
-The scheduler's Monte Carlo layer (`MCRun`, `MCSimulation`) has been removed.
-The deterministic DMRG and full/sparse diagonalization applications use the
-generic scheduler `Task`/`DiagTask` and dispatch, which remain. Its `Worker`,
-`WorkerTask` and `RemoteWorker` classes no longer have subclasses in this
-repository; consolidating that task framework is scheduler work outside ALEA
-consolidation. The standalone FQHE kernel only needs the HDF5 archive.
+The scheduler has been removed with its Monte Carlo layer (`MCRun`,
+`MCSimulation`), task framework and dispatch; the DMRG and full/sparse
+diagonalization applications run from TOML run files. The standalone FQHE
+kernel only needs the HDF5 archive.
 
 The native `loop` executable owns measurement evaluation in `analysis.hpp` and
 its current measurement implementation. The former `looper/evaluator.h` and

@@ -143,7 +143,7 @@ Each module uses `include/`, `src/` and `tests/` where applicable. Public includ
 | `graph/`, `lattice/`, `model/` | Graph helpers, lattice definitions and physical models | `ALPS::headers`, `ALPS::alps` |
 | `random/` | Random generators and their factories | `ALPS::alps` |
 | `alea/` | Eigen-based statistical estimators | `ALPS::statistics` |
-| `mc/`, `scheduler/` | Simulation API, execution and scheduling | `ALPS::alps` |
+| `mc/` | Simulation API and execution | `ALPS::alps` |
 | `fortran/` | C++ bridge with public headers in `include/alps/fortran/` | `ALPS::fortran` |
 | `solvers/` | Shared `<alps/solvers.hpp>` declarations for MaxEnt and CT-QMC | `ALPS::solver_headers` |
 | `resources/` | XML definitions and stylesheets | Installed data component |

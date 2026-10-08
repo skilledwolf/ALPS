@@ -2,8 +2,8 @@
 #include <alps/ngs/make_deprecated_parameters.hpp>
 #include <stdexcept>
 int main() {
-    // DMFT's scheduler solvers and the lattice tutorials hand scalar
-    // dictionaries to the legacy scheduler and model libraries.
+    // The lattice-model applications and tutorials hand scalar
+    // dictionaries to the legacy lattice and model libraries.
     // This internal bridge has a live caller; legacy file ingress is retired.
     alps::params p;
     p["LATTICE"]="chain lattice"; p["L"]=10; p["T"]=2.25;

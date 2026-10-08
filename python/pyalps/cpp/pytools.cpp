@@ -6,7 +6,6 @@
 // SPDX-License-Identifier: MIT
 #include <nanobind/nanobind.h>
 #include <nanobind/stl/string.h>
-#include <alps/scheduler/convert.h>
 #include <alps/utility/encode.hpp>
 #include <alps/random.h>
 #include <alps/parser/xslt_path.h>
@@ -25,9 +24,6 @@ public:
 };
 NB_MODULE(pytools_c, m) {
     m.doc() = "ALPS tools bindings (nanobind)";
-    m.def("convert2xml",
-          &alps::convert2xml,
-          "Convert an ALPS file to XML. Returns the path to the XML file.");
     m.def("hdf5_name_encode",
           &alps::hdf5_name_encode,
           "Escape a string for use inside an HDF5 path name.");

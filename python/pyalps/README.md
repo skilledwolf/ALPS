@@ -8,7 +8,7 @@ python -m pip install pyalps
 
 Matplotlib plotting helpers are included with `pyalps`. Install `pyalps[mpi]` for the mpi4py-backed `pyalps.mpi` compatibility layer.
 
-Wheels bundle simulation applications for `pyalps.run_io.execute`, but do not add them to your shell's `PATH` or include auxiliary tools such as `parameter2xml`, `printgraph`, and `alps-xml`. Install the [C++ SDK and tools](../../CONTRIBUTING.md#build) for those command-line workflows. Tutorial files are available in the [source collection](../../tutorials/README.md), with an optional SDK installation component.
+Wheels bundle simulation applications for `pyalps.run_io.execute`, but do not add them to your shell's `PATH` or include auxiliary tools such as `printgraph` and `alps-xml`. Install the [C++ SDK and tools](../../CONTRIBUTING.md#build) for those command-line workflows. Tutorial files are available in the [source collection](../../tutorials/README.md), with an optional SDK installation component.
 
 The bindings are built as a standalone `scikit-build-core` project using nanobind. A source build requires GIL-enabled CPython 3.11 or newer, CMake 3.27 or newer, Ninja, a C++17 compiler, BLAS/LAPACK, HDF5, and an installed shared ALPS C++ SDK. The SDK's numeric version must match `ALPS_VERSION.txt`; CMake rejects a mismatch before compiling. Point `ALPS_DIR` at the SDK's `share/alps` package directory.
 
@@ -378,8 +378,7 @@ It then starts the runs in order, at most `concurrency` at a time, and returns t
 absolute result paths in input order. After a failure it starts no further run and
 raises once the active runs finish. With `mpi`, each run gets its own launcher;
 pass `mpirun=["mpirun", "--bind-to", "none"]` so that concurrent MPI runs do not
-bind to the same cores. Job execution through the legacy
-scheduler front remains pending migration for its remaining applications. `simplemc` now uses this native TOML workflow for all three
+bind to the same cores. `simplemc` now uses this native TOML workflow for all three
 classical spin models, independent chains, exact HDF5 restart and direct VTK
 snapshots; see the [simplemc guide](../../src/apps/mc/simple/README.md).
 `spinmc` uses the same driver for Ising, XY, Heisenberg, O(4) and Potts models,
