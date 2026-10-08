@@ -35,14 +35,14 @@ void Disorder::seed(unsigned int i)
   last_seed_=i;
 }
 
-void Disorder::seed_if_unseeded(const alps::Parameters& p) 
+void Disorder::seed_if_unseeded(const alps::SymbolTable& p) 
 {
   int s = p.value_or_default("DISORDERSEED",0);
   if (s && s != last_seed_)
     seed(s);
 }
 
-StringValue simplify_value(StringValue const& val, Parameters const& parms, bool eval_random)
+StringValue simplify_value(StringValue const& val, SymbolTable const& parms, bool eval_random)
 {
   try {
     expression::ParameterEvaluator<double> eval(parms,eval_random);
@@ -69,7 +69,7 @@ bool same_values(StringValue const& x, StringValue const& y, double eps)
     //expression::ParameterEvaluator<double> eval();
     expression::Expression<double> exprx(x);
     expression::Expression<double> expry(y);
-    expression::ParameterEvaluator<double> eval(Parameters(),false);
+    expression::ParameterEvaluator<double> eval(SymbolTable(),false);
     if (exprx.can_evaluate(eval) && expry.can_evaluate(eval)) {
       return std::abs(exprx.value()-expry.value()) <= eps*(std::max)(std::abs(exprx.value()),std::abs(expry.value())) ;
     } else {

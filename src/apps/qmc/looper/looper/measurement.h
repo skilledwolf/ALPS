@@ -340,7 +340,7 @@ struct dumb_measurement {
     typedef TIME time_t;
     typedef typename DUMMY::template estimator<MC, LAT, TIME> estimator_t;
 
-    void initialize(alps::Parameters const& /* params */, lattice_t const& /* lat */,
+    void initialize(alps::SymbolTable const& /* params */, lattice_t const& /* lat */,
       bool /* is_signed */, bool /* use_improved_estimator */) {}
     template<typename M>
     void init_observables(M& /* m */, bool /* is_signed */) {}
@@ -417,7 +417,7 @@ struct composite_measurement :
     typedef typename estimator1::collector collector1;
     typedef typename estimator2::collector collector2;
 
-    void initialize(alps::Parameters const& params, lattice_t const& lat, bool is_signed,
+    void initialize(alps::SymbolTable const& params, lattice_t const& lat, bool is_signed,
       bool use_improved_estimator) {
       estimator1::initialize(params, lat, is_signed, use_improved_estimator);
       estimator2::initialize(params, lat, is_signed, use_improved_estimator);

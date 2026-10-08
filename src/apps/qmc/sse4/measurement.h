@@ -33,7 +33,7 @@ public:
     Measurement(lattice_type const& lattice,
             model_type const& model,
             worker_type& worker,
-            alps::Parameters const& params,
+            alps::SymbolTable const& params,
             std::vector<state_type>& state,
             std::vector<Operator> const& opstring) :
         lattice(lattice),

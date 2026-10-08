@@ -15,7 +15,7 @@
 /* $Id$ */
 
 #include <alps/expression.h>
-#include <alps/parameter.h>
+#include <alps/expression/symbol_table.h>
 
 #include <boost/throw_exception.hpp>
 #include <iostream>
@@ -27,7 +27,7 @@ int main()
   try {
 #endif
 
-  alps::Parameters parms;
+  alps::SymbolTable parms;
   parms["L"] = 10;
   parms["T"] = "0.1";
   parms["beta"] = "1/T";

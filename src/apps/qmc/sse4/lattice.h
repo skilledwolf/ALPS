@@ -49,7 +49,7 @@ public:
                 unsigned, unsigned> bond_tuple_type;
     typedef std::map<bond_tuple_type, unsigned> bond_types_type;
         
-    Lattice(alps::Parameters const& params, graph_type& graph) :
+    Lattice(alps::SymbolTable const& params, graph_type& graph) :
         graph(graph),
         params(params)
     {
@@ -205,7 +205,7 @@ private:
     lat_units_type _lat_units;
         
     graph_type& graph;
-    alps::Parameters const& params;
+    alps::SymbolTable const& params;
     
     bond_types_type bond_types;
     unsigned _max_site_type;

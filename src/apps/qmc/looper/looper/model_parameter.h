@@ -154,14 +154,14 @@ inline std::ostream& operator<<(std::ostream& os, looper::bond_parameter_xyz con
 namespace looper {
 
 template<typename G, typename I>
-site_parameter get_site_parameter(alps::Parameters const& param, G const& graph,
+site_parameter get_site_parameter(alps::SymbolTable const& param, G const& graph,
   alps::HamiltonianDescriptor<I> const& hd, typename alps::graph_traits<G>::site_descriptor s) {
   int t = get(site_type_t(), graph, s);
   return site_parameter(get_matrix(double(), hd.site_term(t), hd.basis().site_basis(t), param));
 }
 
 template<typename G, typename I>
-bond_parameter_xxz get_bond_parameter_xxz(alps::Parameters const& param, G const& graph,
+bond_parameter_xxz get_bond_parameter_xxz(alps::SymbolTable const& param, G const& graph,
   alps::HamiltonianDescriptor<I> const& hd, typename alps::graph_traits<G>::bond_descriptor b) {
   int t = get(bond_type_t(), graph, b);
   int ts = get(site_type_t(), graph, source(b, graph));
@@ -171,7 +171,7 @@ bond_parameter_xxz get_bond_parameter_xxz(alps::Parameters const& param, G const
 }
 
 template<typename G, typename I>
-bond_parameter_xyz get_bond_parameter_xyz(alps::Parameters const& param, G const& graph,
+bond_parameter_xyz get_bond_parameter_xyz(alps::SymbolTable const& param, G const& graph,
   alps::HamiltonianDescriptor<I> const& hd, typename alps::graph_traits<G>::bond_descriptor b) {
   int t = get(bond_type_t(), graph, b);
   int ts = get(site_type_t(), graph, source(b, graph));
@@ -194,7 +194,7 @@ public:
     site_offset_(0), bond_offset_(0) {
   }
   template<typename G, typename I>
-  model_parameter(const alps::Parameters& params, const alps::graph_helper<G>& gh,
+  model_parameter(const alps::SymbolTable& params, const alps::graph_helper<G>& gh,
     const alps::model_helper<I>& mh) {
     set_parameters(params, gh.graph(), gh.inhomogeneous_sites(), gh.inhomogeneous_bonds(),
       mh.model(), alps::has_sign_problem(mh.model(), gh, params));
@@ -209,14 +209,14 @@ public:
     frustrated_ = check_frustration(g);
   }
   template<typename G, typename I>
-  void set_parameters(const alps::Parameters& params, const G& g, bool inhomogeneous_sites,
+  void set_parameters(const alps::SymbolTable& params, const G& g, bool inhomogeneous_sites,
     bool inhomogeneous_bond, const alps::HamiltonianDescriptor<I>& hd) {
     set_parameters_impl(params, g, inhomogeneous_sites, inhomogeneous_bond, hd);
     signed_ = check_sign(g);
     frustrated_ = check_frustration(g);
   }
   template<typename G, typename I>
-  void set_parameters(const alps::Parameters& params, const G& g, bool inhomogeneous_sites,
+  void set_parameters(const alps::SymbolTable& params, const G& g, bool inhomogeneous_sites,
     bool inhomogeneous_bond, const alps::HamiltonianDescriptor<I>& hd, bool is_signed)
  {
     set_parameters_impl(params, g, inhomogeneous_sites, inhomogeneous_bond, hd);
@@ -261,7 +261,7 @@ protected:
   void set_parameters_impl(G const& g, site_parameter const& sp, bond_parameter_xyz const& bp);
 
   template<typename G, typename I>
-  void set_parameters_impl(alps::Parameters params, const G& g, bool inhomogeneous_sites,
+  void set_parameters_impl(alps::SymbolTable params, const G& g, bool inhomogeneous_sites,
     bool inhomogeneous_bond, const alps::HamiltonianDescriptor<I>& hd);
 
   template<typename G>
@@ -465,7 +465,7 @@ void model_parameter::set_parameters_impl(G const& g, site_parameter const& sp,
 }
 
 template<typename G, typename I>
-void model_parameter::set_parameters_impl(alps::Parameters params, const G& g,
+void model_parameter::set_parameters_impl(alps::SymbolTable params, const G& g,
   bool inhomogeneous_sites, bool inhomogeneous_bonds, const alps::HamiltonianDescriptor<I>& hd) {
 
   quantal_ = false;
@@ -493,7 +493,7 @@ void model_parameter::set_parameters_impl(alps::Parameters params, const G& g,
 
   // generate site matrices and set site parameters
   if (use_site_indices_) {
-    alps::Parameters p(params);
+    alps::SymbolTable p(params);
     BOOST_FOREACH(typename alps::graph_traits<G>::site_descriptor s, sites(g)) {
       if (inhomogeneous_sites)
         p << alps::coordinate_as_parameter(g, s);
@@ -527,7 +527,7 @@ void model_parameter::set_parameters_impl(alps::Parameters params, const G& g,
 
   // generate bond matrices and set bond parameters
   if (use_bond_indices_) {
-    alps::Parameters p(params);
+    alps::SymbolTable p(params);
     BOOST_FOREACH(typename alps::graph_traits<G>::bond_descriptor b, bonds(g)) {
       if (inhomogeneous_bonds)
         p << alps::coordinate_as_parameter(g, b);

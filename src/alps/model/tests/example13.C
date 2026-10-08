@@ -25,7 +25,7 @@ int main()
 #ifndef BOOST_NO_EXCEPTIONS
   try {
 #endif
-    alps::Parameters parms;
+    alps::SymbolTable parms;
     parms["L"] = 4;
     parms["MODEL"] = "spin";
     parms["LATTICE"] = "chain lattice";

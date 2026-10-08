@@ -48,7 +48,7 @@ struct stiffness
     bond_vector_relative_map_t bond_vector_relative;
     unsigned int dim;
 
-    void initialize(alps::Parameters const& /* params */, lattice_t const& lat,
+    void initialize(alps::SymbolTable const& /* params */, lattice_t const& lat,
       bool /* is_signed */, bool use_improved_estimator) {
       improved = use_improved_estimator;
       real_bond = alps::get_or_default(real_bond_t(), lat.vg(),

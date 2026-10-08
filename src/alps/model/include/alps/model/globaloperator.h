@@ -39,17 +39,17 @@ public:
   const std::vector<BondTermDescriptor>& bond_terms() const { return bondterms_;}
   SiteOperator site_term(unsigned int type=0) const;
   BondOperator bond_term(unsigned int type=0) const;
-  void substitute_operators(const ModelLibrary& m, const Parameters& p);
-  boost::optional<Parameters> create_site_term(unsigned int type);
-  boost::optional<Parameters> create_bond_term(unsigned int type);
+  void substitute_operators(const ModelLibrary& m, const SymbolTable& p);
+  boost::optional<SymbolTable> create_site_term(unsigned int type);
+  boost::optional<SymbolTable> create_bond_term(unsigned int type);
   
   template <class G>
-  Parameters create_terms(graph_helper<G> const& l)
+  SymbolTable create_terms(graph_helper<G> const& l)
   {
     std::set<unsigned int> t;
     for (typename graph_helper<G>::site_iterator it=l.sites().first; it != l.sites().second;++it)
       t.insert(l.site_type(*it));
-    Parameters p = create_site_terms(t);
+    SymbolTable p = create_site_terms(t);
     t.clear();
     for (typename graph_helper<G>::bond_iterator it=l.bonds().first; it != l.bonds().second;++it)
       t.insert(l.bond_type(*it));
@@ -61,8 +61,8 @@ public:
 protected:
   void write_operators_xml(oxstream&) const;
 private:
-  Parameters create_site_terms(std::set<unsigned int> const&);
-  Parameters create_bond_terms(std::set<unsigned int> const&);
+  SymbolTable create_site_terms(std::set<unsigned int> const&);
+  SymbolTable create_bond_terms(std::set<unsigned int> const&);
 
   std::string name_;
   std::vector<SiteTermDescriptor> siteterms_;

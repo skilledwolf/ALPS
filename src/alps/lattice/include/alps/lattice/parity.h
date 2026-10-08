@@ -153,7 +153,7 @@ struct parity_helper<Graph, Parity, true>
 
 
 template<typename Graph, typename Parity>
-bool set_parity(Graph& g, alps::Parameters const& p, Parity) {
+bool set_parity(Graph& g, alps::SymbolTable const& p, Parity) {
   using namespace boost::spirit::classic;
   typedef detail::parity_helper<Graph, Parity,
     has_property<Parity, Graph>::vertex_property> parity_helper;
@@ -174,13 +174,13 @@ bool set_parity(Graph& g, alps::Parameters const& p, Parity) {
 }
 
 template<typename Graph>
-bool set_parity(Graph& g, alps::Parameters const& p) {
+bool set_parity(Graph& g, alps::SymbolTable const& p) {
   return set_parity(g, p, parity_t());
 }
 
 template<typename Graph>
 bool set_parity(Graph& g) {
-  return set_parity(g, Parameters(), parity_t());
+  return set_parity(g, SymbolTable(), parity_t());
 }
 
 } // end namespace alps

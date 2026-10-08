@@ -27,7 +27,7 @@ try {
 #endif
   using namespace boost::numeric::ublas ;
 
-  alps::Parameters parms = run_parameters(argc, argv);
+  alps::SymbolTable parms = run_parameters(argc, argv);
 
   alps::hamiltonian_matrix<compressed_matrix<alps::Expression,row_major> > matrix(parms);
 

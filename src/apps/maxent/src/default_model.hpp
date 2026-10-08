@@ -49,7 +49,6 @@
 class DefaultModel
 {
 public:
-//  DefaultModel(const alps::Parameters& p) :
   DefaultModel(const alps::params& p) :
     omega_max(p["OMEGA_MAX"]),
     omega_min(static_cast<double>(p["OMEGA_MIN"])), //we had a 0 here in the bosonic case. That's not a good idea if you're continuing symmetric functions like chi(omega)/omega. Change omega_min to zero manually if you need it.
@@ -88,7 +87,6 @@ class FlatDefaultModel : public DefaultModel
 {
 public:
 
-//    FlatDefaultModel(const alps::Parameters& p) : DefaultModel(p) {}
   FlatDefaultModel(const alps::params& p) : DefaultModel(p) {}
 
   double omega(const double x) const {
@@ -119,7 +117,6 @@ public:
 class Gaussian : public Model
 {
 public:
-//  Gaussian(const alps::Parameters& p) : sigma(static_cast<double>(p["SIGMA"])) {}
   Gaussian(const alps::params& p) : sigma(static_cast<double>(p["SIGMA"])) {}
 
   virtual double operator()(const double omega) {
@@ -133,7 +130,6 @@ private:
 class TwoGaussians : public Model
 {
 public:
-//    TwoGaussians(const alps::Parameters& p) : sigma1(static_cast<double>(p["SIGMA1"])),
     TwoGaussians(const alps::params& p) : sigma1(static_cast<double>(p["SIGMA1"])),
     sigma2(static_cast<double>(p["SIGMA2"])),
     shift1(static_cast<double>(p["SHIFT1"])),
@@ -152,7 +148,6 @@ private:
 class ShiftedGaussian : public Gaussian
 {
 public:
-//  ShiftedGaussian(const alps::Parameters& p) :
   ShiftedGaussian(const alps::params& p) :
     Gaussian(p), shift(static_cast<double>(p["SHIFT"])){}
 
@@ -168,7 +163,6 @@ protected:
 class DoubleGaussian : public ShiftedGaussian
 {
 public:
-//  DoubleGaussian(const alps::Parameters& p) :
   DoubleGaussian(const alps::params& p) :
     ShiftedGaussian(p){}
 
@@ -179,7 +173,6 @@ public:
 
 class LinearRiseExpDecay : public Model{
 public:
-//  LinearRiseExpDecay(const alps::Parameters &p): lambda_(p["LAMBDA"]){}
   LinearRiseExpDecay(const alps::params &p): lambda_(p["LAMBDA"]){}
   double operator()(const double omega) {
     return lambda_*lambda_*omega*std::exp(-lambda_*omega);
@@ -191,7 +184,6 @@ private:
 
 class QuadraticRiseExpDecay : public Model{
 public:
-//  QuadraticRiseExpDecay(const alps::Parameters &p): lambda_(p["LAMBDA"]){}
   QuadraticRiseExpDecay(const alps::params &p): lambda_(p["LAMBDA"]){}
   double operator()(const double omega) {
     return (lambda_*lambda_*lambda_)/2.*(omega*omega)*std::exp(-lambda_*omega);
@@ -204,7 +196,6 @@ private:
 class GeneralDoubleGaussian : public ShiftedGaussian
 {
 public:
-//  GeneralDoubleGaussian(const alps::Parameters& p) :
   GeneralDoubleGaussian(const alps::params& p) :
     ShiftedGaussian(p), bnorm(static_cast<double>(p["BOSE_NORM"])) {}
 
@@ -223,7 +214,6 @@ private:
 class TabFunction : public Model
 {
 public:
-//  TabFunction(const alps::Parameters& p, std::string const& name) //: index(0)
   TabFunction(const alps::params& p, const alps::maxent::data& data)
     : Omega(data.prior_omega), Def(data.prior_density)
   {
@@ -261,7 +251,6 @@ class GeneralDefaultModel : public DefaultModel
 {
 public:
 
-//  GeneralDefaultModel(const alps::Parameters& p, boost::shared_ptr<Model> mod)
   GeneralDefaultModel(const alps::params& p, boost::shared_ptr<Model> mod)
    : DefaultModel(p)
    , Mod(mod)
@@ -330,7 +319,6 @@ private:
 
 
 
-//inline boost::shared_ptr<DefaultModel> make_default_model(const alps::Parameters& parms, std::string const& name)
 inline boost::shared_ptr<DefaultModel> make_default_model(const alps::params& parms, std::string const& name, const alps::maxent::data& data)
 {
     std::string p_name = parms[name].as<std::string>();

@@ -186,7 +186,7 @@ boost::multi_array<double,4> WRun::bond_hamiltonian(const bond_descriptor& b) {
   unsigned int site1_t       = site_type(source(b));
   unsigned int site2_t       = site_type(target(b));
 
-  alps::Parameters p(parms);
+  alps::SymbolTable p(parms);
 
   if (inhomogeneous_bonds()) {
     throw_if_xyz_defined(parms,b); // check whether x, y, or z is set
@@ -211,7 +211,7 @@ boost::multi_array<double,4> WRun::bond_hamiltonian(const bond_descriptor& b) {
 
 std::vector<double> WRun::site_hamiltonian(const site_descriptor& s) {
   unsigned int site_t = site_type(s);
-  alps::Parameters p(parms);
+  alps::SymbolTable p(parms);
 
   if(inhomogeneous_sites()) {
     throw_if_xyz_defined(parms,s);   // check whether x, y, or z is set

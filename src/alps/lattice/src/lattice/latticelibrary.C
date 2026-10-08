@@ -23,7 +23,7 @@
 
 namespace alps {
 
-LatticeLibrary::LatticeLibrary(const Parameters& parms)
+LatticeLibrary::LatticeLibrary(const SymbolTable& parms)
 {
   std::string libname;
   if (parms.defined("LATTICE_LIBRARY"))

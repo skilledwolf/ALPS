@@ -21,9 +21,9 @@ namespace looper {
 
 class temperature {
 public:
-  temperature(alps::Parameters const& p) { init(p); }
+  temperature(alps::SymbolTable const& p) { init(p); }
 
-  void init(alps::Parameters const& p) {
+  void init(alps::SymbolTable const& p) {
     seq_.clear();
     final_ = -1;
 

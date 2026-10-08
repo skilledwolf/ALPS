@@ -6,7 +6,7 @@
 
 namespace diag {
 // Bloch states need complex arithmetic; COMPLEX overrides the choice.
-inline bool complex_matrix(alps::Parameters const& p) {
+inline bool complex_matrix(alps::SymbolTable const& p) {
     return p.value_or_default("COMPLEX", bool(p.value_or_default("TRANSLATION_SYMMETRY", true))
                                          || p.defined("TOTAL_MOMENTUM"));
 }

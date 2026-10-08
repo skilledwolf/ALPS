@@ -36,7 +36,7 @@ public:
   typedef T value_type;
   typedef M matrix_type;
 
-  HamiltonianMatrix (const alps::Parameters&);
+  HamiltonianMatrix (const alps::SymbolTable&);
   void output(std::ostream& o, bool /* is_single */ = false) const 
   { 
     if (!built_) build(); 
@@ -53,7 +53,7 @@ public:
 private:
   typedef alps::graph_helper<>::graph_type graph_type;
   alps::ModelLibrary models_;
-  alps::Parameters parms_;
+  alps::SymbolTable parms_;
   mutable bool built_;
   mutable matrix_type matrix_;
 };
@@ -66,7 +66,7 @@ std::ostream& operator<<(std::ostream& os, const HamiltonianMatrix<T,M>& mat)
 }
 
 template <class T, class M>
-HamiltonianMatrix<T,M>::HamiltonianMatrix(const alps::Parameters& p)
+HamiltonianMatrix<T,M>::HamiltonianMatrix(const alps::SymbolTable& p)
   : alps::graph_helper<>(p),
     models_(p),
     parms_(p),
@@ -91,7 +91,7 @@ void HamiltonianMatrix<T,M>::build() const
   alps::Disorder::seed(parms_.value_or_default("DISORDER_SEED",0));
 
   
-  alps::Parameters parms(parms_);
+  alps::SymbolTable parms(parms_);
   for (site_iterator it=sites().first; it!=sites().second ; ++it)
     if (!site_visited[inhomogeneous_site_type(*it)]) {
       unsigned int inhomogeneous_type=inhomogeneous_site_type(*it);

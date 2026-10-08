@@ -78,7 +78,7 @@ public :
   }
 protected:
   unsigned winding_dimension_=0;
-  alps::Parameters parms;
+  alps::SymbolTable parms;
   double density_reference_=std::numeric_limits<double>::quiet_NaN();
 protected:
   double beta;
@@ -125,9 +125,9 @@ template <class G, class StateType>
 QMCRun<G,StateType>::QMCRun(alps::params const& p,size_t bins,size_t chain,bool issymbolic)
   : native_qmc::simulation(p,bins,chain), super_type(alps::seed_disorder(p)),
     alps::model_helper<>(static_cast<super_type const&>(*this),p,issymbolic),
-    alps::MeasurementOperators(alps::Parameters(p)),
+    alps::MeasurementOperators(alps::SymbolTable(p)),
     parms([&] {
-      alps::Parameters values(p);
+      alps::SymbolTable values(p);
       values.copy_undefined(this->model().default_parameters());
       return values;
     }())

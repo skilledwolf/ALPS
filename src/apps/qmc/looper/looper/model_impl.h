@@ -22,7 +22,7 @@
 namespace looper {
 
 template<typename RG, typename LG, typename WH>
-void spinmodel_helper<RG, LG, WH>::init(alps::Parameters const& p, lattice_helper<RG>& lat,
+void spinmodel_helper<RG, LG, WH>::init(alps::SymbolTable const& p, lattice_helper<RG>& lat,
   bool is_path_integral) {
   typedef lattice_helper<RG> lattice_t;
   alps::model_helper<short> mh(lat.graph_helper(), p);
@@ -34,7 +34,7 @@ void spinmodel_helper<RG, LG, WH>::init(alps::Parameters const& p, lattice_helpe
   lat.generate_virtual_graph(mp, mp.has_d_term());
 
   // weight table
-  alps::Parameters params(p);
+  alps::SymbolTable params(p);
   if (frustrated_ && !params.defined("FORCE_SCATTER")) params["FORCE_SCATTER"] = 0.1;
   weight_helper_t wt(mp, lat, params);
   chooser_.init(wt, is_path_integral);

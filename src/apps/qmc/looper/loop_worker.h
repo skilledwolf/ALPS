@@ -127,10 +127,10 @@ private:
 
 template<class MC>
 loop_worker<MC>::loop_worker(alps::params const& p,size_t bins,size_t chain,double initial_beta)
-  : native_qmc::simulation(p,bins,chain), lattice(alps::Parameters(alps::seed_disorder(p))),
-    model(alps::Parameters(p), lattice, continuous_time),
+  : native_qmc::simulation(p,bins,chain), lattice(alps::SymbolTable(alps::seed_disorder(p))),
+    model(alps::SymbolTable(p), lattice, continuous_time),
     temperature([&] {
-      alps::Parameters values(p);
+      alps::SymbolTable values(p);
       if (initial_beta>0) values["T"]=1/initial_beta;
       return values;
     }()), chain_(chain) {
@@ -157,7 +157,7 @@ loop_worker<MC>::loop_worker(alps::params const& p,size_t bins,size_t chain,doub
   perm.resize(max_virtual_sites(lattice));
 
   // initialize estimators
-  estimator.initialize(alps::Parameters(p), lattice, model.is_signed(), use_improved_estimator);
+  estimator.initialize(alps::SymbolTable(p), lattice, model.is_signed(), use_improved_estimator);
   is_signed_=model.is_signed();
   init_observables(*this);
 }

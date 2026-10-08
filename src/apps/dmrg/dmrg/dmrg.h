@@ -58,8 +58,8 @@ inline void print_dmrg_copyright(std::ostream& os)
 // parameters, so they come first.
 struct DMRGParameters
 {
-  explicit DMRGParameters(alps::Parameters const& p) : parms(p) {}
-  alps::Parameters parms;
+  explicit DMRGParameters(alps::SymbolTable const& p) : parms(p) {}
+  alps::SymbolTable parms;
 };
 
 template<class value_type>
@@ -72,14 +72,14 @@ class DMRGTask
 public:  
   typedef alps::half_integer<short> half_integer_type;
   // DMTK keeps its block matrices in files in temporary_directory.
-  DMRGTask(alps::Parameters const& p, std::string const& temporary_directory);
+  DMRGTask(alps::SymbolTable const& p, std::string const& temporary_directory);
 
   // Sweep, then measure each target state.
   void run();
   // Write the energies, eigenstate measurements and iteration history.
   void save(alps::hdf5::archive &) const;
 
-  alps::Parameters const& get_parameters() const { return parms; }
+  alps::SymbolTable const& get_parameters() const { return parms; }
 
   // iteration measurements
   std::map<std::string,std::vector<double> > iteration_measurements;
@@ -145,7 +145,7 @@ handler(dmtk::System<value_type>& S, size_t signal_id, void *data)
 }
 
 template<class value_type>
-DMRGTask<value_type>::DMRGTask(alps::Parameters const& p, std::string const& temporary_directory)
+DMRGTask<value_type>::DMRGTask(alps::SymbolTable const& p, std::string const& temporary_directory)
   : DMRGParameters(p)
   , alps::graph_helper<>(parms) 
   , alps::model_helper<>(*this,parms)

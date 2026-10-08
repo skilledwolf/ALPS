@@ -18,7 +18,7 @@
 #define ALPS_LATTICE_LATTICEGRAPHDESCRIPTOR_H
 
 #include <alps/config.h>
-#include <alps/parameter.h>
+#include <alps/expression/symbol_table.h>
 #include <alps/lattice/disorder.h>
 #include <alps/lattice/lattice.h>
 #include <alps/lattice/latticegraph.h>
@@ -58,7 +58,7 @@ public:
 
   void write_xml(oxstream&) const;
   const std::string& name() const { return name_;}
-  void set_parameters(const Parameters&);
+  void set_parameters(const SymbolTable&);
   const InhomogeneityDescriptor& inhomogeneity() const { return inhomogeneity_;}
   const DepletionDescriptor& depletion() const { return depletion_;}
 private:

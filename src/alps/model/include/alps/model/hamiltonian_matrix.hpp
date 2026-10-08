@@ -81,8 +81,8 @@ public:
   typedef bloch_basis_states<short> bloch_basis_states_type;
   typedef basis_states_type::value_type state_type;
   
-  hamiltonian_matrix (Parameters const& parms);
-  void set_parameters(Parameters const& p) { parms << p ; built_basis_=false; built_matrix_=false;}
+  hamiltonian_matrix (SymbolTable const& parms);
+  void set_parameters(SymbolTable const& p) { parms << p ; built_basis_=false; built_matrix_=false;}
   basis_states_type& states_vector() { if (!built_basis_) build_basis(); return states; }
   const basis_states_type& states_vector() const {if (!built_basis_) build_basis(); return states; }
   bloch_basis_states_type& bloch_states_vector() { if (!built_basis_) build_basis(); return bloch_states; }
@@ -210,7 +210,7 @@ protected:
   mutable bloch_basis_states_type bloch_states;
 
 private:
-  Parameters parms;
+  SymbolTable parms;
   mutable bool built_matrix_;
   mutable bool built_basis_;
   mutable matrix_type matrix_;
@@ -222,7 +222,7 @@ private:
 
 
 template <class M, class G>
-hamiltonian_matrix<M,G>::hamiltonian_matrix(Parameters const& p)
+hamiltonian_matrix<M,G>::hamiltonian_matrix(SymbolTable const& p)
   : parms(p)
   ,  built_matrix_(false)
   ,  built_basis_(false)
@@ -234,7 +234,7 @@ hamiltonian_matrix<M,G>::hamiltonian_matrix(Parameters const& p)
 template <class M, class G>
 multi_array<typename hamiltonian_matrix<M,G>::value_type,2> hamiltonian_matrix<M,G>::local_matrix(const SiteOperator& op, site_descriptor s) const
 {
-  Parameters p(parms);
+  SymbolTable p(parms);
   if (graph_.inhomogeneous_sites()) {
     throw_if_xyz_defined(parms,s); // check whether x, y, or z is set
     p << graph_.coordinate_as_parameter(s); // set x, y and z
@@ -247,7 +247,7 @@ multi_array<std::pair<typename hamiltonian_matrix<M,G>::value_type,bool>,4> hami
 {
   unsigned int stype1 = graph_.site_type(graph_.source(b));
   unsigned int stype2 = graph_.site_type(graph_.target(b));
-  Parameters p(parms);
+  SymbolTable p(parms);
   if (graph_.inhomogeneous_bonds()) {
     throw_if_xyz_defined(parms,b); // check whether x, y, or z is set
     p << graph_.coordinate_as_parameter(b); // set x, y and z

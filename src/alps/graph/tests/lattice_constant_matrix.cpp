@@ -28,7 +28,7 @@ int main() {
 
     typedef boost::adjacency_list<boost::vecS, boost::vecS, boost::undirectedS> graph_type;
 
-    alps::Parameters parm;
+    alps::SymbolTable parm;
     unsigned int side_length = 40;
     
     std::ifstream in(alps::search_xml_library_path("lattices.xml"));

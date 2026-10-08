@@ -22,25 +22,25 @@
 
 #include <boost/regex.hpp> 
 
-alps::MeasurementOperators::MeasurementOperators (Parameters const& parms)
+alps::MeasurementOperators::MeasurementOperators (SymbolTable const& parms)
 {
   boost::regex expression("^MEASURE_AVERAGE\\[(.*)]$");
   boost::smatch what;
-  for (alps::Parameters::const_iterator it=parms.begin();it != parms.end();++it) {
+  for (alps::SymbolTable::const_iterator it=parms.begin();it != parms.end();++it) {
     std::string lhs = it->key();
     if (boost::regex_match(lhs, what, expression))
       average_expressions[what.str(1)]=it->value();
   }
 
   expression = boost::regex("^MEASURE_LOCAL\\[(.*)]$");
-  for (alps::Parameters::const_iterator it=parms.begin();it != parms.end();++it) {
+  for (alps::SymbolTable::const_iterator it=parms.begin();it != parms.end();++it) {
     std::string lhs = it->key();
     if (boost::regex_match(lhs, what, expression))
       local_expressions[what.str(1)]=it->value();
   }
 
   expression = boost::regex("^MEASURE_CORRELATIONS\\[(.*)]$");
-  for (alps::Parameters::const_iterator it=parms.begin();it != parms.end();++it) {
+  for (alps::SymbolTable::const_iterator it=parms.begin();it != parms.end();++it) {
     std::string lhs = it->key();
     if (boost::regex_match(lhs, what, expression)) {
       std::string key = what.str(1);
@@ -54,7 +54,7 @@ alps::MeasurementOperators::MeasurementOperators (Parameters const& parms)
   }
 
   expression = boost::regex("^MEASURE_STRUCTURE_FACTOR\\[(.*)]$");
-  for (alps::Parameters::const_iterator it=parms.begin();it != parms.end();++it) {
+  for (alps::SymbolTable::const_iterator it=parms.begin();it != parms.end();++it) {
     std::string lhs = it->key();
     if (boost::regex_match(lhs, what, expression)) {
       std::string key = what.str(1);

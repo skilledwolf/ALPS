@@ -44,13 +44,13 @@ public:
 
   void write_xml(oxstream&) const;
   bool match_type(int type) const { return type_==-1 || type==type_;}
-  void set_type(int type, Parameters const& = Parameters());
+  void set_type(int type, SymbolTable const& = SymbolTable());
   int type() const { return type_;}
 
 private:
   int type_;
   std::string sitebasis_name_;
-  Parameters parms_;
+  SymbolTable parms_;
 };
 
 
@@ -72,7 +72,7 @@ public:
 
   void write_xml(oxstream&) const;
   const std::string& name() const { return name_;}
-  bool set_parameters(const Parameters& p);
+  bool set_parameters(const SymbolTable& p);
   const constraints_type& constraints() const { return evaluated_constraints_;}
   const unevaluated_constraints_type& unevaluated_constraints() const { return unevaluated_constraints_;}
   const unevaluated_constraints_type& all_constraints() const { return constraints_;}
@@ -92,12 +92,12 @@ public:
 
 private:
   std::string name_;
-  void check_constraints(const Parameters& =Parameters());
+  void check_constraints(const SymbolTable& =SymbolTable());
   unevaluated_constraints_type constraints_;
   unevaluated_constraints_type unevaluated_constraints_;
   constraints_type evaluated_constraints_;
   boost::optional<site_basis_match<I> > default_site_basis_;
-  Parameters parms_;
+  SymbolTable parms_;
 };
 
 
@@ -105,7 +105,7 @@ private:
 
 
 template <class I>
-bool BasisDescriptor<I>::set_parameters(const Parameters& p)
+bool BasisDescriptor<I>::set_parameters(const SymbolTable& p)
 {
   bool valid=true;
   parms_=p;
@@ -118,7 +118,7 @@ bool BasisDescriptor<I>::set_parameters(const Parameters& p)
 }
 
 template <class I>
-void BasisDescriptor<I>::check_constraints(const Parameters& p)
+void BasisDescriptor<I>::check_constraints(const SymbolTable& p)
 {
   evaluated_constraints_.clear();
   unevaluated_constraints_.clear();
@@ -189,10 +189,10 @@ site_basis_match<I>::site_basis_match(const XMLTag& intag, std::istream& is, con
 }
 
 template <class I>
-void site_basis_match<I>::set_type(int type, Parameters const& parms) 
+void site_basis_match<I>::set_type(int type, SymbolTable const& parms) 
 { 
   type_=type;
-  Parameters p = substitute(parms_,type);
+  SymbolTable p = substitute(parms_,type);
   parms_ = parms;
   parms_.copy_undefined(p);
   this->set_parameters(parms_);
@@ -240,13 +240,13 @@ void site_basis_match<I>::write_xml(oxstream& os) const
     os << attribute("type", type_);
   if (sitebasis_name_!="") {
     os << attribute("ref", sitebasis_name_);
-    for (Parameters::const_iterator it = parms_.begin(); it != parms_.end(); ++it)
+    for (SymbolTable::const_iterator it = parms_.begin(); it != parms_.end(); ++it)
       os << start_tag("PARAMETER") << attribute("name", it->key())
          << attribute("value", it->value()) << end_tag("PARAMETER");
   } else {
     boost::throw_exception(std::logic_error("Non-referenced site basis not supported"));
     /*
-    for (Parameters::const_iterator p_itr = this->get_parameters().begin();
+    for (SymbolTable::const_iterator p_itr = this->get_parameters().begin();
          p_itr != this->get_parameters().end(); ++p_itr)
       os << start_tag("PARAMETER") << attribute("name", p_itr->key())
          << attribute("default", p_itr->value()) << end_tag("PARAMETER");

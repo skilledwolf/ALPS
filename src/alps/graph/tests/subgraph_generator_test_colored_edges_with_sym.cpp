@@ -22,7 +22,7 @@ template <typename Graph>
 void subgraph_generator_with_color_symmetries_test(unsigned int order)
 {
     std::ifstream in(alps::search_xml_library_path("lattices.xml"));
-    alps::Parameters parm;
+    alps::SymbolTable parm;
     parm["LATTICE"] = "anisotropic triangular lattice";
     parm["L"]       = 2*order+1;
     alps::graph_helper<> alps_lattice(in,parm);

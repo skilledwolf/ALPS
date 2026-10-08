@@ -20,7 +20,7 @@
 #include <alps/export.h>
 #include <alps/config.h>
 #include <alps/parser/parser.h>
-#include <alps/parameter.h>
+#include <alps/expression/symbol_table.h>
 #include <alps/expression.h>
 #include <alps/lattice/unitcell.h>
 #include <alps/lattice/graph.h>
@@ -181,7 +181,7 @@ public:
   DepletionDescriptor(XMLTag&, std::istream&);
   void write_xml(oxstream&) const;
   double probability() const { return prob ? prob.get().value().real() : 0.;}
-  void set_parameters(const Parameters& p);
+  void set_parameters(const SymbolTable& p);
   int seed() const { return seed_;}
 public:
   boost::optional<Expression> prob;

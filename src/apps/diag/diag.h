@@ -31,8 +31,8 @@
 // measurement helpers are constructed from them, so they come first.
 struct DiagParameters
 {
-  explicit DiagParameters(alps::Parameters const& p) : parms(p) {}
-  alps::Parameters parms;
+  explicit DiagParameters(alps::SymbolTable const& p) : parms(p) {}
+  alps::SymbolTable parms;
 };
 
 template <class T, class M>
@@ -56,7 +56,7 @@ public:
 
   typedef boost::numeric::ublas::mapped_vector_of_mapped_vector<T, boost::numeric::ublas::row_major>  operator_matrix_type;
 
-  explicit DiagMatrix (alps::Parameters const&);
+  explicit DiagMatrix (alps::SymbolTable const&);
   virtual ~DiagMatrix() {}
 
   // Diagonalize every quantum-number sector and momentum.
@@ -66,7 +66,7 @@ public:
 
   void perform_measurements();
 
-  alps::Parameters const& get_parameters() const { return parms; }
+  alps::SymbolTable const& get_parameters() const { return parms; }
   std::size_t dimension() const { return this->alps::hamiltonian_matrix<M>::dimension();}
 
 protected:
@@ -110,7 +110,7 @@ private:
 
 
 template <class T, class M>
-DiagMatrix<T,M>::DiagMatrix(alps::Parameters const& p)
+DiagMatrix<T,M>::DiagMatrix(alps::SymbolTable const& p)
     : DiagParameters(p)
     , alps::graph_helper<>(parms)
     , alps::model_helper<>(parms)

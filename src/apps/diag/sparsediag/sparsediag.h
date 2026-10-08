@@ -37,7 +37,7 @@ public:
   typedef typename super_type::half_integer_type half_integer_type;
   typedef typename super_type::operator_matrix_type operator_matrix_type;
   
-  explicit SparseDiagMatrix (alps::Parameters const& p) : super_type(p) {}
+  explicit SparseDiagMatrix (alps::SymbolTable const& p) : super_type(p) {}
   static void print_copyright(std::ostream& out)
   {
     out << "ALPS sparse diagonalization application version 1.1\n"

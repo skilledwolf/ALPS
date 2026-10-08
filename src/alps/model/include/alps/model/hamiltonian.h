@@ -41,8 +41,8 @@ public:
   const BasisDescriptor<I>& basis() const { return basis_;}
   BasisDescriptor<I>& basis() { return basis_;}
   
-  const Parameters& default_parameters() const { return parms_;}
-  bool set_parameters(Parameters p);
+  const SymbolTable& default_parameters() const { return parms_;}
+  bool set_parameters(SymbolTable p);
 
   template <class G>
   void create_terms(graph_helper<G> const& l)
@@ -56,11 +56,11 @@ private:
   std::string operator_name_;
   std::string basisname_;
   BasisDescriptor<I> basis_;
-  Parameters parms_;
+  SymbolTable parms_;
 };
 
 template <class I>
-bool HamiltonianDescriptor<I>::set_parameters(Parameters p)
+bool HamiltonianDescriptor<I>::set_parameters(SymbolTable p)
 {
   return basis_.set_parameters(p);
 }
@@ -122,7 +122,7 @@ void HamiltonianDescriptor<I>::write_xml(oxstream& os) const
   os << start_tag("HAMILTONIAN");
   if (name()!="")
     os << attribute("name", name());
-  for (Parameters::const_iterator it=parms_.begin();it!=parms_.end();++it)
+  for (SymbolTable::const_iterator it=parms_.begin();it!=parms_.end();++it)
     os << start_tag("PARAMETER") << attribute("name", it->key())
        << attribute("default", it->value()) << end_tag("PARAMETER");
   if (basisname_=="")

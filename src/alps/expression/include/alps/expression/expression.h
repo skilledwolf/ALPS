@@ -49,17 +49,17 @@ public:
   virtual ~Expression() {}
 
   value_type value(const Evaluator<T>& = Evaluator<T>(), bool=false) const;
-  value_type value(const Parameters& p) const {
+  value_type value(const SymbolTable& p) const {
     return value(ParameterEvaluator<T>(p));
   }
 
   bool can_evaluate(const Evaluator<T>& = Evaluator<T>(), bool=false) const;
-  bool can_evaluate(const Parameters& p) const
+  bool can_evaluate(const SymbolTable& p) const
   {
     return can_evaluate(ParameterEvaluator<T>(p));
   }
   void partial_evaluate(const Evaluator<T>& =Evaluator<T>(), bool=false);
-  void partial_evaluate(const Parameters& p) {
+  void partial_evaluate(const SymbolTable& p) {
     partial_evaluate(ParameterEvaluator<T>(p));
   }
 

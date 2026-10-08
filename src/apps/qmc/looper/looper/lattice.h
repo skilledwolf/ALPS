@@ -277,12 +277,12 @@ public:
   typedef virtual_graph_type vg_type;
   typedef mapping_type       mp_type;
 
-  lattice_helper(alps::Parameters const& params) : helper_(params) {
+  lattice_helper(alps::SymbolTable const& params) : helper_(params) {
     volume_ = calc_volume(params);
     convert_type(params);
   }
   template<typename M>
-  lattice_helper(alps::Parameters const& params, M const& model, bool has_d_term = false) :
+  lattice_helper(alps::SymbolTable const& params, M const& model, bool has_d_term = false) :
     helper_(params) {
     volume_ = calc_volume(params);
     convert_type(params);
@@ -301,9 +301,9 @@ public:
   void generate_virtual_graph(M const& model, bool has_d_term = false);
 
 protected:
-  void convert_type(alps::Parameters const& p);
+  void convert_type(alps::SymbolTable const& p);
 
-  double calc_volume(alps::Parameters const& p) {
+  double calc_volume(alps::SymbolTable const& p) {
     double vol;
     if (p.defined("LATTICE") && helper_.has_lattice(p["LATTICE"])) {
       vol = helper_.volume();
@@ -640,7 +640,7 @@ void lattice_helper<RG>::generate_virtual_graph(M const& model, bool has_d_term)
 }
 
 template<typename RG>
-void lattice_helper<RG>::convert_type(alps::Parameters const& p) {
+void lattice_helper<RG>::convert_type(alps::SymbolTable const& p) {
   typedef typename graph_traits<RG>::site_descriptor site_descriptor;
   typedef typename graph_traits<RG>::bond_descriptor bond_descriptor;
   if (p.value_or_default("USE_SITE_INDICES_AS_TYPES", false)) {

@@ -48,7 +48,7 @@ void alps::BondOperator::read_xml(const XMLTag& intag, std::istream& is)
   }
 }
 
-void alps::BondOperator::substitute_operators(const ModelLibrary& m, const Parameters& p)
+void alps::BondOperator::substitute_operators(const ModelLibrary& m, const SymbolTable& p)
 {
   std::vector<std::string> s(2);
   s[0]=source();
@@ -74,7 +74,7 @@ void alps::BondOperator::write_xml(oxstream& os) const
     os << attribute("name", name());
   if (term()!="")
     os << attribute("source", source()) << attribute("target", target());
-  for (Parameters::const_iterator it=parms().begin();it!=parms().end();++it)
+  for (SymbolTable::const_iterator it=parms().begin();it!=parms().end();++it)
     os << start_tag("PARAMETER") << attribute("name", it->key())
        << attribute("default", it->value()) << end_tag("PARAMETER");
   os << term();
@@ -88,14 +88,14 @@ void alps::BondTermDescriptor::write_xml(oxstream& os) const
     os << attribute("type", type_);
   if (term()!="")
     os << attribute("source", source()) << attribute("target", target());
-  for (Parameters::const_iterator it=parms().begin();it!=parms().end();++it)
+  for (SymbolTable::const_iterator it=parms().begin();it!=parms().end();++it)
     os << start_tag("PARAMETER") << attribute("name", it->key())
        << attribute("default", it->value()) << end_tag("PARAMETER");
   os << term();
   os << end_tag("BONDTERM");
 }
 
-std::set<std::string> alps::BondOperator::operator_names(const Parameters& p) const
+std::set<std::string> alps::BondOperator::operator_names(const SymbolTable& p) const
 {
   std::set<std::string> names;
   typedef std::vector<boost::tuple<Term,SiteOperator,SiteOperator> > V;

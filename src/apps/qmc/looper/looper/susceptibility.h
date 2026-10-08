@@ -37,7 +37,7 @@ struct susceptibility {
     bool bipartite, improved;
     gauge_map_t gauge;
 
-    void initialize(alps::Parameters const& /* params */, lattice_t const& lat,
+    void initialize(alps::SymbolTable const& /* params */, lattice_t const& lat,
       bool /* is_signed */, bool use_improved_estimator) {
       bipartite = is_bipartite(lat);
       improved = use_improved_estimator;

@@ -1,7 +1,7 @@
 // Copyright (C) 2026 ALPS Collaboration. SPDX-License-Identifier: MIT
 #pragma once
 #include <alps/hdf5/archive.hpp>
-#include <alps/parameter.h>
+#include <alps/expression/symbol_table.h>
 #include <alps/parser/xslt_path.h>
 #include <alps/run_config.hpp>
 #include <filesystem>
@@ -37,8 +37,8 @@ inline void resolve_libraries(alps::run_configuration& run) {
             alps::search_xml_library_path(run.input.value_or<std::string>(key, fallback))).string();
 }
 
-inline alps::Parameters parameters(alps::run_configuration const& run) {
-    alps::Parameters p(run.parameters);
+inline alps::SymbolTable parameters(alps::run_configuration const& run) {
+    alps::SymbolTable p(run.parameters);
     p["LATTICE_LIBRARY"] = run.input["lattice_library"].as<std::string>();
     p["MODEL_LIBRARY"] = run.input["model_library"].as<std::string>();
     return p;

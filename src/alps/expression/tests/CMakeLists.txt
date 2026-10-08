@@ -22,5 +22,5 @@ foreach(name expression expression2 flatten)
 
   target_link_libraries(${name} PRIVATE ALPS::alps)
   alps_add_test(${name})
-  set_property(TEST ${name} PROPERTY LABELS parameter)
+  set_property(TEST ${name} PROPERTY LABELS expression)
 endforeach()

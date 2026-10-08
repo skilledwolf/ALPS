@@ -42,7 +42,7 @@ public:
 
   BondTermDescriptor(const XMLTag&, std::istream&);
 
-  BondTermDescriptor(BondTermDescriptor const& t, std::string const& term, Parameters const& p, unsigned int type)
+  BondTermDescriptor(BondTermDescriptor const& t, std::string const& term, SymbolTable const& p, unsigned int type)
    : BondOperator(t,term,p), type_(type) {}
 
   const BondOperator& bond_operator() const { return static_cast<const BondOperator&>(*this);}
@@ -65,10 +65,10 @@ public:
                         const SiteBasisDescriptor<I>& b1,
                         const SiteBasisDescriptor<I>& b2,
                         const std::string& site1, const std::string& site2,
-                        const Parameters& p)
+                        const SymbolTable& p)
     : super_type(p), site1_(s1,b1,p,site1), site2_(s2,b2,p,site2) {}
 
-  BondOperatorEvaluator(const SiteOperatorEvaluator<I,T,STATE1>& s1, const SiteOperatorEvaluator<I,T,STATE2>& s2,const Parameters& p)
+  BondOperatorEvaluator(const SiteOperatorEvaluator<I,T,STATE1>& s1, const SiteOperatorEvaluator<I,T,STATE2>& s2,const SymbolTable& p)
     : super_type(p), site1_(s1), site2_(s2) {}
 
   bool can_evaluate_function(const std::string&, const expression::Expression<T>&, bool=false) const;

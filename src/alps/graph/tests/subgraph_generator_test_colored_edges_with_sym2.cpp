@@ -107,7 +107,7 @@ bool test_lattices(unsigned int order)
         std::cout << "anisotropic tirangular lattice - 3 couplings: " << std::endl;
         std::cout << "----------------------------------------------" << std::endl;
         std::ifstream in(alps::search_xml_library_path("lattices.xml"));
-        alps::Parameters parm;
+        alps::SymbolTable parm;
         parm["LATTICE"] = "anisotropic triangular lattice";
         parm["L"]       = 2*order+1;
         alps::graph_helper<> alps_lattice(in,parm);
@@ -126,7 +126,7 @@ bool test_lattices(unsigned int order)
         std::cout << "anisotropic tirangular lattice - 2 couplings: " << std::endl;
         std::cout << "----------------------------------------------" << std::endl;
         std::ifstream in(alps::search_xml_library_path("lattices.xml"));
-        alps::Parameters parm;
+        alps::SymbolTable parm;
         parm["LATTICE"] = "anisotropic triangular lattice";
         parm["L"]       = 2*order+1;
         alps::graph_helper<> alps_lattice(in,parm);

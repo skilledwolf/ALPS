@@ -139,7 +139,7 @@ Each module uses `include/`, `src/` and `tests/` where applicable. Public includ
 | `xml/` | XML parsing, handlers, attributes and output streams | `ALPS::xml` |
 | `cli/` | Existing `mcoptions` and `parseargs` command-line grammars | `ALPS::cli` |
 | `plotting/` | `<alps/plot.h>` output helpers combining XML and older parameters | `ALPS::headers` |
-| `legacy_parameters/`, `expression/` | Older `alps::Parameters` and expression evaluation | `ALPS::alps` |
+| `expression/` | Expression evaluation and its `alps::SymbolTable` of named text values | `ALPS::alps` |
 | `graph/`, `lattice/`, `model/` | Graph helpers, lattice definitions and physical models | `ALPS::headers`, `ALPS::alps` |
 | `random/` | Random generators and their factories | `ALPS::alps` |
 | `alea/` | Eigen-based statistical estimators | `ALPS::statistics` |
@@ -164,7 +164,7 @@ All first-party public headers have explicit CMake `HEADERS` file sets. These de
 
 `ALPS::hdf5` owns archive symbols, exception exports and file ownership. It uses HighFive headers privately and links utilities, HDF5 and platform threads. Boost.Filesystem is supplied by utilities. Installed consumers do not need HighFive headers or its CMake package. Independent opens keep their own permissions; copies are views closed together by explicit `close()`. Modes are exactly `r`, `a` and `w`; `save_checkpoint` publishes a complete file only after serialization and checked close. Legacy formats belong to the standalone converter. Python ordinary IO uses h5py, temporarily transferring file ownership for native scientific serialization. A parallel HDF5 provider can bring its own MPI dependency.
 
-`ALPS::params` owns ALPSCore-derived dictionary/value storage and explicit `alps.params.v2` checkpoints. Native datatype and scalar/vector rank identify values; indexed name/value entries preserve parameter names without duplicate type tags. It links HDF5 and Boost.Serialization; MPI builds also use MPI and Boost.MPI. Python values are eagerly copied into native storage. The file constructor, XML reader, proxies and Python `paramvalue_source` interface are removed. The dictionary has no dependency on the older `Parameters`. The lattice and model libraries accept typed parameters through `graph_helper` and `model_helper` overloads, which use the single conversion `explicit Parameters(params const&)` owned by `legacy_parameters`. `alps::seed_disorder` seeds their disorder generator from `DISORDER_SEED`, else `SEED`, else 42.
+`ALPS::params` owns ALPSCore-derived dictionary/value storage and explicit `alps.params.v2` checkpoints. Native datatype and scalar/vector rank identify values; indexed name/value entries preserve parameter names without duplicate type tags. It links HDF5 and Boost.Serialization; MPI builds also use MPI and Boost.MPI. Python values are eagerly copied into native storage. The file constructor, XML reader, proxies and Python `paramvalue_source` interface are removed. The lattice and model libraries accept typed parameters through `graph_helper` and `model_helper` overloads, which use the single conversion `explicit SymbolTable(params const&)` owned by `expression`. `alps::seed_disorder` seeds their disorder generator from `DISORDER_SEED`, else `SEED`, else 42.
 
 `ALPS::run_config` applies separate application TOML schemas, defaults, type/range checks, relative-path resolution and run provenance. It uses toml++ headers privately in one translation unit, including when the package manager provides a compiled toml++ library. Parsing and application orchestration do not belong to the dictionary.
 Schemas use `path` for one file and `path[]` for ordered file lists. Both resolve
@@ -203,7 +203,7 @@ The architecture manifest records current source ownership, public includes and
 production files. Tool ownership includes historical inactive C++ sources;
 ownership does not establish independent linkability or passing tests.
 
-The foundation include cycle involving containers, HDF5, numerics, utilities and XML is removed. The two-module cycle between `expression` and `legacy_parameters` is removed as well: the older `Parameters` is an in-memory table of text symbols without file, XML, dump or HDF5 input and output. Dependency declarations constrain new include edges. Regenerate the report after changing module ownership or dependencies.
+The foundation include cycle involving containers, HDF5, numerics, utilities and XML is removed. The former `legacy_parameters` module and its cycle with `expression` are removed as well: `alps::SymbolTable`, the in-memory text symbols of the expression, lattice and model libraries, belongs to `expression` and has no file, XML, dump or HDF5 input and output. Dependency declarations constrain new include edges. Regenerate the report after changing module ownership or dependencies.
 
 Only the two exact unresolved includes in the optional `USE_LATTICE_CONSTANT_2D`
 graph backend remain exempted. The dormant accumulator implementation and its

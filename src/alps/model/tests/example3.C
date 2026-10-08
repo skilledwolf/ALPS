@@ -30,7 +30,7 @@ int main()
     // create the library from an XML file
     std::ifstream in(alps::search_xml_library_path("models.xml"));
     alps::ModelLibrary lib(in);
-    alps::Parameters p;
+    alps::SymbolTable p;
 
      // write site term matrices
      std::cout << "HHardcoreBosonSite =\n"
@@ -47,7 +47,7 @@ int main()
     std::cout << "HSpinBond =\n" << alps::get_matrix(Expression_(),lib.get_hamiltonian("spin",p,true).bond_term(),
                  lib.get_hamiltonian("spin").basis().site_basis(),lib.get_hamiltonian("spin").basis().site_basis()) << "\n";
 
-     alps::Parameters parms;
+     alps::SymbolTable parms;
      parms["Nmax"]=2; 
      alps::HamiltonianDescriptor<short> ham = lib.get_hamiltonian("boson Hubbard",parms,true);
      //ham.set_parameters(parms);

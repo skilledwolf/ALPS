@@ -43,7 +43,7 @@ public:
 
   SiteBasisDescriptor() : num_states_(0) { }
   SiteBasisDescriptor(const std::string& name,
-                      const Parameters& parms = Parameters(),
+                      const SymbolTable& parms = SymbolTable(),
                       const operator_map& ops = operator_map())
     : parms_(parms), read_parms_(parms), name_(name), num_states_(0),operators_(ops) { }
   SiteBasisDescriptor(const XMLTag&, std::istream&);
@@ -58,8 +58,8 @@ public:
         " numbers in site basis " + name()));
     return num_states_;
   }
-  bool set_parameters(const Parameters&, bool=false);
-  const Parameters& get_parameters(bool all=false) const { return all ? parms_ : read_parms_; }
+  bool set_parameters(const SymbolTable&, bool=false);
+  const SymbolTable& get_parameters(bool all=false) const { return all ? parms_ : read_parms_; }
   const operator_map& operators() const { return operators_;}
   bool has_operator(const std::string& name) const
   { return operators_.find(name) != operators_.end(); }
@@ -70,8 +70,8 @@ public:
 private:
   mutable bool valid_;
   bool evaluate();
-  Parameters parms_;
-  Parameters read_parms_;
+  SymbolTable parms_;
+  SymbolTable read_parms_;
   std::string name_;
   mutable std::size_t num_states_;
   void init_dependencies();
@@ -103,7 +103,7 @@ SiteBasisDescriptor<I>::apply(const std::string& name, STATE state, const expres
 template <class I>
 bool SiteBasisDescriptor<I>::valid(const std::vector<half_integer<I> >& x) const
 {
-  alps::Parameters p(parms_);
+  alps::SymbolTable p(parms_);
   if(!valid_ && !const_cast<SiteBasisDescriptor*>(this)->evaluate())
     boost::throw_exception(std::runtime_error("Cannot evaluate quantum numbers in site basis " +name()));
   if (this->size() != x.size())
@@ -119,9 +119,9 @@ bool SiteBasisDescriptor<I>::valid(const std::vector<half_integer<I> >& x) const
 }
 
 template <class I>
-bool SiteBasisDescriptor<I>::set_parameters(const Parameters& p, bool override)
+bool SiteBasisDescriptor<I>::set_parameters(const SymbolTable& p, bool override)
 {
-  for (Parameters::const_iterator it=p.begin();it!=p.end();++it) {
+  for (SymbolTable::const_iterator it=p.begin();it!=p.end();++it) {
     parms_[it->key()] = it->value();
     if (override)
       read_parms_[it->key()] = it->value();
@@ -135,7 +135,7 @@ template <class I>
 bool SiteBasisDescriptor<I>::evaluate()
 {
   valid_=true;
-  Parameters q_parms_(parms_);
+  SymbolTable q_parms_(parms_);
   for (iterator it=this->begin();it!=this->end();++it) {
     it->reset_limits();
     valid_ = valid_ && it->set_parameters(q_parms_);
@@ -158,10 +158,10 @@ bool SiteBasisDescriptor<I>::evaluate()
     // there are dependencies!
     if( rit!=this->begin() ) {
       unsigned int n=0;
-      typedef std::pair<iterator,Parameters> q_pair;
+      typedef std::pair<iterator,SymbolTable> q_pair;
       std::stack<q_pair> s;
       iterator it=this->begin();
-      Parameters p=q_parms_;
+      SymbolTable p=q_parms_;
       it->set_parameters(p);
       if(it->levels()==std::numeric_limits<I>::max BOOST_PREVENT_MACRO_SUBSTITUTION ()) {
         num_states_=std::numeric_limits<I>::max BOOST_PREVENT_MACRO_SUBSTITUTION ();
@@ -173,7 +173,7 @@ bool SiteBasisDescriptor<I>::evaluate()
       }
       while(!s.empty()) {
         iterator it=s.top().first;
-        Parameters      p=s.top().second;
+        SymbolTable      p=s.top().second;
         s.pop();
         iterator itt=it+1;
         if(itt==rit) {
@@ -250,7 +250,7 @@ template <class I>
 void SiteBasisDescriptor<I>::write_xml(oxstream& os) const
 {
   os << start_tag("SITEBASIS") << attribute("name", name());
-  for (Parameters::const_iterator it=read_parms_.begin();it!=read_parms_.end();++it)
+  for (SymbolTable::const_iterator it=read_parms_.begin();it!=read_parms_.end();++it)
     os << start_tag("PARAMETER") << attribute("name", it->key())
        << attribute("default", it->value()) << end_tag("PARAMETER");
   for (const_iterator it=this->begin();it!=this->end();++it)

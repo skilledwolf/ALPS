@@ -18,5 +18,5 @@
 
 template
 void looper::spinmodel_helper<loop_config::lattice_graph_t, loop_config::loop_graph_t>::
-  init(alps::Parameters const& p, looper::lattice_helper<loop_config::lattice_graph_t>& lat,
+  init(alps::SymbolTable const& p, looper::lattice_helper<loop_config::lattice_graph_t>& lat,
   bool is_path_integral);

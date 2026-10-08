@@ -32,13 +32,13 @@ public:
   DefaultTermDescriptor(const XMLTag& tag, std::istream& in) : term_type(tag,in) {}
   // operator term_type() const { return static_cast<term_type const&>(*this);}
   term_type get(unsigned int type) const;
-  Parameters parms(unsigned int type) const { return substitute(TERM::parms(),type); }
+  SymbolTable parms(unsigned int type) const { return substitute(TERM::parms(),type); }
 };
 
 template <class TERM>
 TERM DefaultTermDescriptor<TERM>::get(unsigned int type) const
 {
-  return term_type(*this,substitute(this->term(),type),Parameters(),type);
+  return term_type(*this,substitute(this->term(),type),SymbolTable(),type);
 }
 
 typedef DefaultTermDescriptor<SiteTermDescriptor> DefaultSiteTermDescriptor;

@@ -3,7 +3,7 @@
 #include <alps/mc/physical_moments.hpp>
 #include <alps/params.hpp>
 #include <alps/expression.h>
-#include <alps/parameter.h>
+#include <alps/expression/symbol_table.h>
 namespace native_qmc {
 // Each signed measurement carries its own aligned denominator, including when
 // particle-number restrictions or measurement intervals select different samples.
@@ -18,7 +18,7 @@ struct divide_sign : alps::alea::transformer<double> {
 };
 
 inline double inverse_temperature(alps::params const& p) {
-    const alps::Parameters legacy(p);
+    const alps::SymbolTable legacy(p);
     for (auto key:{"Beta","beta","BETA"}) if (legacy.defined(key)) return alps::evaluate<double>(legacy[key],legacy);
     for (auto key:{"T","TEMPERATURE","temperature"}) if (legacy.defined(key)) return 1/alps::evaluate<double>(legacy[key],legacy);
     throw std::invalid_argument("Temperature is missing");

@@ -20,7 +20,7 @@
 #include <alps/hdf5.hpp>
 #include <alps/hdf5/vector.hpp>
 
-#include <alps/parameter.h>
+#include <alps/expression/symbol_table.h>
 #include <alps/xml.h>
 #include <alps/config.h>
 #include <alps/utility/encode.hpp>
@@ -36,7 +36,7 @@ namespace alps{
 class ALPS_DECL MeasurementOperators
 {
 public:
-  MeasurementOperators (Parameters const& p);
+  MeasurementOperators (SymbolTable const& p);
   
   bool calc_averages() const 
   { 

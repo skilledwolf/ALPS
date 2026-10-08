@@ -51,7 +51,7 @@ struct graph_dimension_helper<true> {
 // helper functions
 
 template <class G>
-void throw_if_xyz_defined(const Parameters& p, const G& graph)
+void throw_if_xyz_defined(const SymbolTable& p, const G& graph)
 {
   // check whether x, y, or z is set
   unsigned int dim = detail::graph_dimension_helper<
@@ -65,11 +65,11 @@ void throw_if_xyz_defined(const Parameters& p, const G& graph)
 
 
 template <class G>
-Parameters coordinate_as_parameter(const G& graph,
+SymbolTable coordinate_as_parameter(const G& graph,
   const typename boost::graph_traits<G>::vertex_descriptor& source,
   const typename boost::graph_traits<G>::vertex_descriptor& target)
 {
-  Parameters parms;
+  SymbolTable parms;
   unsigned int dim = detail::graph_dimension_helper<
     has_property<dimension_t, G>::graph_property>::dimension(graph);
   switch (dim) {
@@ -91,17 +91,17 @@ Parameters coordinate_as_parameter(const G& graph,
 }
 
 template <class G>
-Parameters coordinate_as_parameter(const G& graph,
+SymbolTable coordinate_as_parameter(const G& graph,
   const typename boost::graph_traits<G>::edge_descriptor& edge)
 {
   return coordinate_as_parameter(graph, boost::source(edge, graph), boost::target(edge, graph));
 }
 
 template <class G>
-Parameters coordinate_as_parameter(const G& graph,
+SymbolTable coordinate_as_parameter(const G& graph,
   const typename boost::graph_traits<G>::vertex_descriptor& vertex)
 {
-  Parameters parms;
+  SymbolTable parms;
   unsigned int dim = detail::graph_dimension_helper<
     has_property<dimension_t, G>::graph_property>::dimension(graph);
   switch (dim) {
@@ -207,7 +207,7 @@ public:
   typedef boost::vector_property_map<type_type,typename property_map<edge_index_t,graph_type,type_type>::const_type> inhomogeneous_edge_type_map_type;
   typedef inhomogeneous_edge_type_map_type inhomogeneous_bond_type_map_type;
 
- graph_helper(std::istream& in, const Parameters& p)
+ graph_helper(std::istream& in, const SymbolTable& p)
    : LatticeLibrary(in),
          to_delete_(false),
      g_(make_graph(p)),
@@ -229,7 +229,7 @@ public:
   }
 
 
-  graph_helper(const alps::Parameters& p)
+  graph_helper(const alps::SymbolTable& p)
    : LatticeLibrary(p),
          to_delete_(false),
      g_(make_graph(p)),
@@ -246,7 +246,7 @@ public:
     d_.disorder_edges(graph(),inhomogeneous_edge_type_map_);
   }
 
-  explicit graph_helper(params const& p) : graph_helper(Parameters(p)) {}
+  explicit graph_helper(params const& p) : graph_helper(SymbolTable(p)) {}
 
   ~graph_helper() { if (to_delete_) delete g_; }
 
@@ -483,18 +483,18 @@ public:
   std::size_t dimension() const { return detail::graph_dimension_helper<has_property<dimension_t,G>::graph_property>::dimension(graph());}
   std::pair<momentum_iterator,momentum_iterator> momenta() const { return alps::momenta(lattice());}
 
-  void throw_if_xyz_defined(const Parameters& p,
+  void throw_if_xyz_defined(const SymbolTable& p,
                             const vertex_descriptor&) const
   { alps::throw_if_xyz_defined(p, graph()); }
 
-  void throw_if_xyz_defined(const Parameters& p,
+  void throw_if_xyz_defined(const SymbolTable& p,
                             const edge_descriptor&) const
   { alps::throw_if_xyz_defined(p, graph()); }
 
-  Parameters coordinate_as_parameter(const edge_descriptor& e) const
+  SymbolTable coordinate_as_parameter(const edge_descriptor& e) const
   { return alps::coordinate_as_parameter(graph(), e); }
 
-  Parameters coordinate_as_parameter(const vertex_descriptor& v) const
+  SymbolTable coordinate_as_parameter(const vertex_descriptor& v) const
   { return alps::coordinate_as_parameter(graph(), v); }
 
   size_type volume() const { return alps::volume(lattice());}
@@ -635,7 +635,7 @@ private:
   }
 
   const graph_helper& operator=(const graph_helper&) {return *this;}
-    graph_type* make_graph(const Parameters& p);
+    graph_type* make_graph(const SymbolTable& p);
   const graph_type& const_graph() const { return *g_;}
 
   lattice_type l_;
@@ -659,7 +659,7 @@ private:
 
 
 template <class G>
-G* graph_helper<G>::make_graph(const Parameters& parms)
+G* graph_helper<G>::make_graph(const SymbolTable& parms)
 {
   std::string name;
   bool have_graph = parms.defined("GRAPH");

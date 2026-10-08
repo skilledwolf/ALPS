@@ -28,7 +28,7 @@ struct application {
   template <class F>
   static void with_task(alps::run_configuration const& run, F const& f)
   {
-    alps::Parameters p = lattice_model::parameters(run);
+    alps::SymbolTable p = lattice_model::parameters(run);
     // The sweep schedule is read as a comma-separated list.
     if (run.parameters.exists("STATES")) {
       std::string states;

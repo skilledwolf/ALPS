@@ -24,7 +24,7 @@
 #include <alps/multi_array.hpp>
 #include <alps/type_traits/is_complex.hpp>
 #include <alps/numeric/is_nonzero.hpp>
-#include <alps/parameter.h>
+#include <alps/expression/symbol_table.h>
 
 namespace alps {
 
@@ -41,7 +41,7 @@ private:
 public:
   SiteOperatorSplitter(const SiteBasisDescriptor<I>& b,
                        const std::string& site,
-                       const Parameters& p)
+                       const SymbolTable& p)
     : super_type(p), basis_(b), site_(site) {}
 
   bool can_evaluate_function(const std::string& name, const expression::Expression<T>& argument,bool=false) const;
@@ -65,7 +65,7 @@ class ALPS_DECL SiteOperator
 public:
   SiteOperator() {}
   SiteOperator(const std::string& t, const std::string& s) : term_(t), site_(s) {}
-  SiteOperator(SiteOperator const& op, std::string const& t, Parameters const& p) 
+  SiteOperator(SiteOperator const& op, std::string const& t, SymbolTable const& p) 
    : term_(t)
    , site_(op.site_)
    , name_(op.name_)
@@ -88,33 +88,33 @@ public:
   const std::string& name() const { return name_;}
   template <class T, class I>
   multi_array<std::pair<T,bool>,2> matrix(const SiteBasisDescriptor<I>&,
-                                          const Parameters& p=Parameters()) const;
+                                          const SymbolTable& p=SymbolTable()) const;
 
-  void substitute_operators(const ModelLibrary& m, const Parameters& p=Parameters());
+  void substitute_operators(const ModelLibrary& m, const SymbolTable& p=SymbolTable());
   std::set<std::string> operator_names() const;
 
 template <class T>
-  std::vector<boost::tuple<expression::Term<T>,SiteOperator> > templated_split(const Parameters& = Parameters()) const;
-  std::vector<boost::tuple<Term,SiteOperator> > split(const Parameters& p= Parameters()) const 
+  std::vector<boost::tuple<expression::Term<T>,SiteOperator> > templated_split(const SymbolTable& = SymbolTable()) const;
+  std::vector<boost::tuple<Term,SiteOperator> > split(const SymbolTable& p= SymbolTable()) const 
   { return templated_split<std::complex<double> >(p);}
 
-  Parameters const& parms() const { return parms_;}
+  SymbolTable const& parms() const { return parms_;}
 private:
   std::string term_;
   std::string site_;
   std::string name_;
-  Parameters parms_;
+  SymbolTable parms_;
 };
 
 
 template <class T, class I>
-inline multi_array<std::pair<T,bool>,2> get_fermionic_matrix(T,const SiteOperator& m, const SiteBasisDescriptor<I>& basis1,  const Parameters& p=Parameters())
+inline multi_array<std::pair<T,bool>,2> get_fermionic_matrix(T,const SiteOperator& m, const SiteBasisDescriptor<I>& basis1,  const SymbolTable& p=SymbolTable())
 {
   return m.template matrix<T,I>(basis1,p);
 }
 
 template <class T, class I>
-multi_array<T,2> get_matrix(T,const SiteOperator& m, const SiteBasisDescriptor<I>& basis1,  const Parameters& p=Parameters(), bool ignore_fermion=false)
+multi_array<T,2> get_matrix(T,const SiteOperator& m, const SiteBasisDescriptor<I>& basis1,  const SymbolTable& p=SymbolTable(), bool ignore_fermion=false)
 {
   multi_array<std::pair<T,bool>,2> f_matrix = m.template matrix<T,I>(basis1,p);
   multi_array<T,2> matrix(boost::extents[f_matrix.shape()[0]][f_matrix.shape()[1]]);
@@ -150,12 +150,12 @@ expression::Expression<T> SiteOperatorSplitter<I,T>::partial_evaluate_function(c
 
 
 template <class T, class I> multi_array<std::pair<T,bool>,2>
-SiteOperator::matrix(const SiteBasisDescriptor<I>& b,  const Parameters& p) const
+SiteOperator::matrix(const SiteBasisDescriptor<I>& b,  const SymbolTable& p) const
 {
   typedef typename expression_value_type_traits<T>::value_type value_type;
   SiteBasisDescriptor<I> basis(b);
   basis.set_parameters(p);
-  Parameters parms(p);
+  SymbolTable parms(p);
   parms.copy_undefined(basis.get_parameters());
   std::size_t dim=basis.num_states();
   multi_array<std::pair<T,bool>,2> mat(boost::extents[dim][dim]);
@@ -199,7 +199,7 @@ SiteOperator::matrix(const SiteBasisDescriptor<I>& b,  const Parameters& p) cons
 
 
 template <class T>
-std::vector<boost::tuple<expression::Term<T>,SiteOperator> > alps::SiteOperator::templated_split(const Parameters& p) const
+std::vector<boost::tuple<expression::Term<T>,SiteOperator> > alps::SiteOperator::templated_split(const SymbolTable& p) const
 {
   std::vector<boost::tuple<expression::Term<T>,SiteOperator> > terms;
   expression::Expression<T> ex(term());

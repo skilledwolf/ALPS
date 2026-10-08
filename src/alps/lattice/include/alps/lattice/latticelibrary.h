@@ -36,7 +36,7 @@ public:
   LatticeLibrary() {};
   LatticeLibrary(std::istream& in) { read_xml(in);}
   LatticeLibrary(const XMLTag& tag, std::istream& p) {read_xml(tag,p);}
-  LatticeLibrary(const Parameters& p);
+  LatticeLibrary(const SymbolTable& p);
   void read_xml(std::istream& in);
   void read_xml(const XMLTag& tag, std::istream& p);
 

@@ -96,7 +96,7 @@ void LatticeDescriptor::write_xml(oxstream& xml) const
   xml << start_tag("LATTICE");
   if (name() != "") xml << attribute("name", name());
   xml << attribute("dimension", dimension());
-  for (Parameters::const_iterator it = lparms_.begin(); it != lparms_.end();
+  for (SymbolTable::const_iterator it = lparms_.begin(); it != lparms_.end();
        ++it)
     xml << start_tag("PARAMETER") << attribute("name", it->key())
         << attribute("default", it->value()) << end_tag("PARAMETER");
@@ -230,7 +230,7 @@ void FiniteLatticeDescriptor::write_xml(oxstream& xml) const
     xml << lattice_;
   else
     xml << start_tag("LATTICE") << attribute("ref", lattice_name_) << end_tag("LATTICE");
-  for (Parameters::const_iterator it=flparms_.begin();it!=flparms_.end();++it)
+  for (SymbolTable::const_iterator it=flparms_.begin();it!=flparms_.end();++it)
     xml << start_tag("PARAMETER") << attribute("name", it->key())
         << attribute("default", it->value()) << end_tag("PARAMETER");
   for (unsigned int i=0;i<dimension();++i)
@@ -242,18 +242,18 @@ void FiniteLatticeDescriptor::write_xml(oxstream& xml) const
 }
 #endif
 
-void LatticeDescriptor::set_parameters(const Parameters& p)
+void LatticeDescriptor::set_parameters(const SymbolTable& p)
 {
-  Parameters parms(lparms_);
+  SymbolTable parms(lparms_);
   parms << p;
   base_type::set_parameters(parms);
 }
 
-void FiniteLatticeDescriptor::set_parameters(const Parameters& p)
+void FiniteLatticeDescriptor::set_parameters(const SymbolTable& p)
 {
   lattice_.set_parameters(p);
   static_cast<base_base_type&>(*this) = lattice_;
-  Parameters parms(flparms_);
+  SymbolTable parms(flparms_);
   parms << p;
   for (unsigned int i=0;i<bc_.size();++i) {
     if(bc_[i]!="")

@@ -31,7 +31,7 @@ public:
   typedef half_integer<I> half_integer_type;
   typedef QuantumNumberDescriptor<I> quantum_number_type;
   
-  model_helper(alps::Parameters const& p, bool issymbolic=false)
+  model_helper(alps::SymbolTable const& p, bool issymbolic=false)
    : model_library_(p), 
      parms_(p) 
   {
@@ -39,7 +39,7 @@ public:
   }
 
   template <class G>
-  model_helper(alps::graph_helper<G> const& g, alps::Parameters const& p, bool issymbolic=false)
+  model_helper(alps::graph_helper<G> const& g, alps::SymbolTable const& p, bool issymbolic=false)
    : model_library_(p), 
      parms_(p) 
   {
@@ -47,11 +47,11 @@ public:
   }
 
   explicit model_helper(params const& p, bool issymbolic=false)
-   : model_helper(Parameters(p), issymbolic) {}
+   : model_helper(SymbolTable(p), issymbolic) {}
 
   template <class G>
   model_helper(alps::graph_helper<G> const& g, params const& p, bool issymbolic=false)
-   : model_helper(g, Parameters(p), issymbolic) {}
+   : model_helper(g, SymbolTable(p), issymbolic) {}
 
   const ModelLibrary& model_library() const { return model_library_; }  
   HamiltonianDescriptor<I>& model() { return model_;}
@@ -66,14 +66,14 @@ public:
   bool has_bond_operator(const std::string& name) const { return model_library_.has_bond_operator(name);}
   bool has_global_operator(const std::string& name) const { return model_library_.has_global_operator(name);}
   bool has_operator(const std::string& name) const { return model_library_.has_operator(name);}
-  SiteOperator get_site_operator(const std::string& name,const Parameters& p) const { return model_library_.get_site_operator(name,p);}
-  BondOperator get_bond_operator(const std::string& name,const Parameters& p) const { return model_library_.get_bond_operator(name,p);}
+  SiteOperator get_site_operator(const std::string& name,const SymbolTable& p) const { return model_library_.get_site_operator(name,p);}
+  BondOperator get_bond_operator(const std::string& name,const SymbolTable& p) const { return model_library_.get_bond_operator(name,p);}
   SiteOperator get_site_operator(const std::string& name) const { return model_library_.get_site_operator(name,parms_);}
   BondOperator get_bond_operator(const std::string& name) const { return model_library_.get_bond_operator(name,parms_);}
   GlobalOperator get_global_operator(const std::string& name) const { return model_library_.get_global_operator(name,parms_);}
   
   template <class OP>
-  void substitute_operators(OP& op, const Parameters& p) const { op.substitute_operators(model_library_,p);}
+  void substitute_operators(OP& op, const SymbolTable& p) const { op.substitute_operators(model_library_,p);}
 
   std::set<std::string> quantum_numbers(int type=0)
   {
@@ -87,7 +87,7 @@ public:
 private:
    ModelLibrary model_library_;
    HamiltonianDescriptor<I> model_;
-   Parameters parms_;
+   SymbolTable parms_;
 };
 
 } // end namespace

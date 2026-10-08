@@ -12,13 +12,13 @@
 *
 *****************************************************************************/
 
-#include <alps/parameter/parameters.h>
+#include <alps/expression/symbol_table.h>
 #include <iostream>
 #include <sstream>
 
 namespace alps {
 
-Parameters::Parameters(params const& typed)
+SymbolTable::SymbolTable(params const& typed)
 {
   for (auto const& [key, value] : typed) {
     std::ostringstream text;
@@ -27,7 +27,7 @@ Parameters::Parameters(params const& typed)
   }
 }
 
-void Parameters::push_back(const parameter_type& p, bool allow_overwrite)
+void SymbolTable::push_back(const entry_type& p, bool allow_overwrite)
 {
   if (p.key().empty())
     boost::throw_exception(std::runtime_error("empty key"));
@@ -42,23 +42,23 @@ void Parameters::push_back(const parameter_type& p, bool allow_overwrite)
   }
 }
 
-Parameters& Parameters::operator<<(const Parameters& params)
+SymbolTable& SymbolTable::operator<<(const SymbolTable& other)
 {
-  for (const_iterator it = params.begin(); it != params.end(); ++it)
+  for (const_iterator it = other.begin(); it != other.end(); ++it)
     (*this) << *it;
   return *this;
 }
 
-void Parameters::copy_undefined(const Parameters& p)
+void SymbolTable::copy_undefined(const SymbolTable& p)
 {
   for (const_iterator it=p.begin();it!=p.end();++it)
     if (!defined(it->key()))
       push_back(*it);
 }
 
-std::ostream& operator<<(std::ostream& os, const alps::Parameters& p)
+std::ostream& operator<<(std::ostream& os, const SymbolTable& p)
 {
-  for (alps::Parameters::const_iterator it = p.begin(); it != p.end(); ++it) {
+  for (SymbolTable::const_iterator it = p.begin(); it != p.end(); ++it) {
     if (it->value().valid()) {
       std::string s = it->value().c_str();
       os << it->key() << " = ";

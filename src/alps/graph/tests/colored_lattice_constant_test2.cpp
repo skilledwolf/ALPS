@@ -38,7 +38,7 @@ int main() {
     typedef boost::graph_traits<graph_type>::edge_descriptor  edge_descriptor;
     typedef boost::property_map<graph_type,alps::edge_type_t>::type edge_color_map_type;
 
-    alps::Parameters parm;
+    alps::SymbolTable parm;
     unsigned int side_length = 40;
 
     std::ifstream in(alps::search_xml_library_path("lattices.xml"));

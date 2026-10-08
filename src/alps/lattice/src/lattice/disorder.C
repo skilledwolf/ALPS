@@ -225,7 +225,7 @@ void DepletionDescriptor::write_xml(oxstream& xml) const
         << end_tag("VERTEX") << end_tag("DEPLETION");
 }
 
-void DepletionDescriptor::set_parameters(const Parameters& p)
+void DepletionDescriptor::set_parameters(const SymbolTable& p)
 {
   if (p.defined(seed_name))
     seed_ = static_cast<int>(evaluate(seed_name,p));

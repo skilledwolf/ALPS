@@ -57,7 +57,7 @@ public:
     typedef boost::multi_array<double, 2> site_tensor_type;
     typedef boost::multi_array<double, 4> bond_tensor_type;
 
-    Model(alps::Parameters const& params,
+    Model(alps::SymbolTable const& params,
         model_type& model, lattice_type& lattice) :
     model(model),
     lattice(lattice),
@@ -163,7 +163,7 @@ private:
     
     model_type& model;
     lattice_type& lattice;
-    alps::Parameters const& params;
+    alps::SymbolTable const& params;
 
     double epsilon;
     std::vector<double> _max_diag_me;
@@ -234,7 +234,7 @@ private:
             
             lattice.check_homogenity(params, bonds[0]);
             
-            alps::Parameters p(params);
+            alps::SymbolTable p(params);
             
             lattice.do_inhomogeneous_source(p, bonds[0]);
             site_tensor_type site_tensor0 = alps::get_matrix(double(),

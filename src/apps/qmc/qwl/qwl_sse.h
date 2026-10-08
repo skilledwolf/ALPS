@@ -60,7 +60,7 @@ public:
 private:
   using statetype=uint32_t;
   using bond_state_type=uint32_t;
-  alps::Parameters parms;
+  alps::SymbolTable parms;
   size_t bins_, chain_;
   unsigned int L, norder_min, norder_max, logf_steps_total;
   double beta=1, offset=0, initial_logf=0;
@@ -679,7 +679,7 @@ void QWL_SSE_Simulation::init_tables() {
   offset=0;
   for (bond_iterator it=bonds().first; it!=bonds().second;++it) {
     if (source(*it)==target(*it)) throw std::invalid_argument("QWL requires distinct bond endpoints");
-    Parameters p(parms);
+    SymbolTable p(parms);
     if (inhomogeneous())
       throw_if_xyz_defined(parms,*it);
     if (inhomogeneous_sites()) {

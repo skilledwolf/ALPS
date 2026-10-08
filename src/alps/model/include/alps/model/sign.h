@@ -266,7 +266,7 @@ bool is_frustrated(const G& graph, B bond_map, S site_map)
 
 template <class I, class G>
 bool has_sign_problem(const HamiltonianDescriptor<I>& ham,
-                      const graph_helper<G>& lattice, const Parameters& p) {
+                      const graph_helper<G>& lattice, const SymbolTable& p) {
   typedef G graph_type;
   const graph_type& graph(lattice.graph());
 
@@ -310,7 +310,7 @@ bool has_sign_problem(const HamiltonianDescriptor<I>& ham,
     }
   }
 
-  Parameters parms(p);
+  SymbolTable parms(p);
   if (!parms.defined("x")) parms["x"] = 1;
   if (!parms.defined("y")) parms["y"] = 1;
   if (!parms.defined("z")) parms["z"] = 1;

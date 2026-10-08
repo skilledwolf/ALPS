@@ -32,7 +32,7 @@ int main(int argc, char ** argv)
       std::cerr << "Usage: " << argv[0] << " run.toml\n";
       return 1;
     }
-    const alps::Parameters parameters = lattice_run(argv[1], "printgraph");
+    const alps::SymbolTable parameters = lattice_run(argv[1], "printgraph");
 
     // create a graph factory with default graph type
     alps::graph_helper<> lattice(parameters);

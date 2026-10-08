@@ -1,6 +1,7 @@
 # Expression source ownership.
 target_sources(alps PRIVATE
-  src/expression/evaluator.C)
+  src/expression/evaluator.C
+  src/expression/symbol_table.C)
 
 target_sources(alps_headers INTERFACE
   FILE_SET expression_headers TYPE HEADERS
@@ -19,10 +20,15 @@ target_sources(alps_headers INTERFACE
     include/alps/expression/number.h
     include/alps/expression/parameterevaluator.h
     include/alps/expression/symbol.h
+    include/alps/expression/symbol_table.h
     include/alps/expression/term.h
     include/alps/expression/traits.h)
 
+if(ALPS_BUILD_TESTING)
+  add_subdirectory(tests)
+endif()
+
 alps_register_module(NAME expression HEADER_SET expression_headers
   TARGETS alps
-  DEPENDS configuration legacy_parameters numerics random utilities xml
+  DEPENDS configuration numerics params random utilities xml
 )

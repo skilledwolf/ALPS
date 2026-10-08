@@ -57,7 +57,7 @@ int main(int argc, char** argv)
       }
       auto run = alps::load_run_configuration(argv[i], lattice_model::schema(argv[i], run_schema));
       lattice_model::resolve_libraries(run);
-      const alps::Parameters p = lattice_model::parameters(run);
+      const alps::SymbolTable p = lattice_model::parameters(run);
       alps::graph_helper<> lattice(p);
       alps::model_helper<> models(lattice, p);
       std::cout << argv[i] << (alps::has_sign_problem(models.model(),lattice,p) ? ": SIGN PROBLEM\n" : ": OK\n");

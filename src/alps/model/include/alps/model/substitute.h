@@ -34,10 +34,10 @@ inline std::string substitute(std::string const& text, unsigned int type)
 //  return boost::algorithm::replace_all_copy(text,"#",boost::lexical_cast<std::string>(type));
 }
   
-inline Parameters substitute(Parameters const& parms, unsigned int type)
+inline SymbolTable substitute(SymbolTable const& parms, unsigned int type)
 {
-  Parameters p;
-  for (Parameters::const_iterator it = parms.begin() ; it != parms.end(); ++it)
+  SymbolTable p;
+  for (SymbolTable::const_iterator it = parms.begin() ; it != parms.end(); ++it)
     p[substitute(it->key(),type)] = substitute(it->value(),type);
   return p;
 }

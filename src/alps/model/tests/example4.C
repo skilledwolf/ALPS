@@ -18,7 +18,7 @@
 #include <fstream>
 #include <iostream>
 
-alps::multi_array<alps::Expression,2> bondmatrix(const alps::ModelLibrary lib, const std::string& name, const alps::Parameters& p=alps::Parameters())
+alps::multi_array<alps::Expression,2> bondmatrix(const alps::ModelLibrary lib, const std::string& name, const alps::SymbolTable& p=alps::SymbolTable())
 {
   alps::HamiltonianDescriptor<short> ham=lib.get_hamiltonian(name,p,true);
   // ham.set_parameters(p);
@@ -61,7 +61,7 @@ int main()
     alps::ModelLibrary lib(in);
 
     // calculate bond matrices 
-    alps::Parameters parms;
+    alps::SymbolTable parms;
     
     std::cout << "HHardcoreBoson = \n" << bondmatrix(lib,"hardcore boson") << "\n\n";
     parms["Nmax"]=2;

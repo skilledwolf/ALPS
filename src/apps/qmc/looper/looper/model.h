@@ -16,7 +16,7 @@
 #include "lattice.h"
 #include "weight.h"
 
-#include <alps/parameter.h>
+#include <alps/expression/symbol_table.h>
 #include <alps/random/buffered_rng.h>
 #include <vector>
 
@@ -32,11 +32,11 @@ public:
   typedef lattice_helper<real_graph_t> lattice_t;
   typedef typename local_graph_t::location_t location_t;
 
-  spinmodel_helper(alps::Parameters const& p, lattice_t& lat, bool is_path_integral = true) {
+  spinmodel_helper(alps::SymbolTable const& p, lattice_t& lat, bool is_path_integral = true) {
     init(p, lat, is_path_integral);
   }
 
-  void init(alps::Parameters const& p, lattice_t& lat, bool is_path_integral = true);
+  void init(alps::SymbolTable const& p, lattice_t& lat, bool is_path_integral = true);
 
   void check_parameter(bool support_longitudinal_field, bool support_negative_sign) const {
     if (has_field()) {

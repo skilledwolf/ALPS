@@ -22,7 +22,7 @@
 namespace looper {
 
 template<class I>
-bool build_diagonal_matrix(std::string const& op, alps::Parameters const& p,
+bool build_diagonal_matrix(std::string const& op, alps::SymbolTable const& p,
   alps::model_helper<I> const& mh, unsigned int t, std::vector<double>& mat) {
   alps::SiteOperator term(op);
   bool valid = true;
@@ -48,7 +48,7 @@ bool build_diagonal_matrix(std::string const& op, alps::Parameters const& p,
 
 template<typename LAT>
 custom_measurement_initializer<LAT>::
-custom_measurement_initializer(alps::Parameters const& params) :
+custom_measurement_initializer(alps::SymbolTable const& params) :
   alps::MeasurementOperators(params), params_(params) {}
 
 template<typename LAT>

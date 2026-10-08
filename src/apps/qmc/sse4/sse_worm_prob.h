@@ -48,7 +48,7 @@ public:
     typedef Wprob wprob_type;
     typedef std::vector<std::vector<Wprob> > wprob_table_type;
     
-    Worm_prob(alps::Parameters const& params,
+    Worm_prob(alps::SymbolTable const& params,
             lattice_type const& lattice, model_type const& model) :
         lattice(lattice),
         model(model),

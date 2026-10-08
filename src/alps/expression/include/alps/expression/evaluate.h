@@ -37,24 +37,24 @@ inline bool can_evaluate(const std::string& v, const expression::Evaluator<T>& p
   return expression::Expression<T>(v).can_evaluate(p,isarg);
 }
 
-inline bool can_evaluate(const std::string& v, const Parameters& p=Parameters())
+inline bool can_evaluate(const std::string& v, const SymbolTable& p=SymbolTable())
 {
   return can_evaluate(v, expression::ParameterEvaluator<>(p));
 }
 
 template<class U>
-inline bool can_evaluate(const std::string& v, const Parameters& p, const U&)
+inline bool can_evaluate(const std::string& v, const SymbolTable& p, const U&)
 {
   return can_evaluate(v, expression::ParameterEvaluator<U>(p));
 }
 
-inline bool can_evaluate(const StringValue& v, const Parameters& p=Parameters())
+inline bool can_evaluate(const StringValue& v, const SymbolTable& p=SymbolTable())
 {
   return can_evaluate(static_cast<std::string>(v), p);
 }
 
 template<class U>
-inline bool can_evaluate(const StringValue& v, const Parameters& p, const U&)
+inline bool can_evaluate(const StringValue& v, const SymbolTable& p, const U&)
 {
   return can_evaluate(static_cast<std::string>(v), p, U());
 }
@@ -123,13 +123,13 @@ inline double evaluate(const StringValue& v) {
 }
 
 template<class U>
-inline U evaluate(const char* v, const Parameters& p)
+inline U evaluate(const char* v, const SymbolTable& p)
 {
   return evaluate<U, typename expression::evaluate_helper<U>::value_type>(v,
     expression::ParameterEvaluator<
     typename expression::evaluate_helper<U>::value_type>(p));
 }
-inline double evaluate(const char* v, const Parameters& p)
+inline double evaluate(const char* v, const SymbolTable& p)
 {
   return evaluate<double, expression::evaluate_helper<double>::value_type>(v,
     expression::ParameterEvaluator<
@@ -137,13 +137,13 @@ inline double evaluate(const char* v, const Parameters& p)
 }
 
 template<class U>
-inline U evaluate(const std::string& v, const Parameters& p)
+inline U evaluate(const std::string& v, const SymbolTable& p)
 {
   return evaluate<U,typename expression::evaluate_helper<U>::value_type>(v,
     expression::ParameterEvaluator<
     typename expression::evaluate_helper<U>::value_type>(p));
 }
-inline double evaluate(const std::string& v, const Parameters& p)
+inline double evaluate(const std::string& v, const SymbolTable& p)
 {
   return evaluate<double, expression::evaluate_helper<double>::value_type>(v,
     expression::ParameterEvaluator<
@@ -151,13 +151,13 @@ inline double evaluate(const std::string& v, const Parameters& p)
 }
 
 template<class U>
-inline U evaluate(const StringValue& v, const Parameters& p)
+inline U evaluate(const StringValue& v, const SymbolTable& p)
 {
   return evaluate<U, typename expression::evaluate_helper<U>::value_type>(v,
     expression::ParameterEvaluator<
     typename expression::evaluate_helper<U>::value_type>(p));
 }
-inline double evaluate(const StringValue& v, const Parameters& p)
+inline double evaluate(const StringValue& v, const SymbolTable& p)
 {
   return evaluate<double, expression::evaluate_helper<double>::value_type>(v,
     expression::ParameterEvaluator<
@@ -171,7 +171,7 @@ template<class T>
 void simplify(expression::Expression<T>& x) { x.simplify();}
 
 
-StringValue simplify_value(StringValue const& val, Parameters const& parms, bool eval_random=false);
+StringValue simplify_value(StringValue const& val, SymbolTable const& parms, bool eval_random=false);
 
 bool same_values(StringValue const& x, StringValue const& y, double eps=1e-15);
 

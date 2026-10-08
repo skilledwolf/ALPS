@@ -19,7 +19,7 @@
 
 #include <alps/expression.h>
 #include <alps/model/half_integer.h>
-#include <alps/parameter.h>
+#include <alps/expression/symbol_table.h>
 #include <boost/tuple/tuple.hpp>
 #include <vector>
 #include <map>
@@ -81,7 +81,7 @@ boost::tuple<STATE, expression::Expression<T>,bool>
 OperatorDescriptor<I>::apply(STATE state, const SiteBasisDescriptor<I>& basis, const expression::ParameterEvaluator<T>& eval, bool isarg) const
 {
   // set quantum numbers as parameters
-  Parameters p=eval.parameters();
+  SymbolTable p=eval.parameters();
   p.copy_undefined(basis.get_parameters(false));
   for (std::size_t i=0;i<basis.size();++i) {
     if (p.defined(basis[i].name()))

@@ -28,14 +28,14 @@ void test(std::string const& name)
   // get operators in one bond term 
   std::cout << "Model: " << name << "\n";
   std::cout << "Operator names:\n";
-  std::set<std::string> names = lib.get_hamiltonian(name,alps::Parameters(),true).bond_term().operator_names();
+  std::set<std::string> names = lib.get_hamiltonian(name,alps::SymbolTable(),true).bond_term().operator_names();
   std::copy(names.begin(),names.end(),std::ostream_iterator<std::string>(std::cout,"\n"));
   
   std::cout << "\nSplit terms:\n\n";
   
   typedef std::vector<boost::tuple<alps::Term,alps::SiteOperator,alps::SiteOperator > > V;
-  alps::SiteBasisDescriptor<short> b = lib.get_hamiltonian(name,alps::Parameters(),true).basis().site_basis();
-  V  ops = lib.get_hamiltonian(name,alps::Parameters(),true).bond_term().split(b,b);
+  alps::SiteBasisDescriptor<short> b = lib.get_hamiltonian(name,alps::SymbolTable(),true).basis().site_basis();
+  V  ops = lib.get_hamiltonian(name,alps::SymbolTable(),true).bond_term().split(b,b);
   for (V::const_iterator it=ops.begin(); it!=ops.end();++it)
     std::cout << "Prefactor: " << it->get<0>() << "\nSite 1: " << it->get<1>().term() << "\nSite 2: " << it->get<2>().term() << "\n\n";
 }

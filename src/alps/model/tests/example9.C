@@ -19,7 +19,7 @@
 #include <iostream>
 
 void write_set(const std::string& name, const alps::ModelLibrary& lib, 
-               const alps::Parameters& p=alps::Parameters())
+               const alps::SymbolTable& p=alps::SymbolTable())
 {
   alps::SiteBasisDescriptor<short> sitebasis=lib.get_site_basis(name);
   sitebasis.set_parameters(p);
@@ -40,7 +40,7 @@ int main()
     // write all basis states
     write_set("hardcore boson",lib);
     write_set("spinless fermion",lib);
-/*    alps::Parameters p;
+/*    alps::SymbolTable p;
     p["local_spin"]=1;
     write_set("spin",lib,p);
     write_set("spin",lib);

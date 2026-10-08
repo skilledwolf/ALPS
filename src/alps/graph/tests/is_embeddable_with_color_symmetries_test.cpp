@@ -164,7 +164,7 @@ void is_embeddable_with_color_symmetries_test3()
     color_symmetry[1] = 0;
 
     std::ifstream in(alps::search_xml_library_path("lattices.xml"));
-    alps::Parameters parm;
+    alps::SymbolTable parm;
     parm["LATTICE"] = "anisotropic triangular lattice";
     parm["L"]       = 2*5+1;
     alps::graph_helper<> alps_lattice(in,parm);

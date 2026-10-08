@@ -15,7 +15,7 @@
 
 #include <alps/model.h>
 #include <alps/lattice.h>
-#include <alps/parameter.h>
+#include <alps/expression/symbol_table.h>
 #include <vector>
 #include <iostream>
 #include <string>
@@ -41,7 +41,7 @@ int main()
       {{"Gamma", "1"}, {"LATTICE", "chain lattice"}},
       {{"J", "-1"}, {"Gamma", "1"}, {"LATTICE", "chain lattice"}}};
     for (std::size_t i=0;i<cases.size();++i) {
-      alps::Parameters parms;
+      alps::SymbolTable parms;
       parms["MODEL"] = "spin";
       parms["J"] = 1;
       parms["L"] = 4;

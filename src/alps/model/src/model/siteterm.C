@@ -53,7 +53,7 @@ void alps::SiteOperator::read_xml(const XMLTag& intag, std::istream& is)
   }
 }
 
-void alps::SiteOperator::substitute_operators(const ModelLibrary& m, const Parameters& p)
+void alps::SiteOperator::substitute_operators(const ModelLibrary& m, const SymbolTable& p)
 {
   std::vector<std::string> s(1,site());
   OperatorSubstitution<std::complex<double> > subs(m,p,s);
@@ -78,7 +78,7 @@ void alps::SiteOperator::write_xml(oxstream& os) const
     os << attribute("name", name());
   if (!site().empty())
     os << attribute("site", site());
-  for (Parameters::const_iterator it=parms().begin();it!=parms().end();++it)
+  for (SymbolTable::const_iterator it=parms().begin();it!=parms().end();++it)
     os << start_tag("PARAMETER") << attribute("name", it->key())
        << attribute("default", it->value()) << end_tag("PARAMETER");
   os << term() << end_tag("SITEOPERATOR");
@@ -91,7 +91,7 @@ void alps::SiteTermDescriptor::write_xml(oxstream& os) const
     os << attribute("type", type_);
   if (!site().empty())
     os << attribute("site", site());
-  for (Parameters::const_iterator it=parms().begin();it!=parms().end();++it)
+  for (SymbolTable::const_iterator it=parms().begin();it!=parms().end();++it)
     os << start_tag("PARAMETER") << attribute("name", it->key())
        << attribute("default", it->value()) << end_tag("PARAMETER");
   os << term() << end_tag("SITETERM");

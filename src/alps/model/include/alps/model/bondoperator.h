@@ -25,7 +25,7 @@
 #include <alps/model/sitestate.h>
 #include <alps/model/sitebasisstates.h>
 #include <alps/expression.h>
-#include <alps/parameter.h>
+#include <alps/expression/symbol_table.h>
 #include <alps/multi_array.hpp>
 
 namespace alps {
@@ -44,7 +44,7 @@ public:
   BondOperatorSplitter(const SiteBasisDescriptor<I>& b1,
                        const SiteBasisDescriptor<I>& b2,
                        const std::string& site1, const std::string& site2,
-                       const Parameters& p)
+                       const SymbolTable& p)
     : super_type(p), basis1_(b1), basis2_(b2), sites_(site1,site2), second_site_fermionic_(false) {}
 
   bool can_evaluate_function(const std::string& name, const expression::Expression<T>& argument,bool=false) const;
@@ -83,7 +83,7 @@ public:
     : term_(term), source_(s), target_(t) {}
   BondOperator(const XMLTag& tag, std::istream& in) { read_xml(tag,in);}
 
-  BondOperator(BondOperator const& op, std::string const& t, Parameters const& p)
+  BondOperator(BondOperator const& op, std::string const& t, SymbolTable const& p)
    : name_(op.name_)
    , term_(t)
    , source_(op.source_)
@@ -99,29 +99,29 @@ public:
   std::string& term () { return term_;}
   const std::string& source () const { return source_;}
   const std::string& target () const { return target_;}
-  void substitute_operators(const ModelLibrary& m, const Parameters& p=Parameters());
+  void substitute_operators(const ModelLibrary& m, const SymbolTable& p=SymbolTable());
 
   template <class T, class I>
-  multi_array<std::pair<T,bool>,4> matrix(const SiteBasisDescriptor<I>&, const SiteBasisDescriptor<I>&, const Parameters& =Parameters()) const;
+  multi_array<std::pair<T,bool>,4> matrix(const SiteBasisDescriptor<I>&, const SiteBasisDescriptor<I>&, const SymbolTable& =SymbolTable()) const;
 
   template <class T, class I>
-  std::vector<boost::tuple<expression::Term<T>,SiteOperator,SiteOperator> > templated_split(SiteBasisDescriptor<I> const&, SiteBasisDescriptor<I> const&, const Parameters& = Parameters()) const;
+  std::vector<boost::tuple<expression::Term<T>,SiteOperator,SiteOperator> > templated_split(SiteBasisDescriptor<I> const&, SiteBasisDescriptor<I> const&, const SymbolTable& = SymbolTable()) const;
 
   template <class I>
-  std::vector<boost::tuple<Term,SiteOperator,SiteOperator> > split(SiteBasisDescriptor<I> const& b1 ,SiteBasisDescriptor<I> const& b2,const Parameters& p= Parameters()) const
+  std::vector<boost::tuple<Term,SiteOperator,SiteOperator> > split(SiteBasisDescriptor<I> const& b1 ,SiteBasisDescriptor<I> const& b2,const SymbolTable& p= SymbolTable()) const
   { return templated_split<std::complex<double> >(b1,b2,p);}
 
-  std::vector<boost::tuple<Term,SiteOperator,SiteOperator> > split(const Parameters& p= Parameters()) const
+  std::vector<boost::tuple<Term,SiteOperator,SiteOperator> > split(const SymbolTable& p= SymbolTable()) const
   { return templated_split<std::complex<double> >(SiteBasisDescriptor<short>(),SiteBasisDescriptor<short>(),p);}
-  std::set<std::string> operator_names(const Parameters& = Parameters()) const;
+  std::set<std::string> operator_names(const SymbolTable& = SymbolTable()) const;
 
-  Parameters const& parms() const { return parms_;}
+  SymbolTable const& parms() const { return parms_;}
 private:
   std::string name_;
   std::string term_;
   std::string source_;
   std::string target_;
-  Parameters parms_;
+  SymbolTable parms_;
 };
 
 
@@ -152,13 +152,13 @@ expression::Expression<T> BondOperatorSplitter<I,T>::partial_evaluate_function(c
 
 
 template <class I, class T>
-multi_array<std::pair<T,bool>,4> get_fermionic_matrix(T,const BondOperator& m, const SiteBasisDescriptor<I>& basis1, const SiteBasisDescriptor<I>& basis2, const Parameters& p=Parameters())
+multi_array<std::pair<T,bool>,4> get_fermionic_matrix(T,const BondOperator& m, const SiteBasisDescriptor<I>& basis1, const SiteBasisDescriptor<I>& basis2, const SymbolTable& p=SymbolTable())
 {
   return m.template matrix<T,I>(basis1,basis2,p);
 }
 
 template <class T, class I>
-multi_array<T,4> get_matrix(T,const BondOperator& m, const SiteBasisDescriptor<I>& basis1, const SiteBasisDescriptor<I>& basis2, const Parameters& p=Parameters())
+multi_array<T,4> get_matrix(T,const BondOperator& m, const SiteBasisDescriptor<I>& basis1, const SiteBasisDescriptor<I>& basis2, const SymbolTable& p=SymbolTable())
 {
   multi_array<std::pair<T,bool>,4> f_matrix = m.template matrix<T,I>(basis1,basis2,p);
   multi_array<T,4> matrix(boost::extents[f_matrix.shape()[0]][f_matrix.shape()[1]][f_matrix.shape()[2]][f_matrix.shape()[3]]);
@@ -176,7 +176,7 @@ multi_array<T,4> get_matrix(T,const BondOperator& m, const SiteBasisDescriptor<I
 template <class T, class I> multi_array<std::pair<T,bool>,4>
 BondOperator::matrix(const SiteBasisDescriptor<I>& b1,
                               const SiteBasisDescriptor<I>& b2,
-                              const Parameters& p) const
+                              const SymbolTable& p) const
 {
   typedef typename expression_value_type_traits<T>::value_type value_type;
 
@@ -184,7 +184,7 @@ BondOperator::matrix(const SiteBasisDescriptor<I>& b1,
   SiteBasisDescriptor<I> basis2(b2);
   basis1.set_parameters(p);
   basis2.set_parameters(p);
-  Parameters parms(p);
+  SymbolTable parms(p);
   parms.copy_undefined(basis1.get_parameters());
   parms.copy_undefined(basis2.get_parameters());
   std::size_t dim1=basis1.num_states();
@@ -233,7 +233,7 @@ BondOperator::matrix(const SiteBasisDescriptor<I>& b1,
 }
 
 template <class T, class I>
-std::vector<boost::tuple<expression::Term<T>,SiteOperator,SiteOperator> > alps::BondOperator::templated_split(SiteBasisDescriptor<I> const& b1, SiteBasisDescriptor<I> const& b2,const Parameters& p) const
+std::vector<boost::tuple<expression::Term<T>,SiteOperator,SiteOperator> > alps::BondOperator::templated_split(SiteBasisDescriptor<I> const& b1, SiteBasisDescriptor<I> const& b2,const SymbolTable& p) const
 {
   std::vector<boost::tuple<expression::Term<T>,SiteOperator,SiteOperator> > terms;
   expression::Expression<T> ex(term());

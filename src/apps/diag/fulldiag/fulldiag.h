@@ -60,7 +60,7 @@ public:
   typedef typename super_type::site_descriptor site_descriptor;
   typedef typename super_type::operator_matrix_type operator_matrix_type;
   
-  explicit FullDiagMatrix (alps::Parameters const& p) : super_type(p) {}
+  explicit FullDiagMatrix (alps::SymbolTable const& p) : super_type(p) {}
   static void print_copyright(std::ostream& out)
   {
     out << "ALPS full diagonalization application version 1.1\n"

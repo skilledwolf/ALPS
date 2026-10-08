@@ -46,7 +46,7 @@ public:
     typedef typename worm_prob_type::wprob_table_type wprob_table_type;
     
     SSE_alg(lattice_type const& lattice, model_type const& model,
-            worker_type& worker, alps::Parameters const& params) :
+            worker_type& worker, alps::SymbolTable const& params) :
         lattice(lattice),
         model(model),
         worker(worker),

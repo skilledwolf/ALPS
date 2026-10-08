@@ -122,7 +122,7 @@ LatticeGraphDescriptor::LatticeGraphDescriptor(const XMLTag& intag,
   }
 }
 
-void LatticeGraphDescriptor::set_parameters(const Parameters& p)
+void LatticeGraphDescriptor::set_parameters(const SymbolTable& p)
 {
   if(lattice_is_finite_)
     finitelattice_.set_parameters(p);

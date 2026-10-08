@@ -22,7 +22,7 @@ int main()
 #ifndef BOOST_NO_EXCEPTIONS
   try {
 #endif
-    alps::Parameters parms;
+    alps::SymbolTable parms;
     parms["L"] = 2;
     parms["MODEL"] = "spin";
     parms["LATTICE"] = "square lattice";

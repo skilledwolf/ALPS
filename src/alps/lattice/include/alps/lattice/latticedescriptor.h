@@ -17,7 +17,7 @@
 #ifndef ALPS_LATTICE_LATTICEDESCRIPTOR_H
 #define ALPS_LATTICE_LATTICEDESCRIPTOR_H
 
-#include <alps/parameter.h>
+#include <alps/expression/symbol_table.h>
 #include <alps/parser/parser.h>
 #include <alps/parser/xmlstream.h>
 #include <alps/lattice/coordinatelattice.h>
@@ -46,7 +46,7 @@ public:
   const std::string& name() const { return name_;}
   std::size_t dimension() const { return dim_;}
 
-  void set_parameters(const alps::Parameters&);
+  void set_parameters(const alps::SymbolTable&);
 
   template<class T>
   void add_default_parameter(const std::string& name,
@@ -54,7 +54,7 @@ public:
   { lparms_[name] = value; }
 
 private:
-  alps::Parameters lparms_;
+  alps::SymbolTable lparms_;
   std::string name_;
   std::size_t dim_;
 };
@@ -83,14 +83,14 @@ public:
   void write_xml(oxstream&) const;
 
   const std::string& name() const { return name_;}
-  void set_parameters(const alps::Parameters&);
+  void set_parameters(const alps::SymbolTable&);
   std::size_t dimension() const { return dim_;}
 
 private:
   std::string name_;
   std::string lattice_name_;
   std::size_t dim_;
-  alps::Parameters flparms_;
+  alps::SymbolTable flparms_;
 
   LatticeDescriptor lattice_; // for printing only
 };

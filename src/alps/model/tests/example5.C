@@ -31,13 +31,13 @@ int main()
     // get operators in one bond term 
     
     std::cout << "Operator names:\n";
-    std::set<std::string> names = lib.get_hamiltonian("spin",alps::Parameters(),true).bond_term().operator_names();
+    std::set<std::string> names = lib.get_hamiltonian("spin",alps::SymbolTable(),true).bond_term().operator_names();
     std::copy(names.begin(),names.end(),std::ostream_iterator<std::string>(std::cout,"\n"));
     
     std::cout << "\nSplit terms:\n\n";
     
     typedef std::vector<boost::tuple<alps::Term,alps::SiteOperator,alps::SiteOperator > > V;
-    V  ops = lib.get_hamiltonian("spin",alps::Parameters(),true).bond_term().split();
+    V  ops = lib.get_hamiltonian("spin",alps::SymbolTable(),true).bond_term().split();
     for (V::const_iterator it=ops.begin(); it!=ops.end();++it)
       std::cout << "Prefactor: " << it->get<0>() << "\nSite 1: " << it->get<1>().term() << "\nSite 2: " << it->get<2>().term() << "\n\n";
 

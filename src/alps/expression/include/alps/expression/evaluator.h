@@ -34,7 +34,7 @@ public:
   static boost::variate_generator<random_type&,boost::uniform_real<> > random;
   static boost::variate_generator<random_type&,boost::normal_distribution<> > gaussian_random;
   static void seed(unsigned int =0);
-  static void seed_if_unseeded(const alps::Parameters&);
+  static void seed_if_unseeded(const alps::SymbolTable&);
 };
 
 namespace expression {
@@ -72,18 +72,18 @@ class ParameterEvaluator : public Evaluator<T> {
 public:
   typedef Evaluator<T> super_type;
   typedef T value_type;
-  ParameterEvaluator(const Parameters& p, bool rand=true) 
+  ParameterEvaluator(const SymbolTable& p, bool rand=true) 
   : Evaluator<T>(rand), parms_(p) { Disorder::seed_if_unseeded(p);}
   virtual ~ParameterEvaluator() {}
 
   bool can_evaluate(const std::string&, bool=false) const;
   value_type evaluate(const std::string&, bool=false) const;
   Expression<T> partial_evaluate(const std::string& name, bool=false) const;
-  const Parameters& parameters() const { return parms_;}
+  const SymbolTable& parameters() const { return parms_;}
 protected:
-  void set_parameters(const Parameters& p) { parms_=p;}
+  void set_parameters(const SymbolTable& p) { parms_=p;}
 private:
-  Parameters parms_;
+  SymbolTable parms_;
 };
 
 template<class T>

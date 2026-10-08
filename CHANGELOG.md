@@ -6,10 +6,12 @@ User-facing changes and migration notes are recorded here, starting with the bui
 
 ### Changed
 
-- Reduce the older `alps::Parameters` to the in-memory text symbols of the
-  expression, lattice and model libraries. Its text grammar, environment-variable
-  substitution, XML, Osiris dump, Boost serialization and flat HDF5 input and output
-  are removed, with `alps::ParameterList` and their parsers. This also removes its
+- Rename the older `alps::Parameters` to `alps::SymbolTable`
+  (`<alps/expression/symbol_table.h>`) and reduce it to the in-memory text symbols of
+  the expression, lattice and model libraries, owned by the `expression` module. Its
+  text grammar, environment-variable substitution, XML, Osiris dump, Boost
+  serialization and flat HDF5 input and output are removed, with `alps::Parameter`,
+  `alps::ParameterList`, their parsers and the `legacy_parameters` module and its
   include cycle with `expression`. `alps::plot::Plot` takes `alps::params`.
 - Read TOML run files in `checksign`, `printgraph` and `lattice2xml`, the model
   examples and the `08-alpsize` parameter and lattice lessons. The lattice and model
@@ -18,7 +20,7 @@ User-facing changes and migration notes are recorded here, starting with the bui
 - Convert typed parameters to the lattice and model libraries in one place.
   `graph_helper` and `model_helper` accept `alps::params`, `alps::seed_disorder`
   replaces five application copies of the disorder seeding, and `ALPS::params` no
-  longer depends on the older `Parameters`.
+  longer depends on the older parameter classes.
 - Port classical energy `wanglandau` learning, overlapping-window weights,
   microcanonical sampling and temperature reweighting to TOML and native ALEA.
   Preserve histogram/round-trip diagnostics, native continuation and MPI chains;
@@ -298,7 +300,7 @@ Typed params no longer accept legacy text/XML files or old parameter checkpoints
 
 Python archive indexing reads primitive datasets or returns h5py groups; use explicit group/dataset operations rather than assigning nested dictionaries or inferring lists from numbered children. Native object `save`/`load` operations close h5py temporarily, invalidating previously borrowed h5py objects. Deprecated `h5ar`, `iArchive`, `oArchive` and XML-export aliases are removed.
 
-The unreferenced `alps::ngs_parapack` XML frontend is removed: all its references were internal to that frontend, and the project assumes no external consumers. The `alps::parapack` framework is also removed; write simulations against `alps::mc::main` as in the classical examples of `tutorials/00-examples`. Its `pevaluate` and `poutput` commands read released Parapack XDR and HDF5 results: convert results with `alps-hdf5-convert SOURCE DESTINATION --parameters /parameters --alea-results GROUP` and analyze them with pyalps, and finish released mid-run Parapack simulations with ALPS 3.0. The scheduler's Monte Carlo classes `MCRun`, `MCSimulation`, `LatticeMCRun`, `LatticeModelMCRun`, `DummyMCRun` and `SimpleMCFactory` are removed as well; `compactrun` and the Monte Carlo run and simulation conversions of `convert2xml` follow the same migration path. The legacy ALEA headers `<alps/alea.h>` and `<alps/alea/*.h>` are removed: accumulate with `ALPS::statistics` (`<alps/alea.hpp>`) and convert released observable files with the `alps-hdf5-convert` ALEA profiles. Older `alps::Parameters` applications remain; migrating their application orchestration is separate work. The lattice and model libraries take typed parameters directly: construct `alps::graph_helper` and `alps::model_helper` from `alps::params`, and call `alps::seed_disorder(p)` where an application seeded the disorder generator itself. `<alps/ngs/make_deprecated_parameters.hpp>` is removed; `explicit alps::Parameters(params const&)` replaces `make_deprecated_parameters`.
+The unreferenced `alps::ngs_parapack` XML frontend is removed: all its references were internal to that frontend, and the project assumes no external consumers. The `alps::parapack` framework is also removed; write simulations against `alps::mc::main` as in the classical examples of `tutorials/00-examples`. Its `pevaluate` and `poutput` commands read released Parapack XDR and HDF5 results: convert results with `alps-hdf5-convert SOURCE DESTINATION --parameters /parameters --alea-results GROUP` and analyze them with pyalps, and finish released mid-run Parapack simulations with ALPS 3.0. The scheduler's Monte Carlo classes `MCRun`, `MCSimulation`, `LatticeMCRun`, `LatticeModelMCRun`, `DummyMCRun` and `SimpleMCFactory` are removed as well; `compactrun` and the Monte Carlo run and simulation conversions of `convert2xml` follow the same migration path. The legacy ALEA headers `<alps/alea.h>` and `<alps/alea/*.h>` are removed: accumulate with `ALPS::statistics` (`<alps/alea.hpp>`) and convert released observable files with the `alps-hdf5-convert` ALEA profiles. Older `alps::Parameters` applications remain; migrating their application orchestration is separate work. The lattice and model libraries take typed parameters directly: construct `alps::graph_helper` and `alps::model_helper` from `alps::params`, and call `alps::seed_disorder(p)` where an application seeded the disorder generator itself. `<alps/ngs/make_deprecated_parameters.hpp>` is removed; `explicit alps::SymbolTable(params const&)` replaces `make_deprecated_parameters`.
 
 The scheduler library is removed with its last XML-job applications: `<alps/scheduler/...>` task, worker and dispatch classes, `DiagTask`, and the `convert2xml` and `parameter2xml` commands. Every application reads TOML run files and writes HDF5 results that pyalps loads directly. `snap2vtk` remains for snapshot files written by released versions.
 
@@ -337,7 +339,8 @@ Numerical persistence now requires an explicit adapter: include `<alps/hdf5/matr
 | `pyalps.runApplication` | `pyalps.run_io.execute(application, runs)`; every application reads TOML run files |
 | `pyalps.writeInputFiles`, `writeTaskXMLFile`, `writeParameterFile`, `generateSeed`, `input2output` | `pyalps.run_io.write_run_files(prefix, runs)`; seeds are set in each run's `[execution]` section |
 | `parameter2xml` | TOML run files, for example written with `pyalps.run_io.write_run_files(prefix, runs)` |
-| `alps::Parameters` text, XML, dump and HDF5 input/output; `alps::ParameterList` | `alps::params` with TOML run files and `alps.params.v2` checkpoints; convert released flat parameter groups with `alps-hdf5-convert --parameters GROUP` |
+| `alps::Parameters` (`<alps/parameter.h>`) as the lattice and model symbols | `alps::SymbolTable` (`<alps/expression/symbol_table.h>`), built from `alps::params` |
+| `alps::Parameters` text, XML, dump and HDF5 input/output; `alps::Parameter`, `alps::ParameterList` | `alps::params` with TOML run files and `alps.params.v2` checkpoints; convert released flat parameter groups with `alps-hdf5-convert --parameters GROUP` |
 | `pyalps.writeInputH5Files`, `pyalps.getInputH5Files` | `pyalps.run_io.write_run_files(prefix, runs)`; `pyalps.getParameters` reads a results file's `/parameters` |
 | `parameter2hdf5`, `p2h5` and their `.in.h5` parameter files | TOML run files; `pyalps.run_io.write_run_files(prefix, runs)` writes them |
 | Parameter text on standard input or as a file for `checksign`, `printgraph` and `lattice2xml`; `checksign` XML jobs and `{ }` task lists | One TOML run file per argument, with the lattice and model in `[parameters]` and libraries in `input.lattice_library`/`input.model_library`; `lattice2xml LATTICE KEY=VALUE ...` is unchanged |

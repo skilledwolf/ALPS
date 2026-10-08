@@ -21,7 +21,7 @@
 #include <string>
 
 void write_two_site_basis(const std::string& name, const alps::ModelLibrary& lib, 
-                          const alps::Parameters& p=alps::Parameters())
+                          const alps::SymbolTable& p=alps::SymbolTable())
 {
   alps::SiteBasisDescriptor<short> sitebasis=lib.get_site_basis(name),
                                    sitebasis2=lib.get_site_basis(name);
@@ -40,7 +40,7 @@ try {
   
   std::ifstream in(alps::search_xml_library_path("models.xml"));
   alps::ModelLibrary lib(in);
-  alps::Parameters p;
+  alps::SymbolTable p;
   p["NMax"]=2;
   write_two_site_basis("spinful boson",lib,p);
 

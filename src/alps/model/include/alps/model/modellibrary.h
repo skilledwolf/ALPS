@@ -41,7 +41,7 @@ public:
   ModelLibrary() {};
   ModelLibrary(std::istream& in) { read_xml(in);}
   ModelLibrary(const XMLTag& tag, std::istream& p) {read_xml(tag,p);}
-  ModelLibrary(const Parameters& parms);
+  ModelLibrary(const SymbolTable& parms);
   
   void read_xml(std::istream& in) { read_xml(parse_tag(in),in);}
   void read_xml(const XMLTag& tag, std::istream& p);
@@ -59,22 +59,22 @@ public:
   const SiteBasisDescriptor<short>& get_site_basis(const std::string& name) const;
   const BasisDescriptor<short>& get_basis(const std::string& name) const;
   const HamiltonianDescriptor<short>& get_hamiltonian(const std::string& name) const;
-  HamiltonianDescriptor<short> get_hamiltonian(const std::string& name, Parameters const& parms, bool issymbolic=false) const;
-  HamiltonianDescriptor<short> get_hamiltonian(Parameters const& parms, bool issymbolic=false) const 
+  HamiltonianDescriptor<short> get_hamiltonian(const std::string& name, SymbolTable const& parms, bool issymbolic=false) const;
+  HamiltonianDescriptor<short> get_hamiltonian(SymbolTable const& parms, bool issymbolic=false) const 
   { return get_hamiltonian(parms["MODEL"],parms,issymbolic);}
   template <class G>
-  HamiltonianDescriptor<short> get_hamiltonian(alps::graph_helper<G> const& g, Parameters const& parms, bool issymbolic=false) const 
+  HamiltonianDescriptor<short> get_hamiltonian(alps::graph_helper<G> const& g, SymbolTable const& parms, bool issymbolic=false) const 
   { return get_hamiltonian(g,parms["MODEL"],parms,issymbolic);}
   template <class G>
-  HamiltonianDescriptor<short> get_hamiltonian(alps::graph_helper<G> const& g, const std::string& name, Parameters const& parms, bool issymbolic=false) const
+  HamiltonianDescriptor<short> get_hamiltonian(alps::graph_helper<G> const& g, const std::string& name, SymbolTable const& parms, bool issymbolic=false) const
   {
-    Parameters p(parms);
+    SymbolTable p(parms);
     alps::HamiltonianDescriptor<short> ham(get_hamiltonian(name));
     ham.create_terms(g);
     if (!issymbolic)
       p.copy_undefined(ham.default_parameters());
     ham.set_parameters(p);
-    ham.substitute_operators(*this,issymbolic ? Parameters() : p);
+    ham.substitute_operators(*this,issymbolic ? SymbolTable() : p);
     return ham;
   }
 
@@ -82,9 +82,9 @@ public:
   const BondOperatorMap& bond_operators() const { return bond_operators_;}
   const GlobalOperatorMap& global_operators() const { return global_operators_;}
   
-  SiteOperator get_site_operator(const std::string& name, Parameters const& p = Parameters()) const;
-  BondOperator get_bond_operator(const std::string& name, Parameters const& p = Parameters()) const;
-  GlobalOperator get_global_operator(const std::string& name, Parameters const& p = Parameters()) const;
+  SiteOperator get_site_operator(const std::string& name, SymbolTable const& p = SymbolTable()) const;
+  BondOperator get_bond_operator(const std::string& name, SymbolTable const& p = SymbolTable()) const;
+  GlobalOperator get_global_operator(const std::string& name, SymbolTable const& p = SymbolTable()) const;
   
 private:
   typedef std::map<std::string,SiteBasisDescriptor<short> > SiteBasisDescriptorMap;

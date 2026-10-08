@@ -17,7 +17,7 @@
 #include <alps/model/globaloperator.h>
 #include <boost/foreach.hpp>
 
-void alps::GlobalOperator::substitute_operators(const ModelLibrary& m, const Parameters& p)
+void alps::GlobalOperator::substitute_operators(const ModelLibrary& m, const SymbolTable& p)
 {
   for (std::vector<SiteTermDescriptor>::iterator it=siteterms_.begin();it!=siteterms_.end();++it)
     it->substitute_operators(m,p);
@@ -43,40 +43,40 @@ alps::BondOperator alps::GlobalOperator::bond_term(unsigned int type) const
   return default_bondterm_.get(type).bond_operator();
 }
 
-boost::optional<alps::Parameters> alps::GlobalOperator::create_site_term(unsigned int type)
+boost::optional<alps::SymbolTable> alps::GlobalOperator::create_site_term(unsigned int type)
 {
   for (std::vector<SiteTermDescriptor>::const_iterator it =siteterms_.begin();it!=siteterms_.end();++it)
     if (it->match_type(type))
-      return boost::optional<Parameters>();
+      return boost::optional<SymbolTable>();
   siteterms_.push_back(default_siteterm_.get(type));
   return default_siteterm_.parms(type);
 }
 
-boost::optional<alps::Parameters> alps::GlobalOperator::create_bond_term(unsigned int type)
+boost::optional<alps::SymbolTable> alps::GlobalOperator::create_bond_term(unsigned int type)
 {
   for (std::vector<BondTermDescriptor>::const_iterator it =bondterms_.begin();it!=bondterms_.end();++it)
     if (it->match_type(type))
-      return boost::optional<Parameters>();
+      return boost::optional<SymbolTable>();
   bondterms_.push_back(default_bondterm_.get(type));
   return default_bondterm_.parms(type);
 }
 
-alps::Parameters alps::GlobalOperator::create_site_terms(std::set<unsigned int> const& types)
+alps::SymbolTable alps::GlobalOperator::create_site_terms(std::set<unsigned int> const& types)
 {
-  Parameters p;
+  SymbolTable p;
   BOOST_FOREACH(unsigned int const& t, types) {
-    boost::optional<Parameters> newp = create_site_term(t);
+    boost::optional<SymbolTable> newp = create_site_term(t);
     if (newp)
       p << newp.get();
   }
   return p;
 }
 
-alps::Parameters alps::GlobalOperator::create_bond_terms(std::set<unsigned int> const& types)
+alps::SymbolTable alps::GlobalOperator::create_bond_terms(std::set<unsigned int> const& types)
 {
-  Parameters p;
+  SymbolTable p;
   BOOST_FOREACH(unsigned int const& t, types) {
-    boost::optional<Parameters> newp = create_bond_term(t);
+    boost::optional<SymbolTable> newp = create_bond_term(t);
     if (newp)
       p << newp.get();
   }

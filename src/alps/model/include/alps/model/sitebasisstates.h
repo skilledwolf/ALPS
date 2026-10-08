@@ -91,7 +91,7 @@ site_basis<I,STATE>::site_basis(const SiteBasisDescriptor<I>& b)
       std::vector<STATE>::push_back(state_type(quantumnumbers));
     else {
       ++it;
-      Parameters p=b.get_parameters(true);
+      SymbolTable p=b.get_parameters(true);
       for(typename SiteBasisDescriptor<I>::const_iterator qit=b.begin();qit!=it;++qit)
         p[qit->name()]=quantumnumbers[qit-b.begin()];
       const_cast<QuantumNumberDescriptor<I>&>(*it).set_parameters(p);

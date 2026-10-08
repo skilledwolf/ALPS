@@ -10,4 +10,4 @@ install(TARGETS lattice2xml printgraph
 alps_register_module(NAME tools_lattice
   TARGETS lattice2xml printgraph
   PRIVATE_FILES lattice_run.hpp
-  DEPENDS lattice legacy_parameters run_config xml)
+  DEPENDS expression lattice run_config xml)

@@ -28,7 +28,7 @@ try {
 #endif
 
   // read parameters: a TOML run file, or a lattice name and KEY=VALUE pairs
-  alps::Parameters parameters;
+  alps::SymbolTable parameters;
   const std::string first = argc > 1 ? argv[1] : "";
   if (argc == 2 && std::filesystem::path(first).extension() == ".toml") {
     parameters = lattice_run(first, "lattice2xml");

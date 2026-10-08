@@ -34,7 +34,7 @@ public:
   // SiteTermDescriptor(const T& t, const std::string& s="") 
   //   : super_type(t,s), type_(-2) {}
   SiteTermDescriptor(const XMLTag&, std::istream&);
-  SiteTermDescriptor(SiteTermDescriptor const& t, std::string const& term, Parameters const& p, unsigned int type) 
+  SiteTermDescriptor(SiteTermDescriptor const& t, std::string const& term, SymbolTable const& p, unsigned int type) 
    : super_type(t,term,p), type_(type) {}
 
   void write_xml(oxstream&) const;
@@ -56,7 +56,7 @@ public:
   typedef STATE state_type;
 
   SiteOperatorEvaluator(const state_type& s, const SiteBasisDescriptor<I>& b,
-                        const Parameters& p, const std::string sit="")
+                        const SymbolTable& p, const std::string sit="")
     : super_type(p), state_(s), basis_(b), fermionic_(false), site_(sit) {}
   bool can_evaluate(const std::string&,bool=false) const;
   bool can_evaluate_function(const std::string&, const expression::Expression<T>&, bool=false) const;

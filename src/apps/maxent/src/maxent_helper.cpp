@@ -22,7 +22,7 @@
 #include <boost/numeric/bindings/lower.hpp>
 
 /*
-MaxEntHelper::MaxEntHelper(const alps::Parameters& p) : 
+MaxEntHelper::MaxEntHelper(const alps::SymbolTable& p) : 
 MaxEntParameters(p, data) , def_(nfreq())
 {
   for (int i=0; i<nfreq(); ++i) 

@@ -21,7 +21,7 @@
 #include <alps/model/half_integer.h>
 #include <alps/parser/xmlstream.h>
 #include <alps/parser/parser.h>
-#include <alps/parameter.h>
+#include <alps/expression/symbol_table.h>
 #include <alps/expression.h>
 #include <boost/config.hpp>
 #include <boost/lexical_cast.hpp>
@@ -103,10 +103,10 @@ public:
   void write_xml(alps::oxstream&) const;
   bool fermionic() const { return fermionic_;}
 
-  bool set_parameters(const Parameters&);
+  bool set_parameters(const SymbolTable&);
   // returns true if it can be evaluated
 
-  bool depends_on(const Parameters::key_type& s) const;
+  bool depends_on(const SymbolTable::key_type& s) const;
   bool depends_on(const QuantumNumberDescriptor& qn) const
   { return (dependency_.find(qn)!=dependency_.end()); }
   void add_dependency(const QuantumNumberDescriptor& qn) { dependency_.insert(qn); }
@@ -148,7 +148,7 @@ private:
   mutable value_type max_;
   bool fermionic_;
   mutable bool valid_;
-  bool evaluate(const Parameters& =Parameters()) const;
+  bool evaluate(const SymbolTable& =SymbolTable()) const;
   mutable std::set<QuantumNumberDescriptor> dependency_;
   boost::optional<value_type> global_min_;
   boost::optional<value_type> global_max_;
@@ -194,7 +194,7 @@ template <class I>
 const QuantumNumberDescriptor<I>& QuantumNumberDescriptor<I>::operator+=(const QuantumNumberDescriptor<I>& rhs)
 {
 
-  Parameters p;
+  SymbolTable p;
   if(dependency_.size()!=rhs.dependency_.size())
     boost::throw_exception(std::runtime_error("Adding quantum numbers that do not depend on the same quantum numbers: " + name() + " + " + rhs.name()));
   for(typename std::set<QuantumNumberDescriptor<I> >::const_iterator it=dependency_.begin();it!=dependency_.end();++it) {
@@ -252,7 +252,7 @@ QuantumNumberDescriptor<I>::QuantumNumberDescriptor(const XMLTag& intag, std::is
 }
 
 template <class I>
-bool QuantumNumberDescriptor<I>::set_parameters(const Parameters& p)
+bool QuantumNumberDescriptor<I>::set_parameters(const SymbolTable& p)
 {
   bool could_evaluate = evaluate(p);
   if (could_evaluate)
@@ -263,7 +263,7 @@ bool QuantumNumberDescriptor<I>::set_parameters(const Parameters& p)
 }
 
 template<class I >
-bool QuantumNumberDescriptor<I>::depends_on(const Parameters::key_type& s) const
+bool QuantumNumberDescriptor<I>::depends_on(const SymbolTable::key_type& s) const
 {
   Expression min_exp_(min_string_);
   Expression max_exp_(max_string_);
@@ -271,7 +271,7 @@ bool QuantumNumberDescriptor<I>::depends_on(const Parameters::key_type& s) const
 }
 
 template <class I>
-bool QuantumNumberDescriptor<I>::evaluate(const Parameters& p) const
+bool QuantumNumberDescriptor<I>::evaluate(const SymbolTable& p) const
 {
   ParameterEvaluator eval(p);
   Expression min_exp_(min_string_);

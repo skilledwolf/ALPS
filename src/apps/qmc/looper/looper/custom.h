@@ -35,7 +35,7 @@ struct custom_measurement_initializer : private alps::MeasurementOperators {
   typedef std::pair<std::string, std::string> s_expression_type;
   typedef std::pair<std::string, std::pair<std::string, std::string> > p_expression_type;
 
-  custom_measurement_initializer(alps::Parameters const& params);
+  custom_measurement_initializer(alps::SymbolTable const& params);
 
   void init(lattice_t const& lat,
     std::vector<s_elements_type>& average_elements,
@@ -44,7 +44,7 @@ struct custom_measurement_initializer : private alps::MeasurementOperators {
     std::vector<p_elements_type>& strfactor_elements);
 
 private:
-  alps::Parameters const& params_;
+  alps::SymbolTable const& params_;
 };
 
 struct custom_measurement {
@@ -71,7 +71,7 @@ struct custom_measurement {
     // working vector
     std::valarray<double> local, corr, sfac;
 
-    void initialize(alps::Parameters const& params, lattice_t const& lat,
+    void initialize(alps::SymbolTable const& params, lattice_t const& lat,
       bool /* is_signed */, bool /* use_improved_estimator */) {
       custom_measurement_initializer<lattice_t> initializer(params);
       initializer.init(lat, average_elements, local_elements, correlation_elements,

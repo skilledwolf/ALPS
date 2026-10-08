@@ -18,7 +18,7 @@
 #define ALPS_MODEL_OPERATOR_H
 
 #include <alps/expression.h>
-#include <alps/parameter.h>
+#include <alps/expression/symbol_table.h>
 
 namespace alps {
 
@@ -29,7 +29,7 @@ public:
   typedef expression::ParameterEvaluator<T> super_type;
   typedef typename super_type::value_type value_type;
   
-  OperatorEvaluator(const Parameters& p)
+  OperatorEvaluator(const SymbolTable& p)
     : super_type(p) {}
   typename super_type::Direction direction() const { return super_type::right_to_left; }
 

@@ -20,7 +20,7 @@
 #include <alps/config.h>
 
 #include <alps/cctype.h>
-#include <alps/parameter.h>
+#include <alps/expression/symbol_table.h>
 #include <alps/random.h>
 #include <alps/parser/parser.h>
 #include <alps/utility/vectorio.hpp>

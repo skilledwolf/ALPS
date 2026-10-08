@@ -92,7 +92,7 @@ public:
     return *this;
   }
 
-  void set_parameters(const Parameters& p)
+  void set_parameters(const SymbolTable& p)
   {
     typename std::vector<vector_type>::iterator v_end = basis_vectors_.end();
     for (typename std::vector<vector_type>::iterator

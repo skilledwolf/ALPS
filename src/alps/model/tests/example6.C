@@ -21,7 +21,7 @@
 #include <string>
 
 void write_set(const std::string& name, const alps::ModelLibrary& lib, 
-               const alps::Parameters& p=alps::Parameters())
+               const alps::SymbolTable& p=alps::SymbolTable())
 {
   alps::SiteBasisDescriptor<short> sitebasis=lib.get_site_basis(name);
   sitebasis.set_parameters(p);
@@ -37,7 +37,7 @@ try {
   std::ifstream in(alps::search_xml_library_path("models.xml"));
   alps::ModelLibrary lib(in);
 
-  alps::Parameters p;
+  alps::SymbolTable p;
   write_set("spinful boson",lib);
   p["boson_spin"]=2;
   p["NMax"]=2;
