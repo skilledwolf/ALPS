@@ -1,7 +1,7 @@
 // Copyright (C) 2026 ALPS Collaboration. SPDX-License-Identifier: MIT
 #pragma once
 #include <alps/hdf5/archive.hpp>
-#include <alps/ngs/make_deprecated_parameters.hpp>
+#include <alps/parameter.h>
 #include <alps/parser/xslt_path.h>
 #include <alps/run_config.hpp>
 #include <filesystem>
@@ -28,7 +28,7 @@ inline std::string schema(std::filesystem::path const& file, char const* base) {
 }
 
 inline alps::Parameters parameters(alps::run_configuration const& run) {
-    auto p = alps::make_deprecated_parameters(run.parameters);
+    alps::Parameters p(run.parameters);
     p["LATTICE_LIBRARY"] = run.input["lattice_library"].as<std::string>();
     p["MODEL_LIBRARY"] = run.input["model_library"].as<std::string>();
     return p;

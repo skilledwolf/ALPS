@@ -46,6 +46,13 @@ public:
     model_ = model_library_.get_hamiltonian(g,p,issymbolic);
   }
 
+  explicit model_helper(params const& p, bool issymbolic=false)
+   : model_helper(Parameters(p), issymbolic) {}
+
+  template <class G>
+  model_helper(alps::graph_helper<G> const& g, params const& p, bool issymbolic=false)
+   : model_helper(g, Parameters(p), issymbolic) {}
+
   const ModelLibrary& model_library() const { return model_library_; }  
   HamiltonianDescriptor<I>& model() { return model_;}
   const HamiltonianDescriptor<I>& model() const { return model_;}

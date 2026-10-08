@@ -6,7 +6,6 @@
 #include "evaluation.hpp"
 #include <alps/alea/hdf5.hpp>
 #include <alps/params.hpp>
-#include <alps/ngs/make_deprecated_parameters.hpp>
 #include <alps/plot.h>
 #include <filesystem>
 #include <iostream>
@@ -72,7 +71,7 @@ void evaluate(std::filesystem::path const& file,std::map<std::string,double> con
   prefix.replace_extension();
   if (prefix.extension()==".out") prefix.replace_extension();
   for (auto const& [name,curve]:curves) {
-    alps::plot::Plot<double> plot(name+" versus Temperature",alps::make_deprecated_parameters(parameters));
+    alps::plot::Plot<double> plot(name+" versus Temperature",alps::Parameters(parameters));
     plot.set_labels("Temperature",name); plot<<curve;
     alps::oxstream output(prefix.string()+".plot."+suffixes.at(name)+".xml"); output<<plot;
   }

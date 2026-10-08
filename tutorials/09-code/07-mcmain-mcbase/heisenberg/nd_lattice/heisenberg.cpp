@@ -6,7 +6,6 @@
 #include "heisenberg.hpp"
 #include "helper.hpp"
 
-#include <alps/ngs/make_deprecated_parameters.hpp>
 
 
 heisenberg_sim::heisenberg_sim(parameters_type const & parms, std::size_t seed_offset)
@@ -17,7 +16,7 @@ heisenberg_sim::heisenberg_sim(parameters_type const & parms, std::size_t seed_o
     , total_sweeps(int(parameters["SWEEPS"]))
     , beta(1. / double(parameters["T"]))
     , random_spin_gen()
-    , lattice(alps::make_deprecated_parameters(parms))
+    , lattice(parms)
     , spins(lattice.num_sites())
 {
     /* initialize spins */

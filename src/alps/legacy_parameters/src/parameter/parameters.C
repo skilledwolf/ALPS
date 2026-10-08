@@ -18,6 +18,7 @@
 #include <boost/foreach.hpp>
 #include <cstdlib>
 #include <iostream>
+#include <sstream>
 #include <streambuf>
 
 #include <alps/expression.h>
@@ -27,6 +28,15 @@
 namespace bs = boost::spirit::classic;
 
 namespace alps {
+
+Parameters::Parameters(params const& typed)
+{
+  for (auto const& [key, value] : typed) {
+    std::ostringstream text;
+    text << value;
+    push_back(key, text.str());
+  }
+}
 
 void Parameters::push_back(const parameter_type& p, bool allow_overwrite)
 {

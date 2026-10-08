@@ -14,7 +14,7 @@ class spatial_walker {
     spatial_ising_kernel kernel_;
 public:
     spatial_walker(alps::params const& p,size_t offset):random_(p["SEED"].as<int>()+offset,p["RNG"].as<std::string>()),
-        kernel_(alps::graph_helper<>(alps::make_deprecated_parameters(p)),p["J"].as<double>(),[&]{return random_();}) {}
+        kernel_(alps::graph_helper<>(p),p["J"].as<double>(),[&]{return random_();}) {}
     static auto names() {return classical_walker<1>::names();}
     void step(double beta) {kernel_.step(beta,[&]{return random_();});}
     std::vector<double> sample() const {return kernel_.sample();}

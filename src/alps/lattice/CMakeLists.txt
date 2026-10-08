@@ -42,5 +42,5 @@ endif()
 
 alps_register_module(NAME lattice HEADER_SET lattice_headers
   TARGETS alps
-  DEPENDS configuration containers expression legacy_parameters numerics osiris random utilities xml
+  DEPENDS configuration containers expression legacy_parameters numerics osiris params random utilities xml
 )

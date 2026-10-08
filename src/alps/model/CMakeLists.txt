@@ -43,5 +43,5 @@ endif()
 
 alps_register_module(NAME model HEADER_SET model_headers
   TARGETS alps
-  DEPENDS configuration containers expression hdf5 lattice legacy_parameters numerics utilities xml
+  DEPENDS configuration containers expression hdf5 lattice legacy_parameters numerics params utilities xml
 )

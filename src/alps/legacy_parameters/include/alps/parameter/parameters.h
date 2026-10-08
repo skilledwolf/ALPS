@@ -24,6 +24,7 @@
 
 #include "parameter.h"
 #include <alps/osiris/dump.h>
+#include <alps/params.hpp>
 #include <alps/parser/parser.h>
 #include <alps/xml.h>
 #include <boost/foreach.hpp>
@@ -84,6 +85,8 @@ public:
   Parameters() {}
   /// parameters read from a text file
   Parameters(std::istream& is) { parse(is); }
+  /// symbols for the lattice and model libraries, one text value per typed parameter
+  explicit Parameters(params const& typed);
   /// paramaters read from a hdf5 file
   Parameters(alps::hdf5::archive & ar) {
     std::string context = ar.get_context();

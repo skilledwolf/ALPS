@@ -23,6 +23,8 @@
 #include <alps/lattice/graph_traits.h>
 #include <alps/lattice/parity.h>
 #include <alps/lattice/propertymap.h>
+#include <alps/expression/evaluator.h>
+#include <alps/params.hpp>
 #include <alps/multi_array.hpp>
 #include <boost/version.hpp>
 # include <boost/property_map/vector_property_map.hpp>
@@ -149,6 +151,15 @@ std::vector<std::string> bond_labels(G const& g, int precision = 0)
 }
 
 
+/// Seeds the disorder generator of the lattice and model libraries from
+/// DISORDER_SEED, else SEED, else 42. It returns its argument, so a simulation
+/// can seed in a member initializer before its lattice is built.
+inline params const& seed_disorder(params const& p)
+{
+  Disorder::seed(p.value_or<uint32_t>("DISORDER_SEED", p.value_or<uint32_t>("SEED", 42)));
+  return p;
+}
+
 template <class G=coordinate_graph_type>
 class graph_helper : public LatticeLibrary
 {
@@ -234,6 +245,8 @@ public:
     d_.disorder_vertices(graph(),inhomogeneous_vertex_type_map_);
     d_.disorder_edges(graph(),inhomogeneous_edge_type_map_);
   }
+
+  explicit graph_helper(params const& p) : graph_helper(Parameters(p)) {}
 
   ~graph_helper() { if (to_delete_) delete g_; }
 

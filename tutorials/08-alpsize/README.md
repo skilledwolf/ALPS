@@ -26,7 +26,7 @@ means one cluster flip, not one attempted update per lattice site.
 
 The lattice lesson accepts exactly one `parameters.LATTICE` or `parameters.GRAPH`,
 additional lattice parameters, and an optional `input.lattice_library` path.
-It still uses the model/lattice library's internal parameter adapter. The run
+It constructs the lattice directly from the typed parameters. The run
 configuration and saved parameters use the consolidated typed API. The separate
 `lattice` executable in lesson 08 remains the original graph-iteration example.
 

@@ -8,7 +8,6 @@
 #include "tinyvector/tinyvector.hpp"
 
 #include <alps/mcbase.hpp>
-#include <alps/ngs/make_deprecated_parameters.hpp>
 #include <alps/random/uniform_on_sphere_n.h>
 #include <alps/lattice.h>
 
@@ -69,7 +68,7 @@ class ALPS_DECL ndim_spin_sim : public alps::mcbase {
 template<int N>
 ndim_spin_sim<N>::ndim_spin_sim(parameters_type const & parms, std::size_t seed_offset)
     : alps::mcbase(parms, seed_offset)
-    , lattice(alps::make_deprecated_parameters(parms))
+    , lattice(parms)
     , num_sites(lattice.num_sites())
     , spins(num_sites)
     , sweeps(0)

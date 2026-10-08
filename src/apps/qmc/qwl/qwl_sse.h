@@ -15,7 +15,6 @@
 #include "qwl_histogram.h"
 #include <alps/mcbase.hpp>
 #include <alps/model.h>
-#include <alps/ngs/make_deprecated_parameters.hpp>
 #include <alps/alea/checkpoint.hpp>
 #include <alps/alea/hdf5.hpp>
 #include <alps/hdf5/stdarray.hpp>
@@ -61,10 +60,6 @@ public:
 private:
   using statetype=uint32_t;
   using bond_state_type=uint32_t;
-  static alps::Parameters graph_parameters(alps::params const& p) {
-    alps::Disorder::seed(p.value_or<uint32_t>("DISORDER_SEED",uint32_t(p.value_or("SEED",42))));
-    return alps::make_deprecated_parameters(p);
-  }
   alps::Parameters parms;
   size_t bins_, chain_;
   unsigned int L, norder_min, norder_max, logf_steps_total;
@@ -132,9 +127,9 @@ private:
 };
 
 QWL_SSE_Simulation::QWL_SSE_Simulation(alps::params const& p,size_t bins,size_t chain)
-  : mcbase(p,chain), graph_helper<>(graph_parameters(p)),
-    model_helper<>(static_cast<graph_helper<> const&>(*this),alps::make_deprecated_parameters(p)),
-    parms(alps::make_deprecated_parameters(p)), bins_(bins), chain_(chain)
+  : mcbase(p,chain), graph_helper<>(alps::seed_disorder(p)),
+    model_helper<>(static_cast<graph_helper<> const&>(*this),p),
+    parms(p), bins_(bins), chain_(chain)
 {
   if (!num_sites() || !num_bonds() || num_sites()>INT_MAX || num_bonds()>INT_MAX || bins<2 || bins%2)
     throw std::invalid_argument("QWL requires a nonempty lattice and even batch capacity >= 2");

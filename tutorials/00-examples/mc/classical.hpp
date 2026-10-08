@@ -26,7 +26,7 @@ template<size_t Dimension> class classical_walker {
     }
 public:
     classical_walker(alps::params const& p,size_t offset):random_(p["SEED"].as<int>()+offset,p["RNG"].as<std::string>()) {
-        alps::graph_helper<> graph(alps::make_deprecated_parameters(p));
+        alps::graph_helper<> graph(p);
         if (!graph.num_sites()) throw std::invalid_argument("The lattice must contain sites");
         neighbors_.resize(graph.num_sites());
         for (auto [it,end]=graph.bonds();it!=end;++it) {

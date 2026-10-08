@@ -32,16 +32,14 @@ target_sources(alps_params PUBLIC
     include/alps/params/dict_value.hpp
     include/alps/params/dict_exceptions.hpp)
 
-add_subdirectory(adapters)
-
 if(ALPS_BUILD_TESTING)
   add_subdirectory(tests)
 endif()
 
 alps_register_module(NAME params HEADER_SET params_headers
-  HEADER_TARGETS alps_params alps_headers
-  TARGETS alps alps_params
-  DEPENDS configuration hdf5 legacy_parameters utilities
+  HEADER_TARGETS alps_params
+  TARGETS alps_params
+  DEPENDS configuration hdf5 utilities
   GENERATED_HEADERS alps/params_export.h
 )
 

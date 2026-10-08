@@ -32,7 +32,6 @@
 #include "../wolff.hpp"
 #include <alps/mc/driver.hpp>
 #include <alps/lattice.h>
-#include <alps/ngs/make_deprecated_parameters.hpp>
 
 class wolff_worker : public alps::mcbase {
 public:
@@ -88,7 +87,7 @@ public:
     }
 private:
     static std::vector<std::vector<int>> neighbors(alps::params const& p) {
-        alps::graph_helper<> graph(alps::make_deprecated_parameters(p));
+        alps::graph_helper<> graph(p);
         if (!graph.num_sites() || graph.num_sites()>size_t(INT_MAX/2))
             throw std::invalid_argument("Lattice site count is outside the supported range");
         std::vector<std::vector<int>> result(graph.num_sites());

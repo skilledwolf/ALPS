@@ -22,5 +22,5 @@ endif()
 
 alps_register_module(NAME legacy_parameters HEADER_SET legacy_parameters_headers
   TARGETS alps
-  DEPENDS configuration expression hdf5 osiris utilities xml
+  DEPENDS configuration expression hdf5 osiris params utilities xml
 )

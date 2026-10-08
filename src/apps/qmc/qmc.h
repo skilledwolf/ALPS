@@ -18,7 +18,6 @@
 #include <boost/math/constants/constants.hpp>
 #include <alps/mcbase.hpp>
 #include <alps/model.h>
-#include <alps/ngs/make_deprecated_parameters.hpp>
 #include "simulation.hpp"
 #include <alps/model/measurement_operators.h>
 #include <set>
@@ -78,10 +77,6 @@ public :
     return alps::has_sign_problem(this->model(),static_cast<super_type const&>(*this),parms);
   }
 protected:
-  static alps::Parameters graph_parameters(alps::params const& p) {
-    alps::Disorder::seed(p.value_or<uint32_t>("DISORDER_SEED",uint32_t(p.value_or("SEED",42))));
-    return alps::make_deprecated_parameters(p);
-  }
   unsigned winding_dimension_=0;
   alps::Parameters parms;
   double density_reference_=std::numeric_limits<double>::quiet_NaN();
@@ -128,11 +123,11 @@ private:
 
 template <class G, class StateType>
 QMCRun<G,StateType>::QMCRun(alps::params const& p,size_t bins,size_t chain,bool issymbolic)
-  : native_qmc::simulation(p,bins,chain), super_type(graph_parameters(p)),
-    alps::model_helper<>(static_cast<super_type const&>(*this),alps::make_deprecated_parameters(p),issymbolic),
-    alps::MeasurementOperators(alps::make_deprecated_parameters(p)),
+  : native_qmc::simulation(p,bins,chain), super_type(alps::seed_disorder(p)),
+    alps::model_helper<>(static_cast<super_type const&>(*this),p,issymbolic),
+    alps::MeasurementOperators(alps::Parameters(p)),
     parms([&] {
-      auto values=alps::make_deprecated_parameters(p);
+      alps::Parameters values(p);
       values.copy_undefined(this->model().default_parameters());
       return values;
     }())

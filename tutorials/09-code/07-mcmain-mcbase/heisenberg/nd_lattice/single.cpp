@@ -32,7 +32,6 @@ int main(int argc, char *argv[]) {
 
         alps::parameters_type<heisenberg_sim>::type parameters;
         parameters = load_spin_parameters(options.input_file);
-        //~ alps::Parameters old_parameters = alps::make_deprecated_parameters(parameters);
 
         //~ heisenberg_sim sim(parameters, old_parameters);
         heisenberg_sim sim(parameters);

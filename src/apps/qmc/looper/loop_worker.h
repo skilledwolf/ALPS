@@ -19,7 +19,6 @@
 #include <looper/type.h>
 #include <looper/union_find.h>
 #include "../simulation.hpp"
-#include <alps/ngs/make_deprecated_parameters.hpp>
 #include <alps/hdf5/stdarray.hpp>
 
 
@@ -69,10 +68,6 @@ public:
 
 
 protected:
-  static alps::Parameters graph_parameters(alps::params const& p) {
-    alps::Disorder::seed(p.value_or<uint32_t>("DISORDER_SEED",p.value_or<uint32_t>("SEED",42)));
-    return alps::make_deprecated_parameters(p);
-  }
   std::vector<double> model_state() const {
     std::vector<double> result{model.graph_weight(),model.energy_offset(),lattice.volume()};
     for (double value:model.graph_weights()) result.push_back(value);
@@ -132,10 +127,10 @@ private:
 
 template<class MC>
 loop_worker<MC>::loop_worker(alps::params const& p,size_t bins,size_t chain,double initial_beta)
-  : native_qmc::simulation(p,bins,chain), lattice(graph_parameters(p)),
-    model(alps::make_deprecated_parameters(p), lattice, continuous_time),
+  : native_qmc::simulation(p,bins,chain), lattice(alps::Parameters(alps::seed_disorder(p))),
+    model(alps::Parameters(p), lattice, continuous_time),
     temperature([&] {
-      auto values=alps::make_deprecated_parameters(p);
+      alps::Parameters values(p);
       if (initial_beta>0) values["T"]=1/initial_beta;
       return values;
     }()), chain_(chain) {
@@ -162,7 +157,7 @@ loop_worker<MC>::loop_worker(alps::params const& p,size_t bins,size_t chain,doub
   perm.resize(max_virtual_sites(lattice));
 
   // initialize estimators
-  estimator.initialize(alps::make_deprecated_parameters(p), lattice, model.is_signed(), use_improved_estimator);
+  estimator.initialize(alps::Parameters(p), lattice, model.is_signed(), use_improved_estimator);
   is_signed_=model.is_signed();
   init_observables(*this);
 }

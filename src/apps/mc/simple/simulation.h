@@ -6,7 +6,6 @@
 
 #include <alps/mcbase.hpp>
 #include <alps/lattice.h>
-#include <alps/ngs/make_deprecated_parameters.hpp>
 #include <alps/alea/checkpoint.hpp>
 #include <alps/alea/hdf5.hpp>
 #include <alps/alea/transform.hpp>
@@ -33,7 +32,7 @@ public:
         return collect_results_as<alps::alea::batch_result<double>>(names.empty() ? alps::mc::batch_names(measurements) : names);
     }
     simulation(alps::params const& p, std::size_t bins = 128, std::size_t chain = 0)
-        : mcbase(p, chain), graph_helper<>(graph_parameters(p)), bins_(bins), chain_(chain), moments_(1,bins),
+        : mcbase(p, chain), graph_helper<>(alps::seed_disorder(p)), bins_(bins), chain_(chain), moments_(1,bins),
           model_(p["ALGORITHM"].as<std::string>()),
           dimensions_(model_ == "ising" ? 1 : model_ == "xy" ? 2 : 3),
           beta_(inverse_temperature(p)), field_(finite(p.value_or("H", 0.), "H")),
@@ -235,11 +234,6 @@ public:
     }
 
 private:
-    static alps::Parameters graph_parameters(alps::params const& p) {
-        auto seed = p.value_or<uint32_t>("DISORDER_SEED", uint32_t(p.value_or("SEED", 42)));
-        alps::Disorder::seed(seed);
-        return alps::make_deprecated_parameters(p);
-    }
     static void validate_result(alps::alea::batch_result<double> const& result) {
         if (!result.valid() || !result.store().batch().allFinite()
                 || (result.count() && !result.mean().allFinite())

@@ -30,7 +30,6 @@
 
 #include "../wolff.hpp"
 #include <alps/lattice.h>
-#include <alps/ngs/make_deprecated_parameters.hpp>
 
 int main(int argc, char** argv) {
     return wolff_main(argc, argv, [](alps::run_configuration const& run) {
@@ -38,7 +37,7 @@ int main(int argc, char** argv) {
         if (parameters.exists("LATTICE") == parameters.exists("GRAPH"))
             throw std::invalid_argument("Specify exactly one LATTICE or GRAPH");
         if (run.input.exists("lattice_library")) parameters["LATTICE_LIBRARY"] = run.input["lattice_library"];
-        alps::graph_helper<> graph(alps::make_deprecated_parameters(parameters));
+        alps::graph_helper<> graph(parameters);
         std::vector<std::vector<int>> neighbors(graph.num_sites());
         for (size_t i=0; i<neighbors.size(); ++i)
             for (auto [it,end]=graph.neighbors(i); it!=end; ++it) neighbors[i].push_back(*it);

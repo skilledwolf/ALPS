@@ -5,7 +5,6 @@
 #include <alps/mc/measurements.hpp>
 #include <alps/mcbase.hpp>
 #include <alps/lattice.h>
-#include <alps/ngs/make_deprecated_parameters.hpp>
 #include <alps/alea/checkpoint.hpp>
 #include <alps/alea/hdf5.hpp>
 #include <alps/alea/transform.hpp>
@@ -62,7 +61,7 @@ public:
         return collect_results_as<alps::alea::batch_result<double>>(names.empty() ? alps::mc::batch_names(measurements) : names);
     }
     simulation(alps::params const& p, std::size_t bins=128, std::size_t chain=0)
-        : mcbase(p,chain), graph_helper<>(graph_parameters(p)), bins_(bins), chain_(chain), moments_(4,bins),
+        : mcbase(p,chain), graph_helper<>(alps::seed_disorder(p)), bins_(bins), chain_(chain), moments_(4,bins),
           model_(p["MODEL"].as<std::string>()), dim_(model_dimension(model_)), potts_(model_=="Potts"),
           q_(potts_ ? p["q"].as<unsigned>() : 0), beta_(inverse_temperature(p)),
           production_(p["SWEEPS"].as<uint64_t>()),
@@ -279,10 +278,6 @@ private:
         if (model=="Ising") return 1; if (model=="XY" || model=="Potts") return 2;
         if (model=="Heisenberg") return 3; if (model=="O(4)") return 4;
         throw std::invalid_argument("unknown spinmc model");
-    }
-    static alps::Parameters graph_parameters(alps::params const& p) {
-        alps::Disorder::seed(p.value_or<uint32_t>("DISORDER_SEED",uint32_t(p.value_or("SEED",42))));
-        return alps::make_deprecated_parameters(p);
     }
     Eigen::VectorXd axis() {
         Eigen::VectorXd direction(dim_);

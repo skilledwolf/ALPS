@@ -16,7 +16,6 @@
 // to <prefix>.plot.*.xml and <prefix>.measurements.*.plot.xml.
 #include <alps/hdf5/archive.hpp>
 #include <alps/hdf5/vector.hpp>
-#include <alps/ngs/make_deprecated_parameters.hpp>
 #include <alps/params.hpp>
 #include <alps/plot.h>
 #include <alps/utility/copyright.hpp>
@@ -279,7 +278,7 @@ void evaluate(std::filesystem::path const& file, std::map<std::string, std::stri
   const double per_site = densities ? s.sites : 1.;
   const std::string dstr = densities ? " Density" : "", sstr = densities ? " per Site" : "";
   const std::string xname = versus_field ? field_label : "Temperature";
-  const alps::Parameters parameters = alps::make_deprecated_parameters(s.parameters);
+  const alps::Parameters parameters(s.parameters);
 
   struct curve { std::string name, ylabel, suffix; double averages::*value; };
   std::vector<curve> curves{

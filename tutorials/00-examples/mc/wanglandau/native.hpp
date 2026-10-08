@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 #include <alps/lattice.h>
-#include <alps/ngs/make_deprecated_parameters.hpp>
 #include <alps/mc/driver.hpp>
 #include <numeric>
 
@@ -134,7 +133,7 @@ public:
         joint_(4*width(measure_),bins),roundtrips_(1,bins) {
         auto size=width(walk_);
         if (measure_[0]<walk_[0] || measure_[1]>walk_[1]) throw std::invalid_argument("Measurement range must be inside the walk range");
-        alps::graph_helper<> graph(alps::make_deprecated_parameters(p));
+        alps::graph_helper<> graph(p);
         weights_.sites=graph.num_sites();weights_.coupling=p["COUPLING"].as<int64_t>();weights_.range=walk_;
         if (!weights_.sites) throw std::invalid_argument("The lattice must contain sites");
         neighbors_.resize(weights_.sites);

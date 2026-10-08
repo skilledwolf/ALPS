@@ -15,7 +15,6 @@
 #include "kernel.hpp"
 #include "ising_schema.hpp"
 #include <alps/lattice.h>
-#include <alps/ngs/make_deprecated_parameters.hpp>
 #include <alps/mc/driver.hpp>
 #include <alps/mc/physical_moments.hpp>
 #include <alps/alea/transformer.hpp>
@@ -52,7 +51,7 @@ public:
     template<class... Context>
     basic_ising(alps::params const& p,size_t bins,size_t chain,Context const&... context):parameters_(p),bins_(bins),chain_(chain),
         random_(p["SEED"].as<int>()+chain,p["RNG"].as<std::string>()),
-        state_(alps::graph_helper<>(alps::make_deprecated_parameters(p)),p["J"].as<double>(),[&]{return random_();},context...) {
+        state_(alps::graph_helper<>(p),p["J"].as<double>(),[&]{return random_();},context...) {
         const bool scan=p["ALGORITHM"].as<std::string>()=="ising; temperature scan";
         const size_t n=scan ? p["NUM_TEMPERATURES"].as<size_t>() : 1;
         uint64_t offset=0;

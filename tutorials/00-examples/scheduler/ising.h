@@ -18,7 +18,6 @@
 #include <alps/alea/transform.hpp>
 #include <alps/alea/transformer.hpp>
 #include <alps/lattice.h>
-#include <alps/ngs/make_deprecated_parameters.hpp>
 #include <alps/hdf5/vector.hpp>
 #include <cmath>
 
@@ -37,7 +36,7 @@ public:
             neighbors_.resize(n);
             for (size_t i=0; i<n; ++i) neighbors_[i] = {(i+1)%n,(i+n-1)%n};
         } else {
-            alps::graph_helper<> graph(alps::make_deprecated_parameters(p));
+            alps::graph_helper<> graph(p);
             if (graph.inhomogeneous()) throw std::invalid_argument("Disordered lattices are not supported");
             neighbors_.resize(graph.num_sites());
             for (size_t i=0; i<neighbors_.size(); ++i)
