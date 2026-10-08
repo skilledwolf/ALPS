@@ -330,7 +330,8 @@ loss of precision. Boolean flags must use `True`/`False`.
 
 Params checkpoints are explicitly versioned as `alps.params.v2`; old checkpoints
 are not accepted by `ngs.params.load`. Use the [offline converter](../../src/tools/hdf5/README.md)
-with `--parameters GROUP` to upgrade official flat parameter groups. The
+with `--parameters GROUP` to upgrade official flat parameter groups, or
+`--core-parameters GROUP` for ALPSCore 2.3.3 checkpoints. The
 unreleased `alps.params.v1` format is unsupported. The
 analysis loaders also read the flat parameter groups of released result files. Checkpoints reject names and
 string values containing NUL before overwriting stored parameters.

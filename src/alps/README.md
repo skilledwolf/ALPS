@@ -68,12 +68,13 @@ and [Python conversion contracts](../../tests/pyalps/test_conversion_contracts.p
 are acceptance tests for these choices.
 
 Schemas, defaults and provenance belong to `run_config`, rather than the
-dictionary. `alps.params.v2` is the canonical parameter checkpoint for this
-branch; it deliberately rejects older ALPS/Core parameter encodings. Generic
-archive payload interchange is a separate contract. The reconciliation runner
-checks both providers' own extended checkpoints when both are supplied, and can
-check the installed ALPS SDK alone. A same-provider report does not demonstrate
-Core interoperability, and the historical comparison is not the current baseline.
+dictionary. `alps.params.v2` is the canonical parameter checkpoint; it
+deliberately rejects older ALPS/Core parameter encodings, which `alps-hdf5-convert`
+migrates offline. Generic archive payload interchange is a separate contract. The
+reconciliation runner checks both providers' own extended checkpoints when both
+are supplied, and that converted Core checkpoints load in ALPS; it can also check
+the installed ALPS SDK alone. A same-provider report does not demonstrate Core
+interoperability.
 
 Archive reads copy values into caller-owned storage and must release HDF5-allocated
 variable-length buffers on success and assignment failure. Partial selections
@@ -120,6 +121,24 @@ and 1000–2999 changed count from 3000 to 2976 on reanalysis and gave mean
 sums and weights. Released recoverable linear-bin histories
 can be converted offline to native batch analysis; missing joint covariance or
 checkpoint cursors cannot be reconstructed from summaries.
+
+## Migrating from ALPSCore
+
+ALPS keeps ALPSCore's dictionary, HDF5 archive and Eigen-based ALEA APIs and
+moves command-line and file handling out of the dictionary:
+
+| ALPSCore 2.3 | ALPS |
+| --- | --- |
+| `alps::params p(argc, argv)` reads INI files, `--key=value` arguments and HDF5 restarts | The application supplies a TOML schema; `alps::load_run_configuration(file, schema)` reads a TOML run file into `run.parameters`, `input`, `output` and `execution`. `alps::mc::main` adds `--validate` and `--schema` |
+| `p.define<T>(name, default, description)`, `has_missing()`, `help_requested()` | `[parameters.NAME]` schema tables with `type`, `default`, `min`/`max`, `choices` and `required`; loading names the offending key |
+| Origins, `get_argv0()`, INI file names | `run.origins`; applications save the resolved run under `/run_config` |
+| `p[key].as<T>()`, `exists`, `exists<T>`, `erase` | Unchanged, plus `value_or`; conversions are checked as described above |
+| `ar["/parameters"] << p`: one dataset per key plus INI attributes | `alps.params.v2` indexed entries; convert with `alps-hdf5-convert SOURCE DESTINATION --core-parameters /parameters` |
+| Marker-based complex and signed-byte Boolean archive payloads | Compound complex and enum Boolean datatypes; see the [converter guide](../tools/hdf5/README.md) |
+| `alps::alea` results | `ALPS::statistics` (`<alps/alea.hpp>`); convert with `--core-alea KIND GROUP` |
+
+Lattice and model code takes typed parameters directly: construct
+`alps::graph_helper` and `alps::model_helper` from `alps::params`.
 
 ## Source ownership
 

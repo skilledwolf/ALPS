@@ -2,6 +2,9 @@
 
 import copy
 import gc
+from pathlib import Path
+import subprocess
+import sys
 import weakref
 
 import numpy as np
@@ -152,6 +155,20 @@ def test_failed_parameter_load_preserves_values_and_context(tmp_path):
             parameters.load(archive, "/missing")
         assert archive.context == "/bad"
         np.testing.assert_array_equal(parameters["kept"], [1, 2])
+
+
+def test_converted_core_params_load_natively(tmp_path):
+    root = Path(__file__).resolve().parents[2]
+    fixture = root / "tests/cli/fixtures/alpscore-v2.3.3-params.h5"
+    output = tmp_path / "converted.h5"
+    subprocess.run([sys.executable, str(root / "src/tools/hdf5/convert.py"), str(fixture), str(output),
+                    "--core-parameters", "/parameters"], check=True, capture_output=True, timeout=30)
+    with hdf5.archive(str(output), "r") as archive:
+        parameters = ngs.params(archive, "/parameters")
+    assert parameters["L"] == 8 and parameters["T"] == 2.5 and parameters["model"] == "heisenberg"
+    assert parameters["flag"] is True and parameters["a/b&c"] == 7
+    assert parameters["unsigned_wide"] == 2**64 - 1
+    np.testing.assert_array_equal(parameters["flags"], [True, False, True])
 
 
 def test_parameter_helpers_and_analysis_read_typed_checkpoints(tmp_path):

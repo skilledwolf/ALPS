@@ -282,6 +282,33 @@ released statistical serializers are unchanged; `batch.cpp` has only an added
 estimators with the same known sample streams, including both complex covariance
 conventions.
 
+## Released ALPSCore params checkpoints
+
+```sh
+alps-hdf5-convert core.h5 converted.h5 --core-parameters /parameters
+```
+
+`--core-parameters` converts a group written by ALPSCore 2.3.3's `alps::params`
+or `alps::params_ns::dictionary` to `alps.params.v2`, with the same value
+mapping as `--parameters`. Core writes `bool` as a signed byte and has no
+byte-sized integer values, so signed bytes become Booleans without a
+declaration. Core escapes `&` and `/` in key names as `&#38;` and `&#47;`; the
+profile restores the original names and rejects any other `&`. Values that
+were declared but never set were not saved and remain absent.
+
+Core keeps the INI text (`@ini_keys`, `@ini_values`), parsing status, origins
+and help header on the group and each definition's `@description` and
+`@defnumber` on its value. A v2 checkpoint stores values only; schemas,
+defaults and provenance belong to the application's TOML run schema. The
+profile drops these attributes and says so in its report; any other attribute
+is rejected. Core also stores its built-in `help` flag as a parameter, which is
+converted like any other value.
+
+`tests/cli/fixtures/alpscore-v2.3.3-params.h5` was produced by compiled Core
+writers from the pinned reference; its adjacent JSON records the producer,
+fixture hash and comparison with release `f2ccddc5343bdc2297727f10a1a12d9c717cd0ab`.
+The released params and archive writers are unchanged.
+
 ## Released QWL final results
 
 ```sh
@@ -387,6 +414,7 @@ inventory is the gate for retiring the remaining legacy measurement clients:
 | Linear histories including a partial bin | `--alea` retains the history; `--alea-batches` produces native weighted analysis evidence | Individual observations inside a bin |
 | Logarithmic histories | `--alea` retains all stored logarithmic sums, squared sums and counts | Missing levels, discarded samples, or a missing unfinished bin |
 | Core 2.3.3 native result families | `--core-alea` retains all saved statistical evidence | Unsaved accumulator state |
+| Core 2.3.3 params and dictionary checkpoints | `--core-parameters` retains every saved value and its type | Definitions, descriptions, INI text and origins |
 | Released application checkpoint | Generic conversion preserves unselected state fields; it does **not** translate the application's restart protocol | A new solver's configuration/update state from an analysis summary |
 
 The histogram contract is `HistogramObservable<T>::save` in ALPS v3.0.0

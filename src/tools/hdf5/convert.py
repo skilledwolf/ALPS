@@ -15,6 +15,7 @@ import math
 import os
 from pathlib import Path
 import posixpath
+import re
 import sys
 import tempfile
 
@@ -25,6 +26,10 @@ import numpy as np
 COMPLEX = "__complex__"
 TYPE = "__alps_type__"
 BUFFER_BYTES = 8 * 1024 * 1024
+# ALPSCore params keep INI text, origins and help in attributes. Schemas,
+# defaults and provenance belong to run_config; a v2 checkpoint holds values only.
+CORE_PARAMETER_ATTRIBUTES = {"ini_keys", "ini_values", "status", "origins", "help_header"}
+CORE_VALUE_ATTRIBUTES = {"description", "defnumber"}
 
 
 def _attribute(obj, name):
@@ -244,11 +249,12 @@ def _address(obj):
     return h5py.h5o.get_info(obj.id).addr
 
 
-def _schema_groups(source, pairs, matrices, parameters, alea, core_alea, alea_batches, alea_summaries,
-                   alea_autocorr, alea_results):
+def _schema_groups(source, pairs, matrices, parameters, core_parameters, alea, core_alea, alea_batches,
+                   alea_summaries, alea_autocorr, alea_results):
     groups = {}
     for kind, paths in (("pair", pairs), ("matrix", matrices),
-                        ("parameters", parameters), ("alea", alea), ("alea-batches", alea_batches),
+                        ("parameters", parameters), ("core-parameters", core_parameters),
+                        ("alea", alea), ("alea-batches", alea_batches),
                         ("alea-summary", alea_summaries), ("alea-autocorr", alea_autocorr),
                         ("alea-results", alea_results),
                         *(("core-alea:" + kind, [path]) for kind, path in core_alea)):
@@ -455,13 +461,26 @@ def _profiles(source, schemas, declared, report):
 
     for kind, path, _ in schemas.values():
         group = source[path]
-        if kind == "parameters":
+        if kind in ("parameters", "core-parameters"):
+            core = kind == "core-parameters"
+            if core:
+                unknown = set(group.attrs) - CORE_PARAMETER_ATTRIBUTES
+                if unknown:
+                    raise ValueError(f"{path}: unexpected ALPSCore params attributes {sorted(unknown)}")
             for name in group:
                 dataset = group[name]
                 if (not isinstance(group.get(name, getlink=True), h5py.HardLink)
                         or not isinstance(dataset, h5py.Dataset)):
                     raise ValueError(f"{group.name}/{name}: flat parameters require hard-linked datasets")
                 _text(name, group.name)
+                if core:
+                    _core_name(name, group.name)
+                    unknown = set(dataset.attrs) - CORE_VALUE_ATTRIBUTES
+                    if unknown:
+                        raise ValueError(f"{dataset.name}: unexpected ALPSCore params attributes {sorted(unknown)}")
+                    if dataset.dtype.kind == "i" and dataset.dtype.itemsize == 1 and not dataset.dtype.metadata:
+                        # ALPSCore stores bool as signed char and has no byte-sized integer values.
+                        declared.add((_address(dataset), None))
                 conversion, dtype, shape = encoding(dataset)
                 with closing(dataset.id.get_type()) as datatype:
                     physical_class = datatype.get_class()
@@ -488,7 +507,10 @@ def _profiles(source, schemas, declared, report):
                 if shape is None:
                     shape = (0,)
                 remember(dataset, conversion, dtype, shape)
-            report.append(f"{path}: ALPS 3.0.0 flat parameters -> alps.params.v2")
+            report.append(f"{path}: {'ALPSCore 2.3.3 params' if core else 'ALPS 3.0.0 flat parameters'}"
+                          " -> alps.params.v2")
+            if core and (group.attrs or any(group[name].attrs for name in group)):
+                report.append(f"{path}: ALPSCore INI text, origins, help and descriptions dropped")
         elif kind == "alea-results":
             # One results group holds many observables; each is checked
             # like an explicitly selected ALEA profile.
@@ -502,12 +524,27 @@ def _profiles(source, schemas, declared, report):
     return conversions
 
 
-def _parameters(group, target):
+def _core_name(name, where):
+    """Invert ALPSCore's path-segment encoding, which escapes every '&' and '/'."""
+    decoded = re.sub(r"&#(38|47);", lambda match: chr(int(match.group(1))), name)
+    if "&" in re.sub(r"&#(38|47);", "", name):
+        raise ValueError(f"{where}/{name}: not an ALPSCore-encoded parameter name")
+    return decoded
+
+
+def _parameters(group, target, core=False):
     # Build anonymously so valid parameter names 'entries'/'format' never collide.
+    if core:
+        for name in CORE_PARAMETER_ATTRIBUTES & set(group.attrs):
+            del group.attrs[name]
     entries = target.create_group(None, track_order=True)
     for name in list(group):
+        if core:
+            for attribute in CORE_VALUE_ATTRIBUTES & set(group[name].attrs):
+                del group[name].attrs[attribute]
         entry = entries.create_group(str(len(entries)))
-        entry.create_dataset("name", data=name, dtype=h5py.string_dtype("utf-8"))
+        entry.create_dataset("name", data=_core_name(name, group.name) if core else name,
+                             dtype=h5py.string_dtype("utf-8"))
         entry["value"] = group[name]
         del group[name]
     group["entries"] = entries
@@ -882,8 +919,8 @@ def _alea_batches(group):
 
 
 def _copy(source, target, boolean_datasets, boolean_attributes, pair_groups, matrix_groups,
-          parameter_groups, alea_groups, core_alea_groups, alea_batch_groups, alea_summary_groups,
-          alea_autocorr_groups, alea_result_groups):
+          parameter_groups, core_parameter_groups, alea_groups, core_alea_groups, alea_batch_groups,
+          alea_summary_groups, alea_autocorr_groups, alea_result_groups):
     report = []
     declared = set()
     for path in boolean_datasets:
@@ -896,9 +933,9 @@ def _copy(source, target, boolean_datasets, boolean_attributes, pair_groups, mat
         if name not in obj.attrs or _marker(name) or obj.file != source:
             raise ValueError(f"{path}@{name}: Boolean declaration must name an ordinary input attribute")
         declared.add((_address(obj), name))
-    schemas = _schema_groups(source, pair_groups, matrix_groups, parameter_groups, alea_groups,
-                             core_alea_groups, alea_batch_groups, alea_summary_groups, alea_autocorr_groups,
-                             alea_result_groups)
+    schemas = _schema_groups(source, pair_groups, matrix_groups, parameter_groups, core_parameter_groups,
+                             alea_groups, core_alea_groups, alea_batch_groups, alea_summary_groups,
+                             alea_autocorr_groups, alea_result_groups)
     conversions = _profiles(source, schemas, declared, report)
     seen = {_address(source): target}
     softlinks = []
@@ -973,8 +1010,8 @@ def _copy(source, target, boolean_datasets, boolean_attributes, pair_groups, mat
             del parent[name]
             parent[name] = converted
             seen[address] = converted
-        elif kind == "parameters":
-            _parameters(obj, target)
+        elif kind in ("parameters", "core-parameters"):
+            _parameters(obj, target, core=kind == "core-parameters")
         elif kind == "alea-autocorr":
             _alea_autocorr(obj)
             report.append(f"{path}: released log-binning moments -> native autocorrelation levels, including partial bins")
@@ -1109,13 +1146,14 @@ def _qwl(source, target, sites):
 
 
 def convert(source, destination, *, boolean_datasets=(), boolean_attributes=(),
-            pair_groups=(), matrix_groups=(), parameter_groups=(), alea_groups=(), core_alea_groups=(),
+            pair_groups=(), matrix_groups=(), parameter_groups=(), core_parameter_groups=(),
+            alea_groups=(), core_alea_groups=(),
             alea_batch_groups=(), alea_summary_groups=(), alea_autocorr_groups=(), alea_result_groups=(),
             qwl_sites=None):
     """Write a new file; leave the source and any existing destination untouched."""
     if qwl_sites is not None:
         if any((boolean_datasets, boolean_attributes, pair_groups, matrix_groups, parameter_groups,
-                alea_groups, core_alea_groups, alea_batch_groups, alea_summary_groups, alea_autocorr_groups,
+                core_parameter_groups, alea_groups, core_alea_groups, alea_batch_groups, alea_summary_groups, alea_autocorr_groups,
                 alea_result_groups)):
             raise ValueError("QWL is a whole-file profile; select it separately")
         parameter_groups = ("/parameters",)
@@ -1133,7 +1171,8 @@ def convert(source, destination, *, boolean_datasets=(), boolean_attributes=(),
             os.close(fd)
             with h5py.File(temporary, "w", track_order=True) as dst:
                 report = _copy(src, dst, boolean_datasets, boolean_attributes,
-                               pair_groups, matrix_groups, parameter_groups, alea_groups, core_alea_groups,
+                               pair_groups, matrix_groups, parameter_groups, core_parameter_groups,
+                               alea_groups, core_alea_groups,
                                alea_batch_groups, alea_summary_groups, alea_autocorr_groups,
                                alea_result_groups)
                 if qwl_sites is not None:
@@ -1162,6 +1201,9 @@ def main(argv=None):
                         help="migrate an explicitly selected padded numerical matrix group (repeatable)")
     parser.add_argument("--parameters", action="append", default=[], metavar="GROUP",
                         help="migrate ALPS 3.0.0 flat parameters to native typed checkpoints (repeatable)")
+    parser.add_argument("--core-parameters", action="append", default=[], metavar="GROUP",
+                        help="migrate an ALPSCore 2.3.3 params or dictionary checkpoint to native typed "
+                             "checkpoints (repeatable)")
     parser.add_argument("--alea", action="append", default=[], metavar="GROUP",
                         help="normalize one ALPS 3.0.0 ALEA observable/result (repeatable)")
     parser.add_argument("--alea-autocorr", action="append", default=[], metavar="GROUP",
@@ -1185,7 +1227,8 @@ def main(argv=None):
         report = convert(args.source, args.destination, boolean_datasets=args.boolean,
                          boolean_attributes=args.boolean_attribute,
                          pair_groups=args.pair, matrix_groups=args.matrix,
-                         parameter_groups=args.parameters, alea_groups=args.alea,
+                         parameter_groups=args.parameters, core_parameter_groups=args.core_parameters,
+                         alea_groups=args.alea,
                          core_alea_groups=args.core_alea, alea_batch_groups=args.alea_batches,
                          alea_summary_groups=args.alea_summary, alea_autocorr_groups=args.alea_autocorr,
                          alea_result_groups=args.alea_results, qwl_sites=args.qwl_sites)

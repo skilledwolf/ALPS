@@ -6,6 +6,13 @@ User-facing changes and migration notes are recorded here, starting with the bui
 
 ### Changed
 
+- Add `alps-hdf5-convert --core-parameters GROUP` for ALPSCore 2.3.3 `params` and
+  dictionary checkpoints. It restores Core's escaped key names, reads its signed-byte
+  Booleans and drops INI text, origins, help and descriptions, which belong to TOML
+  run schemas. A fixture from compiled Core writers covers the profile, and the
+  reconciliation probe's new Linux baseline checks that converted Core checkpoints
+  load in ALPS. `src/alps/README.md` maps the ALPSCore params, archive and ALEA APIs
+  to ALPS.
 - Rename the older `alps::Parameters` to `alps::SymbolTable`
   (`<alps/expression/symbol_table.h>`) and reduce it to the in-memory text symbols of
   the expression, lattice and model libraries, owned by the `expression` module. Its

@@ -95,6 +95,58 @@ def test_core_alea_conversion_rejects_invalid_result_layouts(converter, tmp_path
     assert set(tmp_path.iterdir()) == {source}
 
 
+def core_params_fixture():
+    fixture = Path(__file__).with_name("fixtures") / "alpscore-v2.3.3-params.h5"
+    metadata = json.loads(fixture.with_suffix(".json").read_text())
+    assert hashlib.sha256(fixture.read_bytes()).hexdigest() == metadata["fixture_sha256"]
+    return fixture, list(metadata["selections"].values())
+
+
+def test_released_core_params_decode_names_infer_booleans_and_drop_bookkeeping(converter, tmp_path):
+    source, groups = core_params_fixture()
+    output = tmp_path / "converted.h5"
+    report = converter.convert(source, output, core_parameter_groups=groups)
+    assert "/parameters: ALPSCore INI text, origins, help and descriptions dropped" in report
+    with h5py.File(output, "r") as archive:
+        assert not archive["parameters"].attrs.keys()
+        values = parameter_values(archive["parameters"])
+        assert not any(value.attrs.keys() for value in values.values())
+        # Core adds its own help flag; a declared parameter without a value is not saved.
+        assert set(values) == {"L", "T", "a/b&c", "empty", "flag", "flags", "help", "integers", "model",
+                               "negative", "off", "reals", "single", "text with space", "unsigned",
+                               "unsigned_wide", "wide", "words"}
+        assert values["L"].dtype == np.dtype("i8") and values["L"][()] == 8
+        assert values["a/b&c"][()] == 7 and values["negative"][()] == -3
+        assert values["flag"].dtype == np.dtype(bool) and values["flag"][()] and not values["off"][()]
+        np.testing.assert_array_equal(values["flags"], [True, False, True])
+        assert values["unsigned"].dtype == np.dtype("u8") and values["unsigned"][()] == 2**32 - 1
+        assert values["unsigned_wide"][()] == 2**64 - 1 and values["wide"][()] == 2**40
+        assert values["single"].dtype == np.dtype("f8") and values["single"][()] == 1.25
+        assert values["empty"].shape == (0,) and values["empty"].dtype == np.dtype("f8")
+        assert values["model"].asstr()[()] == "heisenberg"
+        assert list(values["words"].asstr()[()]) == ["x", "y z"]
+        dictionary = parameter_values(archive["dictionary"])
+        assert dictionary["count"][()] == 3 and dictionary["ratio"][()] == 0.5
+
+
+@pytest.mark.parametrize("fault", ["group-attribute", "value-attribute", "raw-ampersand"])
+def test_core_params_reject_layouts_that_core_does_not_write(converter, tmp_path, fault):
+    fixture, _ = core_params_fixture()
+    source, output = tmp_path / "source.h5", tmp_path / "output.h5"
+    shutil.copyfile(fixture, source)
+    with h5py.File(source, "a") as archive:
+        group = archive["parameters"]
+        if fault == "group-attribute":
+            group.attrs["note"] = "not Core"
+        elif fault == "value-attribute":
+            group["L"].attrs["unit"] = "sites"
+        else:
+            group["a&b"] = np.int32(1)
+    with pytest.raises(ValueError):
+        converter.convert(source, output, core_parameter_groups=["/parameters"])
+    assert not output.exists()
+
+
 @pytest.fixture
 def converter():
     spec = importlib.util.spec_from_file_location("alps_hdf5_converter", SCRIPT)

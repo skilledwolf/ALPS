@@ -22,9 +22,13 @@ def run_report(tmp_path, monkeypatch):
         programs[provider] = tmp_path / provider
         programs[provider].write_text("probe fixture\n")
 
-    def run(*, core=False, corrupt=None, revisions=(), cross_archive_failure=False):
+    def run(*, core=False, corrupt=None, revisions=(), cross_archive_failure=False, converter=False,
+            corrupt_converted=None):
         def probe(command, **kwargs):
             provider, action = Path(command[0]).name, command[1]
+            if provider not in programs:
+                # The converter writes a file that the ALPS probe then reads.
+                return subprocess.CompletedProcess(command, 0, "", "")
             if action == "semantics":
                 values = {"native_long_bits": "64"}
             elif action == "archive-semantics":
@@ -43,6 +47,8 @@ def run_report(tmp_path, monkeypatch):
                     values.update(unsigned="42", float="1.25", wide="1099511627776")
             if corrupt and (provider, action) == corrupt[:2]:
                 values[corrupt[2]] = corrupt[3]
+            if corrupt_converted and len(command) > 2 and "converted" in Path(command[2]).name:
+                values[corrupt_converted] = "0"
             output = "".join(f"{key}\t{value}\n" for key, value in values.items())
             return subprocess.CompletedProcess(command, 0, output, "")
 
@@ -51,6 +57,8 @@ def run_report(tmp_path, monkeypatch):
         args = ["--alps", str(programs["ALPS"]), "--output", str(output), *revisions]
         if core:
             args += ["--alpscore", str(programs["ALPSCore"])]
+        if converter:
+            args += ["--converter", str(tmp_path / "convert.py")]
         compare.main(args)
         return json.loads(output.read_text())
 
@@ -95,3 +103,10 @@ def test_cross_provider_archive_differences_are_characterizations(run_report):
 def test_alps_self_read_requires_current_params_schema(run_report):
     with pytest.raises(SystemExit, match="Params self-check failed: ALPS"):
         run_report(corrupt=("ALPS", "read-params", "format", "alps.params.v1"))
+
+
+def test_converted_core_checkpoints_must_read_as_alps_checkpoints(run_report):
+    report = run_report(core=True, converter=True)
+    assert report["measurements"]["ALPSCore->convert->ALPS/params"]["format"] == "alps.params.v2"
+    with pytest.raises(SystemExit, match="Converted Core extended params check failed"):
+        run_report(core=True, converter=True, corrupt_converted="unsigned")

@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 import platform
 import subprocess
+import sys
 import tempfile
 
 
@@ -16,6 +17,8 @@ def main(argv=None):
     parser.add_argument("--alpscore", type=Path, help="Optional independently linked ALPSCore probe")
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--expect", type=Path, help="Compare measurements with an earlier JSON report")
+    parser.add_argument("--converter", type=Path,
+                        help="alps-hdf5-convert script; with --alpscore, ALPS must read converted Core checkpoints")
     parser.add_argument("--alps-revision", default="unknown", help="Source revision label for the ALPS SDK")
     parser.add_argument("--alpscore-revision", default="unknown", help="Source revision label for the ALPSCore SDK")
     args = parser.parse_args(argv)
@@ -59,6 +62,12 @@ def main(argv=None):
                     measurements[f"{provider}->{reader}/{kind}"] = run(reader, f"read-{kind}", path)
                 if kind == "params" and "ALPSCore" in programs:
                     measurements[f"{provider}->ALPSCore/dictionary"] = run("ALPSCore", "read-dictionary", path)
+                if provider == "ALPSCore" and args.converter and kind != "archive":
+                    converted = scratch / f"{provider}-{kind}-converted.h5"
+                    subprocess.run([sys.executable, str(args.converter), str(path), str(converted),
+                                    "--core-parameters", "/parameters"],
+                                   check=True, capture_output=True, text=True, timeout=60)
+                    measurements[f"ALPSCore->convert->ALPS/{kind}"] = run("ALPS", f"read-{kind}", converted)
 
     report = {
         "environment": {"system": platform.system(), "machine": platform.machine()},
@@ -82,6 +91,12 @@ def main(argv=None):
         ))
         if measurements[f"{provider}->{provider}/extended-params"] != extended:
             failures.append(f"Extended params self-check failed: {provider}")
+        # Converted Core checkpoints must read exactly as ALPS's own.
+        if provider == "ALPS" and args.alpscore and args.converter:
+            if measurements["ALPSCore->convert->ALPS/params"] != expected_params:
+                failures.append("Converted Core params check failed")
+            if measurements["ALPSCore->convert->ALPS/extended-params"] != extended:
+                failures.append("Converted Core extended params check failed")
     for key, values in measurements.items():
         if "/write-" in key:
             if any(value != "ok" for value in values.values()):
