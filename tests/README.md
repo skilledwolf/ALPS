@@ -115,20 +115,9 @@ The remaining CMake process runner is for executable/CLI/tutorial contracts.
 
 ## CI policy and evidence
 
-Every PR runs the standalone NumPy suite at its floor and current version, plus
-CI/packaging helper checks. Native and packaging jobs use conservative path
-classification: standalone optical-lattice tutorial/prose-only changes can take
-the fast path; ordinary implementation changes use representative configurations;
-shared headers, dependencies, CMake/CI changes and unknown paths select the full
-matrix. Missing diff metadata also selects the full matrix.
+Every PR runs a fixed set of checks: static/packaging helpers and numerical tutorial references, Linux serial native and editable-Python tests, Clang MPI integration, macOS SDK consumers, native ASan/UBSan, and manylinux packaging. The stable aggregate `CI` check requires every job to succeed; select it in branch protection. No workflow-level path filters can leave that required check pending.
 
-Master pushes, release tags, weekly schedules and manual runs select the full
-supported matrix. Native jobs include real MPI execution when enabled. A
-dedicated sanitizer job exercises the native suite. Stable aggregate checks
-(`Source CI` and `Packaging CI`) require all selected jobs to succeed; these are
-the checks to select in repository branch protection. JUnit reports, CTest logs,
-rank reports and
-configuration diagnostics are retained for inspection.
+Weekly compatibility checks cover compiler/dependency boundaries, C++20/C++23, extensive HDF5 tests, OpenMP, installed tutorials, MPI-enabled Python, Intel/newer macOS, and all three wheel families. Release tags validate those same artifacts before publishing them. Python 3.11 and 3.12 exercise distinct wheel ABIs; newer interpreters test reuse of the abi3 wheel without recompiling identical SDK consumers. JUnit, CTest and per-rank MPI reports remain available as workflow artifacts. See [CI coverage](../CONTRIBUTING.md#ci-coverage) for the workflow entry points.
 
 Benchmarks remain separate from correctness gates. Existing timing programs
 are not claims of performance coverage. Introduce baselines only with a defined

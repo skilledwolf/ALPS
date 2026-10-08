@@ -1,308 +1,78 @@
-name: ALPS source CI
-
-on:
-  push:
-    branches: [master]
-    tags: ['v*']
+name: CI
+'on':
   pull_request:
-    branches: [master]
-  workflow_dispatch:
-  schedule:
-    - cron: '23 6 * * 1'
-
+    branches:
+    - master
+  push:
+    branches:
+    - master
+  workflow_dispatch: null
 permissions:
   contents: read
-
 concurrency:
-  group: source-${{ github.event.pull_request.number || github.run_id }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-
-defaults:
-  run:
-    shell: bash
-
-env:
-  CTEST_PARALLEL_LEVEL: 2
-  PIP_ONLY_BINARY: ':all:'
-
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
-  prepare:
-    name: Validate helpers and select coverage
+  static:
+    name: Static and helper checks
     runs-on: ubuntu-24.04
     timeout-minutes: 10
-    outputs:
-      matrix: ${{ steps.matrix.outputs.matrix }}
-      profile: ${{ steps.matrix.outputs.profile }}
-      native: ${{ steps.matrix.outputs.native }}
-      developer_matrix: ${{ steps.matrix.outputs.developer_matrix }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          persist-credentials: false
-          fetch-depth: 0
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
-        with:
-          python-version: '3.12'
-      - name: Lint workflows and shell helpers
-        run: |
-          curl --fail --location --retry 3 --connect-timeout 30 --max-time 300 \
-            https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz \
-            -o "$RUNNER_TEMP/actionlint.tar.gz"
-          echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  $RUNNER_TEMP/actionlint.tar.gz" | sha256sum --check
-          tar -xzf "$RUNNER_TEMP/actionlint.tar.gz" -C "$RUNNER_TEMP" actionlint
-          "$RUNNER_TEMP/actionlint" -color
-          shellcheck .github/scripts/*.sh
-      - name: Test CI helpers
-        run: |
-          python -m pip install pytest
-          python -m pytest tests/ci -q --junitxml=ci-tests.xml
-      - name: Select source coverage
-        id: matrix
-        run: python .github/scripts/ci_matrix.py
-      - name: Summarize helper tests
-        if: always()
-        run: python .github/scripts/junit_summary.py ci-tests.xml
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        if: always()
-        with:
-          name: ci-helper-tests
-          path: ci-tests.xml
-
-  tutorials:
-    name: Standalone tutorials / ${{ matrix.numpy }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - {python: '3.11', numpy: 'numpy==1.26.0', id: floor}
-          - {python: '3.14', numpy: numpy, id: current}
-    env:
-      OPENBLAS_NUM_THREADS: 1
-      OMP_NUM_THREADS: 1
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          persist-credentials: false
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
-        with:
-          python-version: ${{ matrix.python }}
-      - name: Install standalone dependencies
-        env:
-          NUMPY_REQUIREMENT: ${{ matrix.numpy }}
-        run: python -m pip install pytest "$NUMPY_REQUIREMENT"
-      - name: Test numerical reference values and physical invariants
-        run: python -m pytest tests/tutorials -q --junitxml=tutorials.xml
-      - name: Summarize tutorial tests
-        if: always()
-        run: python .github/scripts/junit_summary.py tutorials.xml
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        if: always()
-        with:
-          name: standalone-tutorials-${{ matrix.id }}
-          path: tutorials.xml
-
-  build:
-    name: Source / ${{ matrix.id }}
-    if: needs.prepare.outputs.native == 'true'
-    needs: prepare
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 120
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
-    env:
-      # Keep the small macOS runners and memory-heavy jobs at two compilers.
-      CMAKE_BUILD_PARALLEL_LEVEL: ${{ (startsWith(matrix.os, 'macos-') || matrix.extensive) && '2' || '4' }}
-      CMAKE_C_COMPILER_LAUNCHER: ccache
-      CMAKE_CXX_COMPILER_LAUNCHER: ccache
-      CCACHE_DIR: ${{ github.workspace }}/_build/ccache
-      CCACHE_MAXSIZE: 1G
-      CC: ${{ matrix.cc }}
-      CXX: ${{ matrix.cxx }}
-      ALPS_BOOST_MPI: 'ON'
-      DEPENDENCY: boost-${{ matrix.boost }}
-      BOOST_VERSION: ${{ matrix.boost }}
-      COMPILER_PACKAGES: ${{ matrix.packages }}
-      COMPILER_REPOSITORY: ${{ matrix.repository }}
-      EXTRAS: ${{ matrix.extras }}
-      EXTENSIVE: ${{ matrix.extensive }}
-      CXX_STANDARD: ${{ matrix.standard }}
-      # Exercise the new CMake minimum on the oldest supported compiler.
-      CMAKE_REQUIREMENT: ${{ matrix.cc == 'gcc-11' && 'cmake==3.27.9' || 'cmake>=3.27' }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          persist-credentials: false
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
-        with:
-          python-version: ${{ matrix.python }}
-      - name: Install CMake and test tools
-        run: python -m pip install "$CMAKE_REQUIREMENT" ninja pytest numpy h5py
-      - name: Install Linux dependencies
-        if: runner.os == 'Linux'
-        timeout-minutes: 20
-        run: |
-          printf 'Acquire::Retries "3";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\n' \
-            | sudo tee /etc/apt/apt.conf.d/99ci-timeouts > /dev/null
-          if [[ "$COMPILER_REPOSITORY" == gcc ]]; then
-            sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
-          elif [[ "$COMPILER_REPOSITORY" == llvm ]]; then
-            curl --fail --location --retry 3 --connect-timeout 30 --max-time 300 \
-              https://apt.llvm.org/llvm-snapshot.gpg.key -o "$RUNNER_TEMP/llvm.asc"
-            sudo install -m 644 "$RUNNER_TEMP/llvm.asc" /usr/share/keyrings/llvm.asc
-            llvm_version="${CC#clang-}"
-            echo "deb [signed-by=/usr/share/keyrings/llvm.asc] https://apt.llvm.org/noble/ llvm-toolchain-noble-$llvm_version main" \
-              | sudo tee /etc/apt/sources.list.d/llvm.list > /dev/null
-          fi
-          sudo apt-get update
-          read -r -a compiler_packages <<< "$COMPILER_PACKAGES"
-          sudo apt-get install -y ccache liblapack-dev libblas-dev libopenmpi-dev libhdf5-dev \
-            libbz2-dev zlib1g-dev liblzma-dev libzstd-dev "${compiler_packages[@]}"
-          if [[ "$EXTRAS" == true ]]; then sudo apt-get install -y gfortran xsltproc; fi
-      - name: Install macOS dependencies
-        if: runner.os == 'macOS'
-        timeout-minutes: 30
-        run: |
-          brew install --force-bottle ccache open-mpi hdf5 zstd xz
-          if [[ -n "$COMPILER_PACKAGES" ]]; then
-            brew install "$COMPILER_PACKAGES"
-          fi
-      - name: Identify Boost toolchain
-        id: toolchain
-        run: |
-          {
-            echo "$ImageVersion"
-            "$CXX" --version
-            if [[ "$ALPS_BOOST_MPI" == ON ]]; then mpicxx --showme:version; mpicxx --showme; fi
-          } > "$RUNNER_TEMP/boost-toolchain"
-          hash=$(ccache --hash-file "$RUNNER_TEMP/boost-toolchain")
-          echo "hash=$hash" >> "$GITHUB_OUTPUT"
-          python - <<'PYTHON'
-          import json, os
-          checksums = json.load(open('.github/dependencies.json'))['boost']
-          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
-              print('boost_sha256=' + checksums[os.environ['BOOST_VERSION']], file=output)
-          PYTHON
-      - name: Restore compiler cache
-        id: compiler-cache
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
-        with:
-          path: _build/ccache
-          key: ccache-source-${{ matrix.id }}-${{ steps.toolchain.outputs.hash }}-${{ hashFiles('CMakeLists.txt', 'CMakePresets.json', 'cmake/**', 'src/**', 'third_party/**', 'tests/**', 'python/pyalps/**', '.github/dependencies.json', '.github/scripts/build-boost.sh', '.github/scripts/prepare_dependencies.py') }}
-          restore-keys: ccache-source-${{ matrix.id }}-
-      - name: Reset compiler cache counters
-        run: ccache --zero-stats
-      - name: Restore pinned Boost build
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
-        with:
-          path: _build/boost-install
-          # Boost always uses C++17 and has no Python dependency.
-          key: boost-${{ matrix.os }}-${{ runner.arch }}-${{ matrix.cxx }}-${{ env.ALPS_BOOST_MPI }}-${{ steps.toolchain.outputs.boost_sha256 }}-${{ steps.toolchain.outputs.hash }}-${{ hashFiles('.github/scripts/build-boost.sh', '.github/scripts/prepare_dependencies.py') }}
-      - name: Prepare pinned Boost
-        timeout-minutes: 30
-        run: python .github/scripts/prepare_dependencies.py "$DEPENDENCY" _build/boost-install
-      - name: Configure SDK
-        run: |
-          extra_args=()
-          if [[ "$EXTRAS" == true ]]; then
-            extra_args+=(-DALPS_ENABLE_OPENMP=ON)
-          fi
-          if [[ "$EXTENSIVE" == true ]]; then extra_args+=(-DALPS_BUILD_EXTENSIVE_TESTS=ON); fi
-          cmake -S . -B _build/ci -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release -DALPS_BUILD_TESTING=ON \
-            "-DALPS_ENABLE_MPI=$ALPS_BOOST_MPI" \
-            -DMPIEXEC_PREFLAGS=--oversubscribe \
-            "-DCMAKE_PREFIX_PATH=$PWD/_build/boost-install" \
-            "-DCMAKE_INSTALL_PREFIX=$PWD/_build/ci/install" \
-            "-DCMAKE_CXX_STANDARD=$CXX_STANDARD" "${extra_args[@]}"
-      - name: Build SDK
-        run: cmake --build _build/ci
-      - name: Test SDK
-        run: ctest --test-dir _build/ci -LE '^mpi$' --output-on-failure --output-junit ctest.xml --no-tests=error
-      - name: Require real native MPI coverage
-        if: matrix.mpi == 'ON'
-        run: |
-          # Boost.MPI also needs sibling libraries from this private prefix.
-          LD_LIBRARY_PATH="$PWD/_build/boost-install/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
-            ctest --test-dir _build/ci -L '^mpi$' --output-on-failure --output-junit mpi.xml --no-tests=error
-      - name: Test bindings against the installed SDK
-        env:
-          ALPS_DIR: ${{ github.workspace }}/_build/ci/install/share/alps
-          CMAKE_PREFIX_PATH: ${{ github.workspace }}/_build/boost-install
-          CMAKE_GENERATOR: Ninja
-          PYALPS_TEST_DOWNSTREAM_EXPORT: '1'
-        run: |
-          cmake --install _build/ci
-          python -m pip install build 'nanobind==2.15.0' 'scikit-build-core>=1.0' numpy scipy matplotlib lxml h5py mpi4py
-          if [[ "$RUNNER_OS" == Linux ]]; then python -m pip install patchelf; fi
-          python -m pip install --no-build-isolation --no-deps -e python/pyalps \
-            --config-settings "build-dir=$PWD/_build/ci-python"
-          python .github/scripts/run_with_timeout.py 900 \
-            python -m pytest tests/pyalps tests/cmake -v --capture=tee-sys --junitxml=_build/ci/python.xml
-      - name: Test installed XML tools after relocation
-        if: matrix.extras
-        env:
-          ALPS_XML_BUILD: _build/ci
-        run: python -m pytest tests/cli -q --junitxml=_build/ci/cli.xml
-      - name: Build installed C, C++ and Fortran tutorials
-        if: matrix.extras
-        run: |
-          cmake --install _build/ci
-          cmake --install _build/ci --component tutorials
-          tutorials="$PWD/_build/ci/install/share/alps/tutorials"
-          for source in "$tutorials/00-examples" "$tutorials/00-examples/fortran"; do
-            output="_build/consumers/${source#"$tutorials/"}"
-            cmake -S "$source" -B "$output" -G Ninja \
-              "-DALPS_DIR=$PWD/_build/ci/install/share/alps" \
-              "-DCMAKE_PREFIX_PATH=$PWD/_build/boost-install"
-            cmake --build "$output"
-            ctest --test-dir "$output" --output-on-failure --output-junit ctest.xml --no-tests=error
-          done
-          find "$tutorials" -mindepth 1 -path "$tutorials/00-examples" -prune -o -name CMakeLists.txt -print0 | while IFS= read -r -d '' file; do
-            source="${file%/CMakeLists.txt}"
-            # The root file installs tutorials; it is not a tutorial project.
-            if [[ "$source" == "$tutorials" ]]; then continue; fi
-            output="_build/consumers/${source#"$tutorials/"}"
-            cmake -S "$source" -B "$output" -G Ninja \
-              "-DALPS_DIR=$PWD/_build/ci/install/share/alps" \
-              "-DCMAKE_PREFIX_PATH=$PWD/_build/boost-install"
-            cmake --build "$output"
-            ctest --test-dir "$output" --output-on-failure --output-junit ctest.xml
-          done
-      - name: Show compiler cache statistics
-        if: always()
-        continue-on-error: true
-        run: ccache --show-stats
-      - name: Save compiler cache
-        if: ${{ !cancelled() && steps.compiler-cache.outcome == 'success' && steps.compiler-cache.outputs.cache-hit != 'true' }}
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
-        with:
-          path: _build/ccache
-          key: ${{ steps.compiler-cache.outputs.cache-primary-key }}
-      - name: Summarize test results
-        if: always()
-        run: python .github/scripts/junit_summary.py '_build/**/ctest.xml' '_build/**/test-work/**/gtest-rank*.xml' _build/ci/mpi.xml _build/ci/cli.xml _build/ci/python.xml
-      - name: Retain test and configure evidence
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: source-${{ matrix.id }}-reports
-          path: |
-            _build/**/ctest.xml
-            _build/ci/mpi.xml
-            _build/ci/cli.xml
-            _build/ci/python.xml
-            _build/**/Testing/Temporary/**
-            _build/**/test-work/**/gtest-rank*.xml
-            _build/**/*.actual
-            _build/**/CMakeFiles/CMakeConfigureLog.yaml
-
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+        fetch-depth: 0
+    - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+      with:
+        python-version: '3.12'
+    - name: Lint workflows and shell helpers
+      run: |
+        curl --fail --location --retry 3 --connect-timeout 30 --max-time 300 \
+          https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz \
+          -o "$RUNNER_TEMP/actionlint.tar.gz"
+        echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  $RUNNER_TEMP/actionlint.tar.gz" | sha256sum --check
+        tar -xzf "$RUNNER_TEMP/actionlint.tar.gz" -C "$RUNNER_TEMP" actionlint
+        "$RUNNER_TEMP/actionlint" -color
+        shellcheck .github/scripts/*.sh
+    - name: Test CI helpers
+      run: |
+        python -m pip install pytest packaging lxml numpy 'scikit-build-core>=1.0' 'cmake>=3.27' ninja
+        python -m compileall -q .github/scripts python/pyalps/_build_support
+        python -m pytest tests/ci tests/packaging tests/tutorials -q --junitxml=ci-tests.xml
+    - name: Summarize helper tests
+      if: always()
+      run: python .github/scripts/junit_summary.py ci-tests.xml
+    - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      if: always()
+      with:
+        name: ci-helper-tests
+        path: ci-tests.xml
+  linux:
+    uses: ./.github/workflows/_native.yml
+    with:
+      name: linux
+      bindings: true
+      cache: true
+  mpi:
+    uses: ./.github/workflows/_native.yml
+    with:
+      name: mpi
+      cc: clang-18
+      cxx: clang++-18
+      mpi: true
+      cache: true
+      test-label: scheduler|hdf5|params|osiris
+  macos:
+    uses: ./.github/workflows/_native.yml
+    with:
+      name: macos
+      os: macos-15
+      cc: clang
+      cxx: clang++
+      cache: true
+      native-tests: false
   sanitizers:
     name: Native address and undefined behavior sanitizers
-    if: needs.prepare.outputs.native == 'true'
-    needs: prepare
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
@@ -312,115 +82,58 @@ jobs:
       ASAN_OPTIONS: detect_leaks=1:strict_string_checks=1
       UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          persist-credentials: false
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
-        with:
-          python-version: '3.12'
-      - name: Install native prerequisites
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y clang-18 llvm-18 libboost-all-dev libhdf5-dev libblas-dev liblapack-dev
-          python -m pip install 'cmake>=3.27' ninja pytest numpy h5py
-      - name: Build instrumented components and tests
-        run: |
-          cmake -S . -B _build/sanitizers -G Ninja \
-            -DCMAKE_BUILD_TYPE=Debug -DALPS_BUILD_TESTING=ON \
-            -DALPS_BUILD_APPLICATIONS=OFF -DALPS_ENABLE_MPI=OFF \
-            -DALPS_ENABLE_SANITIZERS=ON
-          cmake --build _build/sanitizers
-      - name: Run instrumented native tests
-        run: ctest --test-dir _build/sanitizers --output-on-failure --output-junit ctest.xml --no-tests=error
-      - name: Summarize sanitizer tests
-        if: always()
-        run: python .github/scripts/junit_summary.py _build/sanitizers/ctest.xml
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        if: always()
-        with:
-          name: native-sanitizer-reports
-          path: |
-            _build/sanitizers/ctest.xml
-            _build/sanitizers/Testing/Temporary/**
-            _build/sanitizers/**/*.actual
-            _build/sanitizers/CMakeFiles/CMakeConfigureLog.yaml
-
-  developer-setup:
-    name: Contributor commands / ${{ matrix.os }}
-    if: needs.prepare.outputs.native == 'true'
-    needs: prepare
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 120
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJSON(needs.prepare.outputs.developer_matrix) }}
-    env:
-      CMAKE_BUILD_PARALLEL_LEVEL: 2
-      CMAKE_GENERATOR: Ninja
-      ALPS_DIR: ${{ github.workspace }}/_build/default/install/share/alps
-      PYALPS_TEST_DOWNSTREAM_EXPORT: '1'
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          persist-credentials: false
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
-        with:
-          python-version: '3.13'
-      - name: Install Ubuntu native prerequisites
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential libboost-all-dev libhdf5-dev libblas-dev liblapack-dev
-      - name: Install macOS native prerequisites
-        if: runner.os == 'macOS'
-        run: |
-          brew install --force-bottle boost hdf5 openblas
-          echo "CMAKE_PREFIX_PATH=$(brew --prefix boost):$(brew --prefix hdf5):$(brew --prefix openblas)" >> "$GITHUB_ENV"
-      - name: Install Python build and test prerequisites
-        run: |
-          python -m pip install 'cmake>=3.27' ninja 'scikit-build-core>=1.0' 'nanobind==2.15.0' build pytest numpy h5py
-          if [[ "$RUNNER_OS" == Linux ]]; then python -m pip install 'patchelf>=0.14'; fi
-      - name: Build, test and install with CMake
-        run: |
-          cmake --preset default
-          cmake --build --preset default --parallel 2
-          ctest --preset default --output-junit ctest.xml
-          cmake --install _build/default
-      - name: Install editable bindings and test the SDK
-        run: |
-          python -m pip install --no-build-isolation -e python/pyalps \
-            --config-setting "build-dir=$PWD/_build/contributor-python"
-          python -m pytest tests/pyalps tests/cmake -q --junitxml=_build/default/python.xml
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        if: always()
-        with:
-          name: contributor-${{ matrix.os }}-reports
-          path: |
-            _build/default/ctest.xml
-            _build/default/python.xml
-            _build/default/Testing/Temporary/**
-            _build/default/**/test-work/**/gtest-rank*.xml
-            _build/default/**/*.actual
-            _build/default/CMakeFiles/CMakeConfigureLog.yaml
-
-  source-status:
-    name: Source CI
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+    - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+      with:
+        python-version: '3.12'
+    - name: Install native prerequisites
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y clang-18 llvm-18 libboost-all-dev libgtest-dev libhdf5-dev libblas-dev liblapack-dev
+        python -m pip install 'cmake>=3.27' ninja pytest numpy h5py
+    - name: Build instrumented components and tests
+      run: |
+        cmake -S . -B _build/sanitizers -G Ninja \
+          -DCMAKE_BUILD_TYPE=Debug -DALPS_BUILD_TESTING=ON \
+          -DALPS_BUILD_APPLICATIONS=OFF -DALPS_ENABLE_MPI=OFF \
+          -DALPS_ENABLE_SANITIZERS=ON
+        cmake --build _build/sanitizers
+    - name: Run instrumented native tests
+      run: ctest --test-dir _build/sanitizers --output-on-failure --output-junit ctest.xml --no-tests=error
+    - name: Summarize sanitizer tests
+      if: always()
+      run: python .github/scripts/junit_summary.py _build/sanitizers/ctest.xml
+    - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      if: always()
+      with:
+        name: native-sanitizer-reports
+        path: |
+          _build/sanitizers/ctest.xml
+          _build/sanitizers/Testing/Temporary/**
+          _build/sanitizers/**/*.actual
+          _build/sanitizers/CMakeFiles/CMakeConfigureLog.yaml
+  packaging:
+    uses: ./.github/workflows/_wheels.yml
+  status:
+    name: CI
     if: always()
-    needs: [prepare, tutorials, build, developer-setup, sanitizers]
+    needs:
+    - static
+    - linux
+    - mpi
+    - macos
+    - sanitizers
+    - packaging
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - name: Require every selected source check
-        env:
-          RESULTS: ${{ toJSON(needs) }}
-          NATIVE: ${{ needs.prepare.outputs.native }}
-        run: |
-          python - <<'PYCODE'
-          import json, os
-          jobs = json.loads(os.environ['RESULTS'])
-          for name in ('prepare', 'tutorials'):
-              assert jobs[name]['result'] == 'success', (name, jobs[name])
-          expected = 'success' if os.environ['NATIVE'] == 'true' else 'skipped'
-          for name in ('build', 'developer-setup', 'sanitizers'):
-              assert jobs[name]['result'] == expected, (name, jobs[name])
-          PYCODE
+    - env:
+        RESULTS: ${{ toJSON(needs) }}
+      run: |
+        python - <<'CODE'
+        import json, os
+        results = json.loads(os.environ['RESULTS'])
+        assert all(job['result'] == 'success' for job in results.values()), results
+        CODE

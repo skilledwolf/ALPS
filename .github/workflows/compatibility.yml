@@ -1,0 +1,87 @@
+name: Compatibility
+'on':
+  schedule:
+  - cron: 23 6 * * 1
+  workflow_dispatch: null
+  workflow_call: null
+permissions:
+  contents: read
+jobs:
+  minimum:
+    uses: ./.github/workflows/_native.yml
+    with:
+      name: minimum
+      os: ubuntu-22.04
+      cc: gcc-11
+      cxx: g++-11
+      cmake: cmake==3.27.9
+      python: '3.11'
+      minimum-boost: true
+  extensive:
+    uses: ./.github/workflows/_native.yml
+    with:
+      name: extensive
+      cc: gcc-14
+      cxx: g++-14
+      bindings: true
+      extras: true
+      cmake-args: -DCMAKE_CXX_STANDARD=20 -DALPS_BUILD_EXTENSIVE_TESTS=ON -DALPS_ENABLE_OPENMP=ON
+  cxx23:
+    uses: ./.github/workflows/_native.yml
+    with:
+      name: cxx23
+      cc: gcc-14
+      cxx: g++-14
+      cmake-args: -DCMAKE_CXX_STANDARD=23
+  mpi-python:
+    uses: ./.github/workflows/_native.yml
+    with:
+      name: mpi-python
+      cc: clang-18
+      cxx: clang++-18
+      mpi: true
+      bindings: true
+      python: '3.14'
+      test-label: scheduler|hdf5|params|osiris
+  macos-new:
+    uses: ./.github/workflows/_native.yml
+    with:
+      name: macos-new
+      os: macos-26
+      cc: clang
+      cxx: clang++
+      native-tests: false
+  macos-intel:
+    uses: ./.github/workflows/_native.yml
+    with:
+      name: macos-intel
+      os: macos-15-intel
+      cc: clang
+      cxx: clang++
+      native-tests: false
+  packaging:
+    uses: ./.github/workflows/_wheels.yml
+    with:
+      full: true
+  status:
+    name: Compatibility
+    if: always()
+    needs:
+    - minimum
+    - extensive
+    - cxx23
+    - mpi-python
+    - macos-new
+    - macos-intel
+    - packaging
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+    - env:
+        RESULTS: ${{ toJSON(needs) }}
+      run: |
+        python - <<'CODE'
+        import json, os
+        results = json.loads(os.environ['RESULTS'])
+        assert all(job['result'] == 'success' for job in results.values()), results
+        CODE

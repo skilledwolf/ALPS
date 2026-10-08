@@ -20,12 +20,15 @@ def main():
     reports.mkdir(parents=True, exist_ok=True)
     identifier = f"{platform.python_implementation()}-{platform.python_version()}-{platform.machine()}"
     (reports / f"{identifier}-import.txt").write_text(f"Python: {sys.executable}\npyalps: {package}\n")
-    # Keep execution outside the checkout and pass explicit suite paths. The
-    # wheel's SDK contract tests remain part of every selected interpreter.
+    # Compile SDK consumers for each distinct wheel ABI, then reuse those
+    # wheels on newer interpreters without recompiling the same consumers.
+    suites = [str(ROOT / 'tests/pyalps')]
+    if sys.version_info[:2] in {(3, 11), (3, 12)}:
+        suites.append(str(ROOT / 'tests/cmake'))
     with tempfile.TemporaryDirectory(prefix="alps-wheel-tests-") as work:
         return subprocess.call([
             sys.executable, "-m", "pytest", "-v", "-o", "faulthandler_timeout=300",
-            str(ROOT / "tests/pyalps"), str(ROOT / "tests/cmake"),
+            *suites,
             f"--junitxml={reports / f'{identifier}.xml'}",
         ], cwd=work)
 

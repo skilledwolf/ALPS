@@ -88,7 +88,7 @@ ALPS_DIR = "$(pwd)/_build/distribution/install/share/alps"
 CMAKE_PREFIX_PATH = "$(pwd)/_build/boost-install"
 CCACHE_DIR = "$(pwd)/_build/ccache"
 CCACHE_NAMESPACE = "pyalps-wheel"
-CCACHE_MAXSIZE = "1G"
+CCACHE_MAXSIZE = "256M"
 CMAKE_C_COMPILER_LAUNCHER = "ccache"
 CMAKE_CXX_COMPILER_LAUNCHER = "ccache"
 PYALPS_TEST_DOWNSTREAM_EXPORT = "1"
@@ -119,11 +119,10 @@ repair-wheel-command = [
 
 [tool.cibuildwheel.macos]
 before-all = [
-  "brew install --force-bottle ccache cmake hdf5 ninja zstd xz",
+  "brew install --force-bottle boost ccache cmake hdf5 ninja",
   "cd {project}",
   "ccache --zero-stats",
-  "ALPS_BOOST_MPI=OFF CXX=clang++ python .github/scripts/prepare_dependencies.py boost-1.91.0 _build/boost-install",
-  "cmake --preset distribution -DHDF5_ROOT=$(brew --prefix hdf5)",
+  "cmake --preset distribution -DHDF5_ROOT=$(brew --prefix hdf5) -DBoost_ROOT=$(brew --prefix boost)",
   "cmake --build --preset distribution -j2",
   "ccache --show-stats || true",
 ]
