@@ -15,6 +15,7 @@
 /* $Id$ */
 
 #include <alps/expression.h>
+#include <alps/parameter.h>
 
 #include <boost/throw_exception.hpp>
 #include <iostream>
@@ -27,9 +28,10 @@ int main()
 #endif
 
   alps::Parameters parms;
-  std::string str;
-  while (std::getline(std::cin, str) && str.size() && str[0] != '%')
-    parms.push_back(alps::Parameter(str));
+  parms["L"] = 10;
+  parms["T"] = "0.1";
+  parms["beta"] = "1/T";
+  parms["error"] = "error";
   std::cout << "Parameters:\n" << parms << std::endl;
   
   alps::ParameterEvaluator eval(parms);

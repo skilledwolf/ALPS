@@ -75,7 +75,7 @@ Both profiles are repeatable; selections cannot overlap. They never infer a
 domain from a group name. Unselected groups retain their scientific schema.
 
 `--parameters` accepts the flat key/dataset groups written by the released
-NGS `params` and legacy `Parameters` APIs. It stores each key in
+ALPS 3.0 NGS `params` and `Parameters` APIs. It stores each key in
 `entries/{n}/name` and its native payload in `entries/{n}/value`, with
 `format = "alps.params.v2"`. Datatype and scalar/vector rank determine the value
 type; no per-entry type tag is written. Integers are widened to signed/unsigned

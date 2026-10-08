@@ -6,6 +6,11 @@ User-facing changes and migration notes are recorded here, starting with the bui
 
 ### Changed
 
+- Reduce the older `alps::Parameters` to the in-memory text symbols of the
+  expression, lattice and model libraries. Its text grammar, environment-variable
+  substitution, XML, Osiris dump, Boost serialization and flat HDF5 input and output
+  are removed, with `alps::ParameterList` and their parsers. This also removes its
+  include cycle with `expression`. `alps::plot::Plot` takes `alps::params`.
 - Read TOML run files in `checksign`, `printgraph` and `lattice2xml`, the model
   examples and the `08-alpsize` parameter and lattice lessons. The lattice and model
   library tests set their parameters in code. Nothing reads the older parameter
@@ -332,6 +337,8 @@ Numerical persistence now requires an explicit adapter: include `<alps/hdf5/matr
 | `pyalps.runApplication` | `pyalps.run_io.execute(application, runs)`; every application reads TOML run files |
 | `pyalps.writeInputFiles`, `writeTaskXMLFile`, `writeParameterFile`, `generateSeed`, `input2output` | `pyalps.run_io.write_run_files(prefix, runs)`; seeds are set in each run's `[execution]` section |
 | `parameter2xml` | TOML run files, for example written with `pyalps.run_io.write_run_files(prefix, runs)` |
+| `alps::Parameters` text, XML, dump and HDF5 input/output; `alps::ParameterList` | `alps::params` with TOML run files and `alps.params.v2` checkpoints; convert released flat parameter groups with `alps-hdf5-convert --parameters GROUP` |
+| `pyalps.writeInputH5Files`, `pyalps.getInputH5Files` | `pyalps.run_io.write_run_files(prefix, runs)`; `pyalps.getParameters` reads a results file's `/parameters` |
 | `parameter2hdf5`, `p2h5` and their `.in.h5` parameter files | TOML run files; `pyalps.run_io.write_run_files(prefix, runs)` writes them |
 | Parameter text on standard input or as a file for `checksign`, `printgraph` and `lattice2xml`; `checksign` XML jobs and `{ }` task lists | One TOML run file per argument, with the lattice and model in `[parameters]` and libraries in `input.lattice_library`/`input.model_library`; `lattice2xml LATTICE KEY=VALUE ...` is unchanged |
 | `convert2xml`, `pyalps.convert2xml` | Load HDF5 results with `pyalps.loadSpectra`, `pyalps.loadEigenstateMeasurements` or `pyalps.loadMeasurements` |

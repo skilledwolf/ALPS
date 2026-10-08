@@ -17,16 +17,7 @@
 #   FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 #   DEALINGS IN THE SOFTWARE.
 
-foreach(
-  name
-  expression
-  expression2
-  flatten
-  parameter
-  parameterlist
-  parameterlist_xml
-  parameters
-  parameters_xml)
+foreach(name expression expression2 flatten)
   add_executable(${name} ${name}.C)
 
   target_link_libraries(${name} PRIVATE ALPS::alps)

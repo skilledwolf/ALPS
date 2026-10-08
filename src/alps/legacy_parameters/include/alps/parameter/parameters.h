@@ -23,23 +23,16 @@
 #endif
 
 #include "parameter.h"
-#include <alps/osiris/dump.h>
 #include <alps/params.hpp>
-#include <alps/parser/parser.h>
-#include <alps/xml.h>
-#include <boost/foreach.hpp>
-#include <boost/serialization/list.hpp>
-#include <boost/serialization/split_member.hpp>
 #include <boost/throw_exception.hpp>
+#include <iostream>
 #include <list>
 #include <map>
 #include <stdexcept>
 #include <string>
 
-#include <alps/hdf5.hpp>
-
 /// \file parameters.h
-/// \brief classes to store simulation parameters
+/// \brief the text symbols of the expression, lattice and model libraries
 
 namespace alps {
 
@@ -55,20 +48,10 @@ public:
   typedef StringValue                     value_type;
   /// the name-value pair is stored as a Parameter
   typedef Parameter                       parameter_type;
-
   /// the type of container used internally to store the sequential order
   typedef std::list<parameter_type>       list_type;
   /// an integral type to store the number oif elements
   typedef list_type::size_type            size_type;
-
-  /// the pointer type
-  typedef parameter_type *            pointer_type;
-  /// the const pointer type
-  typedef const parameter_type *      const_pointer_type;
-  /// the reference type
-  typedef parameter_type &            reference_type;
-  /// the const reference type
-  typedef const parameter_type &      const_reference_type;
   /// \brief the iterator type
   ///
   /// iteration goes in the order of insertion into the class, not alphabetically like in a std::map
@@ -77,23 +60,14 @@ public:
   ///
   /// iteration goes in the order of insertion into the class, not alphabetically like in a std::map
   typedef list_type::const_iterator   const_iterator;
-
   /// the type of container used internally to implment the associative array access
   typedef std::map<key_type, iterator>    map_type;
 
   /// an empty container of parameters
   Parameters() {}
-  /// parameters read from a text file
-  Parameters(std::istream& is) { parse(is); }
+
   /// symbols for the lattice and model libraries, one text value per typed parameter
   explicit Parameters(params const& typed);
-  /// paramaters read from a hdf5 file
-  Parameters(alps::hdf5::archive & ar) {
-    std::string context = ar.get_context();
-    ar.set_context("/parameters");
-    load(ar);
-    ar.set_context(context);
-  }
 
   /// copy constructor
   Parameters(Parameters const& params) : list_(params.list_), map_() {
@@ -108,14 +82,9 @@ public:
     return *this;
   }
 
-  /// read parameters from a text file
-  void parse(std::istream& is, bool replace_env = true);
-
-  /// replace '${FOO}' in each parameter with the the content of environment variable FOO
-  void replace_envvar();
-
   /// erase all parameters
   void clear() { list_.clear(); map_.clear(); }
+
   /// the number of parameters
   size_type size() const { return list_.size(); }
 
@@ -142,7 +111,7 @@ public:
     return map_.find(k)->second->value();
   }
 
-   /// \brief erase a parameter with a specific key (this takes O(N) time)
+  /// \brief erase a parameter with a specific key (this takes O(N) time)
   /// \param k the parameter key (name)
   void erase(key_type const& k) {
     map_type::iterator itr = map_.find(k);
@@ -162,10 +131,8 @@ public:
     return defined(k) ? (*this)[k] : v;
   }
 
-  /// \brief returns the value or a default
+  /// \brief returns the value of a parameter that must be defined
   /// \param k the key (name) of the parameter
-  /// \param v the default value
-  /// \return if a parameter with the given name \a k exists, its value is returned, otherwise the default v
   value_type required_value(const key_type& k) const {
     if (!defined(k))
       boost::throw_exception(std::runtime_error("parameter " + k + " not defined"));
@@ -208,83 +175,14 @@ public:
   /// \brief set parameter values, without overwriting existing value
   void copy_undefined(const Parameters& p);
 
-  /// read from an XML file, using the ALPS XML parser
-  void read_xml(XMLTag tag, std::istream& xml,bool ignore_duplicates=false);
-  /// extract the contents from the first <PARAMETERS> element in the XML stream
-  void extract_from_xml(std::istream& xml);
-  
-  BOOST_SERIALIZATION_SPLIT_MEMBER()
-
-  /// support for Boost serialization
-  template<class Archive>
-  void save(Archive& ar, const unsigned int) const {
-    ar & list_;
-  }
-
-  /// support for Boost serialization
-  template<class Archive>
-  void load(Archive& ar, const unsigned int) {
-    ar & list_;
-    for (iterator itr = list_.begin(); itr != list_.end(); ++itr) map_[itr->key()] = itr;
-  }
-
-  void save(hdf5::archive &) const;
-  void load(hdf5::archive &);
-
 private:
   list_type list_;
   map_type map_;
 };
 
-} // namespace alps
-
-namespace alps {
-
 /// write parameters in text-form to a std::ostream
 ALPS_DECL std::ostream& operator<<(std::ostream& os, const alps::Parameters& p);
 
-/// parse parameters in text-form from a std::istream
-inline std::istream& operator>>(std::istream& is, alps::Parameters& p)
-{
-  p.parse(is);
-  return is;
-}
-
-/// ALPS serialization of parameters
-inline alps::ODump& operator<<(alps::ODump& od, const alps::Parameters& params) {
-  od << uint32_t(params.size());
-  BOOST_FOREACH(alps::Parameter const& p, params) od << p;
-  return od;
-}
-
-/// ALPS de-serialization of parameters
-inline alps::IDump& operator>>(alps::IDump& id, alps::Parameters& p)
-{
-  p.clear();
-  uint32_t n(id);
-  for (std::size_t i = 0; i < n; ++i) {
-    Parameter m;
-    id >> m;
-    p.push_back(m);
-  }
-  return id;
-}
-
-
-/// \brief XML output of parameters
-///
-/// follows the schema on http://xml.comp-phys.org/
-inline alps::oxstream& operator<<(alps::oxstream& oxs,
-                                  const alps::Parameters& parameters)
-{
-  oxs << alps::start_tag("PARAMETERS");
-  alps::Parameters::const_iterator p_end = parameters.end();
-  for (alps::Parameters::const_iterator p = parameters.begin(); p != p_end;
-       ++p) oxs << *p;
-  oxs << alps::end_tag("PARAMETERS");
-  return oxs;
-}
-
-} // end namespace alps
+} // namespace alps
 
 #endif // ALPS_PARAMETER_PARAMETERS_H

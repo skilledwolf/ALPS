@@ -332,8 +332,7 @@ Params checkpoints are explicitly versioned as `alps.params.v2`; old checkpoints
 are not accepted by `ngs.params.load`. Use the [offline converter](../../src/tools/hdf5/README.md)
 with `--parameters GROUP` to upgrade official flat parameter groups. The
 unreleased `alps.params.v1` format is unsupported. The
-analysis loaders still handle result groups from the unmigrated `Parameters`
-applications as well as the new typed checkpoints. Checkpoints reject names and
+analysis loaders also read the flat parameter groups of released result files. Checkpoints reject names and
 string values containing NUL before overwriting stored parameters.
 
 Installed C++ SDK consumers require the Boost version used to build that SDK.

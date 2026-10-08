@@ -93,7 +93,7 @@ class Hdf5Loader:
             from .ngs import params
             dict.update(params(self.h5f, proppath))
             return dict
-        # Unmigrated applications still write legacy Parameters result groups.
+        # Released results (ALPS 3.0 and earlier) store flat parameter groups.
         LOP=self.h5f.list_children(proppath)
         for m in LOP:
                 try:

@@ -19,6 +19,5 @@
 
 #include "parameter/parameter.h"
 #include "parameter/parameters.h"
-#include "parameter/parameterlist.h"
 
 #endif // ALPS_PARAMETER_H

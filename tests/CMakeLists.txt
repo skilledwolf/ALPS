@@ -16,7 +16,6 @@
 #   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 #   FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 #   DEALINGS IN THE SOFTWARE.
-add_subdirectory(integration/hdf5)
 add_subdirectory(integration/params)
 add_subdirectory(portability)
 if(ALPS_BUILD_APPLICATIONS)

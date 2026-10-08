@@ -173,7 +173,7 @@ native MC runner also checks that all input files exist before execution.
 
 `ALPS::osiris` owns dump/process APIs, XDR symbols and the communication state used by `comm_init()` and `is_master()`. It links Boost.Serialization/Filesystem and, when enabled, MPI. This gives communication state one owner and permits MaxEnt to preserve existing diagnostic gating without linking the simulation runtime.
 
-`ALPS::xml` owns XML parsing, attributes, handlers, output streams and stylesheet lookup, with Boost.Filesystem and Boost.Regex dependencies. The separate `plotting/` header owner keeps `<alps/plot.h>` and its older `Parameters` dependency outside the XML component.
+`ALPS::xml` owns XML parsing, attributes, handlers, output streams and stylesheet lookup, with Boost.Filesystem and Boost.Regex dependencies. The separate `plotting/` header owner keeps `<alps/plot.h>`, which writes typed `alps::params`, outside the XML component.
 
 `ALPS::cli` owns the existing `mcoptions` and `parseargs` implementations, linking utilities and Boost.ProgramOptions. Their installed headers remain `<alps/ngs/mcoptions.hpp>` and `<alps/parseargs.hpp>`. The two existing option grammars, defaults, filename rules and error behavior are preserved; these parsers do not read parameter files.
 
@@ -181,7 +181,7 @@ native MC runner also checks that all input files exist before execution.
 
 `ALPS::alps` links the extracted runtime components publicly. These libraries follow `BUILD_SHARED_LIBS`, with component-specific generated export headers. Python extensions require shared runtime libraries and package one copy of every component in `ALPS_RUNTIME_TARGETS`. Rebuild downstream binaries after the XML and CLI extractions, as after the earlier library splits.
 
-Physical ownership does not imply independent linkability for every module. `ALPS::headers` still exposes the aggregate compile interface for the simulation modules, including the remaining expression/older-parameters cycle. The foundation interfaces have narrower dependencies, but package discovery still checks the full SDK dependency set. Shared build policy remains in the root CMake files and `cmake/`.
+Physical ownership does not imply independent linkability for every module. `ALPS::headers` still exposes the aggregate compile interface for the simulation modules. The foundation interfaces have narrower dependencies, but package discovery still checks the full SDK dependency set. Shared build policy remains in the root CMake files and `cmake/`.
 
 ## Architecture checks
 
@@ -203,7 +203,7 @@ The architecture manifest records current source ownership, public includes and
 production files. Tool ownership includes historical inactive C++ sources;
 ownership does not establish independent linkability or passing tests.
 
-The foundation include cycle involving containers, HDF5, numerics, utilities and XML is removed. The current observed include graph retains the separate two-module cycle between `expression` and `legacy_parameters`; it still needs deliberate reconciliation. Dependency declarations constrain new include edges. Regenerate the report after changing module ownership or dependencies.
+The foundation include cycle involving containers, HDF5, numerics, utilities and XML is removed. The two-module cycle between `expression` and `legacy_parameters` is removed as well: the older `Parameters` is an in-memory table of text symbols without file, XML, dump or HDF5 input and output. Dependency declarations constrain new include edges. Regenerate the report after changing module ownership or dependencies.
 
 Only the two exact unresolved includes in the optional `USE_LATTICE_CONSTANT_2D`
 graph backend remain exempted. The dormant accumulator implementation and its

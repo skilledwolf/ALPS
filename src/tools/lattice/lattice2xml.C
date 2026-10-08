@@ -15,6 +15,7 @@
 #include <alps/lattice.h>
 #include <alps/parser/xmlstream.h>
 #include <boost/algorithm/string/trim.hpp>
+#include <boost/foreach.hpp>
 
 #ifdef BOOST_NO_ARGUMENT_DEPENDENT_LOOKUP
 using namespace alps;

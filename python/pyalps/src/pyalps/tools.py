@@ -203,40 +203,11 @@ def copyStylesheet(dir):
     if not os.path.exists(target):
       shutil.copyfile(xslPath(), target)
 
-def writeInputH5Files(filename_,params_list):
-  """ This function writes the H5 input files for ALPS (NGS)
-
-      The parameters are:
-      1. filename_   : the base file name of the H5 files that will be written
-      2. params_list : a list of python dicts containing the simulation parameters
-
-      Ping Nang MA 
-  """
-  input_files_ = [];
-  for index in range(len(params_list)):
-    if filename_.find('.in.h5') != -1:
-      this_filename_ = filename_; 
-    else:
-      this_filename_ = filename_ + '.task' + str(index+1) + '.in.h5';
-    input_files_.append(this_filename_);
-    oar = pyalps.hdf5.archive(this_filename_,'w');
-    from .ngs import params
-    oar['/parameters'] = params(params_list[index])
-    del oar;
-  return input_files_;
-
-def getInputH5Files(prefix='*',pattern='.task*.in.h5'):
-    return glob.glob(prefix+pattern);
-
-
 def getParameters(infiles_):
-   """ This function extracts the parameters from the H5 input files for ALPS (NGS)
+   """ Return the typed /parameters group of each HDF5 file as a dict.
 
-       1. infiles_ : either a list of filenames, or just one filename, containing NGS parameters object.
-       
-       Will be returned as a list of python dicts (parameters).
-
-       Ping Nang MA
+       infiles_ : one filename or a list of filenames whose /parameters group
+       is an alps.params.v2 checkpoint, such as a run's results file.
    """
    if isinstance(infiles_, str):
      infiles_ = [infiles_];

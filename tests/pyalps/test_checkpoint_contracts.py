@@ -157,7 +157,9 @@ def test_failed_parameter_load_preserves_values_and_context(tmp_path):
 def test_parameter_helpers_and_analysis_read_typed_checkpoints(tmp_path):
     import pyalps
     values = {"L": 8, "T": 1.5, "wide": 2 ** 53 + 1, "label": "a,b"}
-    paths = pyalps.writeInputH5Files(str(tmp_path / "run"), [values])
+    paths = [str(tmp_path / "run.h5")]
+    with hdf5.archive(paths[0], "w") as archive:
+        archive["/parameters"] = ngs.params(values)
     assert pyalps.getParameters(paths) == [values]
     props = pyalps.loadProperties(paths)[0]
     assert props["wide"] == 2 ** 53 + 1 and props["label"] == "a,b"

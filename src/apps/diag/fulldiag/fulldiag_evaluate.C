@@ -278,7 +278,6 @@ void evaluate(std::filesystem::path const& file, std::map<std::string, std::stri
   const double per_site = densities ? s.sites : 1.;
   const std::string dstr = densities ? " Density" : "", sstr = densities ? " per Site" : "";
   const std::string xname = versus_field ? field_label : "Temperature";
-  const alps::Parameters parameters(s.parameters);
 
   struct curve { std::string name, ylabel, suffix; double averages::*value; };
   std::vector<curve> curves{
@@ -296,7 +295,7 @@ void evaluate(std::filesystem::path const& file, std::map<std::string, std::stri
   }
   std::vector<alps::plot::Plot<double> > plots;
   for (auto const& c : curves) {
-    plots.emplace_back(c.name + " versus " + xname, parameters, false);
+    plots.emplace_back(c.name + " versus " + xname, s.parameters, false);
     plots.back().set_labels(versus_field ? field_name : "T", c.ylabel);
   }
   // Measurements collect one curve per measurement and label over all points.
@@ -333,14 +332,14 @@ void evaluate(std::filesystem::path const& file, std::map<std::string, std::stri
   for (std::size_t c = 0; c < curves.size(); ++c)
     write(prefix.string() + ".plot." + curves[c].suffix + ".xml", plots[c]);
   for (auto& [name, set] : scalar_sets) {
-    alps::plot::Plot<double> plot("", parameters);
+    alps::plot::Plot<double> plot("", s.parameters);
     plot.set_labels(xname, name);
     set << name;
     plot << set;
     write(prefix.string() + ".measurements." + name + ".plot.xml", plot);
   }
   for (auto& [name, sets] : profile_sets) {
-    alps::plot::Plot<double> plot("", parameters);
+    alps::plot::Plot<double> plot("", s.parameters);
     plot.set_labels(xname, name);
     auto const& labels = s.labels.at(name);
     for (std::size_t k = 0; k < sets.size(); ++k) {

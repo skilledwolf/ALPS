@@ -27,7 +27,8 @@
 
 #include <alps/parser/xmlstream.h>
 #include <alps/parser/xslt_path.h>
-#include <alps/parameter/parameters.h>
+#include <alps/params.hpp>
+#include <sstream>
 #include <boost/tuple/tuple.hpp>
 
 #include <vector>
@@ -163,7 +164,7 @@ public:
   /// \brief Constructor of a plot
   /// \param name the title of the plot
   /// \param show_legend indicates whether a legend should be shown
-  Plot(std::string name="", alps::Parameters const& p = alps::Parameters(), bool show_legend=true)
+  Plot(std::string name="", alps::params const& p = alps::params(), bool show_legend=true)
     : name_(name), parms(p), show_legend_(show_legend) {};
   
   /// add a set to the plot
@@ -187,7 +188,7 @@ public:
   { 
     xaxis_ = xaxis; 
     yaxis_ = yaxis; 
-    if (!parms.defined("observable"))
+    if (!parms.exists("observable"))
       parms["observable"] = yaxis;
   }
   /// set whether the legend should be shown
@@ -199,10 +200,10 @@ public:
   const Set<C>& operator[](int i) const
   { return std::vector<Set<C> >::operator[](i); }
 
-  Parameters const& parameters() const { return parms;}
+  alps::params const& parameters() const { return parms;}
 private:
   std::string name_, xaxis_, yaxis_;
-  alps::Parameters parms;
+  alps::params parms;
   bool show_legend_;
 };   // xmlPlot::Plot
 
@@ -214,7 +215,14 @@ inline oxstream& operator<<(oxstream& out, const Plot<C>& p)
       << start_tag("plot") << alps::xml_namespace("xsi","http://www.w3.org/2001/XMLSchema-instance")
       << attribute("xsi:noNamespaceSchemaLocation","http://xml.comp-phys.org/2003/4/plot.xsd")
       << attribute("name", p.name());
-  out << p.parameters();
+  out << start_tag("PARAMETERS");
+  for (auto const& [name, value] : p.parameters()) {
+    std::ostringstream text;
+    text << value;
+    out << start_tag("PARAMETER") << attribute("name", name) << no_linebreak
+        << text.str().c_str() << end_tag("PARAMETER");
+  }
+  out << end_tag("PARAMETERS");
   out << start_tag("legend")
       << attribute("show", p.show_legend() ? "true" : "false")
       << end_tag("legend");

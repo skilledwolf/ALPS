@@ -84,8 +84,6 @@ public:
   EigenvectorMeasurements(LatticeModel const&);
   virtual ~EigenvectorMeasurements() {}
 
-  void write_xml_one_vector(oxstream& out, const boost::filesystem::path&, std::size_t j) const;
-  XMLTag handle_tag(std::istream& infile, const XMLTag& intag);
   
   virtual void save(hdf5::archive &) const;
   virtual void load(hdf5::archive &);
@@ -205,127 +203,6 @@ void EigenvectorMeasurements<ValueType>::load(alps::hdf5::archive & ar)
   }
 }
 
-
-template <class ValueType>
-void EigenvectorMeasurements<ValueType>::write_xml_one_vector(
-    oxstream& out, const boost::filesystem::path&, std::size_t j) const
-{
-  using alps::numeric::real;
-
-  for (typename std::map<std::string,std::vector<value_type> >::const_iterator 
-    it=average_values.begin();it!=average_values.end();++it)
-    if (j<it->second.size())
-        out << start_tag("SCALAR_AVERAGE") <<  attribute("name",it->first) << no_linebreak
-            << start_tag("MEAN") <<  no_linebreak << real(it->second[j]) << end_tag("MEAN")
-            << end_tag("SCALAR_AVERAGE");
-
-  for (typename std::map<std::string,std::vector<std::vector<value_type> > >::const_iterator 
-          it=local_values.begin();it!=local_values.end();++it)
-    if (j<it->second.size()) {
-      out << start_tag("VECTOR_AVERAGE") <<  attribute("name",it->first);
-      typename std::vector<value_type> ::const_iterator vit = it->second[j].begin();
-      if (bond_operator_[it->first]) {
-        for (unsigned nb=0; nb < bondlabel_.size() && vit != it->second[j].end() ; ++vit, ++nb)
-          out << start_tag("SCALAR_AVERAGE")
-              << attribute("indexvalue",bondlabel_[nb]) << no_linebreak
-              << start_tag("MEAN") << no_linebreak <<  real(*vit) << end_tag("MEAN")
-              << end_tag("SCALAR_AVERAGE");
-      }
-      else {
-        for (unsigned ns=0; ns < sitelabel_.size() && vit != it->second[j].end() ; ++vit, ++ns)
-          out << start_tag("SCALAR_AVERAGE")
-              << attribute("indexvalue",sitelabel_[ns]) << no_linebreak
-              << start_tag("MEAN") << no_linebreak <<  real(*vit) << end_tag("MEAN")
-              << end_tag("SCALAR_AVERAGE");
-      }
-      out << end_tag("VECTOR_AVERAGE");
-    }
-
-  for (typename std::map<std::string,std::vector<std::vector<value_type> > >::const_iterator 
-        it=correlation_values.begin();it!=correlation_values.end();++it)
-    if (j<it->second.size()) {
-      out << start_tag("VECTOR_AVERAGE") <<  attribute("name",it->first);
-      typename std::vector<value_type> ::const_iterator vit = it->second[j].begin();
-      for (unsigned d=0;d<distlabel_.size() && vit != it->second[j].end();++d,++vit)
-        out << start_tag("SCALAR_AVERAGE") 
-            << attribute("indexvalue",distlabel_[d]) << no_linebreak
-            << start_tag("MEAN") << no_linebreak <<  real(*vit) << end_tag("MEAN")
-            << end_tag("SCALAR_AVERAGE");
-      out << end_tag("VECTOR_AVERAGE");
-    }
-
-  for (typename std::map<std::string,std::vector<std::vector<value_type> > >::const_iterator 
-        it=structurefactor_values.begin();it!=structurefactor_values.end();++it)
-    if (j<it->second.size()) {
-      out << start_tag("VECTOR_AVERAGE") <<  attribute("name",it->first);
-      typename std::vector<value_type> ::const_iterator vit = it->second[j].begin();
-      for (unsigned d=0;d<momentumlabel_.size() && vit != it->second[j].end();++d,++vit)
-        out << start_tag("SCALAR_AVERAGE") 
-            << attribute("indexvalue",momentumlabel_[d]) << no_linebreak
-            << start_tag("MEAN") << no_linebreak <<  real(*vit) << end_tag("MEAN")
-            << end_tag("SCALAR_AVERAGE");
-      out << end_tag("VECTOR_AVERAGE");
-    }
-
-}
-
-template <class ValueType>
-XMLTag EigenvectorMeasurements<ValueType>::handle_tag(std::istream& infile, const XMLTag& intag)
-{
-  XMLTag tag=intag;
-  while (true) {
-    if (tag.name=="SCALAR_AVERAGE") {
-      std::string name=tag.attributes["name"];
-      tag=parse_tag(infile);
-      if (tag.name!="MEAN")
-        boost::throw_exception(std::runtime_error("<MEAN> element expected inside <SCALAR_AVERAGE>"));
-      value_type val;
-      infile >> val;
-      average_values[name].push_back(val);
-      tag=parse_tag(infile);
-      if (tag.name!="/MEAN")
-        boost::throw_exception(std::runtime_error("</MEAN> element expected inside <SCALAR_AVERAGE>"));
-      tag=parse_tag(infile);
-      if (tag.name!="/SCALAR_AVERAGE")
-        boost::throw_exception(std::runtime_error("</SCALAR_AVERAGE> expected"));
-    }
-    else if (tag.name=="VECTOR_AVERAGE") {
-      std::string name=tag.attributes["name"];
-      std::vector<value_type> vals;
-      if (tag.type != XMLTag::SINGLE) {
-        tag=parse_tag(infile);
-        while (tag.name=="SCALAR_AVERAGE") {
-          tag=parse_tag(infile);
-          if (tag.name!="MEAN")
-            boost::throw_exception(std::runtime_error("<MEAN> element expected inside <SCALAR_AVERAGE>"));
-          value_type val;
-          infile >> val;
-          vals.push_back(val);
-          tag=parse_tag(infile);
-          if (tag.name!="/MEAN")
-            boost::throw_exception(std::runtime_error("</MEAN> element expected inside <SCALAR_AVERAGE>"));
-          tag=parse_tag(infile);
-          if (tag.name!="/SCALAR_AVERAGE")
-            boost::throw_exception(std::runtime_error("</SCALAR_AVERAGE> expected"));
-          tag=parse_tag(infile);
-        }
-        if (tag.name!="/VECTOR_AVERAGE")
-          boost::throw_exception(std::runtime_error("</VECTOR_AVERAGE> expected"));
-      }
-      if (local_expressions.find(name) != local_expressions.end())
-        local_values[name].push_back(vals);
-      else if (correlation_expressions.find(name) != correlation_expressions.end())
-        correlation_values[name].push_back(vals);
-      else if (structurefactor_expressions.find(name) != structurefactor_expressions.end())
-        structurefactor_values[name].push_back(vals);
-      else
-        boost::throw_exception(std::runtime_error("cannot decide whether " + name + " is local or correlation measurement "));
-    }
-    else
-      return tag;
-    tag=parse_tag(infile);
-  }
-}
 
 }
 

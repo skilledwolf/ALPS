@@ -12,20 +12,9 @@
 *
 *****************************************************************************/
 
-/* $Id$ */
 #include <alps/parameter/parameters.h>
-#include <alps/parameter/parameters_p.h>
-#include <boost/foreach.hpp>
-#include <cstdlib>
 #include <iostream>
 #include <sstream>
-#include <streambuf>
-
-#include <alps/expression.h>
-
-#include <alps/hdf5.hpp>
-
-namespace bs = boost::spirit::classic;
 
 namespace alps {
 
@@ -67,143 +56,6 @@ void Parameters::copy_undefined(const Parameters& p)
       push_back(*it);
 }
 
-void Parameters::read_xml(XMLTag tag, std::istream& xml,bool ignore_duplicates)
-{
-    if (tag.name!="PARAMETERS")
-      boost::throw_exception(std::runtime_error("<PARAMETERS> element expected"));
-    if (tag.type==XMLTag::SINGLE)
-      return;
-    tag = parse_tag(xml);
-    while (tag.name!="/PARAMETERS") {
-      if(tag.name!="PARAMETER")
-        boost::throw_exception(std::runtime_error("<PARAMETER> element expected in <PARAMETERS>"));
-      std::string name = tag.attributes["name"];
-      if(name=="")
-        boost::throw_exception(std::runtime_error("nonempty name attribute expected in <PARAMETER>"));
-      push_back(name, parse_content(xml),ignore_duplicates);
-      tag = parse_tag(xml);
-      if(tag.name!="/PARAMETER")
-        boost::throw_exception(std::runtime_error("</PARAMETER> expected at end of <PARAMETER> element"));
-      tag = parse_tag(xml);
-    }
-}
-
-void Parameters::extract_from_xml(std::istream& infile)
-{
-  XMLTag tag=alps::parse_tag(infile,true);
-  std::string closingtag = "/"+tag.name;
-  tag=parse_tag(infile,true);
-  while (tag.name!="PARAMETERS" && tag.name != closingtag) {
-    skip_element(infile,tag);
-    tag=parse_tag(infile,true);
-  }
-  read_xml(tag,infile);
-}
-
-void Parameters::parse(std::istream& is, bool replace_env) {
-  std::deque<char> buff;
-  std::copy(std::istreambuf_iterator<char>(is), std::istreambuf_iterator<char>(),
-    std::back_inserter(buff));
-  bs::parse_info<std::deque<char>::iterator> info = bs::parse(
-    buff.begin(), buff.end(),
-    ParametersParser(*this) >> bs::end_p,
-    bs::blank_p | bs::comment_p("//") | bs::comment_p("/*", "*/"));
-
-  /* // ST 2006.10.06: following in-situ version does not work with Intel C++ on IA64
-  typedef bs::multi_pass<std::istreambuf_iterator<char> > iterator_t;
-  iterator_t first = bs::make_multi_pass(std::istreambuf_iterator<char>(is));
-  iterator_t last = bs::make_multi_pass(std::istreambuf_iterator<char>());
-  bs::parse_info<iterator_t> info = bs::parse(
-    first, last,
-    ...
-  */
-
-  if (!info.full) {
-    std::deque<char>::iterator itr = info.stop;
-    std::string err = "parameter parse error at \"";
-    for (int i = 0; itr != buff.end() && i < 32; ++itr, ++i)
-      err += (*itr != '\n' ? *itr : ' ');
-    boost::throw_exception(std::runtime_error(err + "\""));
-  }
-  if (replace_env) replace_envvar();
-}
-
-void Parameters::replace_envvar() {
-  BOOST_FOREACH(Parameter& p, list_) p.replace_envvar();
-}
-
-void Parameters::save(hdf5::archive & ar) const {
-    expression::ParameterEvaluator<double> eval(*this,false);
-    for (const_iterator it = begin(); it != end(); ++it) {
-        try {
-            expression::Expression<double> expr(it->value());
-            if (expr.can_evaluate(eval)) {
-                double value = expr.value(eval);
-                if (numeric::is_zero(value - static_cast<double>(static_cast<int>(value)))) 
-                    ar << make_pvp(it->key(), static_cast<int>(value+ (value > 0 ? 0.25 : -0.25)));
-                else 
-                    ar << make_pvp(it->key(), value);
-            } else {
-                expr.partial_evaluate(eval);
-                ar << make_pvp(it->key(), boost::lexical_cast<std::string>(expr));
-            }
-        } catch(...) {
-          // we had a problem evaluating, use original full value
-          ar << make_pvp(it->key(), boost::lexical_cast<std::string>(it->value()));
-        }
-    }
-}
-void Parameters::load(hdf5::archive & ar) {
-  std::vector<std::string> list = ar.list_children(ar.get_context());
-
-  for (std::vector<std::string>::const_iterator it = list.begin(); it != list.end(); ++it) {
-    // save() stores evaluated expressions as int/double and other values as
-    // strings. StringValue owns the conversion back to this API's text values.
-    if (ar.is_datatype<int>(*it)) {
-      int value;
-      ar >> make_pvp(*it, value);
-      operator[](*it) = value;
-    } else if (ar.is_datatype<double>(*it)) {
-      double value;
-      ar >> make_pvp(*it, value);
-      operator[](*it) = value;
-    } else if (ar.is_datatype<std::string>(*it)) {
-      std::string value;
-      ar >> make_pvp(*it, value);
-      operator[](*it) = value;
-    } else {
-      throw hdf5::wrong_type("unsupported legacy parameter datatype at " + ar.complete_path(*it));
-    }
-  }
-}
-
-//
-// XML support
-//
-
-ParametersXMLHandler::ParametersXMLHandler(Parameters& p)
-  : CompositeXMLHandler("PARAMETERS"), parameters_(p), parameter_(),
-    handler_(parameter_)
-{
-  add_handler(handler_);
-}
-
-void ParametersXMLHandler::start_child(const std::string&,
-                                       const XMLAttributes&,
-                                       xml::tag_type type)
-{ if (type == xml::element) parameter_ = Parameter(); }
-
-void ParametersXMLHandler::end_child(const std::string&, xml::tag_type type)
-{
-  if (type == xml::element)
-    parameters_.operator[](parameter_.key()) = parameter_.value();
-}
-
-} // namespace alps
-
-
-namespace alps {
-
 std::ostream& operator<<(std::ostream& os, const alps::Parameters& p)
 {
   for (alps::Parameters::const_iterator it = p.begin(); it != p.end(); ++it) {
@@ -220,4 +72,4 @@ std::ostream& operator<<(std::ostream& os, const alps::Parameters& p)
   return os;
 }
 
-} // end namespace alps
+} // namespace alps

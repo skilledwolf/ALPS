@@ -71,7 +71,7 @@ void evaluate(std::filesystem::path const& file,std::map<std::string,double> con
   prefix.replace_extension();
   if (prefix.extension()==".out") prefix.replace_extension();
   for (auto const& [name,curve]:curves) {
-    alps::plot::Plot<double> plot(name+" versus Temperature",alps::Parameters(parameters));
+    alps::plot::Plot<double> plot(name+" versus Temperature",parameters);
     plot.set_labels("Temperature",name); plot<<curve;
     alps::oxstream output(prefix.string()+".plot."+suffixes.at(name)+".xml"); output<<plot;
   }
