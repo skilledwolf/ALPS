@@ -25,6 +25,12 @@ def main():
     suites = [str(ROOT / 'tests/pyalps')]
     if sys.version_info[:2] == (3, 12):
         suites.append(str(ROOT / 'tests/cmake'))
+    elif sys.version_info[:2] > (3, 12):
+        # Reused abi3 artifact: check interpreter-facing behavior, without
+        # repeating its numerical regressions on every newer interpreter.
+        suites = [str(ROOT / 'tests/pyalps' / name) for name in (
+            'test_binding_surface.py', 'test_mapping_lifetimes.py', 'test_wheel_payload.py',
+        )]
     with tempfile.TemporaryDirectory(prefix="alps-wheel-tests-") as work:
         return subprocess.call([
             sys.executable, "-m", "pytest", "-v", "-o", "faulthandler_timeout=300",

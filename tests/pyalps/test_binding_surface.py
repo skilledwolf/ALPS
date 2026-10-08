@@ -574,7 +574,7 @@ assert mpi.finalized()
 
 @pytest.mark.skipif(
     os.environ.get("PYALPS_TEST_DOWNSTREAM_EXPORT") != "1",
-    reason="enabled for one wheel per platform in packaging CI",
+    reason="requires SDK and downstream build dependencies",
 )
 def test_downstream_nanobind_simulation_export(tmp_path):
     """Build and run a consumer extension against the installed ALPS SDK."""
@@ -640,7 +640,7 @@ def test_current_python_numpy_and_scipy_compatibility(monkeypatch):
 
 
 @pytest.mark.skipif(os.environ.get("PYALPS_TEST_DOWNSTREAM_EXPORT") != "1",
-                    reason="compiled consumer enabled once per platform in CI")
+                    reason="requires SDK and downstream build dependencies")
 def test_native_parameter_contracts(tmp_path):
     repository = Path(__file__).resolve().parents[2]
     source = repository / "tests" / "pyalps" / "native_params"

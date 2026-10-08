@@ -48,20 +48,24 @@ def test_junit_summary_includes_elapsed_time(tmp_path):
     ("def test_result():\n    assert False\n", 1),
     ("# no tests\n", 5),
 ])
-def test_wheel_runner_preserves_test_failures_and_empty_collection(tmp_path, monkeypatch, source, code):
+@pytest.mark.parametrize("version", [(3, 11), (3, 12), (3, 14)])
+def test_wheel_runner_preserves_test_failures_and_empty_collection(tmp_path, monkeypatch, source, code, version):
     import types
     root = tmp_path / "checkout"
     for suite in ("pyalps", "cmake"):
         (root / "tests" / suite).mkdir(parents=True)
-    (root / "tests/pyalps/test_contract.py").write_text(source)
+    (root / "tests/pyalps/test_binding_surface.py").write_text(source)
+    (root / "tests/pyalps/test_mapping_lifetimes.py").touch()
+    (root / "tests/pyalps/test_wheel_payload.py").touch()
     helper = load_helper("run_wheel_tests")
+    monkeypatch.setattr(helper, "sys", types.SimpleNamespace(version_info=version, executable=sys.executable))
     monkeypatch.setattr(helper, "ROOT", root)
     monkeypatch.setitem(sys.modules, "pyalps", types.SimpleNamespace(
         __file__=str(tmp_path / "installed/pyalps/__init__.py")))
     assert helper.main() == code
     reports = list((root / "_build/wheel-reports").glob("*.xml"))
     assert len(reports) == 1
-    assert "test_contract" in reports[0].read_text() or code == 5
+    assert "test_binding_surface" in reports[0].read_text() or code == 5
 
 
 def test_wheel_runner_rejects_source_tree_import(monkeypatch):
