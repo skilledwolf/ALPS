@@ -17,16 +17,7 @@
 #   FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 #   DEALINGS IN THE SOFTWARE.
 
-foreach(
-  name
-  os
-  sizeof
-  xdrdump
-  xdrdump2
-  boostdump
-  boostdump2
-  boostdump3
-  boostdump4)
+foreach(name os sizeof)
   add_executable(${name} ${name}.C)
 
   target_link_libraries(${name} PRIVATE ALPS::osiris)
@@ -38,3 +29,7 @@ target_link_libraries(os PRIVATE ALPS::utilities)
 add_executable(osiris_comm_contract comm_contract.cpp)
 target_link_libraries(osiris_comm_contract PRIVATE ALPS::osiris)
 alps_add_gtest(osiris_comm_contract COMPONENT osiris LABELS compatibility)
+
+add_executable(osiris_dump_serialization dump_serialization.cpp)
+target_link_libraries(osiris_dump_serialization PRIVATE ALPS::osiris)
+alps_add_gtest(osiris_dump_serialization COMPONENT osiris LABELS compatibility)

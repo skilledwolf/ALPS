@@ -21,37 +21,24 @@
 #include <string>
 
 TEST(XmlSerialization, Xmlhandler) {
-    alps::testing::StreamFixture transcript(ALPS_TEST_SOURCE_DIR "/xmlhandler.input");
-    { // Flush serialization objects before checking the captured stream.
+  alps::testing::StreamFixture transcript(ALPS_TEST_SOURCE_DIR "/xmlhandler.input");
+  { // Flush serialization objects before checking the captured stream.
+    double v0;
+    alps::SimpleXMLHandler<double> handler0("VALUE0", v0);
 
-#ifndef BOOST_NO_EXCEPTIONS
-try {
-#endif
+    double v1;
+    alps::SimpleXMLHandler<double> handler1("VALUE1", v1, "value");
 
-  double v0;
-  alps::SimpleXMLHandler<double> handler0("VALUE0", v0);
+    alps::CompositeXMLHandler handler("TEST");
+    handler.add_handler(handler0);
+    handler.add_handler(handler1);
 
-  double v1;
-  alps::SimpleXMLHandler<double> handler1("VALUE1", v1, "value");
+    alps::XMLParser parser(handler);
 
-  alps::CompositeXMLHandler handler("TEST");
-  handler.add_handler(handler0);
-  handler.add_handler(handler1);
+    parser.parse(std::cin);
 
-  alps::XMLParser parser(handler);
-    
-  parser.parse(std::cin);
-
-  std::cout << v0 << std::endl
-            << v1 << std::endl;
-
-#ifndef BOOST_NO_EXCEPTIONS
-}
-catch (std::exception& exp) {
-  std::cerr << exp.what() << std::endl;
-  FAIL() << "Unexpected exception in serialization contract";
-}
-#endif
-    }
+    std::cout << v0 << std::endl
+              << v1 << std::endl;
+  }
   transcript.expect_output(ALPS_TEST_SOURCE_DIR "/xmlhandler.output");
 }

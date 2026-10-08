@@ -43,31 +43,11 @@ void test(std::string const& name)
 
 
 TEST(ModelSerialization, Example18) {
-    alps::testing::StreamFixture transcript;
-    { // Flush serialization objects before checking the captured stream.
-
-
-#ifndef BOOST_NO_EXCEPTIONS
-  try {
-#endif
-
-  test("spin");
-  test("spinless fermions");
-  test("fermion Hubbard");
-
-#ifndef BOOST_NO_EXCEPTIONS
-}
-catch (std::exception& e)
-{
-  std::cerr << "Caught exception: " << e.what() << "\n";
-  FAIL() << "Unexpected exception in serialization contract";
-}
-catch (...)
-{
-  std::cerr << "Caught unknown exception\n";
-  FAIL() << "Unexpected exception in serialization contract";
-}
-#endif
-    }
+  alps::testing::StreamFixture transcript;
+  { // Flush serialization objects before checking the captured stream.
+    test("spin");
+    test("spinless fermions");
+    test("fermion Hubbard");
+  }
   transcript.expect_output(ALPS_TEST_SOURCE_DIR "/example18.output");
 }

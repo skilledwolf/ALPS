@@ -20,14 +20,8 @@
 #include <iostream>
 
 TEST(ModelSerialization, Example3) {
-    alps::testing::StreamFixture transcript;
-    { // Flush serialization objects before checking the captured stream.
-
-
-#ifndef BOOST_NO_EXCEPTIONS
-  try {
-#endif
-
+  alps::testing::StreamFixture transcript;
+  { // Flush serialization objects before checking the captured stream.
     typedef alps::Expression Expression_;
 
     // create the library from an XML file
@@ -51,7 +45,7 @@ TEST(ModelSerialization, Example3) {
                  lib.get_hamiltonian("spin").basis().site_basis(),lib.get_hamiltonian("spin").basis().site_basis()) << "\n";
 
      alps::Parameters parms;
-     parms["Nmax"]=2; 
+     parms["Nmax"]=2;
      alps::HamiltonianDescriptor<short> ham = lib.get_hamiltonian("boson Hubbard",parms,true);
      //ham.set_parameters(parms);
      std::cout << "HBosonSite =\n"
@@ -59,20 +53,6 @@ TEST(ModelSerialization, Example3) {
      std::cout << "HBosonBond =\n"
                << alps::get_matrix(Expression_(),ham.bond_term(),
                   ham.basis().site_basis(),ham.basis().site_basis()) << "\n";
-
-#ifndef BOOST_NO_EXCEPTIONS
-}
-catch (std::exception& e)
-{
-  std::cerr << "Caught exception: " << e.what() << "\n";
-  FAIL() << "Unexpected exception in serialization contract";
-}
-catch (...)
-{
-  std::cerr << "Caught unknown exception\n";
-  FAIL() << "Unexpected exception in serialization contract";
-}
-#endif
-    }
+  }
   transcript.expect_output(ALPS_TEST_SOURCE_DIR "/example3.output");
 }

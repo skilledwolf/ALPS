@@ -24,14 +24,8 @@ using namespace alps;
 #endif
 
 TEST(LatticeSerialization, Example11) {
-    alps::testing::StreamFixture transcript(ALPS_TEST_SOURCE_DIR "/example11.input");
-    { // Flush serialization objects before checking the captured stream.
-
-
-#ifndef BOOST_NO_EXCEPTIONS
-  try {
-#endif
-
+  alps::testing::StreamFixture transcript(ALPS_TEST_SOURCE_DIR "/example11.input");
+  { // Flush serialization objects before checking the captured stream.
     alps::Parameters p;
     std::cin >> p;
     p["LATTICE"] = "chain lattice";
@@ -39,20 +33,6 @@ TEST(LatticeSerialization, Example11) {
     alps::graph_helper<> g(p);
     std::vector<std::string> labels = g.momenta_labels();
     BOOST_FOREACH(std::string const& s, labels) std::cout << s << std::endl;
-
-#ifndef BOOST_NO_EXCEPTIONS
-}
-catch (std::exception& e)
-{
-  std::cerr << "Caught exception: " << e.what() << "\n";
-  FAIL() << "Unexpected exception in serialization contract";
-}
-catch (...)
-{
-  std::cerr << "Caught unknown exception\n";
-  FAIL() << "Unexpected exception in serialization contract";
-}
-#endif
-    }
+  }
   transcript.expect_output(ALPS_TEST_SOURCE_DIR "/example11.output");
 }

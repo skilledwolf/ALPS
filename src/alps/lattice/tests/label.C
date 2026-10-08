@@ -22,14 +22,8 @@ using namespace alps;
 #endif
 
 TEST(LatticeSerialization, Label) {
-    alps::testing::StreamFixture transcript(ALPS_TEST_SOURCE_DIR "/label.input");
-    { // Flush serialization objects before checking the captured stream.
-
-
-#ifndef BOOST_NO_EXCEPTIONS
-  try {
-#endif
-
+  alps::testing::StreamFixture transcript(ALPS_TEST_SOURCE_DIR "/label.input");
+  { // Flush serialization objects before checking the captured stream.
     // read parameters
     alps::Parameters parameters;
     std::cin >> parameters;
@@ -65,20 +59,6 @@ TEST(LatticeSerialization, Label) {
     for (std::vector<std::string>::const_iterator itr = label.begin();
          itr != label.end(); ++itr)
       std::cout << *itr << std::endl;
-  
-#ifndef BOOST_NO_EXCEPTIONS
-}
-catch (std::exception& e)
-{
-  std::cerr << "Caught exception: " << e.what() << "\n";
-  FAIL() << "Unexpected exception in serialization contract";
-}
-catch (...)
-{
-  std::cerr << "Caught unknown exception\n";
-  FAIL() << "Unexpected exception in serialization contract";
-}
-#endif
-    }
+  }
   transcript.expect_output(ALPS_TEST_SOURCE_DIR "/label.output");
 }

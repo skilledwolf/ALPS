@@ -25,32 +25,14 @@ using namespace alps;
 #endif
 
 TEST(LatticeSerialization, Example2) {
-    alps::testing::StreamFixture transcript;
-    { // Flush serialization objects before checking the captured stream.
-
-
-#ifndef BOOST_NO_EXCEPTIONS
-  try {
-#endif
+  alps::testing::StreamFixture transcript;
+  { // Flush serialization objects before checking the captured stream.
     // create the library from an XML file
     std::ifstream in(alps::search_xml_library_path("lattices.xml"));
     alps::LatticeLibrary lib(in);
 
     // write one of the graphs in XML
     std::cout << lib.graph("5-site dimerized");
-#ifndef BOOST_NO_EXCEPTIONS
-}
-catch (std::exception& e)
-{
-  std::cerr << "Caught exception: " << e.what() << "\n";
-  FAIL() << "Unexpected exception in serialization contract";
-}
-catch (...)
-{
-  std::cerr << "Caught unknown exception\n";
-  FAIL() << "Unexpected exception in serialization contract";
-}
-#endif
-    }
+  }
   transcript.expect_output(ALPS_TEST_SOURCE_DIR "/example2.output");
 }

@@ -196,38 +196,18 @@ void IterateOverCells(const LatticeType& lattice)
 }
 
 TEST(LatticeSerialization, Example7) {
-    alps::testing::StreamFixture transcript(ALPS_TEST_SOURCE_DIR "/example7.input");
-    { // Flush serialization objects before checking the captured stream.
+  alps::testing::StreamFixture transcript(ALPS_TEST_SOURCE_DIR "/example7.input");
+  { // Flush serialization objects before checking the captured stream.
+    // read parameters
+    alps::ParameterList plist(std::cin);
+    BOOST_FOREACH(alps::Parameters const& p, plist) {
+      // create a graph factory with default graph type
+      alps::graph_helper<> lattice(p);
 
+      ShowUnitCell(lattice.unit_cell());
 
-#ifndef BOOST_NO_EXCEPTIONS
-  try {
-#endif
-
-  // read parameters
-  alps::ParameterList plist(std::cin);
-  BOOST_FOREACH(alps::Parameters const& p, plist) {
-    // create a graph factory with default graph type
-    alps::graph_helper<> lattice(p);
-
-    ShowUnitCell(lattice.unit_cell());
-
-    IterateOverCells(lattice.lattice());
-  }
-
-#ifndef BOOST_NO_EXCEPTIONS
-  }
-  catch (std::exception& e)
-  {
-    std::cerr << "Caught exception: " << e.what() << "\n";
-    FAIL() << "Unexpected exception in serialization contract";
-  }
-  catch (...)
-  {
-    std::cerr << "Caught unknown exception\n";
-    FAIL() << "Unexpected exception in serialization contract";
-  }
-#endif
+      IterateOverCells(lattice.lattice());
     }
+  }
   transcript.expect_output(ALPS_TEST_SOURCE_DIR "/example7.output");
 }

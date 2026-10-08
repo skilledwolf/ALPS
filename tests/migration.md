@@ -158,9 +158,40 @@ The removed input files are represented explicitly by named cases and parameters
 | `parity` | All six backbone scenarios retain site parity, including the difference between absent and empty `BACKBONE_TYPES`. Direct assertions preserve graph dimensions, site types/coordinates, bond indices/endpoints/types/displacements and periodic wrapping previously present in the XML. Bipartiteness and the public numeric parity accessor are checked too. |
 | `xdrdump`, `xdrdump2`, `boostdump`, `boostdump2`, `boostdump3`, `boostdump4` | Six cases retain scalar width/sign, both large signed-integer scenarios, strings, complex values, and native/Boost adapter paths. Double values now compare at full precision instead of six printed significant digits. Both historical readers still consume the immutable `xdrdump2.dump`; adapter output must also match its exact bytes, independently of the current reader. |
 
-The small component-local `basis_checks.hpp` reports failures by state and
-quantum-number name; it does not extend the shared testing framework. Numerical
+Private helpers in `model/tests/site_basis.cpp` report failures by state and
+quantum-number name; they do not extend the shared testing framework. Numerical
 enumeration references use integer/half-integer arithmetic and need no tolerance.
 Exact XML serialization and remaining symbolic-expression fixtures are retained
 where their representation is the compatibility contract. Those cases still need
 additional semantic coverage when their underlying behavior is changed.
+
+## Test suite consolidation
+
+Related cases now share a source file and executable where they have the same
+dependencies and execution requirements. Every GoogleTest suite/case name,
+assertion, numerical tolerance, and reference fixture is retained. CTest still
+discovers and executes cases separately; only the target portion of the CTest
+name changes for the following groups:
+
+| Previous targets | Current target | Cases |
+| --- | --- | --- |
+| `model_example2`, `model_example6`, `model_example7`, `model_example9` | `model_site_basis` | 14 |
+| `model_example10`, `model_example12` | `model_basis_states` | 2 |
+| `model_example15`, `model_example16` | `model_bloch_basis_states` | 2 |
+| `xdrdump`, `xdrdump2`, `boostdump`, `boostdump2`, `boostdump3`, `boostdump4` | `osiris_dump_serialization` | 6 |
+
+The basis-state and Bloch-state pairs shared identical code but different
+inputs and expected outputs. Both fixture pairs remain unchanged and each is
+checked by its own case. The dump suite shares record writing and value checks
+while preserving native conversion/getter APIs, Boost adapter APIs, extended
+integer/complex values, historical-file readers and the byte-for-byte writer check.
+
+Repeated catch-and-fail wrappers are removed from 28 model, lattice and XML
+serialization cases. GoogleTest reports uncaught exceptions as failures;
+`StreamFixture` still restores redirected streams during unwinding. Inner scopes
+still destroy serialization objects before comparing output. This cleanup changes
+no fixture contents and adds no shared framework machinery.
+
+Validation retained all 918 native CTest cases after applying the target mapping.
+All 24 consolidated cases also passed two shuffled in-process iterations to check
+for shared-state and order-dependent failures; recorded fixture hashes were unchanged.

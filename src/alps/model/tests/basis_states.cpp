@@ -16,15 +16,12 @@
 
 #include <alps/model.h>
 #include <iostream>
+#include <string>
 
-TEST(ModelSerialization, Example12) {
-    alps::testing::StreamFixture transcript(ALPS_TEST_SOURCE_DIR "/example12.input");
-    { // Flush serialization objects before checking the captured stream.
-
-
-#ifndef BOOST_NO_EXCEPTIONS
-  try {
-#endif
+namespace {
+void check_basis_states(const char* fixture) {
+  alps::testing::StreamFixture transcript(std::string(ALPS_TEST_SOURCE_DIR) + "/" + fixture + ".input");
+  { // Flush serialization objects before checking the captured stream.
     alps::Parameters parms;
     std::cin >> parms;
     alps::ModelLibrary models(parms);
@@ -35,20 +32,10 @@ TEST(ModelSerialization, Example12) {
     alps::basis_states_descriptor<short> basis(ham.basis(),lattices.graph());
     alps::basis_states<short> states(basis);
     std::cout << "Built states:\n" << states << std::endl;
+  }
+  transcript.expect_output(std::string(ALPS_TEST_SOURCE_DIR) + "/" + fixture + ".output");
+}
+} // namespace
 
-#ifndef BOOST_NO_EXCEPTIONS
-}
-catch (std::exception& e)
-{
-  std::cerr << "Caught exception: " << e.what() << "\n";
-  FAIL() << "Unexpected exception in serialization contract";
-}
-catch (...)
-{
-  std::cerr << "Caught unknown exception\n";
-  FAIL() << "Unexpected exception in serialization contract";
-}
-#endif
-    }
-  transcript.expect_output(ALPS_TEST_SOURCE_DIR "/example12.output");
-}
+TEST(ModelSerialization, Example10) { check_basis_states("example10"); }
+TEST(ModelSerialization, Example12) { check_basis_states("example12"); }

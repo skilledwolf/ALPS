@@ -84,14 +84,8 @@ void IterateOverSites(const GraphType& graph)
 }
 
 TEST(LatticeSerialization, Example5) {
-    alps::testing::StreamFixture transcript(ALPS_TEST_SOURCE_DIR "/example5.input");
-    { // Flush serialization objects before checking the captured stream.
-
-
-#ifndef BOOST_NO_EXCEPTIONS
-  try {
-#endif
-
+  alps::testing::StreamFixture transcript(ALPS_TEST_SOURCE_DIR "/example5.input");
+  { // Flush serialization objects before checking the captured stream.
     // read parameters
     alps::Parameters parameters;
     std::cin >> parameters;
@@ -99,20 +93,6 @@ TEST(LatticeSerialization, Example5) {
     alps::graph_helper<> lattice(parameters);
 
     IterateOverSites(lattice.graph());
-
-#ifndef BOOST_NO_EXCEPTIONS
   }
-  catch (std::exception& e)
-  {
-    std::cerr << "Caught exception: " << e.what() << "\n";
-    FAIL() << "Unexpected exception in serialization contract";
-  }
-  catch (...)
-  {
-    std::cerr << "Caught unknown exception\n";
-    FAIL() << "Unexpected exception in serialization contract";
-  }
-#endif
-    }
   transcript.expect_output(ALPS_TEST_SOURCE_DIR "/example5.output");
 }

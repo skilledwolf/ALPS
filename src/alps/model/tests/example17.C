@@ -25,13 +25,8 @@ using namespace alps;
 #endif
 
 TEST(ModelSerialization, Example17) {
-    alps::testing::StreamFixture transcript(ALPS_TEST_SOURCE_DIR "/example17.input");
-    { // Flush serialization objects before checking the captured stream.
-
-#ifndef BOOST_NO_EXCEPTIONS
-  try {
-#endif
-
+  alps::testing::StreamFixture transcript(ALPS_TEST_SOURCE_DIR "/example17.input");
+  { // Flush serialization objects before checking the captured stream.
     alps::ParameterList parms;
     std::cin >> parms;
     for (int i=0;i<parms.size();++i) {
@@ -40,18 +35,6 @@ TEST(ModelSerialization, Example17) {
       alps::HamiltonianDescriptor<short> ham(models.get_hamiltonian(lattice,parms[i],true));
       std::cout << ham;
     }
-
-#ifndef BOOST_NO_EXCEPTIONS
-}
-catch (std::exception& exc) {
-  std::cerr << exc.what() << "\n";
-  FAIL() << "Unexpected exception in serialization contract";
-}
-catch (...) {
-  std::cerr << "Fatal Error: Unknown Exception!\n";
-  FAIL() << "Unexpected exception in serialization contract";
-}
-#endif
-    }
+  }
   transcript.expect_output(ALPS_TEST_SOURCE_DIR "/example17.output");
 }

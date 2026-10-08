@@ -21,13 +21,8 @@
 #include <iostream>
 
 TEST(ModelSerialization, Example13) {
-    alps::testing::StreamFixture transcript(ALPS_TEST_SOURCE_DIR "/example13.input");
-    { // Flush serialization objects before checking the captured stream.
-
-
-#ifndef BOOST_NO_EXCEPTIONS
-  try {
-#endif
+  alps::testing::StreamFixture transcript(ALPS_TEST_SOURCE_DIR "/example13.input");
+  { // Flush serialization objects before checking the captured stream.
     alps::Parameters parms;
     std::cin >> parms;
     alps::ModelLibrary models(parms);
@@ -43,26 +38,12 @@ TEST(ModelSerialization, Example13) {
         std::cout << "Translation " << i << " with phase "
                   << alps::numeric::round<1>(trans[i].first) << " maps ";
         for (int j=0;j<trans[i].second.size();++j)
-          std::cout << j << "->" << trans[i].second[j] << " "; 
+          std::cout << j << "->" << trans[i].second[j] << " ";
         std::cout << "\n";
       }
       alps::bloch_basis_states<short> states(basis,trans);
       std::cout << "Built states:\n" << states << std::endl;
     }
-
-#ifndef BOOST_NO_EXCEPTIONS
-}
-catch (std::exception& e)
-{
-  std::cerr << "Caught exception: " << e.what() << "\n";
-  FAIL() << "Unexpected exception in serialization contract";
-}
-catch (...)
-{
-  std::cerr << "Caught unknown exception\n";
-  FAIL() << "Unexpected exception in serialization contract";
-}
-#endif
-    }
+  }
   transcript.expect_output(ALPS_TEST_SOURCE_DIR "/example13.output");
 }

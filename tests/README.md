@@ -67,6 +67,9 @@ Create an ordinary executable, link only the component being tested, then call
 CMakeLists. Each GoogleTest case is discoverable through CTest; names include
 the component and executable to avoid collisions across generated type tests.
 Use `TIMEOUT` for a justified nondefault limit and `THREADS` for an OpenMP test.
+Group related cases in one executable when they share dependencies, labels and
+resource requirements. CTest still launches each discovered case independently.
+Keep separate targets for distinct MPI, stress-test or compiler requirements.
 Labels describe both ownership and purpose (`compatibility`, `integration`,
 `scientific`, `extensive`, `mpi`). GoogleTest execution alone does not imply a
 test is a scientific validation.
