@@ -30,3 +30,8 @@ FOREACH (name default ordering stream assign not_found external)
 ENDFOREACH(name)
 
 target_link_libraries(param_external ${Boost_LIBRARIES})
+
+add_executable(param_checkpoint_regression checkpoint_regression.cpp)
+target_link_libraries(param_checkpoint_regression alps)
+add_test(NAME param_checkpoint_regression COMMAND param_checkpoint_regression)
+set_property(TEST param_checkpoint_regression PROPERTY LABELS "params;hdf5;regression")
