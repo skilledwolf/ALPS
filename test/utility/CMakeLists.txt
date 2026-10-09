@@ -17,17 +17,25 @@
 #   FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 #   DEALINGS IN THE SOFTWARE.
 
-include_directories(${PROJECT_BINARY_DIR}/src)
-include_directories(${PROJECT_SOURCE_DIR}/src)
-include_directories(${Boost_ROOT_DIR})
-
-FOREACH(name vmusage bitops citations runtime_correctness)
+foreach(name vmusage bitops)
   add_executable(${name} ${name}.cpp)
-  add_dependencies(${name} alps)
-  target_link_libraries(${name} alps)
-  add_alps_test(${name})
-  set_property(TEST ${name} PROPERTY LABELS utility)
-ENDFOREACH(name)
+
+  target_link_libraries(${name} PRIVATE alps)
+  alps_add_gtest(${name} COMPONENT utilities)
+endforeach()
+
+add_executable(ngs_hash ngs_hash.cpp)
+target_link_libraries(ngs_hash PRIVATE alps)
+alps_add_gtest(ngs_hash COMPONENT utilities)
+
+# Link only the owning foundation: no aggregate library may hide missing symbols.
+add_executable(citations citations.cpp)
+target_link_libraries(citations PRIVATE alps)
+alps_add_gtest(citations COMPONENT utilities LABELS citations)
+
+add_executable(runtime_correctness runtime_correctness.cpp)
+target_link_libraries(runtime_correctness PRIVATE alps)
+add_test(NAME runtime_correctness COMMAND runtime_correctness)
 
 if(ALPS_CITATION_PYTHON)
 add_executable(citation_runtime citation_runtime.cpp)

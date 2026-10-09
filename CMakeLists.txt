@@ -17,7 +17,7 @@
 #   FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 #   DEALINGS IN THE SOFTWARE.
 
-cmake_minimum_required(VERSION 3.22)
+cmake_minimum_required(VERSION 3.27)
 
 if(${CMAKE_SOURCE_DIR} STREQUAL ${CMAKE_BINARY_DIR})
   message(FATAL_ERROR "In-source builds not allowed. Please make a new directory (called a build directory) and run CMake from there. You may need to remove CMakeCache.txt.")
@@ -304,6 +304,15 @@ endif (BIND_FORTRAN_LOWERCASE)
 # test environment
 ######################################################################
 include(add_alps_test)
+# Transitional naming until the native build contract is modernized.
+set(ALPS_BUILD_TESTING ${ALPS_BUILD_TESTS})
+option(ALPS_BUILD_EXTENSIVE_TESTS "Build extensive native tests" OFF)
+option(ALPS_ENABLE_SANITIZERS "Enable address and undefined behavior sanitizers" OFF)
+if(ALPS_ENABLE_SANITIZERS)
+  add_compile_options(-fsanitize=address,undefined -fno-omit-frame-pointer)
+  add_link_options(-fsanitize=address,undefined)
+endif()
+include(ALPSTesting)
 
 ######################################################################
 # configuration files
