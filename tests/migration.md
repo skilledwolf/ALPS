@@ -18,7 +18,11 @@ and test conventions are in [the testing guide](README.md).
 | XML | Keep exact XML and symbolic-expression fixtures where spelling, ordering or schema is the compatibility contract. `StreamFixture` restores streams during exceptions and compares output after serialization objects are destroyed. |
 
 Do not regenerate historical fixtures from a replacement implementation merely
-to make a test pass. The Python differential audit remains available separately; native fixture compatibility does not establish ALPSCore archive compatibility.
+to make a test pass. The frozen Python checkpoint has its serializer revision
+and reproduction instructions beside it in `../python/pyalps/tests/fixtures/legacy_checkpoint.cpp`.
+Frozen scheduler and solver results in `../python/pyalps/tests/fixtures/application_results/`
+also exercise the public loaders. These prove historical ALPS compatibility;
+they do not establish ALPSCore archive compatibility.
 
 ## Behaviors requiring a consolidation decision
 
@@ -64,10 +68,10 @@ independently of the current reader.
 Timing programs and Alea `dumpbench.C` are benchmarks. The unregistered
 `binned_data.C` refers to an absent header and provides no coverage. Remaining
 manual MPI drivers and restart gaps are described in [the MPI guide](mpi.md).
-Component guides record [HDF5 schema/type coverage](../test/hdf5/README.md),
-[parameter contracts](../test/ngs/params/README.md) and
-[graph coverage](../test/graph/README.md).
+Component guides record [HDF5 schema/type coverage](../src/alps/hdf5/tests/README.md),
+[parameter contracts](../src/alps/params/tests/README.md) and
+[graph coverage](../src/alps/graph/tests/README.md).
 
 ## Historical Python audit
 
-The audit in `script/pyalps_compatibility/` remains available. Its retirement is a separate PR.
+The audit in `script/pyalps_compatibility/` remains available pending separate retirement review.

@@ -1,7 +1,0 @@
-cmake_minimum_required(VERSION 3.27)
-project(alps_aggregate_consumer LANGUAGES C CXX)
-find_package(ALPS REQUIRED CONFIG)
-add_executable(aggregate_consumer main.cpp)
-target_link_libraries(aggregate_consumer PRIVATE ALPS::alps)
-enable_testing()
-add_test(NAME aggregate_consumer COMMAND aggregate_consumer)

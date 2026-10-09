@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 cmake_minimum_required(VERSION 3.22)
-project(pyalps LANGUAGES CXX)
+project(pyalps LANGUAGES C CXX)
 
 option(PYALPS_BUILD_APPLICATIONS "Build optional ALPS application bindings" ON)
 
@@ -316,11 +316,11 @@ if(PYALPS_BUNDLE_APPLICATIONS)
   # halves of this: that no library is bundled twice, and that every bundled
   # program can still be loaded.
   file(GLOB _alps_runtime_libs LIST_DIRECTORIES FALSE
-    "${ALPS_ROOT_DIR}/lib/*.so" "${ALPS_ROOT_DIR}/lib/*.dylib")
+    "${ALPS_LIBRARY_DIRS}/*.so" "${ALPS_LIBRARY_DIRS}/*.dylib")
   if(NOT _alps_runtime_libs)
     message(FATAL_ERROR
       "PYALPS_BUNDLE_APPLICATIONS is ON but no shared libraries were found in "
-      "${ALPS_ROOT_DIR}/lib. The bundled programs would ship without the "
+      "${ALPS_LIBRARY_DIRS}. The bundled programs would ship without the "
       "libalps they link against.")
   endif()
   foreach(_lib IN LISTS _alps_runtime_libs)

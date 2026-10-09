@@ -1,19 +1,65 @@
 # Testing ALPS
 
-Native runtime regressions use GoogleTest and CTest. During the SDK migration,
-component tests remain under `test/`; shared fixtures and MPI support live in
-`tests/support/`. Python tests retain their independent pytest entry point.
+ALPS uses GoogleTest for C++ runtime tests, CTest for native execution, and
+pytest for Python. Component tests live beside their implementation in
+`src/alps/<component>/tests` and `python/pyalps/tests`; repository-wide
+integration, SDK, packaging and CI checks live here. The two language suites
+have independent entry points: passing CTest does not mean that the Python
+package was tested.
 
-Configure with CMake 3.27 or newer and `ALPS_BUILD_TESTS=ON`, build the selected
-targets, then run `ctest --test-dir <build-dir> --output-on-failure`.
-`ALPS_BUILD_EXTENSIVE_TESTS` opts into expensive graph and HDF5 type tests;
-`ALPS_ENABLE_SANITIZERS` adds AddressSanitizer and UndefinedBehaviorSanitizer.
+## Local workflows
 
-GoogleTest is a test-only dependency. An installed GTest >= 1.14 is preferred;
-otherwise CMake fetches the checksum-pinned 1.18.0 release. Offline builds can
-set `FETCHCONTENT_SOURCE_DIR_GOOGLETEST` to an existing source checkout.
-Tests-disabled builds do not find or fetch GoogleTest, and it is not installed
-with the SDK.
+With the SDK prerequisites installed:
+
+```sh
+cmake --preset dev
+cmake --build --preset dev --parallel 2
+ctest --preset dev
+ctest --preset dev -L hdf5
+ctest --preset dev -R Matrix
+```
+
+`dev` omits applications. `default` includes application tests. `mpi` enables
+MPI, `extensive` enables graph and HDF5 type-matrix tests, and `sanitizers`
+instruments a Debug build with AddressSanitizer and UndefinedBehaviorSanitizer.
+Build each preset before testing it. To exercise actual ranks:
+
+```sh
+cmake --preset mpi
+cmake --build --preset mpi --parallel 2
+ctest --preset mpi -L '^mpi$'
+```
+
+All test presets reject an empty selection. An unbuilt GoogleTest executable is
+reported as `NOT_BUILT`; a built executable with zero discovered cases fails
+discovery, even when other executables still contain tests.
+GoogleTest is a test-only dependency: CMake uses an installed GTest >= 1.14 or
+fetches the checksum-pinned 1.18.0 release. An offline source checkout can be
+selected with `-DFETCHCONTENT_SOURCE_DIR_GOOGLETEST=/path/to/googletest`.
+`ALPS_BUILD_TESTING=OFF` neither finds nor fetches GoogleTest, and it is never
+installed as part of the SDK.
+Tutorials using only the CMake process runner do not acquire GoogleTest either.
+
+Standalone numerical tutorials need no SDK or wheel:
+
+```sh
+python -m pip install numpy pytest
+python -m pytest tests/tutorials -q
+```
+
+After installing the SDK and pyalps as described in `CONTRIBUTING.md`:
+
+```sh
+python -m pytest python/pyalps/tests -q -rs
+python -m pytest tests/cmake -q -rs
+python -m pytest tests/ci tests/packaging -q
+```
+
+`tests/cmake` requires `ALPS_DIR`; it validates installed consumers, relocatability,
+and build configuration. `ALPS_TEST_CMAKE_ARGS` supplies a
+JSON array of dependency/toolchain arguments to its temporary projects. Keep
+the installed-SDK and Python checks pointed at the candidate build. Distribution
+CI additionally exercises repaired wheels and independently unpacked sdists.
 
 ## Writing a C++ test
 

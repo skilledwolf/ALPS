@@ -79,7 +79,7 @@ function(alps_add_gtest target)
   set(workdir "${CMAKE_CURRENT_BINARY_DIR}/test-work/${target}")
   file(MAKE_DIRECTORY "${workdir}")
   set(environment
-    "ALPS_XML_PATH=set:${PROJECT_BINARY_DIR}/lib/xml"
+    "ALPS_XML_PATH=set:${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../src/alps/resources"
     "OMP_NUM_THREADS=set:${TEST_THREADS}" "OPENBLAS_NUM_THREADS=set:1")
   if(WIN32)
     foreach(directory IN LISTS ALPS_RUNTIME_LIBRARY_DIRS)
@@ -190,7 +190,7 @@ function(alps_add_test name)
   if(ALPS_DATA_DIR)
     set(xml_resources "${ALPS_DATA_DIR}/xml")
   else()
-    set(xml_resources "${PROJECT_BINARY_DIR}/lib/xml")
+    set(xml_resources "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../src/alps/resources")
   endif()
   set_tests_properties("${name}" PROPERTIES TIMEOUT 600
     ENVIRONMENT_MODIFICATION "ALPS_XML_PATH=set:${xml_resources}")
