@@ -98,6 +98,15 @@ set(ALPS_SOURCES ${ALPS_SOURCES}
 )
 
 add_library(alps ${ALPS_SOURCES})
+add_library(ALPS::alps ALIAS alps)
+target_compile_features(alps PUBLIC cxx_std_17)
+target_include_directories(alps PUBLIC
+  "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/src>"
+  "$<BUILD_INTERFACE:${PROJECT_BINARY_DIR}/src>"
+  "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/bindings>"
+  "$<INSTALL_INTERFACE:include>")
+target_compile_definitions(alps INTERFACE BOOST_NO_AUTO_PTR= BOOST_FILESYSTEM_NO_CXX20_ATOMIC_REF
+  BOOST_TIMER_ENABLE_DEPRECATED BOOST_ALLOW_DEPRECATED_HEADERS BOOST_BIND_GLOBAL_PLACEHOLDERS)
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   # The legacy "lagged_fibonacci607" generator uses a 48-bit word with a 32-bit
@@ -165,7 +174,7 @@ endif()
 #######################################################################
 # install
 #######################################################################
-install(TARGETS alps COMPONENT libraries
+install(TARGETS alps EXPORT ALPSTargets COMPONENT libraries
         ARCHIVE DESTINATION lib
         LIBRARY DESTINATION lib
         RUNTIME DESTINATION bin)
@@ -176,3 +185,10 @@ if(ALPS_BUILD_FORTRAN)
           LIBRARY DESTINATION lib
           RUNTIME DESTINATION bin)
 endif(ALPS_BUILD_FORTRAN)
+
+# Imported dependencies propagate their headers and link requirements.
+target_link_libraries(alps HDF5::HDF5)
+foreach(component IN LISTS ALPS_BOOST_COMPONENTS)
+  target_link_libraries(alps Boost::${component})
+endforeach()
+install(EXPORT ALPSTargets NAMESPACE ALPS:: DESTINATION share/alps COMPONENT build)

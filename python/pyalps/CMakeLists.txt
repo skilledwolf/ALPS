@@ -37,7 +37,7 @@ endif()
 # Legacy ALPSConfig.cmake serializes the HDF5 imported target name into
 # ALPS_LIBRARIES.  Outside the original build tree that target no longer
 # exists, while the installed library keeps its conventional `hdf5` name.
-set(_pyalps_link_libraries ${ALPS_LIBRARIES})
+set(_pyalps_link_libraries ALPS::alps)
 list(TRANSFORM _pyalps_link_libraries REPLACE "^hdf5-shared$" "hdf5")
 separate_arguments(_pyalps_link_options NATIVE_COMMAND "${ALPS_EXTRA_LINKER_FLAGS}")
 

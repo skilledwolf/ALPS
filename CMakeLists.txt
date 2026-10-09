@@ -36,6 +36,11 @@ option(LAPACK_64_BIT "Use 64-bit version of LAPACK" OFF)
 option(ALPS_BUILD_FORTRAN "Build the ALPS fortran applications and tools" OFF)
 option(ALPS_INCLUDE_TUTORIALS "Include the ALPS tutorials" ON)
 option(BIND_FORTRAN_LOWERCASE "FORTRAN functions are compiled without a trailing underscore" OFF)
+if(LAPACK_64_BIT OR BIND_FORTRAN_LOWERCASE OR
+   (DEFINED BLA_SIZEOF_INTEGER AND NOT BLA_SIZEOF_INTEGER STREQUAL "4"))
+  message(FATAL_ERROR "ALPS requires LP64 BLAS/LAPACK with lowercase underscore symbols (BLA_SIZEOF_INTEGER=4)")
+endif()
+set(BLA_SIZEOF_INTEGER 4)
 option(ALPS_LINK_BOOST_TEST "Link Boost.test pre-built library" OFF)
 option(ALPS_INSTALL_BOOST_TEST "Install Boost Test framework" OFF)
 option(ALPS_NGS_USE_NEW_ALEA "Use the ALPS ngs-alea instead of just alea" OFF)
@@ -57,7 +62,7 @@ mark_as_advanced(ALPS_USE_MKL_PARALLEL)
 SET (APPLICATIONS_CAN_BE_BUILT ON)
 
 set(ALPS_BOOST_LIBRARY_NAME "boost" CACHE STRING "name of the boost library")
-set(ALPS_ENABLE_MPI ON CACHE BOOL "Enable MPI Parallelization")
+set(ALPS_ENABLE_MPI OFF CACHE BOOL "Enable MPI Parallelization")
 set(ALPS_INSTALL_HEADERS  ON CACHE BOOL "Install headers for ALPS and all dependent libraries")
 set(ALPS_BUILD_EXAMPLES ON CACHE BOOL "Build ALPS examples")
 set(ALPS_BUILD_TESTS ON CACHE BOOL "Build ALPS tests")
@@ -81,6 +86,10 @@ if(ALPS_BUILD_FORTRAN)
 else(ALPS_BUILD_FORTRAN)
   project(alps VERSION ${ALPS_VERSION_CORE} LANGUAGES C CXX)
 endif(ALPS_BUILD_FORTRAN)
+
+if(ALPS_ENABLE_MPI AND EXISTS "${PROJECT_BINARY_DIR}/src/alps/config.h")
+  message(STATUS "MPI is enabled in this build directory. Older ALPS configurations enabled it by default; pass -DALPS_ENABLE_MPI=OFF for a serial SDK.")
+endif()
 
 # C++17 is the minimum supported standard; allow callers (and CI) to select
 # a newer one with -DCMAKE_CXX_STANDARD=20/23.
@@ -278,8 +287,19 @@ ENDIF(HDF5_IS_PARALLEL)
 # Python bindings are built by the standalone scikit-build-core project in
 # python/pyalps.  The C++ SDK deliberately has no Python dependency.
 
+if(HDF5_VERSION VERSION_LESS "1.10.5")
+  message(FATAL_ERROR "ALPS requires HDF5 1.10.5 or newer")
+endif()
+
 # Boost Libraries
-find_package(BoostForALPS REQUIRED)
+# The SDK now requires an external Boost CMake package.
+set(ALPS_USE_SYSTEM_BOOST ON)
+set(ALPS_BOOST_COMPONENTS filesystem serialization program_options regex thread date_time chrono timer iostreams unit_test_framework)
+if(ALPS_ENABLE_MPI)
+  list(APPEND ALPS_BOOST_COMPONENTS mpi)
+endif()
+find_package(Boost 1.76 CONFIG REQUIRED COMPONENTS ${ALPS_BOOST_COMPONENTS})
+set(Boost_INCLUDE_DIR "${Boost_INCLUDE_DIRS}")
 if(Boost_ROOT_DIR)
   message(STATUS "Adding Boost dir: ${Boost_ROOT_DIR} " )
   include_directories(${Boost_ROOT_DIR})

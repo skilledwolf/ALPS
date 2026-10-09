@@ -126,3 +126,17 @@ set(ALPS_EXTRA_LIBRARIES "@ALPS_EXTRA_LIBRARIES@")
 # list of ALPS and dependent libraries
 set(ALPS_LIBRARIES alps ${ALPS_Boost_LIBRARIES} ${ALPS_EXTRA_LIBRARIES} CACHE STRING "List of ALPS and dependent libraries." FORCE)
 set(ALPS_FORTRAN_LIBRARIES alps_fortran CACHE STRING "List of ALPS-Fortran library." FORCE)
+
+# Imported targets are the supported SDK consumer interface. Legacy variables
+# remain during extraction so existing Python/application builds keep working.
+include(CMakeFindDependencyMacro)
+find_dependency(Threads)
+find_dependency(Boost 1.76 CONFIG COMPONENTS @ALPS_BOOST_COMPONENTS@)
+find_dependency(HDF5 1.10.5 MODULE COMPONENTS C HL)
+if(@ALPS_ENABLE_MPI@)
+  find_dependency(MPI COMPONENTS CXX)
+endif()
+include("${CMAKE_CURRENT_LIST_DIR}/ALPSTargets.cmake")
+get_filename_component(ALPS_ROOT_DIR "${CMAKE_CURRENT_LIST_DIR}/../.." ABSOLUTE)
+set(ALPS_INCLUDE_DIRS "${ALPS_ROOT_DIR}/include")
+set(ALPS_LIBRARY_DIRS "${ALPS_ROOT_DIR}/lib")
