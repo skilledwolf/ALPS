@@ -2,7 +2,7 @@
 
 ALPS uses GoogleTest for C++ runtime tests, CTest for native execution, and
 pytest for Python. Native component tests live beside their implementation in
-`src/alps/<component>/tests`; Python tests remain in `tests/pyalps`. Repository-wide
+`src/alps/<component>/tests`; Python tests remain in `python/pyalps/tests`. Repository-wide
 integration, SDK, packaging and CI checks live here. The two language suites
 have independent entry points: passing CTest does not mean that the Python
 package was tested.
@@ -44,13 +44,13 @@ Standalone numerical tutorials need no SDK or wheel:
 
 ```sh
 python -m pip install numpy pytest
-python -m pytest tests/pyalps/bandstructure_tutorial_test.py -q
+python -m pytest tests/tutorials -q
 ```
 
 After installing the SDK and pyalps as described in `CONTRIBUTING.md`:
 
 ```sh
-python -m pytest tests/pyalps -q -rs
+python -m pytest python/pyalps/tests -q -rs
 python -m pytest tests/cmake -q -rs
 python -m pytest tests/ci tests/packaging -q
 ```
