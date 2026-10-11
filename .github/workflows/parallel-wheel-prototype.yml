@@ -1,5 +1,7 @@
 name: Parallel wheel prototype
 on:
+  push:
+    branches: [WIP/parallel-wheel-prototype]
   workflow_dispatch:
 permissions:
   contents: read
