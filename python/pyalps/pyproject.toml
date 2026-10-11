@@ -19,7 +19,7 @@ description = "Python Applications and Libraries for Physics Simulations"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
-dependencies = ["numpy>=1.26", "scipy>=1.13", "matplotlib>=3.8", "lxml>=5"]
+dependencies = ["numpy>=1.26", "scipy>=1.13", "matplotlib>=3.8", "lxml>=5", "mpich==5.0.2"]
 authors = [
   { name = "Sergei Iskakov", email = "siskakov@umich.edu" },
   { name = "Fei Lin", email = "feilin.physics@gmail.com" },
@@ -97,12 +97,13 @@ PYALPS_TEST_DOWNSTREAM_EXPORT = "1"
 [tool.cibuildwheel.linux]
 environment-pass = ["GITHUB_REF", "ALPS_VERSION_PRERELEASE", "CMAKE_BUILD_PARALLEL_LEVEL"]
 before-all = [
+  "python -m pip install --prefix /opt/mpi mpich==5.0.2",
   "if command -v dnf >/dev/null 2>&1; then dnf install -y ccache hdf5-devel lapack-devel; else apk add --no-cache boost-dev ccache hdf5-dev lapack-dev; fi",
   "python -m pip install 'cmake>=3.27' 'ninja>=1.12'",
   "cd {project}",
   "ccache --zero-stats",
-  "if command -v dnf >/dev/null 2>&1; then ALPS_BOOST_MPI=OFF python .github/scripts/prepare_dependencies.py boost-1.91.0 _build/boost-install; fi",
-  "cmake --preset distribution",
+  "if command -v dnf >/dev/null 2>&1; then ALPS_BOOST_MPI=ON python .github/scripts/prepare_dependencies.py boost-1.91.0 _build/boost-install; fi",
+  "cmake --preset distribution -DALPS_ENABLE_MPI=ON -DALPS_ENABLE_OPENMP=ON",
   "cmake --build --preset distribution -j4",
   "ccache --show-stats || true",
 ]
@@ -112,7 +113,8 @@ repair-wheel-command = [
   "patchelf --version",
   # Boost's transitive libraries need the same search path as its direct ones.
   # Scope this to repair so installed-wheel tests cannot use the build prefix.
-  'LD_LIBRARY_PATH="$(pwd)/_build/boost-install/lib" auditwheel repair -w {dest_dir} {wheel}',
+  'LD_LIBRARY_PATH="/opt/mpi/lib:$(pwd)/_build/boost-install/lib" auditwheel repair --exclude libmpi.so.12 -w {dest_dir} {wheel}',
+  "python {project}/.github/scripts/parallel_wheel_finalize.py {dest_dir}",
   "python {project}/python/pyalps/_build_support/runtime_manifest.py --wheel {dest_dir}/*.whl",
   "auditwheel show {dest_dir}/*.whl",
 ]
@@ -122,15 +124,15 @@ before-all = [
   "brew install --force-bottle ccache cmake hdf5 ninja zstd xz",
   "cd {project}",
   "ccache --zero-stats",
-  "ALPS_BOOST_MPI=OFF CXX=clang++ python .github/scripts/prepare_dependencies.py boost-1.91.0 _build/boost-install",
-  "cmake --preset distribution -DHDF5_ROOT=$(brew --prefix hdf5)",
+  "ALPS_BOOST_MPI=ON CXX=clang++ python .github/scripts/prepare_dependencies.py boost-1.91.0 _build/boost-install",
+  "cmake --preset distribution -DALPS_ENABLE_MPI=ON -DALPS_ENABLE_OPENMP=ON -DHDF5_ROOT=$(brew --prefix hdf5)",
   "cmake --build --preset distribution -j2",
   "ccache --show-stats || true",
 ]
 repair-wheel-command = [
   "python -m pip install wheel",
   # Invoke the Python module directly: a shell shebang can strip DYLD variables.
-  'DYLD_LIBRARY_PATH="$(pwd)/_build/boost-install/lib" python -m delocate.cmd.delocate_wheel --require-archs {delocate_archs} -w {dest_dir} -v {wheel}',
+  'DYLD_LIBRARY_PATH="/opt/mpi/lib:$(pwd)/_build/boost-install/lib" python -m delocate.cmd.delocate_wheel --require-archs {delocate_archs} -w {dest_dir} -v {wheel}',
   "python {project}/python/pyalps/_build_support/runtime_manifest.py --wheel {dest_dir}/*.whl",
   "delocate-listdeps --all {dest_dir}/*.whl",
 ]
