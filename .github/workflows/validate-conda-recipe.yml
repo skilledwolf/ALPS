@@ -1,0 +1,87 @@
+name: One-off Ubuntu 22.04 conda recipe
+
+on:
+  push:
+    branches: [WIP/validate-conda-recipe-20261011]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: bash
+    env:
+      CMAKE_BUILD_PARALLEL_LEVEL: '2'
+      CTEST_PARALLEL_LEVEL: '2'
+      PIP_DISABLE_PIP_VERSION_CHECK: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Install Miniforge and the proposed dependency recipe
+        run: |
+          mkdir -p validation
+          cd "$RUNNER_TEMP"
+          installer=Miniforge3-26.7.2-0-Linux-x86_64.sh
+          url=https://github.com/conda-forge/miniforge/releases/download/26.7.2-0
+          curl -fL --retry 3 "$url/$installer" -o "$installer"
+          curl -fL --retry 3 "$url/$installer.sha256" -o "$installer.sha256"
+          sha256sum -c "$installer.sha256"
+          bash "$installer" -b -p "$RUNNER_TEMP/miniforge"
+          source "$RUNNER_TEMP/miniforge/etc/profile.d/conda.sh"
+          conda create -y -n alps-dev --override-channels -c conda-forge \
+            python=3.12 pip 'cmake>=3.27' ninja c-compiler cxx-compiler \
+            libboost-devel=1.91 'hdf5=*=nompi_*' \
+            'libblas=*=*openblas' 'liblapack=*=*openblas' numpy h5py
+          conda activate alps-dev
+          conda list --explicit > "$GITHUB_WORKSPACE/validation/conda-explicit.txt"
+          cat > "$RUNNER_TEMP/alps-env.sh" <<'ENV'
+          source "$RUNNER_TEMP/miniforge/etc/profile.d/conda.sh"
+          conda activate alps-dev
+          export CMAKE_PREFIX_PATH="$CONDA_PREFIX"
+          export ALPS_DIR="$GITHUB_WORKSPACE/_build/default/install/share/alps"
+          export PATH="$GITHUB_WORKSPACE/_build/default/install/bin:$PATH"
+          ENV
+          echo "BASH_ENV=$RUNNER_TEMP/alps-env.sh" >> "$GITHUB_ENV"
+      - name: Configure, build and install SDK and applications
+        id: sdk
+        run: |
+          cmake --version
+          python --version
+          "$CXX" --version
+          cmake --preset default 2>&1 | tee validation/configure.log
+          cmake --build --preset default --parallel 2 2>&1 | tee validation/build.log
+          cmake --install _build/default > validation/install.log
+      - name: Run native tests
+        run: ctest --preset default --output-on-failure --output-junit native.xml 2>&1 | tee validation/native-tests.log
+      - name: Build and run installed SDK consumers
+        if: ${{ !cancelled() && steps.sdk.outcome == 'success' }}
+        run: |
+          cmake -S tests/cmake/consumer -B _build/recipe-consumer -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release -DALPS_DIR="$ALPS_DIR" 2>&1 | tee validation/consumer-configure.log
+          cmake --build _build/recipe-consumer --parallel 2 2>&1 | tee validation/consumer-build.log
+          ctest --test-dir _build/recipe-consumer --output-on-failure --output-junit consumer.xml 2>&1 | tee validation/consumer-tests.log
+      - name: Install and smoke-test editable pyalps
+        if: ${{ !cancelled() && steps.sdk.outcome == 'success' }}
+        run: |
+          python -m pip install 'scikit-build-core>=1.0' 'nanobind==2.15.0' 'patchelf>=0.14' pytest
+          python -m pip install --no-build-isolation -e python/pyalps \
+            --config-setting "build-dir=$PWD/_build/python" 2>&1 | tee validation/python-install.log
+          python -c 'import pyalps; import pyalps.hdf5; print(pyalps.__file__)'
+          python -m pytest tests/pyalps/test_checkpoint_contracts.py tests/pyalps/test_conversion_contracts.py -q 2>&1 | tee validation/python-tests.log
+          python -m pip freeze > validation/pip-freeze.txt
+      - name: Retain validation evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: ubuntu-2204-conda-recipe
+          path: |
+            validation/
+            _build/default/native.xml
+            _build/recipe-consumer/consumer.xml
+            _build/default/CMakeCache.txt
