@@ -23,6 +23,7 @@ def run(args, cwd):
 def test_loop_execution_modes(tmp_path, ranks, threads):
     (tmp_path / 'input').write_text('''LATTICE="chain lattice"
 MODEL="spin"
+ALGORITHM="loop"
 local_S=0.5
 L=8
 J=1
