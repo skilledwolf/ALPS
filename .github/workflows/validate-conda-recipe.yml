@@ -53,7 +53,7 @@ jobs:
         run: |
           cmake --version
           python --version
-          "$CXX" --version
+          c++ --version
           cmake --preset default 2>&1 | tee validation/configure.log
           cmake --build --preset default --parallel 2 2>&1 | tee validation/build.log
           cmake --install _build/default > validation/install.log
