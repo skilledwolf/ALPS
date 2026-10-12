@@ -6,6 +6,8 @@ User-facing changes and migration notes are recorded here, starting with the bui
 
 ### Fixed
 
+- Correct CT-INT density pairs, warmup exclusion, configuration signs during matrix rebuilds, frequency cache extents, and sparse multiband proposal probabilities. Validate bare Green inputs and density interaction matrices; release repeated-run storage and make interaction-matrix copies independent.
+
 - Accept positional plot/simulation files and standalone `--version` in the archive tool, and parse paired `CONSTRAINT` tags correctly.
 
 - Correct the ferromagnetic Ising acceptance sign in the Python and C++ tutorials, add physics regressions, and exercise the density-profile tutorial through callable simulation and plotting functions.
