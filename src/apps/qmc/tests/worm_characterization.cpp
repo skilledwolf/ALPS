@@ -50,7 +50,7 @@ void start_without_log(WormProbe& run) {
 
 void dump_reference(const std::string& name, const WormProbe& run) {
   const char* directory = std::getenv("ALPS_QMC_DUMP_DIR");
-  if (!directory) return;
+  if (!directory || !*directory) return;
   std::filesystem::create_directories(directory);
   const auto prefix = std::filesystem::path(directory) / ("worm_" + name);
   // Keep the raw solver payload for auditing. The worker wrapper also contains

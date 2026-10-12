@@ -10,6 +10,7 @@
 #include <gtest/gtest.h>
 #include <cstdlib>
 #include <cmath>
+#include <filesystem>
 #include <limits>
 #include <sstream>
 
@@ -119,6 +120,8 @@ TEST(LoopSweeps, CheckpointRestoresScheduleAndAllowsExplicitExtension) {
     EXPECT_EQ(resumed.thermalization(), 3);
     EXPECT_DOUBLE_EQ(resumed.progress(), 9./103.);
     if (const char* dump = std::getenv("ALPS_QMC_DUMP_DIR")) {
+        if (!*dump) return;
+        std::filesystem::create_directories(dump);
         alps::OXDRFileDump out(std::string(dump) + "/loop_schedule.xdr");
         resumed.save(out);
         alps::hdf5::archive ar(std::string(dump) + "/loop_schedule.h5", "w");

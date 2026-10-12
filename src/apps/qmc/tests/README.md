@@ -15,16 +15,19 @@ Looper's `temperature` and `mc_steps` already provide that separation.
 For comparison, spinmc's temperature rule is lowercase `beta` before `T`, with
 plain numeric conversion. This is intentionally different from all four
 contracts above. Looper supports annealing segments in its temperature helper.
-Negative looper thermalization wraps to unsigned, so it does not thermalize
-within an ordinary run; negative SSE counts also wrap. These are existing rules,
-not validation changes introduced by the extraction.
+The `mc_steps` helper wraps negative thermalization to unsigned; the loop
+workers then reject it through their annealing-length check because its
+`thermalization()` getter returns a signed integer. Negative SSE counts also
+wrap. These are existing rules, not validation changes introduced by the
+extraction.
 
 Run the tests from a build configured with `ALPS_BUILD_TESTING=ON` and
 `ALPS_BUILD_APPLICATIONS=ON`:
 
 ```sh
 cmake --build build --target qmc_worm_characterization qmc_sse_characterization \
-  qmc_qwl_characterization qmc_loop_characterization
+  qmc_qwl_characterization qmc_loop_characterization \
+  qmc_worm_settings qmc_sse_settings qmc_qwl_settings
 ctest --test-dir build -R '^qmc\.' --output-on-failure
 ```
 
@@ -42,8 +45,12 @@ python3 src/apps/qmc/tests/compare_dumps.py /tmp/qmc-before /tmp/qmc-after
 
 The optional comparison requires `h5py` and `numpy`. Run the unchanged build
 twice first to confirm repeatability. Numeric HDF5 datasets are compared by
-their value bytes; strings by content; SSE and loop solver XDR payloads by bytes.
+their value bytes; strings by content; group and dataset names and all
+attributes are also compared; SSE and loop solver XDR payloads by bytes.
 Worker log timestamps are excluded by saving solver payloads directly.
+
+The scheduler accepts a changed `SEED` parameter without reseeding a resumed
+worker; the application's `change_parameter` hook is not called for it.
 
 Two preexisting uninitialized fields prevent comparing every raw checkpoint
 byte. Worm's `last_id_` counter is also copied into kink IDs. Its canonical

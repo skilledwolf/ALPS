@@ -14,3 +14,9 @@ alps_add_gtest(qmc_qwl_characterization COMPONENT qmc LABELS characterization re
 add_executable(qmc_loop_characterization loop_characterization.cpp)
 target_link_libraries(qmc_loop_characterization PRIVATE ALPS::alps)
 alps_add_gtest(qmc_loop_characterization COMPONENT qmc LABELS characterization unit)
+
+foreach(solver IN ITEMS worm sse qwl)
+  add_executable(qmc_${solver}_settings ${solver}_settings.cpp)
+  target_link_libraries(qmc_${solver}_settings PRIVATE ALPS::alps)
+  alps_add_gtest(qmc_${solver}_settings COMPONENT qmc LABELS unit)
+endforeach()

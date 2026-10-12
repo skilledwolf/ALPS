@@ -135,7 +135,7 @@ QwlState state_of(const QWL_SSE_Simulation& run, bool magnetic = false) {
 void maybe_dump(const QWL_SSE_Simulation& run, const std::string& name,
                 bool magnetic = false) {
   const char* root = std::getenv("ALPS_QMC_DUMP_DIR");
-  if (!root) return;
+  if (!root || !*root) return;
   std::filesystem::create_directories(root);
   const auto path = std::filesystem::path(root) / ("qwl_" + name + ".h5");
   alps::hdf5::archive archive(path.string(), "w");
