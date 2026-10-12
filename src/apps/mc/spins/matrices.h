@@ -267,9 +267,12 @@ struct squMat {
     return -det;
   }
 
-  static T vmv(const SquareMatrix<T,N>& m, const TinyVector<T,N>& v) {
-    TinyVector<T,N> tmp = m.lmult(v);
-    return dot(tmp,v);
+  static T vmv(const SquareMatrix<T,N>& m, const TinyVector<T,N>& v1,
+               const TinyVector<T,N>& v2) {
+    // Match the specialized bilinear helpers: v1^T m v2, including
+    // nonsymmetric matrices and dimensions above the specialized 2/3 cases.
+    TinyVector<T,N> tmp = m.lmult(v1);
+    return dot(tmp,v2);
   }
 };
 

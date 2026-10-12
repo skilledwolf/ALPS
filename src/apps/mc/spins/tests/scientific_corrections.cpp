@@ -48,6 +48,14 @@ TEST(SpinMCScientificCorrections, ScalarAndDiagonalSquareInputsRepresentDeclared
     EXPECT_DOUBLE_EQ(anisotropy.vec_mat_vec(TinyVector<double, 3>(1, 2, 3)), 59);
     for (unsigned i = 0; i < 3; ++i) for (unsigned j = 0; j < 3; ++j)
         EXPECT_DOUBLE_EQ(anisotropy.getElement_nc(i, j), i != j ? 0 : i == 0 ? 2 : i == 1 ? 3 : 5);
+    std::string full4 = "1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16";
+    SquareMatrix<double, 4> four(full4, symbols);
+    TinyVector<double, 4> x, y;
+    for (unsigned i = 0; i < 4; ++i) x[i] = i + 1;
+    y[0] = -1; y[1] = .5; y[2] = 2; y[3] = -2;
+    // Literal rows give m*y=(-2,-4,-6,-8), m*x=(30,70,110,150).
+    EXPECT_DOUBLE_EQ(four.vec_mat_vec(x, y), -60);
+    EXPECT_DOUBLE_EQ(four.vec_mat_vec(x), 1100);
 }
 
 TEST(SpinMCScientificCorrections, FullAndTriangularInputsRetainOffDiagonalHamiltonian) {
