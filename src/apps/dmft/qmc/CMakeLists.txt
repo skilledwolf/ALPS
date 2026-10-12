@@ -120,3 +120,12 @@ if(ALPS_BUILD_TESTING)
 endif()
 
 alps_install_applications(dmft hirschfye hybridization interaction)
+
+if(ALPS_BUILD_TESTING)
+  foreach(name atomic_oracle bare_green_input pair_oracle interaction_matrix)
+    add_executable(ctint_${name} interaction_expansion2/tests/${name}.cpp)
+    target_include_directories(ctint_${name} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+    target_link_libraries(ctint_${name} PRIVATE ALPS::ctint)
+    alps_add_gtest(ctint_${name} COMPONENT dmft LABELS scientific regression)
+  endforeach()
+endif()

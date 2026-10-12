@@ -215,7 +215,10 @@ public:
 
   InteractionExpansion(const alps::params& p, int rank);
   ~InteractionExpansion() {}
-  bool is_thermalized() const {return true;} //thermalization is done in the constructor. It's not a big deal here.
+  // Adapted from ALPS reconciliation 90a36c0d4c64ee7308dcb0651264197ffdf36449,
+  // interaction_expansion2/interaction_expansion.hpp: the first physical
+  // configuration follows the requested number of elementary warmup updates.
+  bool is_thermalized() const {return step > therm_steps;}
   void update();
   void measure();
   double fraction_completed() const;
@@ -305,12 +308,9 @@ protected:
   double weight;
   double sign;
   unsigned int measurement_method;
-  bool thermalized;
   
   simple_hist pert_hist;
   unsigned int hist_max_index;
-  simple_hist **vertex_histograms;
-  unsigned int vertex_histogram_size;
   
   unsigned long step;        
   time_t start_time;
@@ -368,11 +368,7 @@ public:
 //Use this for multiple bands where you have terms Un_i n_j
 class MultiBandDensityHubbardInteractionExpansion: public InteractionExpansion{
 public:
-  MultiBandDensityHubbardInteractionExpansion(const alps::params& p, int rank)
-    :InteractionExpansion(p, rank)
-  {
-    if(n_site !=1){throw std::invalid_argument("you need a different model for n_site!=1.");}
-  }
+  MultiBandDensityHubbardInteractionExpansion(const alps::params& p, int rank);
   
   double try_add();
   void perform_add();
@@ -380,6 +376,9 @@ public:
   double try_remove(unsigned int vertex_nr);
   void perform_remove(unsigned int vertex_nr);
   void reject_remove();
+protected:
+  std::vector<std::pair<spin_t,spin_t>> interaction_pairs_;
+  std::pair<spin_t,spin_t> pair_at(double uniform_draw) const;
 };
 
 #endif

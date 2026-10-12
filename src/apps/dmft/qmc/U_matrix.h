@@ -19,56 +19,67 @@
 #define U_MATRIX_H
 #include "types.h"
 #include "alps/parameter.h"
+#include <cmath>
+#include <fstream>
+#include <limits>
+#include <stdexcept>
+#include <vector>
 
 class U_matrix{
 public:
+  // Owned storage and checked input adapt ALPS reconciliation
+  // 90a36c0d4c64ee7308dcb0651264197ffdf36449, this header. Retain the existing parameter/file interface;
+  // vector storage makes copied matrices independent and exception-safe.
   U_matrix(const alps::Parameters &parms) :
-    ns_(parms.value_or_default("SITES", 1)),
-    nf_(parms.value_or_default("FLAVORS", 2)),
-      n_nonzero_(0), mu_shift_(0)
-  {
-    val_ = new double[nf_*nf_];
-    for(unsigned i=0; i<nf_*nf_; ++i) 
-      val_[i]=0; //default: non-interacting.
-    if(parms.defined("U_MATRIX")){
-      std::string ufilename(parms["U_MATRIX"]);
-      std::ifstream u_file(ufilename.c_str());
-      assert(u_file.is_open());
-      int i;
-      int j;
-      double U_ij;
-      while(u_file>>i>>j>>U_ij){
-        operator()(i,j)=U_ij;
+    ns_(dimension(parms,"SITES",1)), nf_(dimension(parms,"FLAVORS",2)),
+    n_nonzero_(0), mu_shift_(0) {
+    if (nf_>static_cast<unsigned>(std::numeric_limits<int>::max())/nf_)
+      throw std::invalid_argument("Density interaction dimensions exceed the retained count range");
+    const auto cells=std::size_t(nf_)*nf_;
+    if (cells>static_cast<std::size_t>(std::numeric_limits<int>::max()) ||
+        cells>std::numeric_limits<std::size_t>::max()/sizeof(double))
+      throw std::invalid_argument("Density interaction matrix dimensions exceed the retained count/storage range");
+    val_.assign(cells,0.);
+    if (parms.defined("U_MATRIX")) {
+      const std::string filename(parms["U_MATRIX"]);
+      std::ifstream file(filename);
+      if (!file) throw std::runtime_error("Cannot open density interaction matrix: "+filename);
+      while (true) {
+        file >> std::ws;
+        if (file.eof()) break;
+        int first,second; double interaction;
+        if (!(file>>first>>second>>interaction)) throw std::invalid_argument("Malformed density interaction matrix triple");
+        if (first<0 || second<0 || static_cast<unsigned>(first)>=nf_ || static_cast<unsigned>(second)>=nf_ || !std::isfinite(interaction))
+          throw std::invalid_argument("Density interaction index or value is invalid");
+        operator()(first,second)=interaction;
       }
-    } else if (nf_==1) {
-      //special case: only 1 orbital
-      operator()(0,0)=(double)(parms["U"]);
-    }else if (nf_==2) {
-      //your ordinary two site problem
-      assert(parms.defined("U"));
-      double U=(double)(parms["U"]);
-      operator()(0,0)=0; operator()(1,1)=0;
-      operator()(0,1)=U; operator()(1,0)=U;
-    } else {
-      assert(parms.defined("U") && parms.defined("J"));     
-      double U=(double)(parms["U"]);
-      double J=(double)(parms["J"]);
-      double Uprime = parms.value_or_default("U'", U-2*J);
-      assemble(U, Uprime, J);
+      if (file.bad()) throw std::runtime_error("Cannot read density interaction matrix");
+    } else if (nf_==1) operator()(0,0)=static_cast<double>(parms["U"]); // Retained half-filling representation.
+    else if (nf_==2) operator()(0,1)=operator()(1,0)=static_cast<double>(parms["U"]);
+    else {
+      const double interaction=parms["U"],hund=parms.value_or_default("J",0.);
+      const double interband=parms.value_or_default("U'",interaction-2.*hund);
+      assemble(interaction,interband,hund);
     }
-    for (unsigned i=0; i<nf_*nf_; ++i)
-      if (val_[i]!=0) 
-        n_nonzero_++;
-    for (unsigned i=0; i<nf_; ++i) 
-      mu_shift_ += operator()(i,0);
-    mu_shift_ /= 2;
+    for (spin_t first=0; first<nf_; ++first) {
+      if (nf_>1 && operator()(first,first)!=0.) throw std::invalid_argument("Density interaction diagonal must vanish");
+      for (spin_t second=0; second<nf_; ++second) {
+        const double interaction=operator()(first,second);
+        if (!std::isfinite(interaction) || (nf_>1 && interaction!=operator()(second,first)))
+          throw std::invalid_argument("Density interaction matrix must be finite and symmetric");
+        n_nonzero_+=interaction!=0.;
+      }
+      mu_shift_+=operator()(first,0);
+    }
+    mu_shift_/=2.;
+    if (!std::isfinite(mu_shift_)) throw std::invalid_argument("Density interaction shift is not representable");
   }
+
   
 
   void assemble(const double U, const double Uprime, const double J){
     //this implements the U matrix for the special case of n_flavor/2 degenerate bands
-    assert(ns_==1);
-    assert(nf_%2==0);
+    if (ns_!=1 || nf_%2!=0) throw std::invalid_argument("Generated Hund interactions require one site and paired flavors");
     for(spin_t i=0;i<nf_;i+=2){
       operator()(i  , i  ) = 0; //Pauli
       operator()(i+1, i+1) = 0; //Pauli
@@ -85,9 +96,7 @@ public:
     }
   } 
   
-  ~U_matrix(){
-    delete[] val_;
-  }
+  const std::vector<double>& data() const { return val_; }
   
   double &operator()(spin_t flavor_i, spin_t flavor_j){
     return val_[flavor_i*nf_+flavor_j];
@@ -104,7 +113,13 @@ public:
   inline int n_nonzero() const{return n_nonzero_;}
 
 private:
-  double *val_;
+  static unsigned dimension(const alps::Parameters& parms,const char* key,int fallback) {
+    const long long value=parms.defined(key) ? static_cast<long long>(parms[key]) : fallback;
+    if (value<1 || static_cast<unsigned long long>(value)>std::numeric_limits<unsigned>::max())
+      throw std::invalid_argument("Density interaction dimensions must be positive integers in range");
+    return static_cast<unsigned>(value);
+  }
+  std::vector<double> val_;
   site_t ns_;
   spin_t nf_;
   int n_nonzero_;
