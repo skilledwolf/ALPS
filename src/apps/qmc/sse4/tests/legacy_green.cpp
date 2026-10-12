@@ -12,12 +12,12 @@ alps::Parameters configuration(const std::string& family,unsigned skip,bool tria
     p["SWEEPS"]=200000*skip;p["THERMALIZATION"]=2000;p["SKIP"]=skip;
     p["SEED"]=173;p["RNG"]="mt19937";p["DISORDERSEED"]=173;p["T"]=1.2;
     p["INITIAL_CUTOFF"]=128;p["NUMBER_OF_WORMS_PER_SWEEP"]=7;p["WHICH_LOOP_TYPE"]="heatbath";
-    if(family=="spin"){p["S"]=1.;p["J"]=.6;p["h"]=.3;p["D"]=.15;}
+    if(family=="spin"){p["local_S"]=1.;p["J"]=.6;p["h"]=.3;p["D"]=.15;}
     else {p["t"]=.45;p["U"]=.8;p["V"]=.2;p["mu"]=.3;if(family=="boson Hubbard")p["Nmax"]=2;}
     p["LATTICE_LIBRARY"]=std::string(ALPS_DIRLOOP_LATTICES);
     p["MODEL_LIBRARY"]=std::string(ALPS_DIRLOOP_MODELS);
     p["MEASURE[Green Function]"]=true;if(origin)p["INITIAL_SITE"]=0;
-    if(triangle){p["LATTICE"]="chain lattice";p["L"]=3;p["S"]=.5;p["J"]=1.;p["h"]=0.;p["D"]=0.;}
+    if(triangle){p["LATTICE"]="chain lattice";p["L"]=3;p["local_S"]=.5;p["J"]=1.;p["h"]=0.;p["D"]=0.;}
     if(free){for(const char* key:{"t","U","V","mu"})p[key]=0.;p["EPSILON"]=.1;}
     return p;
 }
