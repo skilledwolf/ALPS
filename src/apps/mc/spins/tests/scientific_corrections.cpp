@@ -224,4 +224,3 @@ TEST(SpinMCScientificCorrections, SelfBondUsesOneSymmetricQuadraticReflectionDif
     MIdMatrix<double,2> isotropic(.6);
     EXPECT_DOUBLE_EQ(onsite_energy_change(spin,isotropic,reflection),0.);
 }
-
