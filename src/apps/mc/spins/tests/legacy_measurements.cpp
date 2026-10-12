@@ -28,10 +28,10 @@ template<int N> void sign_policy() {
 template<int N> void staggered_identity() {
     for(double j:{-.6,.6}) {
         auto p=parameters();p["J"]=j;p["UPDATE"]="cluster";
-        probe<N> run(p);run.start_worker();run.run();run.run();
+        probe<N> run(p);run.start_worker();run.run();
         const auto& obs=run.get_measurements();
-        const auto moment=alps::RealObsevaluator(obs["|Magnetization|"]);
-        const auto staggered=alps::RealObsevaluator(obs["Staggered Magnetization^2"]);
+        const auto& moment=obs.template get<alps::RealObservable>("|Magnetization|");
+        const auto& staggered=obs.template get<alps::RealObservable>("Staggered Magnetization^2");
         ASSERT_EQ(moment.count(),1);ASSERT_EQ(staggered.count(),1);
         EXPECT_NEAR(staggered.mean(),1-moment.mean()*moment.mean(),1.e-13);
     }
