@@ -476,6 +476,48 @@ namespace alps {
             return context_ && context_->file_id_ >= 0;
         }
 
+        // Adapted from ALPS reconciliation 81e7ad00d, archive.cpp. This helper
+        // owns finalization independently of the callback's archive views.
+        void save_checkpoint(boost::filesystem::path const & filename,
+                             std::function<void(archive &)> const & save) {
+            auto const target = boost::filesystem::absolute(filename).lexically_normal();
+            boost::filesystem::path directory;
+            do {
+                directory = target.parent_path() / boost::filesystem::unique_path(
+                    target.filename().string() + ".tmp.%%%%-%%%%-%%%%-%%%%");
+            } while (!boost::filesystem::create_directory(directory));
+            try {
+                auto const temporary = directory / "checkpoint.h5";
+                {
+                    // The private directory is new: append creates a fresh file
+                    // without the legacy 'w' mode's separate staging convention.
+                    archive ar(temporary, "a");
+                    auto context = ar.context_;
+                    std::exception_ptr failure;
+                    try { save(ar); }
+                    catch (...) { failure = std::current_exception(); }
+                    {
+#ifndef ALPS_NGS_SINGLE_THREAD
+                        boost::lock_guard<boost::recursive_mutex> lock(archive::mutex_);
+#endif
+                        try { context->finish(!failure); }
+                        catch (...) { if (!failure) failure = std::current_exception(); }
+                        archive::contexts_.erase(ar.file_key(temporary.string(), false, false));
+                        ar.context_.reset();
+                        context.reset();
+                    }
+                    if (failure) std::rethrow_exception(failure);
+                }
+                boost::filesystem::rename(temporary, target);
+            } catch (...) {
+                boost::system::error_code ignored;
+                boost::filesystem::remove_all(directory, ignored);
+                throw;
+            }
+            boost::system::error_code ignored;
+            boost::filesystem::remove(directory, ignored);
+        }
+
         std::string const & archive::get_filename() const {
             if (!context_ || context_->file_id_ < 0)
                 throw archive_closed("the archive is closed" + ALPS_STACKTRACE);

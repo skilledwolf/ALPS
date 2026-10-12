@@ -36,6 +36,7 @@
 
 #include <map>
 #include <memory>
+#include <functional>
 #include <vector>
 #include <string>
 #include <numeric>
@@ -95,6 +96,15 @@ namespace alps {
                 A ar_;
             };
         }
+
+        class ALPS_HDF5_DECL archive;
+
+        // Serialize a complete new file, close it successfully, then replace the
+        // destination by a same-filesystem rename. Failed callbacks preserve it.
+        // Views retained by the callback are closed before publication. This is
+        // atomic replacement, not a guarantee of durability across power loss.
+        ALPS_HDF5_DECL void save_checkpoint(boost::filesystem::path const & filename,
+                                            std::function<void(archive &)> const & save);
 
         class ALPS_HDF5_DECL archive {
 
@@ -214,6 +224,8 @@ namespace alps {
             private:
 
                 friend class detail::scoped_context;
+                friend void save_checkpoint(boost::filesystem::path const &,
+                                            std::function<void(archive &)> const &);
 
                 void construct(std::string const & filename, std::size_t props = READ);
                 std::string file_key(std::string filename, bool large, bool memory) const;
