@@ -488,20 +488,31 @@ namespace alps {
             return context_->filename_;
         }
 
+        // Adapted from ALPS reconciliation 988651d41, archive.cpp. Keep the
+        // established two escapes and decode only sequences emitted by this
+        // encoder; arbitrary ampersands in historical names remain literal.
         std::string archive::encode_segment(std::string segment) const {
-            char chars[] = {'&', '/'};
-            for (std::size_t i = 0; i < sizeof(chars); ++i)
-                for (std::size_t pos = segment.find_first_of(chars[i]); pos < std::string::npos; pos = segment.find_first_of(chars[i], pos + 1))
-                    segment = segment.substr(0, pos) + "&#" + cast<std::string>(static_cast<int>(chars[i])) + ";" + segment.substr(pos + 1);
-            return segment;
+            std::string result;
+            for (char c : segment) {
+                if (c == '&') result += "&#38;";
+                else if (c == '/') result += "&#47;";
+                else result += c;
+            }
+            return result;
         }
 
         std::string archive::decode_segment(std::string segment) const {
-            for (std::size_t pos = segment.find_first_of('&'); pos < std::string::npos; pos = segment.find_first_of('&', pos + 1))
-                segment = segment.substr(0, pos) 
-                        + static_cast<char>(cast<int>(segment.substr(pos + 2, segment.find_first_of(';', pos) - pos - 2))) 
-                        + segment.substr(segment.find_first_of(';', pos) + 1);
-            return segment;
+            std::string result;
+            for (std::size_t pos = 0; pos < segment.size();) {
+                if (segment.compare(pos, 5, "&#38;") == 0) {
+                    result += '&';
+                    pos += 5;
+                } else if (segment.compare(pos, 5, "&#47;") == 0) {
+                    result += '/';
+                    pos += 5;
+                } else result += segment[pos++];
+            }
+            return result;
         }
 
         std::string archive::get_context() const {
@@ -514,21 +525,32 @@ namespace alps {
         }
     
         std::string archive::complete_path(std::string path) const {
-            if (path.size() > 1 && *path.rbegin() == '/')
-                path = path.substr(0, path.size() - 1);
-            if (path.size() && path[0] == '/')
-                return path;
-            else if (path.size() < 2 || path.substr(0, 2) != "..")
-                return current_ + (current_.size() == 1 || !path.size() ? "" : "/") + path;
-            else {
-                std::string ctx = current_;
-                while (ctx.size() && path.size() && path.substr(0, 2) == "..") {
-                    ctx = ctx.substr(0, ctx.find_last_of('/'));
-                    path = path.size() == 2 ? "" : path.substr(3);
-                }
-                if (ctx.empty()) ctx = "/";
-                return ctx + (ctx.size() == 1 || !path.size() ? "" : "/") + path;
+            // Adapted from ALPS reconciliation 988651d41, archive.cpp: only
+            // complete dot segments traverse parents. Preserve the existing
+            // attribute name verbatim instead of normalizing its slash text.
+            if (path.empty() || path.front() != '/')
+                path = current_ + (current_ == "/" || path.empty() ? "" : "/") + path;
+            std::string attribute;
+            auto const at = path.find_last_of('@');
+            if (at != std::string::npos && at != 0 && path[at - 1] == '/') {
+                attribute = path.substr(at);
+                path.resize(at - 1);
             }
+            std::vector<std::string> segments;
+            for (std::size_t start = 0; start < path.size();) {
+                auto end = path.find('/', start);
+                if (end == std::string::npos) end = path.size();
+                auto part = path.substr(start, end - start);
+                if (part == "..") {
+                    if (!segments.empty()) segments.pop_back();
+                } else if (!part.empty() && part != ".")
+                    segments.push_back(std::move(part));
+                start = end + 1;
+            }
+            std::string result;
+            for (auto const & part : segments) result += "/" + part;
+            if (!attribute.empty()) result += "/" + attribute;
+            return result.empty() ? "/" : result;
         }
     
         bool archive::is_data(std::string path) const {
