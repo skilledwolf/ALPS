@@ -15,6 +15,7 @@
 
 #include <alps/random.h>
 #include <alps/scheduler/scheduler.h>
+#include <alps/scheduler/seeds.h>
 #include <alps/expression.h>
 #include <alps/osiris/std/string.h>
 #include <alps/osiris/comm.h>
@@ -54,9 +55,9 @@ Worker::Worker(const ProcessList& w,const alps::Parameters&  myparms,int32_t n)
   
   // TODO: create slave runs
 
-  if (where.size()) engine_ptr->seed(parms["SEED"]);
+  if (where.size()) engine_ptr->seed(worker_seed(parms));
 
-  Disorder::seed(parms.value_or_default("DISORDERSEED",0));
+  Disorder::seed(disorder_seed(parms));
 }
 
 Worker::Worker(const alps::Parameters&  myparms,int32_t n)
@@ -75,9 +76,9 @@ Worker::Worker(const alps::Parameters&  myparms,int32_t n)
   
   // TODO: create slave runs
 
-  if (where.size()) engine_ptr->seed(parms["SEED"]);
+  if (where.size()) engine_ptr->seed(worker_seed(parms));
 
-  Disorder::seed(parms.value_or_default("DISORDERSEED",0));
+  Disorder::seed(disorder_seed(parms));
 }
 
 
@@ -121,7 +122,7 @@ void Worker::load_worker(IDump& dump)
       if(version<200) 
         dump >> dummy >> dummy >> dummy;
     }
-    Disorder::seed(parms.value_or_default("DISORDERSEED",0));
+    Disorder::seed(disorder_seed(parms));
   }
 }
 
@@ -154,7 +155,7 @@ void Worker::load(hdf5::archive & ar)
   engine_ptr->read(rngstream);
   if(node == 0)
       ar["/log/alps"] >> info;
-  Disorder::seed(parms.value_or_default("DISORDERSEED",0));
+  Disorder::seed(disorder_seed(parms));
 }
 
 void Worker::save(hdf5::archive & ar) const 

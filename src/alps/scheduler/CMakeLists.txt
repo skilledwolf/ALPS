@@ -48,6 +48,7 @@ target_sources(alps_headers INTERFACE
     include/alps/scheduler/montecarlo.h
     include/alps/scheduler/options.h
     include/alps/scheduler/scheduler.h
+    include/alps/scheduler/seeds.h
     include/alps/scheduler/signal.hpp
     include/alps/scheduler/task.h
     include/alps/scheduler/types.h

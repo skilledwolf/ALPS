@@ -28,6 +28,7 @@ import pyalps.hdf5 as h5
 
 from pyalps.pytools import convert2xml, hdf5_name_encode, hdf5_name_decode, rng
 import pyalps.pytools # the C++ conversion functions
+from .seeds import task_seed as _task_seed
 from .load import loadBinningAnalysis, loadMeasurements,loadEigenstateMeasurements, loadSpectra, loadIterationMeasurements, loadObservableList, loadDMFTIterations, loadProperties, log, Hdf5Loader
 from .hlist import deep_flatten, flatten, depth
 from .dict_intersect import dict_intersect
@@ -375,11 +376,7 @@ def writeInputFiles(fname,parms, baseseed=None):
     f.write('<JOB xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://xml.comp-phys.org/2003/8/job.xsd">\n')
     f.write('  <OUTPUT file="'+base_name+'.out.xml"/>\n')
    
-    bits = 31;
-    n = len(parms)
-    while n>0:
-      n //= 2
-      bits -= 1
+    ntasks = len(parms)
 
     if baseseed is None:
       baseseed = generateSeed()
@@ -388,11 +385,7 @@ def writeInputFiles(fname,parms, baseseed=None):
     for p in parms:
       count += 1
       if not 'SEED' in p:
-        seed = baseseed
-        for j in range(0,32//bits+1):
-          seed ^= ((count-1) << (j * bits))
-          seed &= ((1<<30) | ((1<<30)-1))
-          p['SEED'] = seed
+        p['SEED'] = _task_seed(baseseed, count-1, ntasks)
       taskname = base_name+'.task'+str(count)
       f.write('  <TASK status="new">\n')
       f.write('    <INPUT file="'+taskname+'.in.xml"/>\n')
