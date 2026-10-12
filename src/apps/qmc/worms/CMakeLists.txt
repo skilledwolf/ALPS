@@ -39,3 +39,13 @@ if(ALPS_BUILD_TESTING)
   target_link_libraries(worm_initial_state PRIVATE worm_impl)
   alps_add_gtest(worm_initial_state COMPONENT applications LABELS regression scientific)
 endif()
+
+if(ALPS_BUILD_TESTING)
+  add_executable(worm_legacy_geometry tests/legacy_geometry.cpp)
+  target_include_directories(worm_legacy_geometry PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+  target_compile_definitions(worm_legacy_geometry PRIVATE
+    ALPS_WORM_LATTICES="${PROJECT_SOURCE_DIR}/src/alps/resources/lattices.xml"
+    ALPS_WORM_MODELS="${PROJECT_SOURCE_DIR}/src/alps/resources/models.xml")
+  target_link_libraries(worm_legacy_geometry PRIVATE worm_impl Eigen3::Eigen)
+  alps_add_gtest(worm_legacy_geometry COMPONENT applications LABELS regression scientific TIMEOUT 180)
+endif()
