@@ -28,11 +28,6 @@ public:
   alps::scheduler::Worker* make_worker(const alps::ProcessList& where,
           const alps::Parameters& parms, int node) const;
   void print_copyright(std::ostream&) const;
-
-private:
-  int countElements(const std::string& str) const;
-  int findDominantMatrixString(const alps::Parameters& parms) const;
-  void produceError(const alps::Parameters& parms) const;
 };
 
 #endif
