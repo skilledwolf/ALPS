@@ -33,7 +33,7 @@ class CitationTests(unittest.TestCase):
 
     def test_paper_mappings_and_solver_separation(self):
         dmrg = generator.select_references(self.policy, self.framework, "dmrg")
-        self.assertEqual(dmrg["algorithm"], ["white1992", "white1993", "schollwock2005", "hallberg2006"])
+        self.assertEqual(dmrg["algorithm"], ["white1992", "white1993", "schollwock2005", "hallberg2006", "lanczos1950"])
         self.assertEqual(dmrg["implementation"], ["feiguin2013", "troyer1998scheduler"])
         qwl = generator.select_references(self.policy, self.framework, "qwl")
         self.assertEqual(qwl["algorithm"], ["wang2001prl", "wang2001pre", "troyer2003qwl"])
@@ -116,8 +116,8 @@ class CitationTests(unittest.TestCase):
                 self.assertEqual(lines[0], "*" * 80)
                 self.assertEqual(lines[-1], lines[0])
                 self.assertTrue(all(len(line) == 80 for line in lines))
-                # DMRG's seven entries need 17 lines with recognizable authors.
-                self.assertLessEqual(len(lines), 17 if component == "dmrg" else 15)
+                # DMRG's eight entries need 19 lines with recognizable authors.
+                self.assertLessEqual(len(lines), 19 if component == "dmrg" else 15)
                 self.assertIn("Framework: [1]", text)
                 content = " ".join(line[2:-2].strip() for line in lines[1:-1])
                 self.assertIn("[1] F. Alet et al., " + self.references[self.framework]["title"], content)

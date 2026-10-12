@@ -1,3 +1,4 @@
+# DMRG small-sector eigensolver corrections use the existing Lanczos record.
 # Bibliographic authority. Application citation rules live in CITATIONS.yaml.
 cff-version: 1.2.0
 message: For application-specific citation guidance, see CITATIONS.yaml and the generated CITATION.md.

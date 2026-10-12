@@ -333,7 +333,10 @@ void lanczos(A& m,
 #ifdef DMTK_DEBUG
           cout << setprecision(12) << "Iter = " << iter << "  Ener = " << e0 << endl;
 #endif // DMTK_DEBUG
-          if((force_maxiter && iter >= control_max) || (!force_maxiter && (iter >= gs(0).size()-1 || iter == 99 || fabs(b(iter)) < tol || fabs(eini-e0) <= tol || iter >= control_max)))
+          // An N-dimensional sector needs up to N Krylov vectors. Stopping at
+          // N-1 falsely declared convergence for small sectors (notably the
+          // six-state Sz=0 sector of the four-site spin-half chain).
+          if((force_maxiter && iter >= control_max) || (!force_maxiter && (iter >= gs(0).size() || iter == 99 || fabs(b(iter)) < tol || fabs(eini-e0) <= tol || iter >= control_max)))
           { 
              // converged
              if(fabs(b(iter)) < tol) cout << "b(iter) < tol " << b(iter) << endl;

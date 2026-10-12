@@ -29,7 +29,7 @@ The framework paper applies to every component. A paper serving several roles is
 | `dirloop_sse` | [sandvik1999](#sandvik1999), [syljuasen2002](#syljuasen2002) | [alet2005directed](#alet2005directed) | scheduler |
 | `worm` | [prokofev1998](#prokofev1998), [Prokofev1998JETP](#prokofev1998jetp) | [alps30](#alps30) | scheduler |
 | `qwl` | [wang2001prl](#wang2001prl), [wang2001pre](#wang2001pre), [troyer2003qwl](#troyer2003qwl) | [alps30](#alps30) | scheduler |
-| `dmrg` | [white1992](#white1992), [white1993](#white1993), [schollwock2005](#schollwock2005), [hallberg2006](#hallberg2006) | [feiguin2013](#feiguin2013) | scheduler |
+| `dmrg` | [white1992](#white1992), [white1993](#white1993), [schollwock2005](#schollwock2005), [hallberg2006](#hallberg2006), [lanczos1950](#lanczos1950) | [feiguin2013](#feiguin2013) | scheduler |
 | `dmft` | [metzner1989](#metzner1989), [georges1992](#georges1992), [georges1996](#georges1996) | [gull2011cpc](#gull2011cpc) | — |
 | `interaction` | [rubtsov2005](#rubtsov2005), [gull2011](#gull2011) | [gull2011cpc](#gull2011cpc) | — |
 | `hybridization` | [werner2006](#werner2006), [gull2011](#gull2011) | [gull2011cpc](#gull2011cpc), [hafermann2013](#hafermann2013) | — |

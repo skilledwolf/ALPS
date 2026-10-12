@@ -57,7 +57,7 @@ components:
     uses: [scheduler]
   dmrg:
     name: ALPS density matrix renormalization group
-    algorithm: [white1992, white1993, schollwock2005, hallberg2006]
+    algorithm: [white1992, white1993, schollwock2005, hallberg2006, lanczos1950]
     implementation: [feiguin2013]
     uses: [scheduler]
   dmft:
