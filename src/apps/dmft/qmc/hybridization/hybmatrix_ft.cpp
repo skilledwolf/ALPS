@@ -15,6 +15,7 @@
 
 #include <utility> // Boost.Math 1.76 includes this inside a namespace.
 #include <boost/math/constants/constants.hpp>
+#include <algorithm>
 #include "hybmatrix.hpp"
 
 void hybmatrix::measure_Gw(std::vector<double> &Gwr, std::vector<double> &Gwi , std::vector<double> &Fwr, std::vector<double> &Fwi , const std::map<double,double> &F_prefactor, double sign) const{
@@ -75,8 +76,10 @@ void hybmatrix::measure_G2w(std::vector<std::complex<double> > &G2w, std::vector
     cdagger_times[it->second] = it->first;
   }
 
-  memset(&(G2w[0]),0, G2w.size()*sizeof(std::complex<double>));
-  memset(&(F2w[0]),0, F2w.size()*sizeof(std::complex<double>));
+  // G2-only leaves F2w empty: forming &F2w[0] was undefined even for a
+  // zero-byte memset. Keep both retained estimator paths safely empty-aware.
+  std::fill(G2w.begin(),G2w.end(),std::complex<double>());
+  std::fill(F2w.begin(),F2w.end(),std::complex<double>());
 
   double w_ini = (2*(-N_w2/2)+1)*boost::math::constants::pi<double>()/beta_;
   double w_inc = 2*boost::math::constants::pi<double>()/beta_;
@@ -119,6 +122,4 @@ void hybmatrix::measure_G2w(std::vector<std::complex<double> > &G2w, std::vector
     }
   }
 }
-
-
 
