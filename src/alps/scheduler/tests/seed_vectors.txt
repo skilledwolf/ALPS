@@ -1,0 +1,84 @@
+# Reference seeds of legacy ALPS (alps/scheduler/seeds.h).
+# Read by seeds.cpp for the C++ functions and by check_task_seeds.py for
+# pyalps/seeds.py. The task rows were produced by the original
+# pyalps.writeInputFiles; the others follow the original scheduler code.
+#
+# task     baseseed index ntasks   SEED written by pyalps.writeInputFiles
+# run      SEED cpus               SEED of the task's next run, or error
+# worker   SEED                    seed of the worker's engine, or error
+# disorder DISORDERSEED            seed of the disorder generator
+# A "-" stands for an absent parameter.
+
+run      5 1 6
+run      0 1 1
+run      5 4 9
+run      -5 1 4294967292
+run      2147483647 1 2147483648
+run      2147483647 4 2147483651
+run      -2147483648 1 2147483649
+run      2147483648 1 error
+run      4294967292 1 error
+
+worker   5 5
+worker   0 0
+worker   -5 4294967291
+worker   4294967295 4294967295
+worker   4294967296 error
+worker   - error
+
+disorder - 0
+disorder 9 9
+disorder -1 4294967295
+
+task     12345 0 1 12345
+task     12345 0 3 12345
+task     12345 1 3 536883256
+task     12345 2 3 1073754171
+task     12345 0 8 12345
+task     12345 1 8 134230072
+task     12345 7 8 939536446
+task     12345 0 100 12345
+task     12345 1 100 16789560
+task     12345 99 100 1660956762
+task     12345 0 70000 12345
+task     12345 1 70000 268464184
+task     12345 69999 70000 878371158
+task     2147483653 0 1 5
+task     2147483653 0 3 5
+task     2147483653 1 3 536870916
+task     2147483653 2 3 1073741831
+task     2147483653 0 8 5
+task     2147483653 1 8 134217732
+task     2147483653 7 8 939524098
+task     2147483653 0 100 5
+task     2147483653 1 100 16777220
+task     2147483653 99 100 1660944486
+task     2147483653 0 70000 5
+task     2147483653 1 70000 268451844
+task     2147483653 69999 70000 878367082
+task     987654321987 0 1 1959327555
+task     987654321987 0 3 1959327555
+task     987654321987 1 3 1422456642
+task     987654321987 2 3 885585729
+task     987654321987 0 8 1959327555
+task     987654321987 1 8 2093545282
+task     987654321987 7 8 1288238916
+task     987654321987 0 100 1959327555
+task     987654321987 1 100 1976104770
+task     987654321987 99 100 399046432
+task     987654321987 0 70000 1959327555
+task     987654321987 1 70000 1690875714
+task     987654321987 69999 70000 1083319852
+task     -3 0 1 2147483645
+task     -3 0 3 2147483645
+task     -3 1 3 1610612732
+task     -3 2 3 1073741823
+task     -3 0 8 2147483645
+task     -3 1 8 2013265916
+task     -3 7 8 1207959546
+task     -3 0 100 2147483645
+task     -3 1 100 2130706428
+task     -3 99 100 486539166
+task     -3 0 70000 2147483645
+task     -3 1 70000 1879031804
+task     -3 69999 70000 1269116562
