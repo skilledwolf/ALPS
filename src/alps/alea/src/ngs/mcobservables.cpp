@@ -60,6 +60,14 @@ namespace alps {
     }
 
     void mcobservables::save(hdf5::archive & ar) const {
+        // Adapted from ALPS reconciliation 81e7ad00d, the corresponding NGS
+        // collection serializer. This object owns the group's children, not
+        // its attributes or siblings; an empty collection is an empty group.
+        ar.create_group(ar.get_context());
+        for (auto const & child : ar.list_children(ar.get_context())) {
+            if (ar.is_group(child)) ar.delete_group(child);
+            else ar.delete_data(child);
+        }
         for(std::map<std::string, mcobservable>::const_iterator it = std::map<std::string, mcobservable>::begin(); it != std::map<std::string, mcobservable>::end(); ++it)
             ar
                 << make_pvp(ar.encode_segment(it->first), it->second)

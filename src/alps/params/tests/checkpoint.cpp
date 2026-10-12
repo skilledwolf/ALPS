@@ -181,3 +181,50 @@ TEST_F(ParamsCheckpoint, IntegerOverflowPreservesExistingValue) {
 }
 TEST_F(ParamsCheckpoint, FailedReloadIsTransactional) { transactional_reload(archive); }
 TEST_F(ParamsCheckpoint, CustomReaderSurvivesReload) { custom_reader(archive); }
+
+// Apply the collection replacement contract of experimental 81e7ad00d to
+// current NGS params, preserving its type family and on-disk value encodings.
+TEST_F(ParamsCheckpoint, SaveReplacesOwnedChildrenAndRetainsAttributes) {
+    auto & ar = archive;
+    alps::params values;
+    values["kept"] = 17;
+    values["gone"] = 23;
+    ar["/parameters"] << values;
+    ar["/parameters/@tag"] << 29;
+    ar["/unrelated"] << 31;
+    values.erase("gone");
+    ar["/parameters"] << values;
+    alps::params restored(ar, "/parameters");
+    ASSERT_EQ(restored.size(), 1u);
+    EXPECT_EQ(restored["kept"].cast<int>(), 17);
+    values.erase("kept");
+    ar["/parameters"] << values;
+    alps::params empty(ar, "/parameters");
+    EXPECT_EQ(empty.size(), 0u);
+    EXPECT_TRUE(ar.is_group("/parameters"));
+    EXPECT_TRUE(ar.list_children("/parameters").empty());
+    int value = 0;
+    ar["/parameters/@tag"] >> value;
+    EXPECT_EQ(value, 29);
+    ar["/unrelated"] >> value;
+    EXPECT_EQ(value, 31);
+    ar["/"] << values;
+    alps::params root(ar, "/");
+    EXPECT_EQ(root.size(), 0u);
+}
+
+TEST_F(ParamsCheckpoint, InvalidNamesDoNotErasePriorParameters) {
+    alps::params original;
+    original["kept"] = 17;
+    archive["/parameters"] << original;
+    std::vector<std::string> const invalid{"", ".", "..", "a/b", "a@b", std::string("a\0b", 3)};
+    for (auto const & name : invalid) {
+        SCOPED_TRACE(name);
+        alps::params rejected;
+        rejected[name] = 23;
+        EXPECT_THROW(archive["/parameters"] << rejected, std::invalid_argument);
+        alps::params preserved(archive, "/parameters");
+        ASSERT_EQ(preserved.size(), 1u);
+        EXPECT_EQ(preserved["kept"].cast<int>(), 17);
+    }
+}

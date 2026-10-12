@@ -80,6 +80,22 @@ namespace alps {
     }
 
     void params::save(hdf5::archive & ar) const {
+        // Apply the owned-children replacement contract of ALPS reconciliation
+        // 81e7ad00d (alea/src/ngs/mcresults.cpp) to existing NGS parameters.
+        // Preflight flat names before removing any previously stored entries.
+        for (auto const & entry : *this) {
+            auto const & key = entry.first;
+            auto const expected = ar.get_context() + (ar.get_context() == "/" ? "" : "/") + key;
+            if (key.empty() || key == "." || key == ".." || key.find('/') != std::string::npos
+                || key.find('@') != std::string::npos || key.find('\0') != std::string::npos
+                || ar.complete_path(key) != expected)
+                throw std::invalid_argument("parameter name is not a flat archive key: " + key);
+        }
+        ar.create_group(ar.get_context());
+        for (auto const & child : ar.list_children(ar.get_context())) {
+            if (ar.is_group(child)) ar.delete_group(child);
+            else ar.delete_data(child);
+        }
         for (params::const_iterator it = begin(); it != end(); ++it)
             ar[it->first] << it->second;
     }
