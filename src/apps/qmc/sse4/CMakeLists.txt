@@ -20,3 +20,13 @@
 add_executable(dirloop_sse main.cc lp_sse.cpp)
 target_link_libraries(dirloop_sse PRIVATE ALPS::alps)
 alps_install_applications(dirloop_sse)
+
+if(ALPS_BUILD_TESTING)
+  add_executable(sse_legacy_green tests/legacy_green.cpp lp_sse.cpp)
+  target_include_directories(sse_legacy_green PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+  target_compile_definitions(sse_legacy_green PRIVATE
+    ALPS_DIRLOOP_LATTICES="${PROJECT_SOURCE_DIR}/src/alps/resources/lattices.xml"
+    ALPS_DIRLOOP_MODELS="${PROJECT_SOURCE_DIR}/src/alps/resources/models.xml")
+  target_link_libraries(sse_legacy_green PRIVATE ALPS::alps Eigen3::Eigen)
+  alps_add_gtest(sse_legacy_green COMPONENT applications LABELS regression scientific TIMEOUT 180)
+endif()
