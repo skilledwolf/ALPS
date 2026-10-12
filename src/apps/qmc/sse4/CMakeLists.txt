@@ -27,6 +27,6 @@ if(ALPS_BUILD_TESTING)
   target_compile_definitions(sse_legacy_green PRIVATE
     ALPS_DIRLOOP_LATTICES="${PROJECT_SOURCE_DIR}/src/alps/resources/lattices.xml"
     ALPS_DIRLOOP_MODELS="${PROJECT_SOURCE_DIR}/src/alps/resources/models.xml")
-  target_link_libraries(sse_legacy_green PRIVATE ALPS::alps Eigen3::Eigen)
+  target_link_libraries(sse_legacy_green PRIVATE ALPS::alps BLAS::BLAS LAPACK::LAPACK)
   alps_add_gtest(sse_legacy_green COMPONENT applications LABELS regression scientific TIMEOUT 180)
 endif()

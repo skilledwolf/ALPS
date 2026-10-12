@@ -1,7 +1,9 @@
 // Copyright (C) 2026 ALPS Collaboration. SPDX-License-Identifier: MIT
 // Adapted from reconciliation d0478b0b5 to the retained SSE_run interface.
 #include "sse.h"
-#include <Eigen/Eigenvalues>
+#include <boost/numeric/ublas/matrix.hpp>
+#include <boost/numeric/ublas/matrix_proxy.hpp>
+extern "C" void dsyev_(const char*,const char*,const int*,double*,const int*,double*,double*,const int*,int*);
 #include <gtest/gtest.h>
 namespace {
 alps::Parameters configuration(const std::string& family,unsigned skip,bool triangle,bool origin,bool free) {
@@ -24,8 +26,10 @@ inline std::vector<double> independent_green(const std::string &family,bool tria
     const unsigned states=triangle || family=="hardcore boson"?2:3;
     const double magnitude=triangle?.5:1.;
     unsigned dimension=1;for(unsigned site=0;site<sites;++site)dimension*=states;
-    Eigen::MatrixXd h=Eigen::MatrixXd::Zero(dimension,dimension);
-    std::vector<Eigen::MatrixXd> raise(sites,h),charge(sites,h);
+    namespace ublas=boost::numeric::ublas;
+    using matrix=ublas::matrix<double,ublas::column_major>;
+    matrix h(dimension,dimension,0.);
+    std::vector<matrix> raise(sites,h),charge(sites,h);
     for(unsigned column=0;column<dimension;++column) {
         unsigned remainder=column,stride=1;
         for(unsigned site=0;site<sites;++site,stride*=states) {
@@ -43,23 +47,24 @@ inline std::vector<double> independent_green(const std::string &family,bool tria
         : std::vector<std::pair<unsigned,unsigned>>{{0,1}};
     for(const auto &edge:edges) {
         const auto first=edge.first,second=edge.second;
-        if(spin)h+=(triangle?1.:.6)*charge[first]*charge[second];
-        else if(!free)h+=.2*charge[first]*charge[second];
+        if(spin)h+=(triangle?1.:.6)*ublas::prod(charge[first],charge[second]);
+        else if(!free)h+=.2*ublas::prod(charge[first],charge[second]);
         const double transfer=spin?(triangle?.5:.3):free?0:-.45;
-        h+=transfer*(raise[first]*raise[second].transpose()+raise[first].transpose()*raise[second]);
+        h+=transfer*(ublas::prod(raise[first],ublas::trans(raise[second]))+ublas::prod(ublas::trans(raise[first]),raise[second]));
     }
-    Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> solver(h);
-    if(solver.info()!=Eigen::Success)throw std::runtime_error("Independent Green Hamiltonian trace failed");
-    const auto energies=solver.eigenvalues();const auto vectors=solver.eigenvectors();
+    const int n=dimension,lwork=4*n;int info=0;
+    std::vector<double> energies(n),work(lwork);
+    dsyev_("V","U",&n,&h.data()[0],&n,energies.data(),work.data(),&lwork,&info);
+    if(info)throw std::runtime_error("Independent Green Hamiltonian trace failed");
     std::vector<double> green(sites*sites,0.);long double partition=0;
     for(unsigned state=0;state<dimension;++state) {
-        const long double weight=std::exp(-(energies(state)-energies(0))/1.2);partition+=weight;
-        const auto vector=vectors.col(state);
+        const long double weight=std::exp(-(energies[state]-energies[0])/1.2);partition+=weight;
+        const ublas::vector<double> vector=ublas::column(h,state);
         for(unsigned first=0;first<sites;++first)for(unsigned second=0;second<sites;++second) {
             // Gij=.5<lower_i raise_j + raise_i lower_j>, including the
             // actual truncated onsite commutator (not <n>+.5 at top cutoff).
-            const Eigen::MatrixXd op=.5*(raise[first].transpose()*raise[second]+raise[first]*raise[second].transpose());
-            green[first*sites+second]+=double(weight)*vector.dot(op*vector);
+            const matrix op=.5*(ublas::prod(ublas::trans(raise[first]),raise[second])+ublas::prod(raise[first],ublas::trans(raise[second])));
+            green[first*sites+second]+=double(weight)*ublas::inner_prod(vector,ublas::prod(op,vector));
         }
     }
     for(auto &value:green)value/=double(partition);
