@@ -103,3 +103,18 @@ TEST_F(ArchiveLifetime, RelativeAndAbsoluteNamesShareOneOwner) {
     reader.read("/value", value);
     EXPECT_EQ(value, 17);
 }
+
+TEST(Hdf5Lifecycle, LegacyAbortInvalidatesViewsAndPreservesPreviousReplacement) {
+    alps::testing::TemporaryDirectory temp;
+    const auto name = (temp.path() / "abort.h5").string();
+    { alps::hdf5::archive previous(name, "w"); previous["value"] << 17; }
+    alps::hdf5::archive pending(name, "w");
+    pending["value"] << 99;
+    alps::hdf5::archive alias(pending);
+    alps::hdf5::archive::abort();
+    EXPECT_FALSE(pending.is_open());
+    EXPECT_FALSE(alias.is_open());
+    alps::hdf5::archive restored(name, "r");
+    int value = 0; restored["value"] >> value;
+    EXPECT_EQ(value, 17);
+}
