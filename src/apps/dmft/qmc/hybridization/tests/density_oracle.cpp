@@ -158,3 +158,36 @@ TEST(CthybDensityOracle, AtomicDensityCorrelationsMatchTheFourStateTrace) {
     }
   }
 }
+
+TEST(CthybDensityOracle, SegmentWeightsRemainExactAcrossChangingOrbitalCounts) {
+  // Adding occupation on orbital zero changes the local action by
+  // length*(MU - U*sum(other occupations)). Its exponential is the signed
+  // insertion weight; an antisegment removes this action. No sampled chain.
+  for (double beta : {2.,5.}) for (double u : {-.7,.7}) {
+    SCOPED_TRACE(beta);
+    SCOPED_TRACE(u);
+    for (int orbitals : {1,4,2,6,1}) {
+      SCOPED_TRACE(orbitals);
+      auto p=parameters(beta,u,.3);
+      p["N_ORBITALS"]=orbitals;
+      local_configuration configuration(p,0);
+      for (int f=1; f<orbitals; ++f)
+        configuration.set_zero_order_orbital_occupied(f,true);
+      const segment proposed(.15*beta,.55*beta);
+      const double expected=.4*beta*(.3-u*(orbitals-1));
+      EXPECT_NEAR(configuration.local_energy(proposed,0),expected,1.e-12);
+      EXPECT_NEAR(configuration.local_weight_change(proposed,0,false),std::exp(expected),1.e-12);
+      EXPECT_NEAR(configuration.local_weight_change(proposed,0,true),std::exp(-expected),1.e-10);
+      EXPECT_NEAR(configuration.local_energy(proposed,0,true),.4*beta*.3,1.e-12);
+    }
+    // A partial occupation contributes the actual overlap, not its total
+    // occupied duration. The intervals intersect over .1*beta.
+    local_configuration configuration(parameters(beta,u,.3),0);
+    configuration.insert_segment(segment(.05*beta,.2*beta),1);
+    configuration.insert_segment(segment(.5*beta,.8*beta),1);
+    const segment proposed(.15*beta,.55*beta);
+    const double expected=.4*beta*.3-u*.1*beta;
+    EXPECT_NEAR(configuration.local_energy(proposed,0),expected,1.e-12);
+    EXPECT_NEAR(configuration.local_weight_change(proposed,0,false),std::exp(expected),1.e-12);
+  }
+}
