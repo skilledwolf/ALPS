@@ -21,6 +21,7 @@
 #include <alps/model.h>
 
 #include "lattice.h"
+#include "ladder_operators.h"
 
 template <typename M, typename L>
 class Model {
@@ -396,8 +397,9 @@ private:
         unsigned nlowering = 0;
         
         unsigned nbstates = _nbstates[stype];
-        std::set<std::string>::const_iterator it = ops.begin();
-        for (; it != ops.end(); ++it) {
+        const auto selected=alps::dirloop_sse::ladder_operator_names(model,params,stype,ops);
+        std::set<std::string>::const_iterator it = selected.begin();
+        for (; it != selected.end(); ++it) {
             site_tensor_type opmatrix = alps::get_matrix(
                 double(), alps::SiteOperator(*it),
                 model.basis().site_basis(stype), params);

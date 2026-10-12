@@ -6,6 +6,8 @@ User-facing changes and migration notes are recorded here, starting with the bui
 
 ### Fixed
 
+- Correct directed-loop SSE Green-function signs and normalization across skipped sweeps. Discover finite-basis ladder operators for zero hopping, and reject Green measurements with aborted or restricted worms.
+
 - Accept positional plot/simulation files and standalone `--version` in the archive tool, and parse paired `CONSTRAINT` tags correctly.
 
 - Correct the ferromagnetic Ising acceptance sign in the Python and C++ tutorials, add physics regressions, and exercise the density-profile tutorial through callable simulation and plotting functions.

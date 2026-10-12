@@ -44,6 +44,7 @@ public:
         opstring(opstring)
     {
         nsites = lattice.nsites();
+        skip=params.value_or_default("SKIP",1);
         
         escale = 1.0 / worker.beta() / nsites;
         sscale = 1.0 / worker.beta() / lattice.dimension();
@@ -171,7 +172,11 @@ public:
             measurements["n^3"] << n * nnonzero * nnonzero;
         
             if (worker.measure_green_function()) {
-                double scale = static_cast<double>(nsites) / nworms;
+                // The numerator contains worms from ALL SKIP production
+                // sweeps, not only the final measured configuration. Pinned
+                // reconciliation90a36c0d4 sse4/measurement.h supplies this
+                // normalization. Its open sign is already inside green.
+                double scale = static_cast<double>(nsites) / nworms / skip;
                 if (worker.do_measurement_origin())
                     for (unsigned i = 0; i < green.size(); ++i)
                         green[i] *= scale;
@@ -203,6 +208,7 @@ private:
     
     unsigned nsites;
     unsigned nworms;
+    unsigned skip;
     
     double escale;
     double sscale;

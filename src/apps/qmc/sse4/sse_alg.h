@@ -58,8 +58,13 @@ public:
         nops = params.value_or_default("INITIAL_CUTOFF", 10);
         abort_factor = params.value_or_default("WORM_ABORT", 0.0);
         
-        if (abort_factor != 0.0)
-            worker.measure_green_function(false);
+        // Adapted from ALPS reconciliation 90a36c0d4c64ee7308dcb0651264197ffdf36449
+        // sse4/sse_alg.h: an aborted/restricted worm does not carry this
+        // estimator's full open-worldline weight. Reject instead of silently
+        // disabling a requested scientific measurement.
+        if (worker.measure_green_function() && (abort_factor != 0.0
+            || params.defined("RESTRICT_MEASUREMENTS[N]") || params.defined("RESTRICT_MEASUREMENTS[Sz]")))
+            throw std::invalid_argument("Green measurement requires unaborted unrestricted worms");
             
         measure_green_function = false;
         
@@ -155,6 +160,13 @@ public:
             }
         } else {
             measure_green_function = worker.measure_green_function();
+            // An open worm's sign can differ from the closed configuration
+            // even on a bipartite AF model whose partition function is positive.
+            // Adapted from pinned reconciliation90a36c0d4 sse4/sse_alg.h.
+            green_sign=1;
+            if(measure_green_function)
+                for(const auto &op:opstring)if(op.vertex_index!=IDENTITY)
+                    green_sign*=vertex_sign(op.vertex_index);
                     
             if (nworms == 0) {
                 if (count_therm > 0)
@@ -217,6 +229,11 @@ private:
     double abort_factor;
     
     bool measure_green_function;
+    int green_sign=1;
+    int vertex_sign(unsigned index) const {
+        const auto &vertex=model.vertex(index);
+        return !vertex.diagonal && vertex.me>0 ? -1 : 1;
+    }
     std::valarray<double>& green;
     
     void diagonal_update()
@@ -391,6 +408,8 @@ private:
             }
 
             head_op = wp->ex_op;
+            if(measure_green_function)
+                green_sign*=vertex_sign(vertex_index)*vertex_sign(wp->vertex_index);
             vertex_index = wp->vertex_index;
 
             if (cur_vertex == start_vertex && wp->ex_leg == start_leg)
@@ -462,7 +481,7 @@ private:
         double mer = model.raising_matrix_elements()[stype][state];
         double mel = model.lowering_matrix_elements()[stype][state];
 
-        double me = 0.5 * (mer * mer + mel * mel);
+        double me = green_sign * 0.5 * (mer * mer + mel * mel);
 
         if (!worker.do_measurement_origin())
             green[lattice.distance(start_site, start_site)] += me;
@@ -484,9 +503,9 @@ private:
         worm_weight *= worm_weight;
 
         if (!worker.do_measurement_origin())
-            green[lattice.distance(start_site, start_site)] += worm_weight;
+            green[lattice.distance(start_site, start_site)] += green_sign * worm_weight;
         else if (start_site == worker.measurement_origin())
-            green[start_site] += worm_weight;
+            green[start_site] += green_sign * worm_weight;
             
         return worm_weight;
     }
@@ -516,9 +535,9 @@ private:
         
         if (crossed) {
             if (!worker.do_measurement_origin())
-                green[lattice.distance(start_site, site)] += worm_weight;
+                green[lattice.distance(start_site, site)] += green_sign * worm_weight;
             else if (start_site == worker.measurement_origin())
-                green[site] += worm_weight;
+                green[site] += green_sign * worm_weight;
         }
     }
         
