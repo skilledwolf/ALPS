@@ -6,6 +6,8 @@
 #include "on.h"
 #include <boost/math/special_functions/bessel.hpp>
 #include <gtest/gtest.h>
+#include <iomanip>
+#include <sstream>
 
 namespace {
 alps::Parameters parameters(const std::string &model) {
@@ -120,4 +122,55 @@ TEST(SpinMCScientificCorrections, ScalarCouplingInForcedSquareStorageMatchesInde
     const double correlation = boost::math::cyl_bessel_i(1, .5) / boost::math::cyl_bessel_i(0, .5);
     EXPECT_NEAR(double(energy / 100000), -.6 * correlation, .025);
     EXPECT_NEAR(double(square / 100000), .36 * (1 - 2 * correlation), .025);
+}
+
+TEST(SpinMCScientificCorrections, NonsymmetricExchangeProposalUsesOriginalBondOrientationAtBothEndpoints) {
+    const auto input = parameters("XY");
+    const alps::graph_helper<> graph(input);
+    std::string text = "1 .7 -.4 -.2";
+    SquareMatrix<double,2> matrix(text,input);
+    const auto sources = spinmc_local_bond_sources<SquareMatrix<double,2>>(graph.graph());
+    const auto bond = *graph.bonds().first;
+    const auto left = graph.source(bond), right = graph.target(bond);
+    ONMoment<2> x,y;
+    x.state_ = TinyVector<double,2>(.6,.8);
+    y.state_ = TinyVector<double,2>(-.8,.6);
+    const TinyVector<double,2> reflection(1.,0.);
+    const auto energy = [&](const auto &a, const auto &b) {
+        // Literal independent H=-x^T J y, with the original ordered endpoints.
+        return -(a.state_[0]*b.state_[0] + .7*a.state_[0]*b.state_[1]
+                 -.4*a.state_[1]*b.state_[0] -.2*a.state_[1]*b.state_[1]);
+    };
+    for (const auto vertex : {left,right}) {
+        const auto incident = *boost::out_edges(vertex,graph.graph()).first;
+        const auto oriented = spinmc_local_bond_matrix(matrix,graph.graph(),incident,sources);
+        auto next_x=x,next_y=y;
+        if (vertex==left) next_x.update(reflection); else next_y.update(reflection);
+        const double expected = energy(next_x,next_y)-energy(x,y);
+        const double actual = vertex==left ? bond_energy_change(x,y,oriented,reflection)
+                                          : bond_energy_change(y,x,oriented,reflection);
+        EXPECT_NEAR(actual,expected,1.e-15);
+    }
+}
+
+TEST(SpinMCScientificCorrections, OrientedXYExchangeMatchesIndependentRotatedDimerPartition) {
+    auto input=parameters("XY");
+    input["S"]=1.; input["THERMALIZATION"]=1000;
+    std::ostringstream matrix;
+    // J=.6R(.4). Rotating one integration variable leaves the exact XY
+    // partition Z proportional to I0(beta*.6), including nonsymmetric J.
+    const double diagonal=.6*std::cos(.4), off_diagonal=.6*std::sin(.4);
+    matrix<<std::setprecision(17)<<diagonal<<' '<<-off_diagonal<<' '
+          <<off_diagonal<<' '<<diagonal;
+    input["J"]=matrix.str();
+    original_run run(input);
+    while(!run.source->native_position().thermalized) run.worker->run();
+    long double energy=0.,square=0.;
+    for(unsigned update=0;update<100000;++update) {
+        run.worker->run(); const auto &sample=run.source->native_sample().joint;
+        energy+=sample[0]; square+=sample[1];
+    }
+    const double correlation=boost::math::cyl_bessel_i(1,.5)/boost::math::cyl_bessel_i(0,.5);
+    EXPECT_NEAR(double(energy/100000),-.6*correlation,.025);
+    EXPECT_NEAR(double(square/100000),.36*(1-2*correlation),.025);
 }
