@@ -53,12 +53,25 @@ def main():
 
         if sqlite_command:
             command = sqlite_command[0]
+            version = run(command, "--version")
+            assert "ALPS Plot Generator, version" in version and "Allowed options" not in version
             database = root / "results.db"
             run(command, "--command", "install", "--db-file", database)
             run(command, "--command", "append", "--db-file", database, "--xml-file", simulation)
             with sqlite3.connect(database) as db:
                 assert db.execute("SELECT value FROM parameter WHERE name='T'").fetchone() == ('1.25',)
                 assert db.execute("SELECT count, mean, error FROM measurement WHERE name='Energy'").fetchone() == ('64', '-2', '0.125')
+            # The positional XML input must select the same append path.
+            run(command, "-c", "append", "-d", database, simulation)
+            plot = root / "plot with spaces.xml"
+            for constraint in [
+                '<CONSTRAINT name="T" type="parameter" operator="greaterthan" value="0"/>',
+                '<CONSTRAINT name="T" type="parameter" operator="greaterthan" value="0"></CONSTRAINT>',
+            ]:
+                plot.write_text('<PLOT name="energy" output="text"><XAXIS name="T" type="parameter"/>'
+                                '<YAXIS name="Energy" type="mean"/>' + constraint + '</PLOT>')
+                run(command, "-c", "plot", "-d", database, "-o", root, plot)
+                run(command, "-c", "plot", "-d", database, "-o", root, "-p", plot)
             # A second process must reopen the same schema and retain its data.
             listing = run(command, "--command", "list", "--db-file", database)
             assert "Energy" in listing and "1.25" in listing
