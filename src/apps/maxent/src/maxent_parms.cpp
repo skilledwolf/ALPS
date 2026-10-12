@@ -216,10 +216,13 @@ void ContiParameters::setup_kernel(const alps::params& p, const int ntab, const 
           tau = p["TAU_"+boost::lexical_cast<std::string>(i)]; 
         else 
           tau = i / ((ndat()-1) * T_);
-        K_(i,0) = T_;
-        for (int j=1; j<ntab; ++j) {
-          double omega = freq[j];
-          K_(i,j) = 0.5*omega * (std::exp(-omega*tau) + std::exp(-omega*(1./T_-tau))) / (1 - std::exp(-omega/T_));
+        for (int j=0; j<ntab; ++j) {
+          // This kernel is even in omega. Use nonpositive exponent arguments
+          // and expm1 for a stable zero-frequency limit in every column.
+          const double omega = std::abs(freq[j]);
+          K_(i,j) = omega == 0 ? T_ : 0.5*omega *
+              (std::exp(-omega*tau) + std::exp(-omega*(1./T_-tau))) /
+              -std::expm1(-omega/T_);
         }
       }    
     }
@@ -259,8 +262,7 @@ void ContiParameters::setup_kernel(const alps::params& p, const int ntab, const 
       double Omegan = (2*i)*boost::math::constants::pi<double>()*T_;
       for (int j=0; j<ntab; ++j) {
         double Omega = freq[j]; 
-        if(Omega ==0) throw std::runtime_error("Bosonic kernel is singular at frequency zero. Please use grid w/o evaluation at zero.");
-        K_(i,j) =  -Omega*Omega / (Omegan*Omegan + Omega*Omega);
+        K_(i,j) = i == 0 ? -1. : -Omega*Omega / (Omegan*Omegan + Omega*Omega);
       }
     }
     //double z=0;
@@ -285,6 +287,10 @@ void ContiParameters::setup_kernel(const alps::params& p, const int ntab, const 
   else if (p_data == "frequency") {
     if (alps::is_master())
       std::cerr << "assume frequency space data" << std::endl;
+    if (ndat_ % 2)
+      throw std::invalid_argument("complex frequency data require real/imaginary pairs");
+    // First-column corrections also identified in ALPS reconciliation
+    // 90a36c0d4, src/apps/maxent/src/maxent_parms.cpp. Keep the legacy API.
     ublas::matrix<std::complex<double>, ublas::column_major> Kc(ndat_/2, ntab);
     if (p_kernel == "fermionic") {
       if (alps::is_master())
@@ -302,10 +308,10 @@ void ContiParameters::setup_kernel(const alps::params& p, const int ntab, const 
         std::cerr << "Using bosonic kernel" << std::endl;
       for (int i=0; i<ndat()/2; ++i) {
         std::complex<double> iomegan(0, 2*i*boost::math::constants::pi<double>()*T_);
-        for (int j=1; j<ntab; ++j) {
+        for (int j=0; j<ntab; ++j) {
           double omega = freq[j]; 
           //Kc(i,j) =  -1. / (iomegan - omega);
-          Kc(i,j) =  omega / (iomegan - omega);
+          Kc(i,j) = i == 0 ? -1. : omega / (iomegan - omega);
         }
       }    
     }
@@ -313,7 +319,7 @@ void ContiParameters::setup_kernel(const alps::params& p, const int ntab, const 
       std::cerr<<"Using general anomalous kernel omega / (iomega_n - omega) for, e.g., omega*Delta"<<std::endl;
       for (int i=0; i<ndat()/2; ++i) {
         std::complex<double> iomegan(0, (2*i+1)*boost::math::constants::pi<double>()*T_);
-        for (int j=1; j<ntab; ++j) {
+        for (int j=0; j<ntab; ++j) {
           double omega = freq[j];
           Kc(i,j) =  -omega / (iomegan - omega);
         }
@@ -322,7 +328,7 @@ void ContiParameters::setup_kernel(const alps::params& p, const int ntab, const 
     else 
       boost::throw_exception(std::invalid_argument("unknown integration kernel"));    
     for (int i=0; i<ndat(); i+=2) {
-      for (int j=1; j<ntab; ++j) {
+      for (int j=0; j<ntab; ++j) {
         K_(i,j) = Kc(i/2,j).real();
         K_(i+1,j) = Kc(i/2,j).imag();
       }
@@ -330,6 +336,10 @@ void ContiParameters::setup_kernel(const alps::params& p, const int ntab, const 
   }
   else
     boost::throw_exception(std::invalid_argument("unknown value for parameter DATASPACE"));
+  for (int i = 0; i < ndat(); ++i)
+    for (int j = 0; j < ntab; ++j)
+      if (!std::isfinite(K_(i,j)))
+        throw std::invalid_argument("nonfinite integration kernel");
 //  vector_type sigma(ndat());
   if (p.defined("COVARIANCE_MATRIX")) {
     if(!(p.defined("DATA_IN_HDF5") && p["DATA_IN_HDF5"]|false)) {
