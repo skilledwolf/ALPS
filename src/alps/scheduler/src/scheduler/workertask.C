@@ -17,6 +17,7 @@
 #include <alps/scheduler/task.h>
 #include <alps/scheduler/types.h>
 #include <alps/scheduler/scheduler.h>
+#include <alps/scheduler/seeds.h>
 #include <alps/expression.h>
 #include <alps/parser/parser.h>
 #include <alps/osiris/mpdump.h>
@@ -155,7 +156,7 @@ void WorkerTask::construct() // delayed until child class is fully constructed
       if(in==0&&here[0].local()) { // one on the local node
         runs[0]=theScheduler->make_worker(here,parms);
         theWorker = runs[0];
-        parms["SEED"] = static_cast<int32_t>(parms["SEED"])+cpus();
+        parms["SEED"] = next_run_seed(parms["SEED"],cpus());
         in +=cpus();
         workerstatus[0] = LocalRun;
 #ifdef ALPS_TRACE
@@ -164,7 +165,7 @@ void WorkerTask::construct() // delayed until child class is fully constructed
       }
       else { // other runs on remote nodes
         runs[i]=new RemoteWorker(here,parms);
-        parms["SEED"] = static_cast<int32_t>(parms["SEED"])+cpus();
+        parms["SEED"] = next_run_seed(parms["SEED"],cpus());
         in +=cpus();
         workerstatus[i] = RemoteRun;
 #ifdef ALPS_TRACE
@@ -222,7 +223,7 @@ void WorkerTask::add_process(const Process& p)
     std::cerr  << "Creating additional run " << j+1 << " remote on Host: " << p << "\n";
 #endif
     runs[j]=new RemoteWorker(here,parms);
-    parms["SEED"] = static_cast<int32_t>(parms["SEED"])+cpus();
+    parms["SEED"] = next_run_seed(parms["SEED"],cpus());
     workerstatus[j] = RemoteRun;
     if(started())
       runs[j]->start_worker();
