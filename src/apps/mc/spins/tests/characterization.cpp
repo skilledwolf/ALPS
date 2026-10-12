@@ -21,12 +21,15 @@
 #include <gtest/gtest.h>
 
 #include <cstdlib>
+#include <fstream>
+#include <iterator>
 #include <algorithm>
 #include <memory>
 #include <set>
 #include <sstream>
 #include <string>
 #include <typeinfo>
+#include <valarray>
 #include <vector>
 
 namespace {
@@ -148,8 +151,132 @@ TEST_P(Characterization, InterpretsParametersAndSavesTheRun) {
     EXPECT_EQ(names(saved), c.saved);
 
     if (const char* dump = std::getenv("ALPS_SPINMC_DUMP_DIR")) {
-        alps::hdf5::archive out(std::string(dump) + "/" + c.name + ".h5", "w");
-        worker->save(out);
+        const std::string base = std::string(dump) + "/" + c.name;
+        {
+            alps::hdf5::archive out(base + ".h5", "w");
+            worker->save(out);
+        }
+        // The XDR checkpoint holds what HDF5 does not: sweep counters and spins.
+        worker->save_to_file(base + ".xdr", base + ".xdr.h5");
+    }
+}
+
+// Count, mean and error of every observable, exactly.
+std::vector<std::string> summary(const alps::ObservableSet& measurements) {
+    std::vector<std::string> out;
+    for (const auto& entry : measurements) {
+        std::ostringstream line;
+        line << std::hexfloat << entry.first;
+        if (const auto* scalar = dynamic_cast<const alps::RealObservable*>(entry.second)) {
+            line << " " << scalar->count();
+            if (scalar->count())
+                line << " " << scalar->mean() << " " << scalar->error();
+        } else if (const auto* vector =
+                       dynamic_cast<const alps::RealVectorObservable*>(entry.second)) {
+            line << " " << vector->count();
+            if (vector->count())
+                for (double value : std::valarray<double>(vector->mean()))
+                    line << " " << value;
+        } else {
+            line << " unexpected observable type";
+        }
+        out.push_back(line.str());
+    }
+    return out;
+}
+
+std::vector<std::string> measured(const alps::scheduler::Worker& worker) {
+    return summary(dynamic_cast<const alps::scheduler::MCRun&>(worker).get_measurements());
+}
+
+std::string file_bytes(const std::string& path) {
+    std::ifstream in(path, std::ios::binary);
+    return std::string(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+}
+
+// Starts the worker as the scheduler does, which begins its log.
+std::unique_ptr<alps::scheduler::Worker> started_worker(const std::string& text) {
+    auto worker = make_worker(parameters(text));
+    worker->start_worker();
+    return worker;
+}
+
+std::string saved_rng(const std::string& hdf5_path) {
+    alps::hdf5::archive archive(hdf5_path);
+    std::string state;
+    archive["/rng"] >> state;
+    return state;
+}
+
+// Loading a checkpoint restores the sweep counters, spins, engine state and
+// measurements: saving right away reproduces the checkpoint.
+TEST_P(Characterization, RestoresTheCheckpointedState) {
+    const Case& c = GetParam();
+    const int first = c.sweeps / 2;
+    alps::testing::TemporaryDirectory directory;
+    const auto path = [&](const std::string& name) { return (directory.path() / name).string(); };
+
+    auto interrupted = started_worker(c.input);
+    for (int i = 0; i < first; ++i)
+        interrupted->dostep();
+    interrupted->save_to_file(path("checkpoint"), path("checkpoint.h5"));
+
+    auto resumed = make_worker(parameters(c.input));
+    resumed->load_from_file(path("checkpoint"), path("checkpoint.h5"));
+    resumed->start_worker();
+    EXPECT_EQ(resumed->work_done(), interrupted->work_done());
+    EXPECT_EQ(measured(*resumed), measured(*interrupted));
+    resumed->save_to_file(path("again"), path("again.h5"));
+    EXPECT_EQ(file_bytes(path("again")), file_bytes(path("checkpoint")));
+    EXPECT_GT(file_bytes(path("checkpoint")).size(), 12u);
+    EXPECT_EQ(saved_rng(path("again.h5")), saved_rng(path("checkpoint.h5")));
+
+    // Dump the continued run, so that a comparison of two builds also covers
+    // loading a checkpoint.
+    for (int i = first; i < c.sweeps; ++i)
+        resumed->dostep();
+    if (const char* dump = std::getenv("ALPS_SPINMC_DUMP_DIR")) {
+        const std::string base = std::string(dump) + "/" + c.name + ".resumed";
+        {
+            alps::hdf5::archive out(base + ".h5", "w");
+            resumed->save(out);
+        }
+        resumed->save_to_file(base + ".xdr", base + ".xdr.h5");
+    }
+}
+
+// The scheduler starts a run and calls run(), which checks thermalization
+// around each sweep: the work phase changes from "equilibrating" to
+// "running", and the measurements are reset when thermalization ends.
+TEST_P(Characterization, RunsThroughTheSchedulerInterface) {
+    const Case& c = GetParam();
+    auto scheduled = started_worker(c.input);
+    auto stepped = make_worker(parameters(c.input));
+    EXPECT_EQ(scheduled->work_phase(), "equilibrating");
+    std::vector<std::string> phases;
+    for (int i = 0; i < c.sweeps; ++i) {
+        scheduled->run();
+        stepped->dostep();
+        phases.push_back(scheduled->work_phase());
+    }
+    // Equilibrating until thermalized, then running. Local updates thermalize
+    // after exactly THERMALIZATION sweeps.
+    const auto equilibrating = std::count(phases.begin(), phases.end(), "equilibrating");
+    EXPECT_GT(equilibrating, 0);
+    EXPECT_EQ(std::count(phases.begin() + equilibrating, phases.end(), "running"),
+              c.sweeps - equilibrating);
+    if (c.work_done >= 0.)
+        EXPECT_DOUBLE_EQ(scheduled->work_done(), c.work_done);
+    // Nothing is measured before thermalization, so the reset changes nothing.
+    EXPECT_EQ(measured(*scheduled), measured(*stepped));
+
+    if (const char* dump = std::getenv("ALPS_SPINMC_DUMP_DIR")) {
+        const std::string base = std::string(dump) + "/" + c.name + ".scheduled";
+        {
+            alps::hdf5::archive out(base + ".h5", "w");
+            scheduled->save(out);
+        }
+        scheduled->save_to_file(base + ".xdr", base + ".xdr.h5");
     }
 }
 
@@ -297,6 +424,58 @@ TEST(SpinmcCharacterization, ReportsUnsupportedModelsAndMatrixSizes) {
     EXPECT_EQ(construction_error(
                   R"p(LATTICE="chain lattice";L=4;MODEL="Clock";J=1;T=1;SWEEPS=10;SEED=1)p"),
               "Clock model not implemented in file factory.C");
+}
+
+// A run loaded without a process, as a task holds runs it does not continue,
+// compacts its measurements and drops its spins.
+TEST(SpinmcCharacterization, LoadsCheckpointsWithoutAProcess) {
+    const std::string input =
+        R"p(LATTICE="square lattice";L=4;MODEL="Ising";J=1;T=2.5;SWEEPS=50;THERMALIZATION=5;SEED=3)p";
+    alps::testing::TemporaryDirectory directory;
+    const auto path = [&](const std::string& name) { return (directory.path() / name).string(); };
+
+    auto running = started_worker(input);
+    for (int i = 0; i < 25; ++i)
+        running->dostep();
+    running->save_to_file(path("checkpoint"), path("checkpoint.h5"));
+
+    std::unique_ptr<alps::scheduler::Worker> passive(
+        SpinFactory().make_worker(alps::ProcessList(), parameters(input), 0));
+    passive->load_from_file(path("checkpoint"), path("checkpoint.h5"));
+    EXPECT_EQ(passive->work_done(), running->work_done());
+    EXPECT_EQ(measured(*passive), measured(*running));
+    // The checkpoint again, with header and sweep counters, but no spins.
+    passive->save_to_file(path("again"), path("again.h5"));
+    EXPECT_EQ(file_bytes(path("again")),
+              file_bytes(path("checkpoint")).substr(0, 36) + std::string(4, '\0'));
+    EXPECT_GT(file_bytes(path("checkpoint")).size(), 40u);
+}
+
+// The engine is checkpointed without its buffer of numbers drawn ahead, so a
+// resumed run continues with other random numbers than an uninterrupted one.
+TEST(SpinmcCharacterization, ResumedRunsDoNotRepeatUninterruptedRuns) {
+    const std::string input =
+        R"p(LATTICE="chain lattice";L=8;MODEL="Ising";J=1;T=1.5;SWEEPS=95;UPDATE="local";SEED=11)p";
+    alps::testing::TemporaryDirectory directory;
+    const auto path = [&](const std::string& name) { return (directory.path() / name).string(); };
+
+    auto straight = started_worker(input);
+    for (int i = 0; i < 30; ++i)
+        straight->dostep();
+    {
+        auto interrupted = started_worker(input);
+        for (int i = 0; i < 15; ++i)
+            interrupted->dostep();
+        interrupted->save_to_file(path("checkpoint"), path("checkpoint.h5"));
+    }
+    auto resumed = make_worker(parameters(input));
+    resumed->load_from_file(path("checkpoint"), path("checkpoint.h5"));
+    resumed->start_worker();
+    for (int i = 15; i < 30; ++i)
+        resumed->dostep();
+
+    EXPECT_EQ(resumed->work_done(), straight->work_done());
+    EXPECT_NE(measured(*resumed), measured(*straight));
 }
 
 } // namespace
