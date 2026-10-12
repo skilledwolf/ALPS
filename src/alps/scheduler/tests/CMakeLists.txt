@@ -1,1 +1,5 @@
 add_subdirectory(ngs)
+
+add_executable(scheduler_seeds_characterization seeds_characterization.cpp)
+target_link_libraries(scheduler_seeds_characterization PRIVATE ALPS::alps)
+alps_add_gtest(scheduler_seeds_characterization COMPONENT scheduler)
