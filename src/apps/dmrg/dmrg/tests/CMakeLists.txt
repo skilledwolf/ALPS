@@ -15,3 +15,8 @@ if(TARGET dmrg AND TARGET parameter2xml)
       -P "${CMAKE_CURRENT_SOURCE_DIR}/dmrg_scratch_cleanup.cmake")
   set_tests_properties(dmrg_scratch_cleanup PROPERTIES LABELS "dmrg" TIMEOUT 120)
 endif()
+
+add_executable(dmrg_lanczos_dimension lanczos_dimension.cpp)
+target_include_directories(dmrg_lanczos_dimension PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/..")
+target_link_libraries(dmrg_lanczos_dimension PRIVATE ALPS::alps ${ALPS_BLAS_TARGET} ${ALPS_LAPACK_TARGET})
+alps_add_gtest(dmrg_lanczos_dimension COMPONENT dmrg LABELS scientific regression)

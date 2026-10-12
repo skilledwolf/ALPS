@@ -28,6 +28,7 @@
 #include <boost/algorithm/string/replace.hpp>
 #include <boost/archive/tmpdir.hpp>
 #include <boost/foreach.hpp>
+#include <cstdint>
 
 
 #define DMRG_VERSION "1.0.0"
@@ -197,7 +198,7 @@ void DMRGTask<value_type>::init()
   else if (parms.defined("MAXSTATES")) {
     maxstates = static_cast<int>(parms["MAXSTATES"]);
     for (int i=0; i< 2*num_sweeps; ++i)
-      num_states.push_back((i+1)*maxstates/(2*num_sweeps));
+      num_states.push_back(static_cast<int>(std::int64_t(i+1)*maxstates/(2*num_sweeps)));
   }
   else if (parms.defined("NUMSTATES")) {
     maxstates = static_cast<int>(parms["NUMSTATES"]);
@@ -682,5 +683,4 @@ DMRGTask<value_type>::build_bond_operator(alps::BondOperator const& bondop, bond
     this_hami += real_t;
   }
 }
-
 
