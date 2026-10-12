@@ -15,6 +15,7 @@
 #include <utility> // Boost.Math 1.76 includes this inside a namespace.
 #include <boost/math/constants/constants.hpp>
 #include "maxent.hpp"
+#include "control_validation.hpp"
 #include <alps/config.h> // needed to set up correct bindings
 #include <alps/hdf5/ublas/vector.hpp>
 #include <alps/ngs/signal.hpp>
@@ -28,7 +29,7 @@
 
 
 MaxEntSimulation::MaxEntSimulation(const alps::params &parms,const std::string &outfile)
-: MaxEntHelper(parms)
+: MaxEntHelper(maxent_detail::validate_controls(parms))
 , alpha((int)parms["N_ALPHA"])              //This is the # of \alpha parameters that should be tried.
 , norm(parms["NORM"]|1.0)                                             //The integral is normalized to NORM (use e.g. for self-energies
 , max_it(parms["MAX_IT"]|1000)                                       //The number of iterations done in the root finding procedure

@@ -18,6 +18,7 @@
 #include <utility> // Boost.Math 1.76 includes this inside a namespace.
 #include <boost/math/constants/constants.hpp>
 #include <math.h>
+#include <cmath>
 #include <alps/ngs/params.hpp>
 #include <alps/osiris/comm.h>
 #include <boost/shared_ptr.hpp>
@@ -26,10 +27,24 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <vector>
 
+
+namespace maxent_detail {
+inline double finite_parameter(const alps::params& p, const char* key) {
+  const double x = p[key];
+  if (!std::isfinite(x)) throw std::invalid_argument(std::string(key)+" must be finite");
+  return x;
+}
+inline double positive_parameter(const alps::params& p, const char* key) {
+  const double x = finite_parameter(p,key);
+  if (x <= 0) throw std::invalid_argument(std::string(key)+" must be positive");
+  return x;
+}
+}
 
 //Note the slightly crooked structure here:
 
@@ -55,7 +70,12 @@ public:
     omega_max(p["OMEGA_MAX"]),
     omega_min(static_cast<double>(p["OMEGA_MIN"]|(-omega_max))), //we had a 0 here in the bosonic case. That's not a good idea if you're continuing symmetric functions like chi(omega)/omega. Change omega_min to zero manually if you need it.
     blow_up_(p["BLOW_UP"]|1.)
-  { //std::cout<<"found omega_min: "<<omega_min<<std::endl;
+  {
+    if (!std::isfinite(omega_min) || !std::isfinite(omega_max) ||
+        !std::isfinite(omega_max-omega_min) || omega_min >= omega_max ||
+        !std::isfinite(blow_up_) || blow_up_ <= 0)
+      throw std::invalid_argument("invalid default-model frequency range or BLOW_UP");
+    //std::cout<<"found omega_min: "<<omega_min<<std::endl;
     //std::cout<<"found omega_max: "<<omega_max<<std::endl;
     //std::cout<<"found blowup:    "<<blow_up_<<std::endl;
   }
@@ -120,8 +140,8 @@ public:
 class Gaussian : public Model
 {
 public:
-//  Gaussian(const alps::Parameters& p) : sigma(static_cast<double>(p["SIGMA"])) {}
-  Gaussian(const alps::params& p) : sigma(static_cast<double>(p["SIGMA"])) {}
+//  Gaussian(const alps::Parameters& p) : sigma(maxent_detail::positive_parameter(p,"SIGMA")) {}
+  Gaussian(const alps::params& p) : sigma(maxent_detail::positive_parameter(p,"SIGMA")) {}
 
   virtual double operator()(const double omega) {
     return std::exp(-omega*omega/2./sigma/sigma)/sqrt(2*boost::math::constants::pi<double>())/sigma;
@@ -134,12 +154,15 @@ private:
 class TwoGaussians : public Model
 {
 public:
-//    TwoGaussians(const alps::Parameters& p) : sigma1(static_cast<double>(p["SIGMA1"])),
-    TwoGaussians(const alps::params& p) : sigma1(static_cast<double>(p["SIGMA1"])),
-    sigma2(static_cast<double>(p["SIGMA2"])),
+//    TwoGaussians(const alps::Parameters& p) : sigma1(maxent_detail::positive_parameter(p,"SIGMA1")),
+    TwoGaussians(const alps::params& p) : sigma1(maxent_detail::positive_parameter(p,"SIGMA1")),
+    sigma2(maxent_detail::positive_parameter(p,"SIGMA2")),
     shift1(static_cast<double>(p["SHIFT1"]|0.0)),
-    shift2(static_cast<double>(p["SHIFT2"])),
-    norm1(static_cast<double>(p["NORM1"]|0.5)) {}
+    shift2(maxent_detail::finite_parameter(p,"SHIFT2")),
+    norm1(static_cast<double>(p["NORM1"]|0.5)) {
+      if (!std::isfinite(shift1) || !std::isfinite(norm1) || norm1 < 0 || norm1 > 1)
+        throw std::invalid_argument("invalid two-Gaussian shift or weight");
+    }
 
     virtual double operator()(const double omega) {
         return norm1*std::exp(-(omega-shift1)*(omega-shift1)/2./sigma1/sigma1)/sqrt(2*boost::math::constants::pi<double>())/sigma1+(1.0-norm1)*std::exp(-(omega-shift2)*(omega-shift2)/2./sigma2/sigma2)/sqrt(2*boost::math::constants::pi<double>())/sigma2;
@@ -155,7 +178,7 @@ class ShiftedGaussian : public Gaussian
 public:
 //  ShiftedGaussian(const alps::Parameters& p) :
   ShiftedGaussian(const alps::params& p) :
-    Gaussian(p), shift(static_cast<double>(p["SHIFT"])){}
+    Gaussian(p), shift(maxent_detail::finite_parameter(p,"SHIFT")){}
 
   double operator()(const double omega) {
     return Gaussian::operator()(omega-shift);
@@ -180,8 +203,8 @@ public:
 
 class LinearRiseExpDecay : public Model{
 public:
-//  LinearRiseExpDecay(const alps::Parameters &p): lambda_(p["LAMBDA"]){}
-  LinearRiseExpDecay(const alps::params &p): lambda_(p["LAMBDA"]){}
+//  LinearRiseExpDecay(const alps::Parameters &p): lambda_(maxent_detail::positive_parameter(p,"LAMBDA")){}
+  LinearRiseExpDecay(const alps::params &p): lambda_(maxent_detail::positive_parameter(p,"LAMBDA")){}
   double operator()(const double omega) {
     return lambda_*lambda_*omega*std::exp(-lambda_*omega);
   }
@@ -192,8 +215,8 @@ private:
 
 class QuadraticRiseExpDecay : public Model{
 public:
-//  QuadraticRiseExpDecay(const alps::Parameters &p): lambda_(p["LAMBDA"]){}
-  QuadraticRiseExpDecay(const alps::params &p): lambda_(p["LAMBDA"]){}
+//  QuadraticRiseExpDecay(const alps::Parameters &p): lambda_(maxent_detail::positive_parameter(p,"LAMBDA")){}
+  QuadraticRiseExpDecay(const alps::params &p): lambda_(maxent_detail::positive_parameter(p,"LAMBDA")){}
   double operator()(const double omega) {
     return (lambda_*lambda_*lambda_)/2.*(omega*omega)*std::exp(-lambda_*omega);
   }
@@ -207,7 +230,7 @@ class GeneralDoubleGaussian : public ShiftedGaussian
 public:
 //  GeneralDoubleGaussian(const alps::Parameters& p) :
   GeneralDoubleGaussian(const alps::params& p) :
-    ShiftedGaussian(p), bnorm(static_cast<double>(p["BOSE_NORM"])) {}
+    ShiftedGaussian(p), bnorm(maxent_detail::positive_parameter(p,"BOSE_NORM")) {}
 
   double operator()(const double omega) {
     if (omega > 0)
@@ -231,24 +254,23 @@ public:
     std::ifstream defstream(p_name.c_str());
     if (!defstream)
       boost::throw_exception(std::invalid_argument("could not open default model file: "+p[name]));
-    double om, D;
-    while (defstream >> om >> D) {
-      Omega.push_back(om);
-      Def.push_back(D);
-      defstream.ignore(1000,'\n'); // Anything beyond is considered as junk
+    while (defstream >> std::ws && !defstream.eof()) {
+      double om, density;
+      if (!(defstream >> om >> density)) throw std::invalid_argument("malformed tabulated prior");
+      Omega.push_back(om); Def.push_back(density);
+      defstream.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
     }
-    double omega_max = p["OMEGA_MAX"];
-    double omega_min(static_cast<double>(p["OMEGA_MIN"]|-omega_max)); //we had a 0 here in the bosonic case. That's not a good idea if you're continuing symmetric functions like chi(omega)/omega. Change omega_min to zero manually if you need it.
-    //double omega_min = (p["KERNEL"] == "bosonic") ? 0. :
-    //     static_cast<double>(p.value_or_default("OMEGA_MIN", -omega_max));
-    if (Omega[0]!=omega_min || Omega[Omega.size()-1]!=omega_max){
-      std::cout<<"Omega[ 0] "<<Omega[0]<<" omega min: "<<omega_min<<std::endl;
-      std::cout<<"Omega[-1] "<<Omega[Omega.size()-1]<<" omega max: "<<omega_max<<std::endl;
-//      boost::throw_exception(std::invalid_argument("invalid omega range for default model"));
-    }
+    validate(p);
   }
 
+  TabFunction(const alps::params& p, std::vector<double> omega, std::vector<double> density)
+    : Omega(std::move(omega)), Def(std::move(density)) { validate(p); }
+
+
   double operator()(const double omega) {
+    if (!std::isfinite(omega) || omega < Omega.front() || omega > Omega.back())
+      throw std::invalid_argument("frequency outside tabulated prior");
+    if (omega == Omega.front()) return Def.front();
     std::vector<double>::const_iterator ub = std::upper_bound(Omega.begin(), Omega.end(), omega);
     int index = ub - Omega.begin();
     if (ub==Omega.end())
@@ -261,6 +283,20 @@ public:
   }
 
 private:
+  void validate(const alps::params& p) const {
+    if (Omega.size() < 2 || Omega.size() != Def.size())
+      throw std::invalid_argument("tabulated prior requires matching arrays with at least two points");
+    bool positive = false;
+    for (std::size_t i = 0; i < Omega.size(); ++i) {
+      if (!std::isfinite(Omega[i]) || !std::isfinite(Def[i]) || Def[i] < 0 ||
+          (i && Omega[i] <= Omega[i-1]))
+        throw std::invalid_argument("prior coordinates must increase and densities be finite and nonnegative");
+      positive |= Def[i] > 0;
+    }
+    const double hi = p["OMEGA_MAX"], lo = p["OMEGA_MIN"] | -hi;
+    if (!positive || Omega.front() > lo || Omega.back() < hi)
+      throw std::invalid_argument("tabulated prior must have positive mass and cover the frequency interval");
+  }
   std::vector<double> Omega;
   std::vector<double> Def;
 };
@@ -285,9 +321,14 @@ public:
     for (int o=1; o<ntab; ++o) {
       double omega1 = omega_min + (o-1)*delta_omega;
       double omega2 = omega_min + o*delta_omega;
-      sum += ((*Mod)(omega1)+(*Mod)(omega2))/2.*delta_omega;
+      const double left = (*Mod)(omega1), right = (*Mod)(omega2);
+      if (!std::isfinite(left) || !std::isfinite(right) || left < 0 || right < 0)
+        throw std::invalid_argument("default-model density must be finite and nonnegative");
+      sum += (left+right)/2.*delta_omega;
       xtab[o] = sum;
     }
+    if (!std::isfinite(sum) || sum <= 0 || !std::isfinite(blow_up()/sum))
+      throw std::invalid_argument("default-model integral must be finite and positive");
     for (int o=0; o<ntab; ++o) {
       xtab[o] *= blow_up()/sum;
     }
@@ -305,6 +346,8 @@ public:
 
   double omega(const double x) const {
     if(!(x<=blow_up() && x>=0.)) throw std::logic_error("parameter x is out of bounds!"); //DNDEBUG switches off debug assertions
+    if (x == 0) return omega_min;
+    if (x == blow_up()) return omega_max;
     std::vector<double>::const_iterator ub = std::upper_bound(xtab.begin(), xtab.end(), x);
     int omega_index = ub - xtab.begin();
     if (ub==xtab.end())
@@ -323,13 +366,13 @@ public:
 
   //I have no idea what this does.
   double x(const double t) const {
-    if(t>1. || t<0.) throw std::logic_error("parameter t is out of bounds!");
+    if(!std::isfinite(t) || t>1. || t<0.) throw std::logic_error("parameter t is out of bounds!");
     int od = (int)(t*(ntab-1));
     if (od==(ntab-1))
       return blow_up();
     double x1 = xtab[od];
     double x2 = xtab[od+1];
-    return -(x2-x1)*(od+1-t*ntab)+x2;
+    return x1 + (x2-x1)*(t*(ntab-1)-od);
   }
 
 private:
@@ -341,9 +384,16 @@ private:
 
 
 //inline boost::shared_ptr<DefaultModel> make_default_model(const alps::Parameters& parms, std::string const& name)
-inline boost::shared_ptr<DefaultModel> make_default_model(const alps::params& parms, std::string const& name)
+inline boost::shared_ptr<DefaultModel> make_default_model(const alps::params& parms, std::string const& name,
+    const std::vector<double>& prior_omega = {}, const std::vector<double>& prior_density = {})
 {
     std::string p_name = parms[name]|"flat";
+  if (p_name == "tabulated") {
+    boost::shared_ptr<Model> mod(new TabFunction(parms, prior_omega, prior_density));
+    return boost::shared_ptr<DefaultModel>(new GeneralDefaultModel(parms, mod));
+  }
+  if (!prior_omega.empty() || !prior_density.empty())
+    throw std::invalid_argument("prior arrays require DEFAULT_MODEL=tabulated");
   if (p_name == "flat") {
     if (alps::is_master())
       std::cerr << "Using flat default model" << std::endl;

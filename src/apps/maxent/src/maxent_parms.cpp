@@ -41,7 +41,7 @@ ContiParameters::ContiParameters(const alps::params& p)
 : ContiParameters(p, maxent_detail::legacy_data(p)) {}
 
 ContiParameters::ContiParameters(const alps::params& p, const alps::maxent::data& data) :
-Default_(make_default_model(p, "DEFAULT_MODEL")),
+Default_(make_default_model(p, "DEFAULT_MODEL", data.prior_omega, data.prior_density)),
 T_(p.defined("T") ? static_cast<double>(p["T"]) : 1./static_cast<double>(p["BETA"])),
 ndat_(maxent_detail::data_count(data)), nfreq_(frequency_count(p)),
 y_(ndat_),sigma_(ndat_), x_(ndat_),K_(),t_array_(nfreq_+1),tau_(data.tau)
@@ -365,6 +365,11 @@ void ContiParameters::setup_kernel(const alps::params& p, const int ntab, const 
     }
     y_[ndat()-1]=1./artificial_norm_enforcement_sigma;
   }
+    for (int i=0; i<ndat(); ++i) {
+      if (!std::isfinite(y_[i])) throw std::invalid_argument("nonfinite whitened data");
+      for (int j=0; j<ntab; ++j)
+        if (!std::isfinite(K_(i,j))) throw std::invalid_argument("nonfinite whitened kernel");
+    }
     std::cerr << "Kernel set up\n";
 }
 
