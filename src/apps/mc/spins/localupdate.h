@@ -20,6 +20,7 @@
 #include <boost/property_map/property_map.hpp>
 #include <boost/random/uniform_int.hpp>
 #include <vector>
+#include <set>
 
 #include "potts.h"
 #include "ising.h"
@@ -62,6 +63,17 @@ MAT spinmc_local_bond_matrix(MAT matrix, const Graph &graph, const Edge &edge, c
   return matrix;
 }
 
+// A self-bond contributes -s^T J s once. Its antisymmetric part vanishes;
+// reuse the retained onsite reflection difference for its symmetric part.
+template<class MAT> MAT spinmc_self_bond_matrix(MAT matrix) {
+  if constexpr (spinmc_oriented_matrix<MAT>::value) {
+    const auto original=matrix;
+    for(int i=0;i<MAT::dim;++i) for(int j=0;j<MAT::dim;++j)
+      matrix.setElement(i,j,.5*original.getElement(i,j)+.5*original.getElement(j,i));
+  }
+  return matrix;
+}
+
 template <class Graph, class MomentMap, class RNG, class CouplingMap, class SpinfactorMap>
 void local_update(const Graph& graph, MomentMap& moment,
                   double beta, RNG& rng,  const CouplingMap& coupling,
@@ -88,11 +100,19 @@ void local_update(const Graph& graph, MomentMap& moment,
 
     // step iii)
     double delta_E=0;
+    std::set<typename boost::graph_traits<Graph>::edge_descriptor> self_bonds;
     typename boost::graph_traits<Graph>::out_edge_iterator edge,end;
     for (boost::tie(edge,end)=boost::out_edges(vertex,graph);edge!=end;++edge) {
       double fact = -spinfactor[boost::source(*edge,graph)]*spinfactor[boost::target(*edge,graph)];
       MAT J = spinmc_local_bond_matrix(MAT(coupling[*edge]),graph,*edge,bond_sources);
       J = J * fact;
+      if (boost::source(*edge,graph)==boost::target(*edge,graph)) {
+        if(self_bonds.insert(*edge).second) {
+          J=spinmc_self_bond_matrix(J);
+          delta_E+=onsite_energy_change(moment[vertex],J,update);
+        }
+        continue;
+      }
           delta_E += bond_energy_change(moment[boost::source(*edge,graph)],
                                moment[boost::target(*edge,graph)],J,update);
     }
@@ -132,11 +152,19 @@ void local_update_self(const Graph& graph, MomentMap& moment,
   
     // step iii)
     double delta_E=0;
+    std::set<typename boost::graph_traits<Graph>::edge_descriptor> self_bonds;
     typename boost::graph_traits<Graph>::out_edge_iterator edge,end;
     for (boost::tie(edge,end)=boost::out_edges(vertex,graph);edge!=end;++edge) {
       double fact = -spinfactor[boost::source(*edge,graph)]*spinfactor[boost::target(*edge,graph)];
       MAT J = spinmc_local_bond_matrix(MAT(coupling[*edge]),graph,*edge,bond_sources);
       J = J * fact;
+      if (boost::source(*edge,graph)==boost::target(*edge,graph)) {
+        if(self_bonds.insert(*edge).second) {
+          J=spinmc_self_bond_matrix(J);
+          delta_E+=onsite_energy_change(moment[vertex],J,update);
+        }
+        continue;
+      }
       delta_E += bond_energy_change(moment[boost::source(*edge,graph)],
                                 moment[boost::target(*edge,graph)],J,update);
     }
