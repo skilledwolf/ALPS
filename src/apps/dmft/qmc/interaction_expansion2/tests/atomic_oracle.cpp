@@ -62,6 +62,43 @@ public:
     measure_observables();
   }
 };
+
+class RebuildProbe : public HubbardInteractionExpansion {
+public:
+  using HubbardInteractionExpansion::HubbardInteractionExpansion;
+  void check_rebuild(double interaction) {
+    const double proposal=try_add();
+    // Exact first-vertex determinant product: (-.51)*(.51), independent of
+    // time and symmetrized alpha. Both signs are unconditionally accepted.
+    ASSERT_NEAR(proposal,.5202*interaction,1.e-12);
+    ASSERT_GT(std::abs(proposal),1.);
+    perform_add();
+    sign=proposal<0 ? -1. : 1.;
+    const double accepted_sign=sign;
+    const auto before=M;
+    ASSERT_EQ(vertices.size(),1);
+    measure_observables();
+    const auto first=collect_results();
+    reset_perturbation_series();
+    ASSERT_EQ(vertices.size(),1);
+    EXPECT_EQ(sign,accepted_sign);
+    for (unsigned flavor=0; flavor<2; ++flavor) {
+      ASSERT_EQ(num_rows(M[flavor].matrix()),1);
+      EXPECT_NEAR(std::abs(M[flavor].matrix()(0,0)),1./.51,1.e-12);
+      EXPECT_NEAR(M[flavor].matrix()(0,0),before[flavor].matrix()(0,0),1.e-12);
+    }
+    measure_observables();
+    const auto after=collect_results();
+    EXPECT_EQ(after["Sign"].count(),2);
+    EXPECT_EQ(after["Sign"].mean<double>(),accepted_sign);
+    const auto first_density=first["densities"].mean<std::vector<double>>();
+    const auto after_density=after["densities"].mean<std::vector<double>>();
+    ASSERT_EQ(first_density.size(),2);
+    ASSERT_EQ(after_density.size(),2);
+    for (unsigned flavor=0; flavor<2; ++flavor)
+      EXPECT_NEAR(after_density[flavor],first_density[flavor],1.e-12);
+  }
+};
 }
 
 TEST(CtintAtomicOracle, OccupationsAndGreenFunctionsMatchTheFreeAtom) {
@@ -231,5 +268,17 @@ TEST(CtintAtomicOracle, MeasuredPrefixWorksWithProductionVertexAndChangedExtents
         ASSERT_EQ(values.size(),2);
         for (double value : values) EXPECT_TRUE(std::isfinite(value));
       }
+  }
+}
+
+TEST(CtintAtomicOracle, MatrixRebuildPreservesPositiveAndNegativeConfigurationSigns) {
+  // Adapted invariant fixture from pinned reconciliation tests/run_config.cpp.
+  // This tests a fixed accepted configuration, not a sampled physical average.
+  for (double interaction : {-4.,4.}) {
+    SCOPED_TRACE(interaction);
+    auto p=parameters("unused",2.,true);
+    p["U"]=interaction;
+    RebuildProbe simulation(p,0);
+    simulation.check_rebuild(interaction);
   }
 }

@@ -63,7 +63,9 @@ void InteractionExpansion::reset_perturbation_series()
     vertices_backup.push_back(vertices[i]);
   }
   vertices.clear();
-  sign=1;
+  // Adapted from ALPS reconciliation 90a36c0d4c64ee7308dcb0651264197ffdf36449,
+  // interaction_expansion2/solver.cpp: rebuilding inverse matrices is not a
+  // Monte Carlo move. The accepted vertices and configuration sign are fixed.
   for(spin_t z=0;z<n_flavors;++z){
     resize(M[z].matrix(),0,0);
   }
@@ -86,4 +88,3 @@ void InteractionExpansion::reset_perturbation_series()
       std::cout<<"WARNING: roundoff errors in flavor: "<<z<<" max diff "<<max_diff<<std::endl;
   }
 }
-
