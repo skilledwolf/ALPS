@@ -24,3 +24,5 @@ if(ALPS_BUILD_APPLICATIONS)
 endif()
 
 include(cli/citations.cmake)
+
+add_subdirectory(tutorials)

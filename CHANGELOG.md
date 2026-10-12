@@ -6,6 +6,9 @@ User-facing changes and migration notes are recorded here, starting with the bui
 
 ### Fixed
 
+- Correct the ferromagnetic Ising acceptance sign in the Python and C++ tutorials, add physics regressions, and exercise the density-profile tutorial through callable simulation and plotting functions.
+- Remove unregistered historical application test templates; these were not active CMake coverage.
+
 - Restore portable scalar/NumPy square, cube and inverse-function dispatch in `pyalps.math`; preserve the HDF5 archive context if loading an observable fails.
 - Make application tests reject failed simulation/reference scripts and mismatched output/task counts. Keep boolean-array test expectations consistent with dtype preservation.
 
