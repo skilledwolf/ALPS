@@ -185,6 +185,18 @@ namespace {
         }
     };
 
+    // Staged map loads construct new values, so inject this failure through
+    // the loaded payload rather than state in the old destination object.
+    struct failing_map_value : context_value {
+        void load(alps::hdf5::archive & ar) {
+            context_value::load(ar);
+            if (value == 41) {
+                ar.set_context("changed/by/hook");
+                throw context_failure();
+            }
+        }
+    };
+
     struct recovering_parent {
         context_value child{17, true};
         int after = 19;
@@ -253,8 +265,12 @@ namespace {
             expect_failure<context_failure>(ar, context, [&] { ar >> make_pvp("/context/absolute", value); });
             std::vector<context_value> loaded_sequence{{0, false}, {0, true}};
             expect_failure<context_failure>(ar, context, [&] { ar >> make_pvp("sequence", loaded_sequence); });
-            std::map<std::string, context_value> loaded_mapping{{"second", {0, true}}};
-            expect_failure<context_failure>(ar, context, [&] { ar >> make_pvp("mapping", loaded_mapping); });
+            std::map<std::string, failing_map_value> failed_mapping;
+            failed_mapping["kept"].value = 61;
+            expect_failure<context_failure>(ar, context, [&] { ar >> make_pvp("mapping", failed_mapping); });
+            if (failed_mapping.size() != 1 || failed_mapping.at("kept").value != 61)
+                throw std::runtime_error("failed map load replaced its destination");
+            std::map<std::string, context_value> loaded_mapping;
 
             recovering_parent parent;
             parent.after = 0;

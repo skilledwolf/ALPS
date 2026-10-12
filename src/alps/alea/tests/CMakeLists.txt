@@ -61,3 +61,7 @@ if(ALPS_ENABLE_MPI)
   alps_add_mpi_gtest(observableset_mpi COMPONENT alea RANKS 2)
   alps_add_mpi_gtest(observableset_mpi COMPONENT alea RANKS 3)
 endif()
+
+add_executable(collection_checkpoint collection_checkpoint.cpp)
+target_link_libraries(collection_checkpoint PRIVATE ALPS::alps)
+alps_add_gtest(collection_checkpoint COMPONENT alea LABELS regression)

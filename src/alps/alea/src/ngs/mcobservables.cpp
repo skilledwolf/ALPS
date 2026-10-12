@@ -13,6 +13,7 @@
 
 
 #include <alps/hdf5/archive.hpp>
+#include <alps/hdf5/detail/collection.hpp>
 #include <alps/ngs/stacktrace.hpp>
 
 #include <alps/ngs/mcobservables.hpp>
@@ -63,10 +64,15 @@ namespace alps {
         // Adapted from ALPS reconciliation 81e7ad00d, the corresponding NGS
         // collection serializer. This object owns the group's children, not
         // its attributes or siblings; an empty collection is an empty group.
-        ar.create_group(ar.get_context());
-        for (auto const & child : ar.list_children(ar.get_context())) {
-            if (ar.is_group(child)) ar.delete_group(child);
-            else ar.delete_data(child);
+        const auto root = ar.get_context();
+        for (const auto &entry : *this)
+            hdf5::detail::collection_child_path(root, ar.encode_segment(entry.first));
+        const auto children = hdf5::detail::preflight_collection_replace(ar, root);
+        ar.create_group(root);
+        for (auto const & child : children) {
+            const auto path = hdf5::detail::collection_child_path(root, child);
+            if (ar.is_group(path)) ar.delete_group(path);
+            else ar.delete_data(path);
         }
         for(std::map<std::string, mcobservable>::const_iterator it = std::map<std::string, mcobservable>::begin(); it != std::map<std::string, mcobservable>::end(); ++it)
             ar
@@ -75,6 +81,7 @@ namespace alps {
     }
 
     void mcobservables::load(hdf5::archive & ar)  {
+        hdf5::detail::collection_children(ar, ar.get_context());
         ObservableSet set;
         ar >> make_pvp(ar.get_context(), set);
         for(ObservableSet::const_iterator it = set.begin(); it != set.end(); ++it)

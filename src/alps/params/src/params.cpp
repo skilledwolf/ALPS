@@ -12,6 +12,7 @@
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
 #include <alps/ngs/params.hpp>
+#include <alps/hdf5/detail/collection.hpp>
 
 #include <boost/bind/bind.hpp>
 using namespace boost::placeholders;
@@ -91,10 +92,13 @@ namespace alps {
                 || ar.complete_path(key) != expected)
                 throw std::invalid_argument("parameter name is not a flat archive key: " + key);
         }
-        ar.create_group(ar.get_context());
-        for (auto const & child : ar.list_children(ar.get_context())) {
-            if (ar.is_group(child)) ar.delete_group(child);
-            else ar.delete_data(child);
+        const auto root = ar.get_context();
+        const auto children = hdf5::detail::preflight_collection_replace(ar, root);
+        ar.create_group(root);
+        for (auto const & child : children) {
+            const auto path = hdf5::detail::collection_child_path(root, child);
+            if (ar.is_group(path)) ar.delete_group(path);
+            else ar.delete_data(path);
         }
         for (params::const_iterator it = begin(); it != end(); ++it)
             ar[it->first] << it->second;
@@ -102,7 +106,7 @@ namespace alps {
 
     void params::load(hdf5::archive & ar) {
         params loaded;
-        std::vector<std::string> list = ar.list_children(ar.get_context());
+        std::vector<std::string> list = hdf5::detail::collection_children(ar, ar.get_context());
         for (std::vector<std::string>::const_iterator it = list.begin(); it != list.end(); ++it) {
             detail::paramvalue value;
             if (value_reader_) {

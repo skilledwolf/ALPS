@@ -15,6 +15,7 @@
 #define ALPS_NGS_HDF5_STD_MAP
 
 #include <alps/hdf5/archive.hpp>
+#include <alps/hdf5/detail/collection.hpp>
 #include <alps/ngs/cast.hpp>
 
 #include <map>
@@ -48,9 +49,10 @@ namespace alps {
                     throw invalid_path("map keys must name distinct archive children" + ALPS_STACKTRACE);
                 names.push_back(std::move(name));
             }
+            auto const old_children = detail::preflight_collection_replace(ar, target);
             ar.create_group(target);
-            for (auto const & child : ar.list_children(target)) {
-                auto const child_path = target + "/" + child;
+            for (auto const & child : old_children) {
+                auto const child_path = detail::collection_child_path(target, child);
                 if (ar.is_group(child_path)) ar.delete_group(child_path);
                 else ar.delete_data(child_path);
             }
@@ -70,12 +72,12 @@ namespace alps {
                 throw invalid_path("maps require a complete group path" + ALPS_STACKTRACE);
             auto const target = ar.complete_path(path);
             std::map<K, T, C, A> replacement(value.key_comp(), value.get_allocator());
-            for (auto const & child : ar.list_children(target)) {
+            for (auto const & child : detail::collection_children(ar, target)) {
                 auto key = cast<K>(ar.decode_segment(child));
                 auto inserted = replacement.emplace(std::move(key), T{});
                 if (!inserted.second)
                     throw invalid_path("archive children decode to duplicate map keys" + ALPS_STACKTRACE);
-                load(ar, target + "/" + child, inserted.first->second);
+                load(ar, detail::collection_child_path(target, child), inserted.first->second);
             }
             value.swap(replacement);
         }
