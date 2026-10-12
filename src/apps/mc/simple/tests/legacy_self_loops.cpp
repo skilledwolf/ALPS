@@ -14,7 +14,7 @@ template<class Worker> void compare(const std::string& magnetization) {
       "<GRAPH name=\"plain\" vertices=\"1\"><VERTEX id=\"1\"/></GRAPH></LATTICES>";}
     for(double j:{-.6,.6,1.e20}) {
         alps::Parameters p;p["LATTICE_LIBRARY"]=path;p["LATTICE"]="loop";
-        p["T"]=1.2;p["H"]=.4;p["J"]=j;p["SEED"]=173;p["DISORDERSEED"]=173;
+        p["T"]=1.2;p["H"]=.4;p["J"]=j;p["SEED"]=173;p["WORKER_SEED"]=173;p["DISORDERSEED"]=173;
         p["BASE_NAME"]="unused";p["CLONE_ID"]=0;p["SWEEPS"]=1000;p["THERMALIZATION"]=0;
         Worker loop(p);alps::ObservableSet a;loop.init_observables(p,a);
         p["LATTICE"]="plain";Worker plain(p);alps::ObservableSet b;plain.init_observables(p,b);

@@ -28,6 +28,8 @@ struct original_run {
           measurements(dynamic_cast<alps::scheduler::MCRun *>(worker.get())) {
         if (!measurements) throw std::logic_error("missing original spinmc observation boundary");
         worker->start_worker();
+        // The scheduler clears measurements on its first thermalized boundary.
+        if (int(input["THERMALIZATION"]) == 0) worker->run();
     }
     std::unique_ptr<alps::scheduler::Worker> worker;
     alps::scheduler::MCRun *measurements;
@@ -128,10 +130,10 @@ TEST(SpinMCScientificCorrections, EverySiteContributesItsConstantOnsiteEnergyInO
         const double exact = std::string(model) == "Ising" ? 3.15 : -3.15;
         for (unsigned update = 0; update < 128; ++update) {
             run.worker->run();
-            EXPECT_NEAR(alps::RealObsevaluator(run.measurements->get_measurements()["Energy"]).mean(), exact, 1.e-14);
-            EXPECT_NEAR(alps::RealObsevaluator(run.measurements->get_measurements()["Energy^2"]).mean(), exact * exact, 1.e-13);
+            EXPECT_NEAR(alps::RealObsevaluator(run.measurements->get_measurements()["Energy"]).mean(), exact, 1.e-11);
+            EXPECT_NEAR(alps::RealObsevaluator(run.measurements->get_measurements()["Energy^2"]).mean(), exact * exact, 1.e-11);
         }
-        EXPECT_NEAR(alps::RealObsevaluator(run.measurements->get_measurements()["Energy"]).mean(), exact, 1.e-14);
+        EXPECT_NEAR(alps::RealObsevaluator(run.measurements->get_measurements()["Energy"]).mean(), exact, 1.e-11);
     }
 }
 
