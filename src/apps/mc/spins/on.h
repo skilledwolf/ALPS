@@ -423,19 +423,21 @@ inline double onsite_energy_change(const ONMoment<N>,
 // kernels: variable energy is accumulated before adding known constants.
 template <class M>
 inline std::pair<double,double> onsite_energy_parts(const ONMoment<M::dim>& m,const M& D) {
-  const double constant = D.getElement_nc(0,0);
+  // MIdMatrix's historical unchecked accessor returns its scalar even for
+  // offdiagonal indices; use the mathematical identity-matrix accessor.
+  const double constant = D.getElement(0,0);
   double variable = 0.;
   for(int i=0;i<M::dim;++i) for(int j=0;j<M::dim;++j)
-    variable -= m.state_[i]*(D.getElement_nc(i,j)-(i==j?constant:0.))*m.state_[j];
+    variable -= m.state_[i]*(D.getElement(i,j)-(i==j?constant:0.))*m.state_[j];
   return {variable,-constant};
 }
 template <class M>
 inline std::pair<double,double> self_bond_energy_parts(const ONMoment<M::dim>& m,const M& J) {
-  const double constant=J.getElement_nc(0,0);
+  const double constant=J.getElement(0,0);
   double variable=0.;
   for(int i=0;i<M::dim;++i) for(int j=0;j<M::dim;++j) {
     // Antisymmetric self-bond entries cancel analytically before multiplication.
-    const double value=.5*J.getElement_nc(i,j)+.5*J.getElement_nc(j,i);
+    const double value=.5*J.getElement(i,j)+.5*J.getElement(j,i);
     variable-=m.state_[i]*(value-(i==j?constant:0.))*m.state_[j];
   }
   return {variable,-constant};

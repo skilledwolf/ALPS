@@ -88,6 +88,13 @@ TEST(SpinMCScientificCorrections, HugeFixedNormConstantsDoNotEnterVariableEnergy
         EXPECT_DOUBLE_EQ(onsite_energy(spin,full),parts.second);
         EXPECT_DOUBLE_EQ(onsite_energy_change(spin,full,direction),0.);
         EXPECT_DOUBLE_EQ(self_bond_energy_parts(spin,full).first,0.);
+        MIdMatrix<double,2> scalar(std::stod(offset));
+        const auto scalar_site=onsite_energy_parts(spin,scalar);
+        const auto scalar_self=self_bond_energy_parts(spin,scalar);
+        EXPECT_DOUBLE_EQ(scalar_site.first,0.);
+        EXPECT_DOUBLE_EQ(scalar_site.second,-std::stod(offset));
+        EXPECT_DOUBLE_EQ(scalar_self.first,0.);
+        EXPECT_DOUBLE_EQ(scalar_self.second,-std::stod(offset));
     }
     std::string anisotropic="10000000000 .3 .3 10000000001";
     SquareMatrix<double,2> matrix(anisotropic,symbols);
