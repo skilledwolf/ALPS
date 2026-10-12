@@ -17,10 +17,18 @@
 
 #include <alps/osiris.h>
 #include <cmath>
+#include <stdexcept>
 
 class time_struct {
 public:
   time_struct(double t=0.) : t_(checkfull(t)) {}
+  // Explicit physical/native reconstruction preserves the stored endpoints.
+  // Keep the historical double constructor's periodic normalization unchanged.
+  static time_struct from_raw(double t) {
+    if (!std::isfinite(t) || t < 0. || t > 1.)
+      throw std::invalid_argument("invalid raw worm time");
+    return time_struct(t,0);
+  }
   const time_struct& operator=(double t) { t_=checkfull(t); return *this;}
   operator double() const { return t_;}
   time_struct operator-(double t) const { return time_struct(checkone(t_-t),0);}
@@ -46,4 +54,3 @@ inline alps::IDump& operator >> (alps::IDump& dump, time_struct& t) {
 }
 
 #endif
-

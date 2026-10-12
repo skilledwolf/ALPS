@@ -511,14 +511,14 @@ void WRun::insert_jump(wormhead_type& head, wormhead_type&,int dir,int nb)
 #ifdef USE_VECTOR
   other_head.invalidate(head.site());
 #endif
-  it=insert_kink(newsite,end2,kink_type(dir > 0 ? jump_time : t,state3));
+  it=insert_kink(newsite,end2,kink_type::at_time(dir > 0 ? jump_time : t,state3));
   if (dir> 0)
     it->set_id(last_id_);
 #ifndef USE_VECTOR
   if (dir<0) 
     head=it;
 #endif
-  it=insert_kink(newsite,it,kink_type(dir > 0 ? t :  jump_time,state4));
+  it=insert_kink(newsite,it,kink_type::at_time(dir > 0 ? t :  jump_time,state4));
   if (dir>0) 
     head=it;
   else
@@ -716,13 +716,13 @@ bool WRun::create_worm()
   // insert wormheads
   worm_head[0].set_site(s);
   worm_head[1].set_site(s);
-  iterator k=insert_kink(s,end,kink_type(t2,state1));
+  iterator k=insert_kink(s,end,kink_type::at_time(t2,state1));
 #ifndef USE_VECTOR
   worm_head[1]=k;
 #else
   worm_head[1].set_time(t2);
 #endif
-  worm_head[0]=insert_kink(s,k,kink_type(t1,state2));
+  worm_head[0]=insert_kink(s,k,kink_type::at_time(t1,state2));
 
   // shift time t2
   shift_kink(worm_head[1],worm_head[0]);

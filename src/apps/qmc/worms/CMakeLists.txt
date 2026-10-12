@@ -27,6 +27,10 @@ target_link_libraries(worm_evaluate PRIVATE worm_impl)
 alps_install_applications(worm worm_evaluate)
 
 if(ALPS_BUILD_TESTING)
+  add_executable(worm_time_endpoints tests/time_endpoints.cpp)
+  target_include_directories(worm_time_endpoints PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+  target_link_libraries(worm_time_endpoints PRIVATE worm_impl)
+  alps_add_gtest(worm_time_endpoints COMPONENT applications LABELS regression scientific)
   add_executable(worm_initial_state tests/initial_state.cpp)
   target_include_directories(worm_initial_state PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
   target_compile_definitions(worm_initial_state PRIVATE
