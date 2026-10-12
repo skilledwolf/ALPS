@@ -76,6 +76,11 @@ public:
       neighbor_bond_iterator itr, itr_end;
       for (boost::tie(itr, itr_end) = neighbor_bonds(s); itr != itr_end; ++itr) {
         int t = s ^ source(*itr) ^ target(*itr); // calculate index of neighbor spin
+        // A unit-spin self-loop contributes constant -J to the Hamiltonian.
+        // Skip it in the proposal difference, as in reconciliation experiment
+        // 90a36c0d4c64ee7308dcb0651264197ffdf36449 simple/simulation.h.
+        // Bespoke correction of this retained kernel; ordinary bonds unchanged.
+        if (t == s) continue;
         diff += 2 * coupling_[bond_type(*itr)] * spins_[s] * spins_[t];
       }
       if (uniform_01() < 0.5 * (1 + std::tanh(-0.5 * beta_ * diff))) spins_[s] = -spins_[s];
