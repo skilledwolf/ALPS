@@ -1,7 +1,9 @@
 // Copyright (C) 2026 ALPS Collaboration. SPDX-License-Identifier: MIT
 // Adapted from reconciliation 98a329a90 geometry tests to the legacy WRun API.
 #include "WRun.h"
-#include <Eigen/Eigenvalues>
+#include <complex>
+#include <boost/numeric/ublas/matrix.hpp>
+extern "C" void zheev_(const char*,const char*,const int*,std::complex<double>*,const int*,double*,std::complex<double>*,const int*,double*,int*);
 #include <gtest/gtest.h>
 #include <complex>
 namespace {
@@ -20,7 +22,7 @@ alps::Parameters configuration(bool chains=false) {
 double ring_free_energy(double flux) {
     // Four hard-core sites, H=-sum (e^(i phi/4)b+_i b_(i+1)+h.c.)
     // +.2 sum n_i n_(i+1)-.1 sum n_i; periodic bonds counted once.
-    Eigen::MatrixXcd h=Eigen::MatrixXcd::Zero(16,16);
+    boost::numeric::ublas::matrix<std::complex<double>,boost::numeric::ublas::column_major> h(16,16,std::complex<double>{});
     const auto phase=std::polar(1.,flux/4);
     for(unsigned state=0;state<16;++state) {
         for(unsigned site=0;site<4;++site) {
@@ -33,11 +35,14 @@ double ring_free_energy(double flux) {
             }
         }
     }
-    Eigen::SelfAdjointEigenSolver<Eigen::MatrixXcd> eigensystem(h);
-    if(eigensystem.info()!=Eigen::Success)throw std::runtime_error("independent ring diagonalization failed");
-    const auto energies=eigensystem.eigenvalues();
-    const double minimum=energies.minCoeff();
-    return minimum-.5*std::log((-(energies.array()-minimum)/.5).exp().sum());
+    const int n=16,lwork=64;int info=0;
+    std::vector<double> energies(n),rwork(3*n);
+    std::vector<std::complex<double>> work(lwork);
+    zheev_("N","U",&n,&h.data()[0],&n,energies.data(),work.data(),&lwork,rwork.data(),&info);
+    if(info)throw std::runtime_error("independent ring diagonalization failed");
+    const double minimum=energies.front();double partition=0;
+    for(double energy:energies)partition+=std::exp(-(energy-minimum)/.5);
+    return minimum-.5*std::log(partition);
 }
 }
 TEST(WormGeometry, ClosedWindingMatchesIndependentTwistedRingPartition) {

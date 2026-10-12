@@ -46,6 +46,6 @@ if(ALPS_BUILD_TESTING)
   target_compile_definitions(worm_legacy_geometry PRIVATE
     ALPS_WORM_LATTICES="${PROJECT_SOURCE_DIR}/src/alps/resources/lattices.xml"
     ALPS_WORM_MODELS="${PROJECT_SOURCE_DIR}/src/alps/resources/models.xml")
-  target_link_libraries(worm_legacy_geometry PRIVATE worm_impl Eigen3::Eigen)
+  target_link_libraries(worm_legacy_geometry PRIVATE worm_impl BLAS::BLAS LAPACK::LAPACK)
   alps_add_gtest(worm_legacy_geometry COMPONENT applications LABELS regression scientific TIMEOUT 180)
 endif()
