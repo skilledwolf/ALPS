@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 #include <alps/testing/temporary_directory.hpp>
-// Numerical regression test for the linear FREQUENCY_GRID of the maxent
+// Numerical regression tests for every FREQUENCY_GRID of the maxent
 // tool. ContiParameters allocates t_array_ with nfreq_+1 knots; leaving the
 // last knot unwritten corrupts the final bin width to ~(OMEGA_MIN-OMEGA_MAX),
 // which blows the default-model normalisation up to +-inf and makes every
@@ -8,7 +8,7 @@
 //
 // The test synthesises a clean fermionic G(tau) from a known two-Gaussian
 // spectral function (peaks at omega = +-1.5), runs MaxEntSimulation
-// in-process on the linear grid, and asserts the recovered spectrum is
+// in-process on each grid, and asserts the recovered spectrum is
 // finite and satisfies the sum rule int A(omega) domega ~= 1.
 #include "maxent.hpp"
 
@@ -39,7 +39,9 @@ double trapz(const std::vector<double>& x, const std::vector<double>& y) {
 }
 }
 
-TEST(MaxEnt, LinearGridAndStopCallbacks) {
+class MaxEntFrequencyGrid : public ::testing::TestWithParam<std::string> {};
+
+TEST_P(MaxEntFrequencyGrid, FiniteNormalizedSpectrumAndStopCallbacks) {
 
   const double beta = 10.0;
   const int n_tau = 40;
@@ -69,7 +71,7 @@ TEST(MaxEnt, LinearGridAndStopCallbacks) {
   alps::params p;
   p["BETA"] = beta;
   p["NDAT"] = n_tau;
-  p["NFREQ"] = 400;
+  p["NFREQ"] = GetParam() == "log" ? 401 : 400;
   p["NORM"] = 1.0;
   p["KERNEL"] = std::string("fermionic");
   p["DATASPACE"] = std::string("time");
@@ -79,7 +81,7 @@ TEST(MaxEnt, LinearGridAndStopCallbacks) {
   p["ALPHA_MIN"] = 0.1;
   p["ALPHA_MAX"] = 100.0;
   p["DEFAULT_MODEL"] = std::string("flat");
-  p["FREQUENCY_GRID"] = std::string("linear");
+  p["FREQUENCY_GRID"] = GetParam();
   p["MAX_IT"] = 40;
   p["PARTICLE_HOLE_SYMMETRY"] = 0;
   p["TEXT_OUTPUT"] = 0;
@@ -144,4 +146,68 @@ TEST(MaxEnt, LinearGridAndStopCallbacks) {
     ASSERT_TRUE((std::abs(sumrule - 1.0) < 0.05)) << "sum rule violated (expected ~1.0)";
   }
 
+}
+
+INSTANTIATE_TEST_SUITE_P(AllGrids, MaxEntFrequencyGrid,
+    ::testing::Values("linear", "Lorentzian", "half Lorentzian", "quadratic", "log"));
+
+namespace {
+struct GridParameters : ContiParameters {
+  explicit GridParameters(const alps::params& p) : ContiParameters(p) {}
+  const vector_type& knots() const { return t_array_; }
+};
+alps::params grid_parameters(const std::string& grid, int nfreq) {
+  alps::params p;
+  p["BETA"] = 2.;
+  p["NDAT"] = 4;
+  p["NFREQ"] = nfreq;
+  p["NORM"] = 1.;
+  p["OMEGA_MIN"] = -8.;
+  p["OMEGA_MAX"] = 8.;
+  p["DEFAULT_MODEL"] = std::string("flat");
+  p["FREQUENCY_GRID"] = grid;
+  for (int i=0; i<4; ++i) {
+    p["X_" + std::to_string(i)] = -0.5;
+    p["SIGMA_" + std::to_string(i)] = 0.01;
+  }
+  return p;
+}
+}
+
+TEST(MaxEnt, EveryGridFillsAllIntegrationKnots)
+{
+  for (const std::string grid : {"linear", "Lorentzian", "half Lorentzian", "quadratic", "log"}) {
+    for (const int nfreq : {1, 2, 3, 4, 31, 32, 2001}) {
+      SCOPED_TRACE(grid + "/" + std::to_string(nfreq));
+      GridParameters parameters(grid_parameters(grid, nfreq));
+      const auto& knots = parameters.knots();
+      ASSERT_EQ(knots.size(), nfreq + 1);
+      EXPECT_DOUBLE_EQ(knots[0], 0.);
+      EXPECT_DOUBLE_EQ(knots[nfreq], 1.);
+      double width_sum = 0.;
+      for (int i=0; i<nfreq; ++i) {
+        ASSERT_TRUE(std::isfinite(knots[i+1]));
+        ASSERT_GT(knots[i+1], knots[i]);
+        EXPECT_LE(knots[i+1], 1.);
+        width_sum += knots[i+1] - knots[i];
+        if (grid != "half Lorentzian")
+          EXPECT_NEAR(knots[i] + knots[nfreq-i], 1., 2e-13);
+      }
+      EXPECT_NEAR(width_sum, 1., 2e-13);
+    }
+  }
+}
+
+TEST(MaxEnt, GridParametersRejectUndefinedDomains)
+{
+  for (int count : {-1, 0})
+    EXPECT_THROW(GridParameters(grid_parameters("linear", count)), std::invalid_argument);
+  for (const std::string grid : {"Lorentzian", "half Lorentzian", "log", "quadratic"}) {
+    auto p = grid_parameters(grid, 8);
+    const std::string parameter = grid == "log" ? "LOG_MIN" : grid == "quadratic" ? "SPREAD" : "CUT";
+    p[parameter] = 0.;
+    EXPECT_THROW(GridParameters{p}, std::invalid_argument);
+    p[parameter] = std::numeric_limits<double>::infinity();
+    EXPECT_THROW(GridParameters{p}, std::invalid_argument);
+  }
 }

@@ -17,6 +17,7 @@
 
 #include <alps/alea/mcdata.hpp>
 #include "observable_checks.hpp"
+#include <alps/alea.h>
 #include <cmath>
 #include <vector>
 #include <iterator>
@@ -214,4 +215,24 @@ TEST(AleaMcdata2, VectorNumericalScenarios)
   alps_test::expect_uniform_estimate(cosh(vecA), {1.346383026, 0.09015249602, 5.00001e-10, 5.00001e-12}, "cosh(vecA)");
   alps_test::expect_uniform_estimate(tanh(vecA), {0.6695902596, 0.05516488842, 5.00001e-11, 5.00001e-12}, "tanh(vecA)");
 
+}
+
+TEST(Mcdata, AssignmentAndSwapPreserveBinLimits)
+{
+    alps::RealObservable source("source"), other("other");
+    source.set_bin_number(4);
+    other.set_bin_number(2);
+    for (int i = 1; i <= 16; ++i) {
+        source << double(i);
+        other << double(i + 10);
+    }
+    alps::alea::mcdata<double> a(source), b(other), assigned;
+    assigned = a;
+    EXPECT_EQ(assigned.max_bin_number(), 4u);
+    EXPECT_TRUE(assigned == a);
+    a.swap(b);
+    EXPECT_EQ(a.max_bin_number(), 2u);
+    EXPECT_EQ(b.max_bin_number(), 4u);
+    assigned = assigned;
+    EXPECT_EQ(assigned.max_bin_number(), 4u);
 }

@@ -28,6 +28,7 @@
 #include <alps/hdf5/vector.hpp>
 
 #include <vector>
+#include <type_traits>
 
 
 namespace alps {
@@ -164,11 +165,20 @@ inline void HistogramObservable<T>::set_range(T min, T max, T stepsize)
 {
   if (count_!=0)
     boost::throw_exception(std::runtime_error("cannot change range of HistogramObservable after performing measurements"));
+  if (!(stepsize > 0) || !(max > min))
+    boost::throw_exception(std::invalid_argument("histogram requires min < max and a positive stepsize"));
   min_=min;
   max_=max;
   stepsize_=stepsize;
-  //std::cout<<"*** "<<(max-min)/stepsize<<std::endl;
-  histogram_.resize(static_cast<size_type>((max-min)/stepsize+0.5));
+  if constexpr (std::is_integral_v<T>) {
+    // Unsigned subtraction also covers ranges crossing the signed limits.
+    using unsigned_type = std::make_unsigned_t<T>;
+    const unsigned_type width = unsigned_type(max) - unsigned_type(min);
+    const auto step = unsigned_type(stepsize);
+    histogram_.resize(width / step + (width % step != 0));
+  } else {
+    histogram_.resize(static_cast<size_type>((max-min)/stepsize+0.5));
+  }
 }
 
 template <class T>
@@ -176,8 +186,12 @@ inline void HistogramObservable<T>::add(const T& x)
 {
   if (x>= min_ && x< max_)
   {
-    //std::cout<<(x-min_)/stepsize_<<std::endl;
-    histogram_[uint32_t((x-min_)/stepsize_)]++;
+    if constexpr (std::is_integral_v<T>) {
+      using unsigned_type = std::make_unsigned_t<T>;
+      histogram_[unsigned_type(unsigned_type(x) - unsigned_type(min_)) / unsigned_type(stepsize_)]++;
+    } else {
+      histogram_[static_cast<size_type>((x-min_)/stepsize_)]++;
+    }
     count_++;
   }
 }

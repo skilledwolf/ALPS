@@ -6,6 +6,10 @@ User-facing changes and migration notes are recorded here, starting with the bui
 
 ### Fixed
 
+- Correct MaxEnt quadratic, logarithmic (including odd `NFREQ`) and half-Lorentzian frequency grids so every integration knot is finite and ordered; reject invalid grid parameters.
+- Correct ALEA integer histogram allocation for partial final bins, reject inconsistent histogram XML entry counts, preserve bin limits on `mcdata` assignment and avoid double-counting when detailed bins collapse to one.
+- Preserve both endpoints when reading a changed lattice edge.
+
 - Release HDF5 scalar string buffers after reads, including failed conversions, and owned observables when clearing an `ObservableSet`.
 - Correct scalar/vector Monte Carlo result negation and keep uncertainties nonnegative under negative scaling or reciprocal arithmetic. Preserve empty histogram ranges, avoid invalid access during empty vector/valarray conversions, and create private temporary files on Unix independently of the caller's umask.
 - Initialize Monte Carlo completion scheduling before first use.
