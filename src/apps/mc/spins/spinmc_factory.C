@@ -16,7 +16,7 @@
 #include "abstractspinsim.h"
 #include "model_choice.h"
 
-#include "spinsim.h"
+#include "spinrun.h"
 
 #include "ising.h"
 #include "on.h"
@@ -49,27 +49,27 @@ alps::scheduler::Worker* SpinFactory::make_worker(
 {
   switch (spinmc::choose_simulation(parms)) {
     case spinmc::simulation_kind::ising:
-      return new SpinSim<IsingMoment,MIdMatrix<double,1> >(where,parms,node);
+      return new SpinRun<IsingMoment,MIdMatrix<double,1> >(where,parms,node);
     case spinmc::simulation_kind::o4:
-      return new SpinSim<ONMoment<4>,MIdMatrix<double,4> >(where,parms,node);
+      return new SpinRun<ONMoment<4>,MIdMatrix<double,4> >(where,parms,node);
     case spinmc::simulation_kind::heisenberg_identity:
-      return new SpinSim< ONMoment<3>, MIdMatrix<double,3> >(where, parms, node);
+      return new SpinRun< ONMoment<3>, MIdMatrix<double,3> >(where, parms, node);
     case spinmc::simulation_kind::heisenberg_diagonal:
-      return new SpinSim< ONMoment<3>, DiagMatrix<double,3> >(where, parms, node);
+      return new SpinRun< ONMoment<3>, DiagMatrix<double,3> >(where, parms, node);
     case spinmc::simulation_kind::heisenberg_square:
-      return new SpinSim< ONMoment<3>, SquareMatrix<double,3> >(where, parms, node);
+      return new SpinRun< ONMoment<3>, SquareMatrix<double,3> >(where, parms, node);
     case spinmc::simulation_kind::xy_identity:
-      return new SpinSim< XYMoment, MIdMatrix<double,2> >(where, parms, node);
+      return new SpinRun< XYMoment, MIdMatrix<double,2> >(where, parms, node);
     case spinmc::simulation_kind::xy_diagonal:
-      return new SpinSim< XYMoment, DiagMatrix<double,2> >(where, parms, node);
+      return new SpinRun< XYMoment, DiagMatrix<double,2> >(where, parms, node);
     case spinmc::simulation_kind::xy_square:
-      return new SpinSim< XYMoment, SquareMatrix<double,2> >(where, parms, node);
+      return new SpinRun< XYMoment, SquareMatrix<double,2> >(where, parms, node);
     case spinmc::simulation_kind::potts3:
-      return new SpinSim< PottsMoment<3>, MIdMatrix<double,2> >(where,parms,node);
+      return new SpinRun< PottsMoment<3>, MIdMatrix<double,2> >(where,parms,node);
     case spinmc::simulation_kind::potts4:
-      return new SpinSim< PottsMoment<4>, MIdMatrix<double,2> >(where,parms,node);
+      return new SpinRun< PottsMoment<4>, MIdMatrix<double,2> >(where,parms,node);
     case spinmc::simulation_kind::potts10:
-      return new SpinSim< PottsMoment<10>, MIdMatrix<double,2> >(where,parms,node);
+      return new SpinRun< PottsMoment<10>, MIdMatrix<double,2> >(where,parms,node);
   }
   return 0;
 }
