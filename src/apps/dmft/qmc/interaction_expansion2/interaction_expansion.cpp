@@ -16,6 +16,7 @@
 #include <utility> // Boost.Math 1.76 includes this inside a namespace.
 #include <boost/math/constants/constants.hpp>
 #include "interaction_expansion.hpp"
+#include "bare_green_input.hpp"
 #include <ctime>
 #include "xml.h"
 #include "alps/ngs/make_deprecated_parameters.hpp"
@@ -74,27 +75,8 @@ pert_hist(max_order)
   measurement_time=0;
   update_time=0;
   thermalized=therm_steps==0?true:false;
-  if(!parms.defined("ATOMIC")) {
-    alps::hdf5::archive ar(parms["INFILE"].cast<std::string>(),"r");
-    if(parms.defined("DMFT_FRAMEWORK") && parms["DMFT_FRAMEWORK"].cast<bool>()){
-      //read in as green_function
-//      std::cerr << "Reading G0 ...";
-      bare_green_matsubara.read_hdf5(ar,"/G0");
-//      std::cerr << " done.\n";
-      
-    } else { //plain hdf5
-      std::vector<std::complex<double> > tmp(n_matsubara);
-//      std::cerr << "Reading G0 ...";
-      for(std::size_t j=0; j<n_flavors; j++){
-        std::stringstream path; path<<"/G0_"<<j;
-        ar>>alps::make_pvp(path.str(),tmp);
-        for(std::size_t i=0; i<n_matsubara; i++)
-          bare_green_matsubara(i,0,0,j)=tmp[i];
-      }
-//      std::cerr << " done.\n";
-      tmp.clear();
-    }
-    
+  ctint_input::read_bare_green(parms,bare_green_matsubara);
+  if(!(parms["ATOMIC"] | false)) {
     FourierTransformer::generate_transformer(alps::make_deprecated_parameters(parms), fourier_ptr);
     fourier_ptr->backward_ft(bare_green_itime, bare_green_matsubara);
   } else {
@@ -103,12 +85,6 @@ pert_hist(max_order)
         for(site_t site2=0; site2<n_site; ++site2) 
           for(itime_index_t t=0; t<=n_tau; ++t)
             bare_green_itime(t, site1, site2, flavor)=-0.5;
-    for(spin_t flavor=0; flavor<n_flavors; ++flavor) 
-      for(site_t site1=0; site1<n_site; ++site1) 
-        for(site_t site2=0; site2<n_site; ++site2) 
-          for(unsigned int k=0; k<n_matsubara; ++k) 
-            bare_green_matsubara(k, site1, site2, flavor)=std::complex<double>(0, -beta/((2*k+1)*boost::math::constants::pi<double>()));
-    //fourier transform of -1/2
   }
   //initialize the simulation variables
   initialize_simulation(parms);

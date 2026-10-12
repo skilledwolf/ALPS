@@ -14,6 +14,7 @@
  *****************************************************************************/
 
 #include "interaction_expansion.hpp"
+#include "bare_green_input.hpp"
 #include <complex>
 #include <alps/alea.h>
 #include "alps/ngs/make_deprecated_parameters.hpp"
@@ -65,23 +66,7 @@ void compute_greens_functions(const alps::results_type<HubbardInteractionExpansi
   //single particle Green function measurements
   matsubara_green_function_t bare_green_matsubara(n_matsubara, n_site, n_flavors);
   std::vector<double> densities(n_flavors);
-  {
-    alps::hdf5::archive ar(parms["INFILE"].cast<std::string>(),"r");
-    if(parms.defined("DMFT_FRAMEWORK") && static_cast<bool>(parms["DMFT_FRAMEWORK"])){
-      //read in as green_function
-      bare_green_matsubara.read_hdf5(ar,"/G0");
-      
-    } else { //plain hdf5
-      std::vector<std::complex<double> > tmp(n_matsubara);
-      for(std::size_t j=0; j<n_flavors; j++){
-        std::stringstream path; path<<"/G0_"<<j;
-        ar>>alps::make_pvp(path.str(),tmp);
-        for(std::size_t i=0; i<n_matsubara; i++)
-          bare_green_matsubara(i,0,0,j)=tmp[i];
-      }
-      tmp.clear();
-    }
-  }
+  ctint_input::read_bare_green(parms,bare_green_matsubara);
   if(measure_in_matsubara) {
     evaluate_selfenergy_measurement_matsubara(results, green_matsubara_measured, 
                                               bare_green_matsubara, densities, 
