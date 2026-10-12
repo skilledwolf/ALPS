@@ -101,6 +101,9 @@ void DiagMatrix<T,M>::dostep()
   do { 
     // set QN
     std::vector<std::pair<std::string,std::string> > qns;
+    // Fixed constraints identify a sector just as scanned constraints do.
+    for (const auto& constraint : this->basis().constraints())
+      qns.push_back(std::make_pair(constraint.first,boost::lexical_cast<std::string>(constraint.second)));
     for (unsigned i=0;i<indices.size();++i) {
       this->alps::scheduler::Task::parms[ranges_[i].first.second]=boost::get<0>(ranges_[i].second)+indices[i];
       qns.push_back(std::make_pair(
@@ -110,8 +113,9 @@ void DiagMatrix<T,M>::dostep()
 
     if (loop_momenta && ik<momenta.size())
       this->alps::scheduler::Task::parms["TOTAL_MOMENTUM"]=momenta[ik];
-    if (this->alps::scheduler::Task::parms.defined("TOTAL_MOMENTUM") && loop_momenta)
-      qns.push_back(std::make_pair(std::string("TOTAL_MOMENTUM"),momenta[ik]));
+    if (this->alps::scheduler::Task::parms.defined("TOTAL_MOMENTUM"))
+      qns.push_back(std::make_pair(std::string("TOTAL_MOMENTUM"),
+        std::string(this->alps::scheduler::Task::parms["TOTAL_MOMENTUM"])));
     this->set_parameters(this->alps::scheduler::Task::parms);
     if (this->dimension()) {
       this->quantumnumbervalues_.push_back(qns);
@@ -335,5 +339,3 @@ std::vector<T> DiagMatrix<T,M>::calculate(Op const& op, std::pair<D,D> const& s)
 {
   return calculate(this->template operator_matrix<operator_matrix_type>(op,s.first,s.second));
 }
-
-

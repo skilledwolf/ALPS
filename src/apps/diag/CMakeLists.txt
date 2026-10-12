@@ -19,3 +19,10 @@
 
 add_subdirectory(sparsediag)
 add_subdirectory(fulldiag)
+
+if(ALPS_BUILD_TESTING)
+  add_executable(ed_legacy_regressions tests/legacy_regressions.cpp)
+  target_link_libraries(ed_legacy_regressions PRIVATE ALPS::alps ${ALPS_BLAS_TARGET} ${ALPS_LAPACK_TARGET})
+  target_compile_definitions(ed_legacy_regressions PRIVATE ALPS_ED_TEST_RESOURCES="${PROJECT_SOURCE_DIR}/src/alps/resources")
+  alps_add_gtest(ed_legacy_regressions COMPONENT diag LABELS scientific regression TIMEOUT 120)
+endif()
