@@ -40,6 +40,7 @@ template <class M>
 struct measurement_traits {
    static double component_number() { return 1.;}
    static const bool use_improved_estimator = false;
+   static const bool use_improved_staggered_estimator = false;
 };
 
 template <class M>
@@ -49,6 +50,7 @@ template <>
 struct measurement_traits<IsingMoment> {
    static double component_number() { return 1.;}
    static const bool use_improved_estimator = true;
+   static const bool use_improved_staggered_estimator = true;
 };
 
 inline const bool measurement_traits<IsingMoment>::use_improved_estimator;
@@ -57,6 +59,9 @@ template <int N>
 struct measurement_traits<ONMoment<N> > {
    static double component_number() { return N;}
    static const bool use_improved_estimator = true;
+   // The retained cluster sum uses unweighted spin projections, not the
+   // parity-weighted projection needed by an O(N) AF improved estimator.
+   static const bool use_improved_staggered_estimator = false;
 };
 
 template <int N>
@@ -272,8 +277,13 @@ void SpinSim<M,MAT>::do_measurements(update_info_type update_info)
   
   this->measurements.template get<alps::RealObservable>("Energy") << en;
   this->measurements.template get<alps::RealObservable>("Energy Density") << en/this->num_sites();
-  this->measurements.template get<alps::RealVectorObservable>("Bond-type Energy") << bt_en;
-  this->measurements.template get<alps::RealVectorObservable>("Bond-type Energy Density") << bt_en_density;
+  // A valid isolated graph has no bond types. The legacy vector recorder
+  // rejects zero-sized submissions; leave these channels empty instead of
+  // inventing a bond while retaining all site/field/native measurements.
+  if (!bt_energy.empty()) {
+    this->measurements.template get<alps::RealVectorObservable>("Bond-type Energy") << bt_en;
+    this->measurements.template get<alps::RealVectorObservable>("Bond-type Energy Density") << bt_en_density;
+  }
   this->measurements.template get<alps::RealObservable>("Energy^2") << en*en;
   this->measurements.template get<alps::RealObservable>("beta * Energy / sqrt(N)") << this->beta_ *en/sqrt(static_cast<double>(this->num_sites()));
   this->measurements.template get<alps::RealObservable>("(beta * Energy)^2 / N") << this->beta_*this->beta_*en*en/this->num_sites();;
@@ -307,7 +317,7 @@ void SpinSim<M,MAT>::do_measurements(update_info_type update_info)
   if (this->is_bipartite()) {
     double amst = abs(mst)/this->num_sites();
     double am2;
-    if(this->cluster_updates_ && measurement_traits<M>::use_improved_estimator && this->antiferromagnetic_)
+    if(this->cluster_updates_ && measurement_traits<M>::use_improved_staggered_estimator && this->antiferromagnetic_)
       am2 = (update_info.m2_)*(update_info.m2_)*measurement_traits<M>::component_number()/(update_info.clustersize*double(this->num_sites()));
     else
       am2 = amst*amst;
@@ -415,8 +425,12 @@ void SpinSim<M,MIdMatrix<double,M::dim> >::do_measurements(update_info_type upda
   
   this->measurements.template get<alps::RealObservable>("Energy") << en;
   this->measurements.template get<alps::RealObservable>("Energy Density") << en/this->num_sites();
-  this->measurements.template get<alps::RealVectorObservable>("Bond-type Energy") << bt_en;
-  this->measurements.template get<alps::RealVectorObservable>("Bond-type Energy Density") << bt_en_density;
+  // Isolated sites have no bond types; zero-sized legacy vector submissions
+  // are invalid, while the site and native scalar measurements remain valid.
+  if (!bt_energy.empty()) {
+    this->measurements.template get<alps::RealVectorObservable>("Bond-type Energy") << bt_en;
+    this->measurements.template get<alps::RealVectorObservable>("Bond-type Energy Density") << bt_en_density;
+  }
   this->measurements.template get<alps::RealObservable>("Energy^2") << en*en;
   this->measurements.template get<alps::RealObservable>("beta * Energy / sqrt(N)") << this->beta_ *en/sqrt(static_cast<double>(this->num_sites()));
   this->measurements.template get<alps::RealObservable>("(beta * Energy)^2 / N") << this->beta_*this->beta_*en*en/this->num_sites();;
@@ -452,7 +466,7 @@ void SpinSim<M,MIdMatrix<double,M::dim> >::do_measurements(update_info_type upda
     double amst = abs(mst)/this->num_sites();
     double am2;
     if(this->cluster_updates_ && 
-            measurement_traits<M>::use_improved_estimator && 
+            measurement_traits<M>::use_improved_staggered_estimator &&
         this->antiferromagnetic_)
       am2 = (update_info.m2_)*(update_info.m2_)*measurement_traits<M>::component_number()/(update_info.clustersize*double(this->num_sites()));
     else
