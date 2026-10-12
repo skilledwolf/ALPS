@@ -87,7 +87,10 @@ void check_green(const std::string& family,unsigned skip=3,bool triangle=false,b
     for(unsigned i=0;i<2000+200000*skip;++i)run.run();
     const auto exact=output_trace(p,independent_green(family,triangle,free),origin);
     const alps::RealVectorObsevaluator actual(run.measurements()["Green's Function"]);
-    ASSERT_EQ(actual.count(),200000);ASSERT_EQ(actual.mean().size(),exact.size());
+    // Signed ratio evaluators retain only complete reblocked bins; verify
+    // submissions on the original observable before evaluating the ratio.
+    const auto& raw=run.measurements().get<alps::AbstractSimpleObservable<std::valarray<double>>>("Green's Function");
+    ASSERT_EQ(raw.count(),200000);ASSERT_EQ(actual.mean().size(),exact.size());
     for(unsigned i=0;i<exact.size();++i){SCOPED_TRACE(i);EXPECT_NEAR(actual.mean()[i],exact[i],.035);}
 }
 }
