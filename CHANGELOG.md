@@ -6,6 +6,8 @@ User-facing changes and migration notes are recorded here, starting with the bui
 
 ### Fixed
 
+- Share HDF5 archive ownership safely, report explicit close errors, and publish Monte Carlo checkpoints only after successful finalization. Failed saves preserve the old destination; live aliases prevent replacement. Rebuild downstream C++ consumers for the changed archive layout.
+
 - Restore archive context after serializer exceptions, resolve exact path segments, and preserve literal escapes. Replace saved collections including empty maps/parameters/observables, preserve unrelated attributes, validate owned children before deletion, and leave maps unchanged when loading fails.
 
 - Validate HDF5 transfer selections and sequence shapes before reading or replacing stored data; handle empty and Boolean sequences consistently and release string buffers and attribute handles after failed conversions.

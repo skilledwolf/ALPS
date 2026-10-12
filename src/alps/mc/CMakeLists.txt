@@ -21,3 +21,8 @@ target_sources(alps_headers INTERFACE FILE_SET python_compatibility_headers TYPE
   BASE_DIRS "${CMAKE_CURRENT_SOURCE_DIR}/include"
   FILES include/alps/ngs/detail/export_sim_to_python.hpp
         include/alps/python/save_observable_to_hdf5.hpp)
+if(ALPS_BUILD_TESTING)
+  add_executable(mc_checkpoint tests/checkpoint.cpp)
+  target_link_libraries(mc_checkpoint PRIVATE ALPS::alps)
+  alps_add_gtest(mc_checkpoint COMPONENT mc LABELS hdf5 integration)
+endif()

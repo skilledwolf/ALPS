@@ -24,6 +24,7 @@
 #include <hdf5.h>
 
 #include <memory>
+#include <exception>
 #include <limits>
 #include <optional>
 #include <sstream>
@@ -240,6 +241,13 @@ namespace alps {
                 return 0;
             }
 
+            boost::filesystem::path absolute_filename(boost::filesystem::path const & filename) {
+                auto const absolute = boost::filesystem::absolute(filename);
+                // Resolve directory symlinks before interpreting '..'. Leave the
+                // final component intact: rename replaces that directory entry.
+                return boost::filesystem::weakly_canonical(absolute.parent_path()) / absolute.filename();
+            }
+
             struct ALPS_HDF5_DECL archivecontext : boost::noncopyable {
 
                 archivecontext(std::string const & filename, bool write, bool replace, bool compress, bool large, bool memory)
@@ -248,18 +256,55 @@ namespace alps {
                     , replace_(!memory && replace)
                     , large_(large)
                     , memory_(memory)
-                    , filename_(filename)
+                    , filename_(absolute_filename(filename).string())
+                    , display_filename_(filename)
                 {
                     construct();
                 }
 
-                ~archivecontext() {
-                    destruct(true);
+                // Adapted from shared ownership and checked finalization in ALPS
+                // reconciliation 81e7ad00d. Retain this SDK's per-view close and
+                // legacy modes rather than adopting the experimental view semantics.
+                ~archivecontext() noexcept {
+                    try { finish(); }
+                    catch (std::exception const & error) {
+                        std::cerr << "Error closing HDF5 archive '" << filename_
+                                  << "': " << error.what() << std::endl;
+                    }
+                }
+
+                void finish(bool commit = true) {
+                    if (file_id_ < 0) return;
+                    commit = commit && !failed_;
+                    std::exception_ptr failure;
+                    if (commit) {
+                        try { check_error(H5Fflush(file_id_, H5F_SCOPE_GLOBAL)); }
+                        catch (...) { failure = std::current_exception(); }
+                    }
+                    try {
+                        check_error(H5Fclose(file_id_));
+                        file_id_ = -1;
+                    } catch (...) {
+                        if (!failure) failure = std::current_exception();
+                    }
+                    if (failure) {
+                        failed_ = true;
+                        std::rethrow_exception(failure);
+                    }
+                    if (replace_) {
+                        // Same-filesystem replacement must never first unlink the
+                        // previous checkpoint. A failed rename leaves it intact.
+                        if (commit) boost::filesystem::rename(filename_ + suffix_, filename_);
+                        else {
+                            boost::system::error_code ignored;
+                            boost::filesystem::remove(filename_ + suffix_, ignored);
+                        }
+                    }
                 }
                 
                 void grant(bool write, bool replace) {
                     if (!write_ && (write || replace)) {
-                        destruct(false);
+                        finish();
                         write_ = write || replace;
                         replace_ = !memory_ && replace;
                         construct();
@@ -272,8 +317,10 @@ namespace alps {
                 bool large_;
                 bool memory_;
                 std::string filename_;
+                std::string display_filename_;
                 std::string suffix_;
-                hid_t file_id_;
+                hid_t file_id_ = -1;
+                bool failed_ = false;
                 
                 private:
 
@@ -358,42 +405,6 @@ namespace alps {
                         }
                     }
 
-                    void destruct(bool abort) {
-                        try {
-                            H5Fflush(file_id_, H5F_SCOPE_GLOBAL);
-                            #ifndef ALPS_HDF5_CLOSE_GREEDY
-                                if (
-                                       H5Fget_obj_count(file_id_, H5F_OBJ_DATATYPE) > 0
-                                    || H5Fget_obj_count(file_id_, H5F_OBJ_ALL) - H5Fget_obj_count(file_id_, H5F_OBJ_FILE) > 0
-                                ) {
-                                    std::cerr << "Not all resources closed in file '" << filename_ << suffix_ << "'" << std::endl;
-                                    std::abort();
-                                }
-                            #endif
-                            if (H5Fclose(file_id_) < 0)
-                                std::cerr << "Error in " 
-                                          << __FILE__ 
-                                          << " on " 
-                                          << ALPS_NGS_STRINGIFY(__LINE__) 
-                                          << " in " 
-                                          << __FUNCTION__ // TODO: check for gcc and use __PRETTY_FUNCTION__  
-                                          << ":" 
-                                          << std::endl
-                                          << error().invoke(file_id_)
-                                          << std::endl;
-                            if (replace_) {
-                                if (boost::filesystem::exists(filename_))
-                                    boost::filesystem::remove(filename_);
-                                boost::filesystem::rename(filename_ + suffix_, filename_);
-                            }
-                        } catch (std::exception & ex) {
-                            if (abort) {
-                                std::cerr << "Error destroying HDF5 context of file '" << filename_ << suffix_ << "'\n" << ex.what() << std::endl;
-                                std::abort();
-                            } else
-                                throw ex;
-                        }
-                    }
             };
 
         }
@@ -434,58 +445,119 @@ namespace alps {
         }
 
         archive::archive(archive const & arg)
-            : current_(arg.current_)
-            , context_(arg.context_)
-        {
-            if (context_ != NULL) {
-                ALPS_HDF5_LOCK_MUTEX
-                ++ref_cnt_[file_key(context_->filename_, context_->large_, context_->memory_)].second;
-            }
-        }
+            : current_(arg.current_), context_(arg.context_) {}
 
         archive::~archive() {
-            if (context_ != NULL)
-                try {
-                    close();
-                } catch (std::exception & ex) {
-                    std::cerr << "Error destructing archive of file '" << ex.what() << std::endl;
-                    std::abort();
+            if (context_) {
+                try { close(); }
+                catch (std::exception const & error) {
+                    std::cerr << "Error releasing HDF5 archive: " << error.what() << std::endl;
                 }
+            }
         }
 
         void archive::abort() {
-            // Do not use a lock here, else deadlocking is really likly
-            for (std::map<std::string, std::pair<detail::archivecontext *, std::size_t> >::iterator it = ref_cnt_.begin(); it != ref_cnt_.end(); ++it) {
-                bool replace = it->second.first->replace_;
-                std::string filename = it->second.first->filename_;
-                it->second.first->replace_ = false;
-                delete it->second.first;
-                if (replace && boost::filesystem::exists(filename))
-                    boost::filesystem::remove(filename);
+            // Preserve the legacy abort entry point while invalidating shared views.
+            // Signal-handler removal is a separate compatibility change.
+            for (auto const & entry : contexts_) {
+                if (auto context = entry.second.lock()) {
+                    context->failed_ = true;
+                    context->finish(false);
+                }
             }
-            ref_cnt_.clear();
+            contexts_.clear();
         }
 
         void archive::close() {
-            if (context_ == NULL)
+            if (!context_)
                 throw archive_closed("the archive is closed" + ALPS_STACKTRACE);
             ALPS_HDF5_LOCK_MUTEX
-            H5Fflush(context_->file_id_, H5F_SCOPE_GLOBAL);
-            if (!--ref_cnt_[file_key(context_->filename_, context_->large_, context_->memory_)].second) {
-                ref_cnt_.erase(file_key(context_->filename_, context_->large_, context_->memory_));
-                delete context_;
-            }
-            context_ = NULL;
+            auto const key = file_key(context_->filename_, context_->large_, context_->memory_);
+            if (context_.use_count() == 1) context_->finish();
+            else if (context_->file_id_ >= 0)
+                detail::check_error(H5Fflush(context_->file_id_, H5F_SCOPE_GLOBAL));
+            context_.reset();
+            auto found = contexts_.find(key);
+            if (found != contexts_.end() && found->second.expired()) contexts_.erase(found);
         }
-        
+
         bool archive::is_open() {
-            return context_ != NULL;
+            return context_ && context_->file_id_ >= 0;
+        }
+
+        // Adapted from ALPS reconciliation 81e7ad00d, archive.cpp. This helper
+        // owns finalization independently of the callback's archive views.
+        void save_checkpoint(boost::filesystem::path const & filename,
+                             std::function<void(archive &)> const & save) {
+            auto const target = detail::absolute_filename(filename);
+            // Bespoke follow-up to the 81e7ad00d ownership contract: an open
+            // destination could otherwise keep a stale file in the registry or
+            // publish an older writable view over this checkpoint later.
+            auto require_closed_destination = [&] {
+                for (auto const & entry : archive::contexts_) {
+                    auto active = entry.second.lock();
+                    if (!active || active->file_id_ < 0) continue;
+                    auto const path = boost::filesystem::path(active->filename_);
+                    bool const same = path == target || (boost::filesystem::exists(path)
+                        && boost::filesystem::exists(target) && boost::filesystem::equivalent(path, target));
+                    if (same) throw archive_error("checkpoint destination is still open: " + target.string());
+                }
+            };
+            {
+#ifndef ALPS_NGS_SINGLE_THREAD
+                boost::lock_guard<boost::recursive_mutex> lock(archive::mutex_);
+#endif
+                require_closed_destination();
+            }
+            boost::filesystem::path directory;
+            do {
+                directory = target.parent_path() / boost::filesystem::unique_path(
+                    target.filename().string() + ".tmp.%%%%-%%%%-%%%%-%%%%");
+            } while (!boost::filesystem::create_directory(directory));
+            try {
+                auto const temporary = directory / "checkpoint.h5";
+                {
+                    // The private directory is new: append creates a fresh file
+                    // without the legacy 'w' mode's separate staging convention.
+                    archive ar(temporary, "a");
+                    auto context = ar.context_;
+                    std::exception_ptr failure;
+                    try { save(ar); }
+                    catch (...) { failure = std::current_exception(); }
+                    {
+#ifndef ALPS_NGS_SINGLE_THREAD
+                        boost::lock_guard<boost::recursive_mutex> lock(archive::mutex_);
+#endif
+                        try { context->finish(!failure); }
+                        catch (...) { if (!failure) failure = std::current_exception(); }
+                        archive::contexts_.erase(ar.file_key(temporary.string(), false, false));
+                        ar.context_.reset();
+                        context.reset();
+                    }
+                    if (failure) std::rethrow_exception(failure);
+                }
+                {
+#ifndef ALPS_NGS_SINGLE_THREAD
+                    boost::lock_guard<boost::recursive_mutex> lock(archive::mutex_);
+#endif
+                    // A callback may have opened the old destination. Coordinate
+                    // this check and rename with archive construction/close.
+                    require_closed_destination();
+                    boost::filesystem::rename(temporary, target);
+                }
+            } catch (...) {
+                boost::system::error_code ignored;
+                boost::filesystem::remove_all(directory, ignored);
+                throw;
+            }
+            boost::system::error_code ignored;
+            boost::filesystem::remove(directory, ignored);
         }
 
         std::string const & archive::get_filename() const {
-            if (context_ == NULL)
+            if (!context_ || context_->file_id_ < 0)
                 throw archive_closed("the archive is closed" + ALPS_STACKTRACE);
-            return context_->filename_;
+            return context_->display_filename_;
         }
 
         // Adapted from ALPS reconciliation 988651d41, archive.cpp. Keep the
@@ -554,7 +626,7 @@ namespace alps {
         }
     
         bool archive::is_data(std::string path) const {
-            if (context_ == NULL)
+            if (!context_ || context_->file_id_ < 0)
                 throw archive_closed("the archive is closed" + ALPS_STACKTRACE);
             if ((path = complete_path(path)).find_last_of('@') != std::string::npos)
                 throw invalid_path("no data path: " + path + ALPS_STACKTRACE);
@@ -564,7 +636,7 @@ namespace alps {
         }
     
         bool archive::is_attribute(std::string path) const {
-            if (context_ == NULL)
+            if (!context_ || context_->file_id_ < 0)
                 throw archive_closed("the archive is closed" + ALPS_STACKTRACE);
             if ((path = complete_path(path)).find_last_of('@') == std::string::npos)
                 return false;
@@ -573,7 +645,7 @@ namespace alps {
         }
     
         bool archive::is_group(std::string path) const {
-            if (context_ == NULL)
+            if (!context_ || context_->file_id_ < 0)
                 throw archive_closed("the archive is closed" + ALPS_STACKTRACE);
             if ((path = complete_path(path)).find_last_of('@') != std::string::npos)
                 return false;
@@ -584,7 +656,7 @@ namespace alps {
     
         bool archive::is_scalar(std::string path) const {
             hid_t space_id;
-            if (context_ == NULL)
+            if (!context_ || context_->file_id_ < 0)
                 throw archive_closed("the archive is closed" + ALPS_STACKTRACE);
             ALPS_HDF5_FAKE_THREADSAFETY
             if ((path = complete_path(path)).find_last_of('@') != std::string::npos && is_attribute(path)) {
@@ -608,7 +680,7 @@ namespace alps {
 
         bool archive::is_null(std::string path) const {
             hid_t space_id;
-            if (context_ == NULL)
+            if (!context_ || context_->file_id_ < 0)
                 throw archive_closed("the archive is closed" + ALPS_STACKTRACE);
             ALPS_HDF5_FAKE_THREADSAFETY
             if ((path = complete_path(path)).find_last_of('@') != std::string::npos) {
@@ -626,7 +698,7 @@ namespace alps {
         }
     
         bool archive::is_complex(std::string path) const {
-            if (context_ == NULL)
+            if (!context_ || context_->file_id_ < 0)
                 throw archive_closed("the archive is closed" + ALPS_STACKTRACE);
             ALPS_HDF5_FAKE_THREADSAFETY
             if ((path = complete_path(path)).find_last_of('@') != std::string::npos)
@@ -643,7 +715,7 @@ namespace alps {
         }
     
         std::vector<std::string> archive::list_children(std::string path) const {
-            if (context_ == NULL)
+            if (!context_ || context_->file_id_ < 0)
                 throw archive_closed("the archive is closed" + ALPS_STACKTRACE);
             if ((path = complete_path(path)).find_last_of('@') != std::string::npos)
                 throw invalid_path("no group path: " + path + ALPS_STACKTRACE);
@@ -657,7 +729,7 @@ namespace alps {
         }
     
         std::vector<std::string> archive::list_attributes(std::string path) const {
-            if (context_ == NULL)
+            if (!context_ || context_->file_id_ < 0)
                 throw archive_closed("the archive is closed" + ALPS_STACKTRACE);
             if ((path = complete_path(path)).find_last_of('@') != std::string::npos)
                 throw invalid_path("no group or data path: " + path + ALPS_STACKTRACE);
@@ -675,7 +747,7 @@ namespace alps {
         }
     
         std::vector<std::size_t> archive::extent(std::string path) const {
-            if (context_ == NULL)
+            if (!context_ || context_->file_id_ < 0)
                 throw archive_closed("the archive is closed" + ALPS_STACKTRACE);
             if (is_null(path = complete_path(path)))
                 return std::vector<std::size_t>(1, 0);
@@ -698,7 +770,7 @@ namespace alps {
         }
     
         std::size_t archive::dimensions(std::string path) const {
-            if (context_ == NULL)
+            if (!context_ || context_->file_id_ < 0)
                 throw archive_closed("the archive is closed" + ALPS_STACKTRACE);
             ALPS_HDF5_FAKE_THREADSAFETY
             if ((path = complete_path(path)).find_last_of('@') != std::string::npos) {
@@ -711,7 +783,7 @@ namespace alps {
         }
     
         void archive::create_group(std::string path) const {
-            if (context_ == NULL)
+            if (!context_ || context_->file_id_ < 0)
                 throw archive_closed("the archive is closed" + ALPS_STACKTRACE);
             if ((path = complete_path(path)).find_last_of('@') != std::string::npos)
                 throw invalid_path("no group path: " + path + ALPS_STACKTRACE);
@@ -748,7 +820,7 @@ namespace alps {
         }
     
         void archive::delete_data(std::string path) const {
-            if (context_ == NULL)
+            if (!context_ || context_->file_id_ < 0)
                 throw archive_closed("the archive is closed" + ALPS_STACKTRACE);
             if ((path = complete_path(path)).find_last_of('@') != std::string::npos)
                 throw invalid_path("no data path: " + path + ALPS_STACKTRACE);
@@ -760,7 +832,7 @@ namespace alps {
         }
     
         void archive::delete_group(std::string path) const  {
-            if (context_ == NULL)
+            if (!context_ || context_->file_id_ < 0)
                 throw archive_closed("the archive is closed" + ALPS_STACKTRACE);
             if ((path = complete_path(path)).find_last_of('@') != std::string::npos)
                 throw invalid_path("no group path: " + path + ALPS_STACKTRACE);
@@ -772,7 +844,7 @@ namespace alps {
         }
     
         void archive::delete_attribute(std::string path) const {
-            if (context_ == NULL)
+            if (!context_ || context_->file_id_ < 0)
                 throw archive_closed("the archive is closed" + ALPS_STACKTRACE);
             if ((path = complete_path(path)).find_last_of('@') == std::string::npos)
                 throw invalid_path("no attribute path: " + path + ALPS_STACKTRACE);
@@ -787,7 +859,7 @@ namespace alps {
         }
     
         void archive::set_complex(std::string path) {
-            if (context_ == NULL)
+            if (!context_ || context_->file_id_ < 0)
                 throw archive_closed("the archive is closed" + ALPS_STACKTRACE);
             ALPS_HDF5_FAKE_THREADSAFETY
             // Resolve against the current context first, as every sibling here
@@ -984,13 +1056,13 @@ namespace alps {
         #define ALPS_HDF5_DEFINE_READ(T)                                          \
             void archive::read(std::string path, T & value) const {               \
                 ALPS_HDF5_FAKE_THREADSAFETY                                       \
-                if (context_ == NULL)                                            \
+                if (!context_ || context_->file_id_ < 0)                                            \
                     throw archive_closed("the archive is closed" + ALPS_STACKTRACE); \
                 detail::read_scalar(*this, context_->file_id_, complete_path(path), value); \
             }                                                                    \
             void archive::read(std::string path, T * value, std::vector<std::size_t> chunk, std::vector<std::size_t> offset) const { \
                 ALPS_HDF5_FAKE_THREADSAFETY                                       \
-                if (context_ == NULL)                                            \
+                if (!context_ || context_->file_id_ < 0)                                            \
                     throw archive_closed("the archive is closed" + ALPS_STACKTRACE); \
                 detail::read_array(*this, context_->file_id_, complete_path(path), value, chunk, offset); \
             }
@@ -1127,7 +1199,7 @@ namespace alps {
         #define ALPS_HDF5_DEFINE_WRITE(T)                                         \
             void archive::write(std::string path, T value) const {                \
                 ALPS_HDF5_FAKE_THREADSAFETY                                        \
-                if (context_ == NULL)                                             \
+                if (!context_ || context_->file_id_ < 0)                                             \
                     throw archive_closed("the archive is closed" + ALPS_STACKTRACE); \
                 if (!context_->write_)                                           \
                     throw archive_error("the archive is not writeable" + ALPS_STACKTRACE); \
@@ -1135,7 +1207,7 @@ namespace alps {
             }                                                                     \
             void archive::write(std::string path, T const * value, std::vector<std::size_t> size, std::vector<std::size_t> chunk, std::vector<std::size_t> offset) const { \
                 ALPS_HDF5_FAKE_THREADSAFETY                                        \
-                if (context_ == NULL)                                             \
+                if (!context_ || context_->file_id_ < 0)                                             \
                     throw archive_closed("the archive is closed" + ALPS_STACKTRACE); \
                 if (!context_->write_)                                           \
                     throw archive_error("the archive is not writeable" + ALPS_STACKTRACE); \
@@ -1211,7 +1283,7 @@ namespace alps {
                 ALPS_HDF5_FAKE_THREADSAFETY                                                                                                                             \
                 hid_t type_id;                                                                                                                                          \
                 path = complete_path(path);                                                                                                                             \
-                if (context_ == NULL)                                                                                                                                   \
+                if (!context_ || context_->file_id_ < 0)                                                                                                                                   \
                     throw archive_closed("the archive is closed" + ALPS_STACKTRACE);                                                                                    \
                 if (path.find_last_of('@') != std::string::npos && is_attribute(path)) {                                                                                \
                     detail::attribute_type attr_id(detail::open_attribute(*this, context_->file_id_, path));                                                            \
@@ -1243,25 +1315,26 @@ namespace alps {
                 detail::check_error(H5Zget_filter_info(H5Z_FILTER_SZIP, &flag));
                 props &= (flag & H5Z_FILTER_CONFIG_ENCODE_ENABLED ? ~0x00 : ~COMPRESS);
             }
-            if (ref_cnt_.find(file_key(filename, props & LARGE, props & MEMORY)) == ref_cnt_.end())
-                ref_cnt_.insert(std::make_pair(
-                      file_key(filename, props & LARGE, props & MEMORY)
-                    , std::make_pair(context_ = new detail::archivecontext(filename, props & WRITE, props & REPLACE, props & COMPRESS, props & LARGE, props & MEMORY), 1)
-                ));
-            else {
-                context_ = ref_cnt_.find(file_key(filename, props & LARGE, props & MEMORY))->second.first;
-                context_->grant(props & WRITE, props & REPLACE);
-                ++ref_cnt_.find(file_key(filename, props & LARGE, props & MEMORY))->second.second;
-            }
+            auto const key = file_key(filename, props & LARGE, props & MEMORY);
+            auto const found = contexts_.find(key);
+            if (found != contexts_.end()) context_ = found->second.lock();
+            if (!context_ || context_->file_id_ < 0) {
+                context_ = std::make_shared<detail::archivecontext>(filename, props & WRITE,
+                    props & REPLACE, props & COMPRESS, props & LARGE, props & MEMORY);
+                contexts_[key] = context_;
+            } else context_->grant(props & WRITE, props & REPLACE);
         }
 
         std::string archive::file_key(std::string filename, bool large, bool memory) const {
-            return (large ? "l" : (memory ? "m" : "_")) + filename;
+            // Relative/absolute aliases share ownership. Keep the display spelling
+            // in archivecontext, but use stable absolute paths for file operations.
+            return (large ? "l" : (memory ? "m" : "_"))
+                + detail::absolute_filename(filename).string();
         }
     
 #ifndef ALPS_NGS_SINGLE_THREAD
         boost::recursive_mutex archive::mutex_;
 #endif
-        std::map<std::string, std::pair<detail::archivecontext *, std::size_t> > archive::ref_cnt_;
+        std::map<std::string, std::weak_ptr<detail::archivecontext>> archive::contexts_;
     }
 }

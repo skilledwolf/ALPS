@@ -27,8 +27,11 @@ namespace alps {
     mcbase::~mcbase() = default;
 
     void mcbase::save(boost::filesystem::path const & filename) const {
-        alps::hdf5::archive ar(filename, "w");
-        ar["/simulation/realizations/0/clones/0"] << *this;
+        // Adapted from ALPS reconciliation 81e7ad00d, mcbase.cpp: a throwing
+        // simulation hook must never replace the previous complete checkpoint.
+        alps::hdf5::save_checkpoint(filename, [this](alps::hdf5::archive & ar) {
+            ar["/simulation/realizations/0/clones/0"] << *this;
+        });
     }
 
     void mcbase::load(boost::filesystem::path const & filename) {

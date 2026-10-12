@@ -35,6 +35,8 @@
 #endif
 
 #include <map>
+#include <memory>
+#include <functional>
 #include <vector>
 #include <string>
 #include <numeric>
@@ -95,6 +97,15 @@ namespace alps {
             };
         }
 
+        class ALPS_HDF5_DECL archive;
+
+        // Serialize a complete new file, close it successfully, then replace the
+        // destination by a same-filesystem rename. Failed callbacks preserve it.
+        // Views retained by the callback are closed before publication. This is
+        // atomic replacement, not a guarantee of durability across power loss.
+        ALPS_HDF5_DECL void save_checkpoint(boost::filesystem::path const & filename,
+                                            std::function<void(archive &)> const & save);
+
         class ALPS_HDF5_DECL archive {
 
             public:
@@ -128,6 +139,9 @@ namespace alps {
                 void set_context(std::string const & context);
                 std::string complete_path(std::string path) const;
 
+                // Release this view; other copies keep the shared file open.
+                // Explicit close reports flush/close/publication errors. Destructors
+                // are best-effort, so checkpoint callers must close explicitly.
                 void close();
                 bool is_open();
 
@@ -210,17 +224,19 @@ namespace alps {
             private:
 
                 friend class detail::scoped_context;
+                friend void save_checkpoint(boost::filesystem::path const &,
+                                            std::function<void(archive &)> const &);
 
                 void construct(std::string const & filename, std::size_t props = READ);
                 std::string file_key(std::string filename, bool large, bool memory) const;
 
                 std::string current_;
-                detail::archivecontext * context_;
+                std::shared_ptr<detail::archivecontext> context_;
 
 #ifndef ALPS_NGS_SINGLE_THREAD
                 static boost::recursive_mutex mutex_;
 #endif
-                static std::map<std::string, std::pair<detail::archivecontext *, std::size_t> > ref_cnt_;
+                static std::map<std::string, std::weak_ptr<detail::archivecontext>> contexts_;
 
         };
 

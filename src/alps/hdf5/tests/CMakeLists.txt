@@ -36,6 +36,8 @@ foreach(
   hdf5_read
   hdf5_write
   hdf5_sequence
+  hdf5_lifecycle
+  hdf5_checkpoint
   hdf5_vecveccplx
   hdf5_exceptions
   hdf5_multiarchive
