@@ -154,8 +154,10 @@ template <class T>
   std::size_t s = boost::lexical_cast<std::size_t,std::string>(tag.attributes["nvalues"]);
   histogram_.resize(s);
   tag = parse_tag(infile);
-  int i=0;
+  std::size_t i=0;
   while (tag.name =="ENTRY") {
+    if (i >= s)
+      boost::throw_exception(std::runtime_error("HISTOGRAM contains more ENTRY elements than nvalues"));
     tag=parse_tag(infile);
     while (tag.name !="/ENTRY") {
           if (tag.name=="COUNT") {
@@ -177,6 +179,8 @@ template <class T>
     tag = parse_tag(infile);
   }
   if (tag.name !="/HISTOGRAM") boost::throw_exception(std::runtime_error("Encountered unknown tag <"+tag.name+"> in <HISTOGRAM>"));
+  if (i != s)
+    boost::throw_exception(std::runtime_error("HISTOGRAM contains fewer ENTRY elements than nvalues"));
 }
 
 template <class T>

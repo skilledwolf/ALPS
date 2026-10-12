@@ -100,7 +100,7 @@ EdgeReference::EdgeReference(XMLTag tag, std::istream& in)
   tag=parse_tag(in);
   if (tag.name!="TARGET")
     boost::throw_exception(std::runtime_error("<TARGET> element missing in changed edge"));
-  source_ = BasicVertexReference(tag);
+  target_ = BasicVertexReference(tag);
   if (tag.type!=XMLTag::SINGLE) {
     tag=parse_tag(in);
     if(tag.name!="/TARGET")

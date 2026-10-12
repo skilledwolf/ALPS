@@ -111,3 +111,31 @@ TEST(AleaDetailedbinning, HistoricalNumericalScenarios)
   alps_test::expect_estimate(obseval_c, {{3.00282, 0.0157, 5.00001e-06, 5.00001e-05}}, "obseval_c");
 
 }
+
+TEST(AleaDetailedbinning, RebinPreservesSumsAndSquaredSums)
+{
+  for (unsigned group : {2u, 3u, 8u, 9u}) {
+    SCOPED_TRACE(group);
+    alps::RealObservable obs("x");
+    for (int i = 1; i <= 8; ++i) obs << double(i);
+    obs.set_bin_size(group);
+    ASSERT_EQ(obs.bins().size(), (8u + group - 1) / group);
+    double sum = 0, squares = 0;
+    for (unsigned i = 0; i < obs.bins().size(); ++i) {
+      sum += obs.bin_value(i);
+      squares += obs.bin_value2(i);
+    }
+    EXPECT_DOUBLE_EQ(sum, 36);
+    EXPECT_DOUBLE_EQ(squares, 204);
+  }
+  alps::RealObservable obs("x");
+  for (int i = 1; i <= 8; ++i) obs << double(i);
+  obs.set_bin_number(1);
+  ASSERT_EQ(obs.bin_number(), 1u);
+  EXPECT_DOUBLE_EQ(obs.bin_value(0), 36);
+  EXPECT_DOUBLE_EQ(obs.bin_value2(0), 204);
+  obs << 9.;
+  obs.set_bin_number(1);
+  EXPECT_DOUBLE_EQ(obs.bin_value(0), 45);
+  EXPECT_DOUBLE_EQ(obs.bin_value2(0), 285);
+}

@@ -28,78 +28,79 @@
 
 #define MAXIMUM(a,b) ((a>b) ? a : a)
 
+namespace {
+int frequency_count(const alps::params& p) {
+  const int count = p["NFREQ"];
+  if (count < 1 || count == std::numeric_limits<int>::max())
+    throw std::invalid_argument("NFREQ must be positive and leave room for an endpoint");
+  return count;
+}
+}
+
 ContiParameters::ContiParameters(const alps::params& p) :
 Default_(make_default_model(p, "DEFAULT_MODEL")),
 T_(p["T"]|1./static_cast<double>(p["BETA"])),
-ndat_(p["NDAT"]), nfreq_(p["NFREQ"]),
+ndat_(p["NDAT"]), nfreq_(frequency_count(p)),
 y_(ndat_),sigma_(ndat_), x_(ndat_),K_(),t_array_(nfreq_+1)
 {
   if (ndat_<4)
     boost::throw_exception(std::invalid_argument("NDAT too small"));
   std::string p_f_grid = p["FREQUENCY_GRID"]|"";
-  if (p_f_grid=="Lorentzian") {
-    double cut = p["CUT"]|0.01;
+  if (p_f_grid=="Lorentzian" || p_f_grid=="half Lorentzian") {
+    const double cut = p["CUT"]|0.01;
+    if (!(cut > 0. && cut < 0.5))
+      throw std::invalid_argument("CUT must lie strictly between 0 and 0.5");
+    const bool half = p_f_grid=="half Lorentzian";
     std::vector<double> temp(nfreq_+1);
-    for (int i=0; i<nfreq_+1; ++i)
-      temp[i] = tan(boost::math::constants::pi<double>() * (double(i)/(nfreq_)*(1.-2*cut)+cut - 0.5));
-    for (int i=0; i<nfreq_+1; ++i) 
-      t_array_[i] = (temp[i] - temp[0])/(temp[temp.size()-1] - temp[0]);
-    //std::cout<<"debug: Lorentzian grid : "<<std::endl;
-    //for (int i=0; i<nfreq_+1; ++i){
-    //  std::cout<<i<<" "<<t_array_[i]<<std::endl;
-    //}
-  }
-  else if (p_f_grid=="half Lorentzian") {
-    double cut = p["CUT"]|0.01;
-    std::vector<double> temp(nfreq_+1);
-    for (int i=0; i<nfreq_; ++i) 
-      temp[i] = tan(boost::math::constants::pi<double>() * (double(i+nfreq_)/(2*nfreq_-1)*(1.-2*cut)+cut - 0.5));
-    for (int i=0; i<nfreq_+1; ++i) 
-      t_array_[i] = (temp[i] - temp[0])/(temp[temp.size()-1] - temp[0]);\
+    for (int i=0; i<=nfreq_; ++i) {
+      const double position = double(i)/nfreq_;
+      const double angle = half ? position*(0.5-cut) : position*(1.-2*cut)+cut-0.5;
+      temp[i] = std::tan(boost::math::constants::pi<double>() * angle);
+    }
+    for (int i=0; i<=nfreq_; ++i)
+      t_array_[i] = (temp[i] - temp.front())/(temp.back() - temp.front());
   }
   else if (p_f_grid=="quadratic") {
-    double s = p["SPREAD"]|4;
-    if (s<1) 
-      boost::throw_exception(std::invalid_argument("the parameter SPREAD must be greater than 1"));
-    std::vector<double> temp(nfreq_);
-    double t=0;
-    for (int i=0; i<nfreq_-1; ++i) {
-      double a = double(i)/(nfreq_-1);
-      double factor = 4*(s-1)*(a*a-a)+s;
-      factor /= double(nfreq_-1)/(3.*(nfreq_-2))*((nfreq_-1)*(2+s)-4+s);
-      double delta_t = factor;
-      t += delta_t;
-      temp[i] = t;
-    }
+    const double spread = p["SPREAD"]|4;
+    if (!std::isfinite(spread) || spread < 1.)
+      throw std::invalid_argument("SPREAD must be finite and at least 1");
+    // Integrate all NFREQ positive interval weights, then normalize the knots.
     t_array_[0] = 0.;
-    for (int i=1; i<nfreq_; ++i) 
-      t_array_[i]  = temp[i-1]/temp[temp.size()-1];
+    for (int i=0; i<nfreq_; ++i) {
+      const double a = nfreq_ == 1 ? 0.5 : double(i)/(nfreq_-1);
+      const double weight = 1. + (spread-1.) * std::pow(2.*a-1., 2);
+      t_array_[i+1] = t_array_[i] + weight;
+    }
+    const double total = t_array_[nfreq_];
+    for (int i=1; i<=nfreq_; ++i) t_array_[i] /= total;
   }
   else if (p_f_grid=="log") {
-//      double om_min = p.value_or_default("OMEGA_MIN",1e-4),om_max=p["OMEGA_MAX"];
-      double t_min = p["LOG_MIN"]|1.0e-4,t_max=0.5;
-      double scale=std::log(t_max/t_min)/((float) (nfreq_/2-1));
-      t_array_[nfreq_/2] = 0.5;
-      for (int i=0; i<nfreq_/2; ++i) {
-        t_array_[nfreq_/2+i+1]  = 0.5+t_min*std::exp(((float) i)*scale);
-        t_array_[nfreq_/2-i-1]  = 0.5-t_min*std::exp(((float) i)*scale);
-      }
+    const double t_min = p["LOG_MIN"]|1.0e-4;
+    if (!(t_min > 0. && t_min < 0.5))
+      throw std::invalid_argument("LOG_MIN must lie strictly between 0 and 0.5");
+    // Even NFREQ has a central knot; odd NFREQ has a central interval.
+    const int pairs = (nfreq_+1)/2;
+    if (nfreq_%2 == 0) t_array_[nfreq_/2] = 0.5;
+    for (int i=0; i<pairs; ++i) {
+      const double distance = pairs == 1 ? 0.5 :
+          std::exp(std::log(t_min) + double(i)/(pairs-1)*(std::log(0.5)-std::log(t_min)));
+      t_array_[pairs-1-i] = 0.5-distance;
+      t_array_[nfreq_-(pairs-1-i)] = 0.5+distance;
+    }
   }
   else if (p_f_grid=="linear") {
-    // t_array_ holds nfreq_+1 knots spanning [0,1]; MaxEntParameters reads
-    // t_array_[i] and t_array_[i+1] for i in [0,nfreq_) to build
-    // omega_coord_ and delta_omega_, so all nfreq_+1 knots must be filled —
-    // as the Lorentzian and log branches above do. Stopping at nfreq_ left
-    // the last knot unwritten; with that knot at 0 the last bin width
-    // becomes omega_of_t(0) - omega_of_t(t_array_[nfreq_-1]), i.e. about
-    // OMEGA_MIN - OMEGA_MAX — large and negative — which collapses the
-    // default-model normalisation and turns every linear-grid run into a
-    // NaN spectrum.
-    for (int i=0; i<nfreq_+1; ++i)
-      t_array_[i] = double(i)/(nfreq_);
+    // Every grid supplies NFREQ+1 knots for NFREQ integration intervals.
+    for (int i=0; i<=nfreq_; ++i) t_array_[i] = double(i)/nfreq_;
   }
-  else 
-    boost::throw_exception(std::invalid_argument("No valid frequency grid specified"));
+  else {
+    throw std::invalid_argument("No valid frequency grid specified");
+  }
+  t_array_[0] = 0.;
+  t_array_[nfreq_] = 1.;
+  for (int i=1; i<=nfreq_; ++i) {
+    if (!std::isfinite(t_array_[i]) || !(t_array_[i] > t_array_[i-1]))
+      throw std::invalid_argument("Frequency grid knots must be finite and strictly increasing");
+  }
 // We provide a file with data points and error bars, the latter are used only if
 // COVARIANCE_MATRIX is not set. The format is
 //

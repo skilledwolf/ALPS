@@ -222,14 +222,16 @@ void BasicDetailedBinning<T>::collect_bins(uint32_t howmany)
     }
   }
   
-  // last part of partly full bins
-  values_[newbins-1]=values_[howmany*(newbins-1)];
-  values2_[newbins-1]=values2_[howmany*(newbins-1)];
-  for ( uint32_t i=howmany*(newbins-1)+1;i<values_.size();++i){
-    values_[newbins-1]+=values_[i];
-    values2_[newbins-1]+=values2_[i];
+  // Only the remainder needs collecting; full bins were already summed above.
+  if (values_.size() % howmany != 0) {
+    values_[newbins-1]=values_[howmany*(newbins-1)];
+    values2_[newbins-1]=values2_[howmany*(newbins-1)];
+    for (uint32_t i=howmany*(newbins-1)+1;i<values_.size();++i) {
+      values_[newbins-1]+=values_[i];
+      values2_[newbins-1]+=values2_[i];
+    }
   }
-    
+
   // how many in last bin?
   binentries_+=((values_.size()-1)%howmany)*binsize_;
   binsize_*=howmany;

@@ -42,3 +42,7 @@ foreach(name coloring parity)
   target_link_libraries(${name} PRIVATE ALPS::alps)
   alps_add_gtest(${name} COMPONENT lattice LABELS compatibility)
 endforeach()
+
+add_executable(lattice_disorder disorder.C)
+target_link_libraries(lattice_disorder PRIVATE ALPS::alps)
+alps_add_gtest(lattice_disorder COMPONENT lattice LABELS xml)
