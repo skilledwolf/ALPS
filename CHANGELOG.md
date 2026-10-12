@@ -6,6 +6,8 @@ User-facing changes and migration notes are recorded here, starting with the bui
 
 ### Fixed
 
+- Classify classical cluster updates using scalar coupling signs and actual nonzero bonds. Correct staggered O(N) estimates and safely measure graphs with no bonds.
+
 - Correct classical matrix storage, bilinear contractions, onsite energies, bond orientation, and self-bond proposals. Separate fixed-norm constants so large energy offsets cannot distort spin updates.
 
 - Accept positional plot/simulation files and standalone `--version` in the archive tool, and parse paired `CONSTRAINT` tags correctly.

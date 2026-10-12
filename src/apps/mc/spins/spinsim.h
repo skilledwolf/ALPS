@@ -277,8 +277,13 @@ void SpinSim<M,MAT>::do_measurements(update_info_type update_info)
   
   this->measurements.template get<alps::RealObservable>("Energy") << en;
   this->measurements.template get<alps::RealObservable>("Energy Density") << en/this->num_sites();
-  this->measurements.template get<alps::RealVectorObservable>("Bond-type Energy") << bt_en;
-  this->measurements.template get<alps::RealVectorObservable>("Bond-type Energy Density") << bt_en_density;
+  // A valid isolated graph has no bond types. The legacy vector recorder
+  // rejects zero-sized submissions; leave these channels empty instead of
+  // inventing a bond while retaining all site/field/native measurements.
+  if (!bt_energy.empty()) {
+    this->measurements.template get<alps::RealVectorObservable>("Bond-type Energy") << bt_en;
+    this->measurements.template get<alps::RealVectorObservable>("Bond-type Energy Density") << bt_en_density;
+  }
   this->measurements.template get<alps::RealObservable>("Energy^2") << en*en;
   this->measurements.template get<alps::RealObservable>("beta * Energy / sqrt(N)") << this->beta_ *en/sqrt(static_cast<double>(this->num_sites()));
   this->measurements.template get<alps::RealObservable>("(beta * Energy)^2 / N") << this->beta_*this->beta_*en*en/this->num_sites();;
@@ -420,8 +425,12 @@ void SpinSim<M,MIdMatrix<double,M::dim> >::do_measurements(update_info_type upda
   
   this->measurements.template get<alps::RealObservable>("Energy") << en;
   this->measurements.template get<alps::RealObservable>("Energy Density") << en/this->num_sites();
-  this->measurements.template get<alps::RealVectorObservable>("Bond-type Energy") << bt_en;
-  this->measurements.template get<alps::RealVectorObservable>("Bond-type Energy Density") << bt_en_density;
+  // Isolated sites have no bond types; zero-sized legacy vector submissions
+  // are invalid, while the site and native scalar measurements remain valid.
+  if (!bt_energy.empty()) {
+    this->measurements.template get<alps::RealVectorObservable>("Bond-type Energy") << bt_en;
+    this->measurements.template get<alps::RealVectorObservable>("Bond-type Energy Density") << bt_en_density;
+  }
   this->measurements.template get<alps::RealObservable>("Energy^2") << en*en;
   this->measurements.template get<alps::RealObservable>("beta * Energy / sqrt(N)") << this->beta_ *en/sqrt(static_cast<double>(this->num_sites()));
   this->measurements.template get<alps::RealObservable>("(beta * Energy)^2 / N") << this->beta_*this->beta_*en*en/this->num_sites();;
