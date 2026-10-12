@@ -6,6 +6,8 @@ User-facing changes and migration notes are recorded here, starting with the bui
 
 ### Fixed
 
+- Validate HDF5 transfer selections and sequence shapes before reading or replacing stored data; handle empty and Boolean sequences consistently and release string buffers and attribute handles after failed conversions.
+
 - Accept positional plot/simulation files and standalone `--version` in the archive tool, and parse paired `CONSTRAINT` tags correctly.
 
 - Correct the ferromagnetic Ising acceptance sign in the Python and C++ tutorials, add physics regressions, and exercise the density-profile tutorial through callable simulation and plotting functions.
