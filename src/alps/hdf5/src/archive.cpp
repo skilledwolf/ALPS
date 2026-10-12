@@ -167,6 +167,30 @@ namespace alps {
             hid_t check_property(hid_t id) { property_type unused(id); return unused; }
             hid_t check_error(hid_t id) { error_type unused(id); return unused; }
 
+            // Adapted from reconciliation experiment fc02e70f0. A completed
+            // VLEN read owns allocations until conversion and reclamation finish.
+            class vlen_cleanup : boost::noncopyable {
+                public:
+                    vlen_cleanup(hid_t type, hid_t space, void * buffer)
+                        : type_(type), space_(space), buffer_(buffer) {}
+
+                    ~vlen_cleanup() noexcept {
+                        // Preserve a conversion exception during unwinding.
+                        if (buffer_ != NULL)
+                            H5Dvlen_reclaim(type_, space_, H5P_DEFAULT, buffer_);
+                    }
+
+                    void reclaim() {
+                        void * buffer = buffer_;
+                        buffer_ = NULL;
+                        check_error(H5Dvlen_reclaim(type_, space_, H5P_DEFAULT, buffer));
+                    }
+
+                private:
+                    hid_t type_, space_;
+                    void * buffer_;
+            };
+
             hid_t get_native_type(char) { return H5Tcopy(H5T_NATIVE_CHAR); }
             hid_t get_native_type(signed char) { return H5Tcopy(H5T_NATIVE_SCHAR); }
             hid_t get_native_type(unsigned char) { return H5Tcopy(H5T_NATIVE_UCHAR); }
@@ -920,9 +944,11 @@ namespace alps {
                                 new char * [len]                                                                                                                        \
                             );                                                                                                                                          \
                             if (std::equal(chunk.begin(), chunk.end(), data_size.begin())) {                                                                            \
+                                detail::space_type space_id(H5Dget_space(data_id));                                                                                     \
                                 detail::check_error(H5Dread(data_id, native_id, H5S_ALL, H5S_ALL, H5P_DEFAULT, raw.get()));                                             \
+                                detail::vlen_cleanup cleanup(native_id, space_id, raw.get());                                                                           \
                                 cast(raw.get(), raw.get() + len, value);                                                                                                \
-                                detail::check_error(H5Dvlen_reclaim(type_id, detail::space_type(H5Dget_space(data_id)), H5P_DEFAULT, raw.get()));                       \
+                                cleanup.reclaim();                                                                                                                      \
                             } else {                                                                                                                                    \
                                 std::vector<hsize_t> offset_hid(offset.begin(), offset.end()),                                                                          \
                                                      chunk_hid(chunk.begin(), chunk.end());                                                                             \
@@ -930,8 +956,9 @@ namespace alps {
                                 detail::check_error(H5Sselect_hyperslab(space_id, H5S_SELECT_SET, &offset_hid.front(), NULL, &chunk_hid.front(), NULL));                \
                                 detail::space_type mem_id(H5Screate_simple(static_cast<int>(chunk_hid.size()), &chunk_hid.front(), NULL));                              \
                                 detail::check_error(H5Dread(data_id, native_id, mem_id, space_id, H5P_DEFAULT, raw.get()));                                             \
+                                detail::vlen_cleanup cleanup(native_id, mem_id, raw.get());                                                                             \
                                 cast(raw.get(), raw.get() + len, value);                                                                                                \
-                                                                detail::check_error(H5Dvlen_reclaim(type_id, mem_id, H5P_DEFAULT, raw.get()));                          \
+                                cleanup.reclaim();                                                                                                                      \
                             }                                                                                                                                           \
                         ALPS_NGS_HDF5_FOREACH_NATIVE_TYPE_INTEGRAL(ALPS_NGS_HDF5_READ_VECTOR_DATA_HELPER, T)                                                            \
                         } else throw wrong_type("invalid type" + ALPS_STACKTRACE);                                                                                      \
@@ -940,14 +967,9 @@ namespace alps {
                             throw path_not_found("the path does not exist: " + path + ALPS_STACKTRACE);                                                                 \
                         if (is_scalar(path))                                                                                                                            \
                             throw wrong_type("scalar - vector conflict in path: " + path + ALPS_STACKTRACE);                                                            \
-                        hid_t parent_id;                                                                                                                                \
-                        if (is_group(path.substr(0, path.find_last_of('@') - 1)))                                                                                       \
-                            parent_id = detail::check_error(H5Gopen2(context_->file_id_, path.substr(0, path.find_last_of('@') - 1).c_str(), H5P_DEFAULT));             \
-                        else if (is_data(path.substr(0, path.find_last_of('@') - 1)))                                                                                   \
-                            parent_id = detail::check_error(H5Dopen2(context_->file_id_, path.substr(0, path.find_last_of('@') - 1).c_str(), H5P_DEFAULT));             \
-                        else                                                                                                                                            \
-                            throw path_not_found("unknown path: " + path.substr(0, path.find_last_of('@') - 1) + ALPS_STACKTRACE);                                      \
-                        detail::attribute_type attribute_id(H5Aopen(parent_id, path.substr(path.find_last_of('@') + 1).c_str(), H5P_DEFAULT));                          \
+                        detail::attribute_type attribute_id(H5Aopen_by_name(                                                                                            \
+                            context_->file_id_, path.substr(0, path.find_last_of('@') - 1).c_str(),                                                                     \
+                            path.substr(path.find_last_of('@') + 1).c_str(), H5P_DEFAULT, H5P_DEFAULT));                                                                \
                         detail::type_type type_id(H5Aget_type(attribute_id));                                                                                           \
                         detail::type_type native_id(H5Tget_native_type(type_id, H5T_DIR_ASCEND));                                                                       \
                         if (H5Tget_class(native_id) == H5T_STRING && !detail::check_error(H5Tis_variable_str(type_id)))                                                 \
@@ -958,21 +980,15 @@ namespace alps {
                                 new char * [len]                                                                                                                        \
                             );                                                                                                                                          \
                             if (std::equal(chunk.begin(), chunk.end(), data_size.begin())) {                                                                            \
+                                detail::space_type space_id(H5Aget_space(attribute_id));                                                                                \
                                 detail::check_error(H5Aread(attribute_id, native_id, raw.get()));                                                                       \
+                                detail::vlen_cleanup cleanup(native_id, space_id, raw.get());                                                                           \
                                 cast(raw.get(), raw.get() + len, value);                                                                                                \
+                                cleanup.reclaim();                                                                                                                      \
                             } else                                                                                                                                      \
                                 throw std::logic_error("non continous multidimensional dataset as attributes are not implemented (" + path + ")" + ALPS_STACKTRACE);    \
-                            detail::check_error(H5Dvlen_reclaim(type_id, detail::space_type(H5Aget_space(attribute_id)), H5P_DEFAULT, raw.get()));                      \
-                        } else if (H5Tget_class(native_id) == H5T_STRING) {                                                                                             \
-                            char ** raw = NULL;                                                                                                                         \
-                            detail::check_error(H5Aread(attribute_id, native_id, raw));                                                                                 \
-                            throw std::logic_error("multidimensional dataset of variable len string datas is not implemented (" + path + ")" + ALPS_STACKTRACE);        \
                         ALPS_NGS_HDF5_FOREACH_NATIVE_TYPE_INTEGRAL(ALPS_NGS_HDF5_READ_VECTOR_ATTRIBUTE_HELPER, T)                                                       \
                         } else throw wrong_type("invalid type" + ALPS_STACKTRACE);                                                                                      \
-                        if (is_group(path.substr(0, path.find_last_of('@') - 1)))                                                                                       \
-                            detail::check_group(parent_id);                                                                                                             \
-                        else                                                                                                                                            \
-                            detail::check_data(parent_id);                                                                                                              \
                     }                                                                                                                                                   \
                 }                                                                                                                                                       \
             }
