@@ -14,8 +14,7 @@
 // lattice. The parameter interpretation was moved unchanged out of the
 // AbstractSpinSim constructor (abstractspinsim.h): same reads, same order,
 // same conversions and the same expression evaluation. Couplings, spin
-// lengths and onsite terms depend on site and bond types and are still
-// resolved by the simulation once its lattice exists.
+// lengths and onsite terms depend on site and bond types; see couplings.h.
 
 #ifndef ALPS_APPLICATIONS_MC_SPIN_SETTINGS_H_
 #define ALPS_APPLICATIONS_MC_SPIN_SETTINGS_H_

@@ -22,6 +22,7 @@
 #include <alps/model/sign.h>
 #include <boost/tuple/tuple.hpp>
 #include <boost/tuple/tuple_comparison.hpp>
+#include "couplings.h"
 #include "matrices.h"
 #include "settings.h"
 
@@ -114,9 +115,6 @@ AbstractSpinSim<MAT>::AbstractSpinSim(const alps::ProcessList& w,
   if (inhomogeneous())
     boost::throw_exception(std::runtime_error("Disordered lattices not supported by the classical Monte Carlo program.\n"));
 
-  std::map <int,bool> bond_type_visited;
-  std::map <int,bool> site_type_visited;
-
   use_error_limit = settings_.use_error_limit;
 
   if (has_magnetic_field_ && quantum_convention_) 
@@ -134,70 +132,58 @@ AbstractSpinSim<MAT>::AbstractSpinSim(const alps::ProcessList& w,
                + settings_.update_text
                + " with magnetic field not set to zero."));}
 
-  std::string J_string = settings_.default_coupling;
-
+  // Site types in the order of the sites, and bond classes (bond type,
+  // source and target site type) in the order of the bonds. Couplings are
+  // resolved per class, and the class index becomes the bond type.
+  std::vector<int> site_types;
+  std::map <int,bool> site_type_visited;
   for (site_iterator si = sites().first; si!=sites().second; si++) {
     int type = site_type(*si);
     if (!site_type_visited[type]) {
-      // set the values for the spin factors
-      double spinvalue;
-      std::string spin = "S"+boost::lexical_cast<std::string, int>(type);
-      if (!parms.defined(spin))
-        spin="S";
-      if (!parms.defined(spin))
-        spinvalue = quantum_convention_ ? 0.5 : 1.;
-      else 
-        spinvalue = alps::evaluate<double>(parms[spin],parms);
-      spinfactor_[*si]=std::sqrt(spinvalue*(spinvalue+(quantum_convention_ ? 1. : 0.)));
-
-      // set the values for the diagonal matrix terms
       site_type_visited[type]=true;
-      std::string diag="D"+boost::lexical_cast<std::string, int>(type);
-      std::string diag_string;
-      if (!parms.defined(diag)) {
-        diag="D";
-      }
-      if (!parms.defined(diag))
-        selfinteraction_[*si].setMatrix(0.0);
-      else {
-        // parse input string to obtain values for the diagonal term 
-        diag_string = parms[diag];
-        selfinteraction_[*si].setMatrix(diag_string,parms);
-        general_case_=true;
-      }
-      selfinteraction_[*si] = selfinteraction_[*si]*spinvalue*spinvalue;
-      
-      if (!selfinteraction_[*si].is_symmetric())
-         boost::throw_exception(std::runtime_error("Invalid matrix for D"));
+      site_types.push_back(type);
     }
   }
 
   typedef boost::tuple<int,int,int> bond_tuple_type;
   std::map<bond_tuple_type,int> new_bond_type;
-  int num_bond_types=0;
-
-
+  std::vector<spinmc::bond_class> bond_classes;
   for (bond_iterator b = bonds().first; b!=bonds().second ;++b) {
     bond_tuple_type this_bond(bond_type[*b],site_type(source(*b)),site_type(target(*b)));
-    std::map<bond_tuple_type,int>::const_iterator found = new_bond_type.find(this_bond);
-    if (found!=new_bond_type.end())
-      bond_type[*b] = found->second;
-    else {
-      new_bond_type[this_bond] = num_bond_types;
-      std::string J_name = parms.value_or_default("J"+
-               boost::lexical_cast<std::string,int>(bond_type[*b]),J_string);
-      MAT this_J;
-      this_J.setMatrix(J_name,parms);
-      bond_type[*b] = num_bond_types;
-      this_J = this_J * (quantum_convention_ ? 1. : -1.);
-      couplings_[*b]=this_J;
-      double det = this_J.det();
-      couplings_det[*b] = det;
-      if (det>0.)
-        ferromagnetic_=false;
-      else if (det<0.)
-        antiferromagnetic_=false;
-      num_bond_types++;
+    if (new_bond_type.find(this_bond)==new_bond_type.end()) {
+      new_bond_type[this_bond] = bond_classes.size();
+      spinmc::bond_class c = {this_bond.get<0>(),this_bond.get<1>(),this_bond.get<2>()};
+      bond_classes.push_back(c);
+    }
+  }
+
+  const spinmc::couplings<MAT> terms = spinmc::resolve_couplings<MAT>(
+      parms, site_types, bond_classes, quantum_convention_, settings_.default_coupling);
+  general_case_ = terms.general_case;
+  ferromagnetic_ = terms.ferromagnetic;
+  antiferromagnetic_ = terms.antiferromagnetic;
+
+  std::size_t next_site_type = 0;
+  site_type_visited.clear();
+  for (site_iterator si = sites().first; si!=sites().second; si++) {
+    int type = site_type(*si);
+    if (!site_type_visited[type]) {
+      site_type_visited[type]=true;
+      spinfactor_[*si]=terms.sites[next_site_type].spinfactor;
+      selfinteraction_[*si]=terms.sites[next_site_type].selfinteraction;
+      ++next_site_type;
+    }
+  }
+
+  std::vector<bool> coupling_set(bond_classes.size(), false);
+  for (bond_iterator b = bonds().first; b!=bonds().second ;++b) {
+    bond_tuple_type this_bond(bond_type[*b],site_type(source(*b)),site_type(target(*b)));
+    int num_bond_type = new_bond_type[this_bond];
+    bond_type[*b] = num_bond_type;
+    if (!coupling_set[num_bond_type]) {
+      couplings_[*b]=terms.bonds[num_bond_type].coupling;
+      couplings_det[*b] = terms.bonds[num_bond_type].det;
+      coupling_set[num_bond_type] = true;
     }
   }
 

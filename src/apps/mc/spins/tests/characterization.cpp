@@ -17,13 +17,16 @@
 #include <alps/parameter.h>
 #include <alps/scheduler/montecarlo.h>
 #include <alps/testing/temporary_directory.hpp>
+#include <boost/core/demangle.hpp>
 #include <gtest/gtest.h>
 
 #include <cstdlib>
+#include <algorithm>
 #include <memory>
 #include <set>
 #include <sstream>
 #include <string>
+#include <typeinfo>
 #include <vector>
 
 namespace {
@@ -104,6 +107,19 @@ const std::vector<Case> cases = {
      R"p(LATTICE="chain lattice";L=6;MODEL="O(4)";J=1;T=1;SWEEPS=30;THERMALIZATION=3;SEED=2)p",
      15, true, -1.,
      {"LATTICE", "L", "MODEL", "J", "T", "SWEEPS", "THERMALIZATION", "SEED", "UPDATE"}},
+    // Random couplings draw from the disorder generator, so these dumps change
+    // if the couplings are resolved in a different order: site types before
+    // bond types, S before D within a site type, and bonds in edge order.
+    {"HeisenbergLadderRandomCouplingsCluster",
+     R"p(LATTICE="ladder";L=4;MODEL="Heisenberg";J0="random()";J1="0.5*random()";S="0.5+random()";DISORDERSEED=7;T=1;SWEEPS=40;THERMALIZATION=4;SEED=12)p",
+     20, true, -1.,
+     {"LATTICE", "L", "MODEL", "J0", "J1", "S", "DISORDERSEED", "T", "SWEEPS", "THERMALIZATION",
+      "SEED", "UPDATE"}},
+    {"HeisenbergTwoBandRandomSiteTermsLocal",
+     R"p(LATTICE="2 band chain lattice";L=4;MODEL="Heisenberg";J0="random()";J1="0.5+random()";J2=-1;S0="0.5+random()";S1="1+random()";D0="random() 0.2 0.3";D1="random()";DISORDERSEED=7;T=1;SWEEPS=40;THERMALIZATION=4;SEED=13)p",
+     20, false, (20. - 4.) / 40.,
+     {"LATTICE", "L", "MODEL", "J0", "J1", "J2", "S0", "S1", "D0", "D1", "DISORDERSEED", "T",
+      "SWEEPS", "THERMALIZATION", "SEED", "UPDATE"}},
 };
 
 class Characterization : public ::testing::TestWithParam<Case> {};
@@ -182,6 +198,105 @@ TEST(SpinmcCharacterization, ReportsCouplingErrorsBeforeUnknownUpdates) {
               "Invalid matrix for D");
     EXPECT_EQ(construction_error(chain + R"p(T=1;SWEEPS=10;D="1 2 3 4 5 6 7 8 9";UPDATE="fast")p"),
               "Invalid matrix for D");
+}
+
+// Site types are resolved before bonds, site type 0 before site type 1, and
+// S before D within a site type.
+TEST(SpinmcCharacterization, ReportsSiteTermErrorsInTypeOrderBeforeBondErrors) {
+    const std::string two_band =
+        R"p(LATTICE="2 band chain lattice";L=4;MODEL="Heisenberg";T=1;SWEEPS=10;SEED=1;)p";
+    const std::string bad_d0 = R"p(D0="1 2 3 4 5 6 7 8 9";)p";
+    const std::string bad_d1 = R"p(D1="1 2 3 4 5 6 7 8 9";)p";
+    const std::string bad_s1 = R"p(S1="1+";)p";
+    const std::string bad_j0 = R"p(J0="1 2";)p";
+    const std::string bad_expression = "Illegal term in expression";
+    EXPECT_EQ(construction_error(two_band + "J=1;" + bad_s1), bad_expression);
+    EXPECT_EQ(construction_error(two_band + "J=1;" + bad_d1 + bad_s1), bad_expression);
+    EXPECT_EQ(construction_error(two_band + "J=1;" + bad_d0 + bad_s1), "Invalid matrix for D");
+    EXPECT_EQ(construction_error(two_band + "J=1;" + bad_d1), "Invalid matrix for D");
+    EXPECT_EQ(construction_error(two_band + bad_j0 + R"p(D0="1 2 3";)p"), "invalid input");
+    EXPECT_EQ(construction_error(two_band + bad_j0 + bad_d1), "Invalid matrix for D");
+}
+
+// The simulation class the factory builds, without whitespace. The moment
+// headers cannot be included in a second translation unit (ising.h defines a
+// static member), so compare type names. XYMoment names ONMoment<2>.
+std::string built(const std::string& text) {
+    const auto worker = make_worker(parameters(text));
+    const alps::scheduler::Worker& built_worker = *worker;
+    std::string name = boost::core::demangle(typeid(built_worker).name());
+    name.erase(std::remove(name.begin(), name.end(), ' '), name.end());
+    return name;
+}
+
+const std::string heisenberg =
+    R"p(LATTICE="chain lattice";L=4;MODEL="Heisenberg";T=1;SWEEPS=10;SEED=1;)p";
+const std::string xy = R"p(LATTICE="chain lattice";L=4;MODEL="XY";T=1;SWEEPS=10;SEED=1;)p";
+const std::string ising = R"p(LATTICE="chain lattice";L=4;MODEL="Ising";T=1;SWEEPS=10;SEED=1;)p";
+
+// The factory chooses the matrix type from the largest number of
+// space-separated values among J, J', J0..J3, D, D' and D0..D3.
+TEST(SpinmcCharacterization, ChoosesTheMatrixTypeFromTheLongestCouplingText) {
+    EXPECT_EQ(built(heisenberg + "J=1"), "SpinSim<ONMoment<3>,MIdMatrix<double,3>>");
+    EXPECT_EQ(built(heisenberg + R"p(J="1 2 3")p"), "SpinSim<ONMoment<3>,DiagMatrix<double,3>>");
+    EXPECT_EQ(built(heisenberg + R"p(J="1 0.5 1 0 0 1")p"),
+              "SpinSim<ONMoment<3>,SquareMatrix<double,3>>");
+    EXPECT_EQ(built(heisenberg + R"p(J="1 0 0 0 1 0 0 0 1")p"),
+              "SpinSim<ONMoment<3>,SquareMatrix<double,3>>");
+    EXPECT_EQ(built(heisenberg + R"p(J=1;D="0.1 0.2 0.3")p"),
+              "SpinSim<ONMoment<3>,DiagMatrix<double,3>>");
+
+    EXPECT_EQ(built(xy + "J=1"), "SpinSim<ONMoment<2>,MIdMatrix<double,2>>");
+    EXPECT_EQ(built(xy + R"p(J="1 2")p"), "SpinSim<ONMoment<2>,DiagMatrix<double,2>>");
+    EXPECT_EQ(built(xy + R"p(J="1 0.5 1")p"), "SpinSim<ONMoment<2>,SquareMatrix<double,2>>");
+    EXPECT_EQ(built(xy + R"p(J="1 0 0 1")p"), "SpinSim<ONMoment<2>,SquareMatrix<double,2>>");
+
+    EXPECT_EQ(built(ising + "J=1"), "SpinSim<IsingMoment,MIdMatrix<double,1>>");
+    EXPECT_EQ(built(R"p(LATTICE="chain lattice";L=4;MODEL="O(4)";J=1;T=1;SWEEPS=10;SEED=1)p"),
+              "SpinSim<ONMoment<4>,MIdMatrix<double,4>>");
+    EXPECT_EQ(built(R"p(LATTICE="chain lattice";L=4;MODEL="Potts";q=3;J=1;T=1;SWEEPS=10;SEED=1)p"),
+              "SpinSim<PottsMoment<3u>,MIdMatrix<double,2>>");
+}
+
+// J' and D' take part in the choice although no bond or site reads them, and
+// J4 is read for bond type 4 but takes no part in the choice.
+TEST(SpinmcCharacterization, CountsPrimedCouplingsButNotHigherBondTypes) {
+    EXPECT_EQ(built(heisenberg + R"p(J=1;J'="1 2 3")p"),
+              "SpinSim<ONMoment<3>,DiagMatrix<double,3>>");
+    EXPECT_EQ(built(heisenberg + R"p(J=1;D'="1 2 3")p"),
+              "SpinSim<ONMoment<3>,DiagMatrix<double,3>>");
+    EXPECT_EQ(built(heisenberg + R"p(J=1;J4="1 2 3")p"),
+              "SpinSim<ONMoment<3>,MIdMatrix<double,3>>");
+    // Values are split at spaces only, so an expression with spaces counts
+    // as several values: three here, which selects the diagonal type.
+    EXPECT_EQ(construction_error(heisenberg + R"p(J="2 * 0.5")p"), "Illegal term in expression");
+}
+
+// An unsupported number of values is reported by printing the D and J texts,
+// so an absent D turns the report into a missing-parameter error.
+TEST(SpinmcCharacterization, ReportsUnsupportedModelsAndMatrixSizes) {
+    EXPECT_EQ(construction_error(ising + R"p(J="1 2")p"), "parameter D not defined");
+    EXPECT_EQ(construction_error(ising + R"p(J="1 2";D=0)p"), "invalid parameters");
+    EXPECT_EQ(construction_error(heisenberg + R"p(J="1 2")p"), "parameter D not defined");
+    EXPECT_EQ(construction_error(heisenberg + R"p(J=1;D="1 2")p"), "invalid parameters");
+    EXPECT_EQ(construction_error(xy + R"p(J="1 2 3 4 5")p"), "parameter D not defined");
+    EXPECT_EQ(construction_error(heisenberg + R"p(J=1;J'="1 2")p"), "parameter D not defined");
+    // O(4) and Potts ignore the count. An O(4) coupling with two values
+    // fails only when the coupling is read.
+    EXPECT_EQ(construction_error(
+                  R"p(LATTICE="chain lattice";L=4;MODEL="O(4)";J="1 2";T=1;SWEEPS=10;SEED=1)p"),
+              "invalid input");
+    EXPECT_EQ(construction_error(
+                  R"p(LATTICE="chain lattice";L=4;MODEL="Potts";J=1;T=1;SWEEPS=10;SEED=1)p"),
+              "parameter q not defined");
+    EXPECT_EQ(construction_error(
+                  R"p(LATTICE="chain lattice";L=4;MODEL="Potts";q=5;J=1;T=1;SWEEPS=10;SEED=1)p"),
+              "5-state Potts model not implemented in file factory.C");
+    EXPECT_EQ(construction_error(R"p(LATTICE="chain lattice";L=4;J=1;T=1;SWEEPS=10;SEED=1)p"),
+              "parameter MODEL not defined");
+    EXPECT_EQ(construction_error(
+                  R"p(LATTICE="chain lattice";L=4;MODEL="Clock";J=1;T=1;SWEEPS=10;SEED=1)p"),
+              "Clock model not implemented in file factory.C");
 }
 
 } // namespace
