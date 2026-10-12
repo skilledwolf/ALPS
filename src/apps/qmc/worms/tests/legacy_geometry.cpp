@@ -65,7 +65,8 @@ TEST(WormGeometry, ChainSecondMomentsSquareEachMeasuredDensity) {
         const auto& density=run.get_measurements().get<alps::RealVectorObservable>("Chain density");
         const auto& second=run.get_measurements().get<alps::RealVectorObservable>("Chain density^2");
         ASSERT_EQ(density.count(),n); ASSERT_EQ(second.count(),n);
-        auto sum=density.mean()*double(n); auto squared=second.mean()*double(n);
+        const std::valarray<double> sum=density.mean()*double(n);
+        const std::valarray<double> squared=second.mean()*double(n);
         ASSERT_EQ(sum.size(),3); ASSERT_EQ(squared.size(),3);
         for(unsigned c=0;c<3;++c) {
             const double value=sum[c]-last[c];
