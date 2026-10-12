@@ -120,3 +120,12 @@ if(ALPS_BUILD_TESTING)
 endif()
 
 alps_install_applications(dmft hirschfye hybridization interaction)
+
+if(ALPS_BUILD_TESTING)
+  foreach(name density_oracle table_oracle legacy_regressions)
+    add_executable(cthyb_${name} hybridization/tests/${name}.cpp)
+    target_include_directories(cthyb_${name} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+    target_link_libraries(cthyb_${name} PRIVATE ALPS::cthyb)
+    alps_add_gtest(cthyb_${name} COMPONENT dmft LABELS scientific regression)
+  endforeach()
+endif()

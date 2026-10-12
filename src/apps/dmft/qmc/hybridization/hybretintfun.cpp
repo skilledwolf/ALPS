@@ -23,7 +23,7 @@ ret_int_fun::ret_int_fun(const alps::params &p):
 green_function<double>(p["N_TAU"]+1, 1, 2)//2 "flavors": K and K'
 {
   bool use_retarded_interaction=p.defined("RET_INT_K");
-  if(!use_retarded_interaction) return;
+  if(!use_retarded_interaction) { beta_=p["BETA"]; clear(); return; }
 
   if(!p.defined("N_TAU") || (int)(p["N_TAU"])==0) throw std::invalid_argument("define parameter N_TAU, the number of retarded interaction time slices!");
   beta_=p["BETA"];
