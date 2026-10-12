@@ -53,11 +53,8 @@ def read_testprop_xml(testinput):
     if obsentries is not None:
         obslist = [ obs.text for obs in list(obsentries) ]
 
-    try:
-        inputs = [ inpf.attrib['file'] for inpf in list(root.find('SCRIPTINPUTFILES')) ]
-
-    except AttributeError:
-        inputs = None
+    inputfiles = root.find('SCRIPTINPUTFILES')
+    inputs = None if inputfiles is None else [inpf.attrib['file'] for inpf in inputfiles]
 
     return props, inputs, refFileList, obslist
 
@@ -322,6 +319,9 @@ def compareEpsilon( testfiles, reffiles, tol_factor='auto', whatlist = None ):
 
     testdata = pyalps.loadEigenstateMeasurements(testfiles) 
     refdata = pyalps.loadEigenstateMeasurements(reffiles) 
+    if len(testdata) != len(refdata):
+        raise ValueError("Comparison Error: test and reference data have different number of tasks")
+
     if not testdata or not refdata:
         if not testdata:
             print("loadEigenstateMeasurements of file %s returned an empty list" % testfiles)
@@ -478,6 +478,10 @@ def compareTest( testinputfile, outputs, tmpdir, tstart, compMethod='auto' ):
     # read input
     testinputfile = os.path.expandvars( testinputfile )
     props, inputs, refFileList, whatlist = read_testprop_xml(testinputfile)
+    if len(outputs) != len(refFileList):
+        raise ValueError("Comparison Error: test and reference have different number of files")
+    if not outputs:
+        raise ValueError("Comparison Error: no output files to compare")
     try:
         tol = float(props['TOLERANCE'])
     except ValueError:
@@ -590,13 +594,20 @@ def runTest(testinputfile, outputs='auto', compMethod='auto', pyexec='auto'):
     if pyexec == 'auto':
         pyexec = sys.executable
     
-    os.chdir( tmpdir )
-    cmdline = [pyexec, os.path.basename(script)]
-    pyalps.executeCommand(cmdline)
-    if inputs is not None:
-        for f in inputs: os.remove(f)
-
-    os.chdir(pardir)
+    os.chdir(tmpdir)
+    try:
+        status = pyalps.executeCommand([pyexec, os.path.basename(script)])
+        if inputs is not None:
+            for f in inputs:
+                os.remove(os.path.basename(f))
+    finally:
+        os.chdir(pardir)
+    if status != 0:
+        print("Test script %s exited with status %s" % (script, status))
+        if 'yes' in props['SAVE_OUT_IF_FAIL'].lower():
+            shutil.make_archive(props['TESTNAME'] + '.failed', 'bztar', tmpdir)
+        shutil.rmtree(tmpdir)
+        return False
     
     # copy stylesheet
     pyalps.tools.copyStylesheet(pardir)
@@ -718,11 +729,15 @@ def createTest( script, inputs=None, outputs=None, prefix=None, refdir='./ref' )
     # execute given script in refdir ( creates reference data )
     pardir = os.getcwd()
     os.chdir(refdir)
-    cmdline = [ sys.executable, os.path.join(pardir, script) ]
-    pyalps.executeCommand(cmdline)
-    if inputs is not None:
-        for f in inputs: os.remove(f)
-    os.chdir(pardir)
+    try:
+        status = pyalps.executeCommand([sys.executable, os.path.join(pardir, script)])
+        if inputs is not None:
+            for f in inputs:
+                os.remove(os.path.basename(f))
+    finally:
+        os.chdir(pardir)
+    if status != 0:
+        raise RuntimeError("Reference script %s exited with status %s" % (script, status))
 
     if prefix is None:
         reffiles = [ os.path.join(refdir, os.path.basename(f)) for f in outputs ]

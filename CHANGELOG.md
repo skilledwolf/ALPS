@@ -6,6 +6,9 @@ User-facing changes and migration notes are recorded here, starting with the bui
 
 ### Fixed
 
+- Restore portable scalar/NumPy square, cube and inverse-function dispatch in `pyalps.math`; preserve the HDF5 archive context if loading an observable fails.
+- Make application tests reject failed simulation/reference scripts and mismatched output/task counts. Keep boolean-array test expectations consistent with dtype preservation.
+
 - Correct MaxEnt quadratic, logarithmic (including odd `NFREQ`) and half-Lorentzian frequency grids so every integration knot is finite and ordered; reject invalid grid parameters.
 - Correct ALEA integer histogram allocation for partial final bins, reject inconsistent histogram XML entry counts, preserve bin limits on `mcdata` assignment and avoid double-counting when detailed bins collapse to one.
 - Preserve both endpoints when reading a changed lattice edge.
