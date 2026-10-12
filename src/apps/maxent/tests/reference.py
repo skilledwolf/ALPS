@@ -17,7 +17,7 @@ CASES_FILE = Path(__file__).with_name("reference_cases.json")
 
 @contextmanager
 def working_directory(directory):
-    # MaxEnt currently writes deltaOmega.dat even with TEXT_OUTPUT disabled.
+    # Isolate legacy command-line execution and any requested text diagnostics.
     previous = Path.cwd()
     os.chdir(directory)
     try:
@@ -84,10 +84,7 @@ def read_result(filename, case):
                      bosonic_maximum="/spectrum/bosonic/maximum")
     with h5py.File(filename, "r") as archive:
         result = {key: np.asarray(archive[path]) for key, path in paths.items()}
-    # Preserve the native test's check of the actual quadrature diagnostic.
-    diagnostic = np.loadtxt(filename.parent / "deltaOmega.dat", ndmin=2)
-    np.testing.assert_array_equal(diagnostic[:, 0], np.arange(len(result["omega"])))
-    result["bin_widths"] = diagnostic[:, 1]
+        result["bin_widths"] = np.asarray(archive["/spectrum/bin_widths"])
     return result
 
 

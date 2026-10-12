@@ -85,14 +85,20 @@ TEST_P(MaxEntFrequencyGrid, FiniteNormalizedSpectrumAndStopCallbacks) {
   p["MAX_IT"] = 40;
   p["PARTICLE_HOLE_SYMMETRY"] = 0;
   p["TEXT_OUTPUT"] = 0;
+  p["SELF"] = true;
   p["DATA_IN_HDF5"] = 1;
   p["MAX_TIME"] = 600;
   p["VERBOSE"] = 0;
 
   alps::testing::TemporaryDirectory temporary;
+  struct restore_directory {
+    std::filesystem::path previous = std::filesystem::current_path();
+    ~restore_directory() { std::filesystem::current_path(previous); }
+  } restore;
+  std::filesystem::current_path(temporary.path());
   const std::string base = (temporary.path() / "maxent").string();
   const std::string in_h5 = base + ".h5";
-  const std::string out_h5 = base + ".out.h5";
+  const std::string out_h5 = base + ".custom.hdf5";
   p["DATA"] = in_h5;
   {
     alps::hdf5::archive ar(in_h5, "w");
@@ -125,15 +131,26 @@ TEST_P(MaxEntFrequencyGrid, FiniteNormalizedSpectrumAndStopCallbacks) {
     ASSERT_TRUE((callbacks == 1)) << "completed run must check the callback once";
   }
 
-  std::vector<double> w, Aavg, Amax, Achi;
+  // Construction and execution must not leak auxiliary files when text is off.
+  EXPECT_EQ(std::distance(std::filesystem::directory_iterator(temporary.path()),
+                          std::filesystem::directory_iterator{}), 2);
+  std::vector<double> w, Aavg, Amax, Achi, widths, self;
   {
     alps::hdf5::archive ar(out_h5, "r");
     ar >> alps::make_pvp("/spectrum/omega", w);
+    ar["/spectrum/bin_widths"] >> widths;
+    ar["/spectrum/self/average"] >> self;
     ar >> alps::make_pvp("/spectrum/average", Aavg);
     ar >> alps::make_pvp("/spectrum/maximum", Amax);
     ar >> alps::make_pvp("/spectrum/chi", Achi);
   }
 
+  ASSERT_EQ(widths.size(), w.size());
+  ASSERT_EQ(self.size(), Aavg.size());
+  for (std::size_t i=0; i<widths.size(); ++i) {
+    EXPECT_GT(widths[i], 0.);
+    EXPECT_NEAR(self[i], -std::acos(-1.)*Aavg[i], 1.e-14);
+  }
   ASSERT_TRUE((!w.empty())) << "omega grid empty";
   ASSERT_TRUE((all_finite(w))) << "omega grid not finite";
   ASSERT_TRUE((all_finite(Aavg))) << "A_average not all-finite (NaN regression)";

@@ -15,6 +15,7 @@
 #include <utility> // Boost.Math 1.76 includes this inside a namespace.
 #include <boost/math/constants/constants.hpp>
 #include "maxent.hpp"
+#include "control_validation.hpp"
 #include <alps/config.h> // needed to set up correct bindings
 #include <alps/hdf5/ublas/vector.hpp>
 #include <alps/ngs/signal.hpp>
@@ -28,12 +29,14 @@
 
 
 MaxEntSimulation::MaxEntSimulation(const alps::params &parms,const std::string &outfile)
-: MaxEntHelper(parms)
+: MaxEntHelper(maxent_detail::validate_controls(parms))
 , alpha((int)parms["N_ALPHA"])              //This is the # of \alpha parameters that should be tried.
 , norm(parms["NORM"]|1.0)                                             //The integral is normalized to NORM (use e.g. for self-energies
 , max_it(parms["MAX_IT"]|1000)                                       //The number of iterations done in the root finding procedure
-, name(outfile,0,outfile.size()-6)
-, Kernel_type(parms["KERNEL"]|"")
+, name(outfile.size() >= 6 && outfile.compare(outfile.size()-6,6,"out.h5") == 0
+       ? outfile.substr(0,outfile.size()-6) : outfile+".")
+, Kernel_type(parms["KERNEL"]|"fermionic")
+, output_file(outfile)
 , finished(false)
 , verbose(parms["VERBOSE"]|false)
 , text_output(parms["TEXT_OUTPUT"]|false)
@@ -78,6 +81,11 @@ void MaxEntSimulation::dostep()
   vector_type u = transform_into_singular_space(Default());
 
   if (text_output) {
+    std::ofstream diagnostic(name+"deltaOmega.dat");
+    diagnostic.exceptions(std::ios::failbit | std::ios::badbit);
+    diagnostic << std::setprecision(17);
+    for (std::size_t i=0; i<Default().size(); ++i)
+      diagnostic << i << " " << bin_width(i) << " " << Default(i) << "\n";
     spex_str.open((name+"spex.dat").c_str());
     chisq_str.open((name+"chi2.dat").c_str());
     avspec_str.open((name+"avspec.dat").c_str());
@@ -138,20 +146,31 @@ void MaxEntSimulation::dostep()
   const double factor = chi_scale_factor(spectra[max_a], chi_sq[max_a], alpha[max_a]);
   if (verbose) std::cerr << "chi scale factor: " << factor << std::endl;
   
-  alps::hdf5::archive ar(name+"out.h5", alps::hdf5::archive::WRITE);
-  ar << alps::make_pvp("/alpha/values",alpha);
+  alps::hdf5::archive ar(output_file, alps::hdf5::archive::WRITE);
+  // Numerical publication checks extracted from reconciliation b6ec6ef95;
+  // retain the existing execution and archive interface.
+  const auto write = [&](const char* path, const auto& values) {
+    for (const double x : values)
+      if (!std::isfinite(x)) throw std::runtime_error(std::string("nonfinite MaxEnt result: ")+path);
+    ar << alps::make_pvp(path, values);
+  };
+  write("/alpha/values",alpha);
   
   vector_type om(spectra[0].size());
   for (int i=0;i<om.size();i++) om[i] = omega_coord(i);        
-  ar<<alps::make_pvp("/spectrum/omega",om);
+  write("/spectrum/omega",om);
+  vector_type widths(om.size());
+  for (std::size_t i=0; i<widths.size(); ++i) widths[i] = bin_width(i);
+  write("/spectrum/bin_widths",widths);
+  write("/spectrum/default_weights",Default());
       
   //output 'maximum' spectral function (classical maxent metod)
   if (text_output) for (std::size_t i=0; i<spectra[0].size(); ++i)
     maxspec_str << omega_coord(i) << " " << spectra[max_a][i]*norm << " " << def[i]*norm << std::endl;
   {
     vector_type specmax = spectra[max_a]*norm,specchi = spectra[a_chi]*norm;
-    ar << alps::make_pvp("/spectrum/chi",specchi);
-    ar << alps::make_pvp("/spectrum/maximum",specmax);
+    write("/spectrum/chi",specchi);
+    write("/spectrum/maximum",specmax);
   }
   vector_type prob(lprob.size());
   for (std::size_t a=0; a<prob.size(); ++a) 
@@ -159,8 +178,9 @@ void MaxEntSimulation::dostep()
   double probnorm = 0;
   for (std::size_t a=0; a<prob.size()-1; ++a) 
     probnorm += 0.5*(prob[a]+prob[a+1])*(alpha[a]-alpha[a+1]);
+  if (!std::isfinite(probnorm) || probnorm <= 0) throw std::runtime_error("invalid alpha probability normalization");
   prob /= probnorm;
-  ar << alps::make_pvp("/alpha/probability",prob);
+  write("/alpha/probability",prob);
   if (text_output) for (std::size_t a=0; a<prob.size(); ++a) {
     prob_str << alpha[a] << "\t" << prob[a] << "\n";
   }
@@ -188,25 +208,28 @@ void MaxEntSimulation::dostep()
   
   if (text_output) for (std::size_t  i=0; i<avspec.size(); ++i)
     avspec_str << omega_coord(i) << " " << avspec[i] << " " << def[i]*norm << std::endl;
-  ar << alps::make_pvp("/spectrum/average",avspec);
-  ar << alps::make_pvp("/spectrum/variance",varspec);
+  write("/spectrum/average",avspec);
+  write("/spectrum/variance",varspec);
   
   if(Kernel_type=="anomalous"){ //for the anomalous function: use A(omega)=Im Sigma(omega)/(pi omega).
-    std::ofstream maxspec_anom_str((name+"maxspec_anom.dat").c_str());
-    std::ofstream avspec_anom_str (boost::filesystem::absolute(name+"avspec_anom.dat", dir).string().c_str());
+    std::ofstream maxspec_anom_str, avspec_anom_str;
+    if (text_output) {
+      maxspec_anom_str.open(name+"maxspec_anom.dat");
+      avspec_anom_str.open(name+"avspec_anom.dat");
+    }
     vector_type spec(avspec.size());
     for (std::size_t  i=0; i<avspec.size(); ++i){ 
       //if(omega_coord(i)>=0.)
       spec[i] = avspec[i]*omega_coord(i)*boost::math::constants::pi<double>();
-      avspec_anom_str << omega_coord(i) << " " << avspec[i]*omega_coord(i)*boost::math::constants::pi<double>()<<std::endl;
+      if (text_output) avspec_anom_str << omega_coord(i) << " " << avspec[i]*omega_coord(i)*boost::math::constants::pi<double>()<<std::endl;
     }
-    ar << alps::make_pvp("/spectrum/anomalous/average",spec);
+    write("/spectrum/anomalous/average",spec);
     for (std::size_t i=0; i<spectra[0].size(); ++i){
       //if(omega_coord(i)>=0.)
       spec[i] = spectra[max_a][i]*norm*omega_coord(i)*boost::math::constants::pi<double>();
-      maxspec_anom_str << omega_coord(i) << " " << spectra[max_a][i]*norm*omega_coord(i)*boost::math::constants::pi<double>() << std::endl;
+      if (text_output) maxspec_anom_str << omega_coord(i) << " " << spectra[max_a][i]*norm*omega_coord(i)*boost::math::constants::pi<double>() << std::endl;
     }
-    ar << alps::make_pvp("/spectrum/anomalous/maximum",spec);
+    write("/spectrum/anomalous/maximum",spec);
   }
   if(Kernel_type=="bosonic"){ //for the anomalous function: use A(Omega)=Im chi(Omega)/(pi Omega) (as for anomalous)
     vector_type spec(avspec.size());
@@ -217,10 +240,10 @@ void MaxEntSimulation::dostep()
       std::ofstream avspec_anom_str(boost::filesystem::absolute(name+"maxspec_bose.dat", dir).string().c_str());
       for (std::size_t  i=0; i<avspec.size(); ++i){
       //if(omega_coord(i)>=0.)
-        avspec_anom_str << omega_coord(i) << " " << avspec[i]*omega_coord(i)*boost::math::constants::pi<double>()<<std::endl;
+        if (text_output) avspec_anom_str << omega_coord(i) << " " << avspec[i]*omega_coord(i)*boost::math::constants::pi<double>()<<std::endl;
       }
     }
-    ar << alps::make_pvp("/spectrum/bosonic/average",spec);
+    write("/spectrum/bosonic/average",spec);
     for (std::size_t i=0; i<spectra[0].size(); ++i){
       //if(omega_coord(i)>=0.)
       spec[i] = spectra[max_a][i]*norm*omega_coord(i)*boost::math::constants::pi<double>();
@@ -228,10 +251,10 @@ void MaxEntSimulation::dostep()
     if (text_output) {
       std::ofstream maxspec_anom_str (boost::filesystem::absolute(name+"avspec_bose.dat", dir).string().c_str());
       for (std::size_t i=0; i<spectra[0].size(); ++i){
-        maxspec_anom_str << omega_coord(i) << " " << spectra[max_a][i]*norm*omega_coord(i)*boost::math::constants::pi<double>() << std::endl;
+        if (text_output) maxspec_anom_str << omega_coord(i) << " " << spectra[max_a][i]*norm*omega_coord(i)*boost::math::constants::pi<double>() << std::endl;
       }
     }
-    ar << alps::make_pvp("/spectrum/bosonic/maximum",spec);
+    write("/spectrum/bosonic/maximum",spec);
   }
 
   //don't understand why this was commented out...
@@ -243,14 +266,22 @@ void MaxEntSimulation::dostep()
     // here we compute Im Sigma out of A:
     //
     // for the self energy: use Im Sigma(omega)=-A(omega)*pi
-    std::ofstream maxspec_self_str(boost::filesystem::absolute(name+"maxspec_self.dat", dir).string().c_str());
-    std::ofstream avspec_self_str (boost::filesystem::absolute(name+"avspec_self.dat", dir).string().c_str());
-    for (std::size_t  i=0; i<avspec.size(); ++i){ 
-      avspec_self_str << omega_coord(i) << " " << -avspec[i]*boost::math::constants::pi<double>()<<std::endl;
+    std::ofstream maxspec_self_str, avspec_self_str;
+    if (text_output) {
+      maxspec_self_str.open(name+"maxspec_self.dat");
+      avspec_self_str.open(name+"avspec_self.dat");
     }
-    for (std::size_t i=0; i<spectra[0].size(); ++i){
-      maxspec_self_str << omega_coord(i) << " " << -spectra[max_a][i]*norm*boost::math::constants::pi<double>() << std::endl;
+    vector_type average(avspec.size()), maximum(avspec.size());
+    for (std::size_t i=0; i<avspec.size(); ++i) {
+      average[i] = -avspec[i]*boost::math::constants::pi<double>();
+      maximum[i] = -spectra[max_a][i]*norm*boost::math::constants::pi<double>();
+      if (text_output) {
+        avspec_self_str << omega_coord(i) << " " << average[i] << std::endl;
+        maxspec_self_str << omega_coord(i) << " " << maximum[i] << std::endl;
+      }
     }
+    write("/spectrum/self/average",average);
+    write("/spectrum/self/maximum",maximum);
   }
  
   finished = true;
@@ -314,6 +345,7 @@ MaxEntSimulation::vector_type MaxEntSimulation::iteration(vector_type u, const d
   for (std::size_t i=0; i<M.size1(); ++i) 
     B(i,0) = -b[i];
   ublas::vector<fortran_int_t> ipiv(b.size());
-  bindings::lapack::gesv(M, ipiv, B);
+  if (bindings::lapack::gesv(M, ipiv, B) != 0)
+    throw std::runtime_error("MaxEnt minimizer linear solve failed");
   return ublas::matrix_column<matrix_type>(B, 0);
 }
