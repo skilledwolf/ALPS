@@ -153,3 +153,7 @@ Use named skips for unavailable optional capabilities or unsupported type
 combinations; skipped cases do not establish coverage. Do not add permanently
 disabled tests. Any necessary quarantine must name the
 reason, tracked issue and owner; CI must continue reporting the missing coverage.
+
+## Retired application fixtures
+
+The unregistered `src/apps/test` directory (formerly `applications/test`) was removed in response to ALPSim/ALPS#201. Its autotools templates were never configured or run by CMake and did not establish test coverage. Active solver checks live beside their applications; installed application smoke workflows are exercised by `.github/scripts/validate_pyalps.py --applications`. Those checks do not claim to reproduce every retired stochastic reference value.

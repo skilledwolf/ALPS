@@ -22,7 +22,7 @@ import ising
 import pyalps.hdf5 as hdf5
 
 
-PARAMETERS = {"L": 12, "THERMALIZATION": 5, "SWEEPS": 20, "T": 2.0, "SEED": 42}
+PARAMETERS = {"L": 12, "THERMALIZATION": 200, "SWEEPS": 4000, "T": 2.0, "SEED": 42}
 
 OBSERVABLES = ["Correlations", "Energy", "Magnetization",
                "Magnetization^2", "Magnetization^4"]
@@ -42,7 +42,12 @@ results = simulation.collectResults()
 assert sorted(results) == OBSERVABLES
 for name in OBSERVABLES:
     assert results[name].count == PARAMETERS["SWEEPS"], name
-assert -1.0 <= results["Energy"].mean <= 1.0
+# Finite periodic Ising chain: Z = (2 cosh(beta))**L + (2 sinh(beta))**L.
+# This seeded coarse check distinguishes the two ensembles; the regression
+# suite separately checks every four-site single-flip transition deterministically.
+t = np.tanh(1.0 / PARAMETERS["T"])
+expected_energy = -(t + t ** (PARAMETERS["L"] - 1)) / (1 + t ** PARAMETERS["L"])
+assert abs(results["Energy"].mean - expected_energy) < 0.08
 assert len(results["Correlations"].mean) == PARAMETERS["L"]
 
 with tempfile.TemporaryDirectory() as directory:

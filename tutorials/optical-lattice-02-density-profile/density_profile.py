@@ -22,40 +22,62 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pyalps
 
-L = 9
-K = 0.65                                        # trap curvature V_T = K r^2, in units of t
-c = (L - 1) / 2.
+def parameters(length=9, curvature=0.65, **overrides):
+    """Construct the trapped Bose-Hubbard inputs; overrides allow small runs."""
+    center = (length - 1) / 2.
+    result = {
+        'LATTICE': 'inhomogeneous simple cubic lattice',
+        'L': length,
+        'MODEL': 'boson Hubbard',
+        'Nmax': 4,
+        't': 1.,
+        'U': 8.11,
+        'mu': '4.05 - %g*((x-%g)*(x-%g) + (y-%g)*(y-%g) + (z-%g)*(z-%g))'
+              % ((curvature,) + (center,) * 6),
+        'T': 1.,
+        'THERMALIZATION': 1000,
+        'SWEEPS': 5000,
+        'MEASURE_LOCAL[Local Density]': 'n',
+    }
+    result.update(overrides)
+    return result
 
-parms = [{
-    'LATTICE' : 'inhomogeneous simple cubic lattice',
-    'L'       : L,
-    'MODEL'   : 'boson Hubbard',
-    'Nmax'    : 4,
-    't'       : 1.,
-    'U'       : 8.11,
-    'mu'      : '4.05 - %g*((x-%g)*(x-%g) + (y-%g)*(y-%g) + (z-%g)*(z-%g))' % ((K,) + (c,) * 6),
-    'T'       : 1.,
-    'THERMALIZATION' : 1000,
-    'SWEEPS'         : 5000,
-    'MEASURE_LOCAL[Local Density]' : 'n',
-}]
 
-input_file = pyalps.writeInputFiles('parm_trap', parms)
-pyalps.runApplication('dirloop_sse', input_file)
+def run(length=9, curvature=0.65, prefix='parm_trap', **overrides):
+    """Run the simulation in the working directory and return its density cube."""
+    parms = parameters(length, curvature, **overrides)
+    input_file = pyalps.writeInputFiles(prefix, [parms])
+    status, _ = pyalps.runApplication('dirloop_sse', input_file, Tmin=1)
+    if status != 0:
+        raise RuntimeError('dirloop_sse failed with status %s' % status)
+    data = pyalps.loadMeasurements(pyalps.getResultFiles(prefix=prefix), 'Local Density')[0][0]
+    return np.asarray(data.y.mean).reshape(length, length, length)
 
-data = pyalps.loadMeasurements(pyalps.getResultFiles(prefix='parm_trap'), 'Local Density')[0][0]
-n = np.asarray(data.y.mean).reshape(L, L, L)
-print('Total number of bosons: %.2f' % n.sum())
-print('Density at the trap center: %.3f' % n[L // 2, L // 2, L // 2])
 
-r = np.arange(L) - c
-fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 4))
-ax1.plot(r, n[:, L // 2, L // 2], 'o-')
-ax1.set_xlabel('$x$ (lattice sites from trap center)')
-ax1.set_ylabel(r'$\langle n_i \rangle$')
-ax1.set_title('Cut through the trap center')
-im = ax2.imshow(n[:, :, L // 2], extent=[r[0], r[-1], r[0], r[-1]], origin='lower')
-fig.colorbar(im, ax=ax2, label=r'$\langle n_i \rangle$')
-ax2.set_title('Center layer $z = 0$')
-plt.tight_layout()
-plt.show()
+def plot(density):
+    """Plot the central cut and layer without opening an interactive window."""
+    length = density.shape[0]
+    r = np.arange(length) - (length - 1) / 2.
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 4))
+    ax1.plot(r, density[:, length // 2, length // 2], 'o-')
+    ax1.set_xlabel('$x$ (lattice sites from trap center)')
+    ax1.set_ylabel(r'$\langle n_i \rangle$')
+    ax1.set_title('Cut through the trap center')
+    im = ax2.imshow(density[:, :, length // 2], extent=[r[0], r[-1], r[0], r[-1]], origin='lower')
+    fig.colorbar(im, ax=ax2, label=r'$\langle n_i \rangle$')
+    ax2.set_title('Center layer $z = 0$')
+    fig.tight_layout()
+    return fig
+
+
+def main():
+    density = run()
+    center = density.shape[0] // 2
+    print('Total number of bosons: %.2f' % density.sum())
+    print('Density at the trap center: %.3f' % density[center, center, center])
+    plot(density)
+    plt.show()
+
+
+if __name__ == '__main__':
+    main()
