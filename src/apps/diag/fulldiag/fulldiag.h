@@ -65,6 +65,7 @@ public:
   typedef typename super_type::operator_matrix_type operator_matrix_type;
   
   FullDiagMatrix (const alps::ProcessList& where , const boost::filesystem::path& p);
+  void evaluate(const alps::Parameters&, const std::string&) const;
   void print_eigenvectors(std::ostream& os) const;
 private:
   magnitude_type groundstate_energy() const;
