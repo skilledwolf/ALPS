@@ -25,3 +25,7 @@ add_executable(spinmc_evaluate spinmc_evaluate.C)
 target_link_libraries(spinmc PRIVATE spinmc_impl)
 target_link_libraries(spinmc_evaluate PRIVATE spinmc_impl)
 alps_install_applications(spinmc spinmc_evaluate)
+
+if(ALPS_BUILD_TESTING)
+  add_subdirectory(tests)
+endif()
