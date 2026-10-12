@@ -114,3 +114,62 @@ TEST(CtintAtomicOracle, OccupationsAndGreenFunctionsMatchTheFreeAtom) {
     }
   }
 }
+
+TEST(CtintAtomicOracle, ExcludesEveryWarmupConfigurationAndReportsFiniteCompletion) {
+  // Adapted boundary from pinned reconciliation tests/multiband.cpp. This
+  // retained two-flavor oracle counts elementary updates, without MPI/time.
+  auto p=parameters("unused",2.,true);
+  p["THERMALIZATION"]=3;
+  p["SWEEPS"]=4;
+  HubbardInteractionExpansion simulation(p,0);
+  EXPECT_FALSE(simulation.is_thermalized());
+  EXPECT_DOUBLE_EQ(simulation.fraction_completed(),0.);
+  simulation.measure();
+  EXPECT_EQ(simulation.collect_results()["Sign"].count(),0);
+  for (int warmup=0; warmup<3; ++warmup) {
+    simulation.update(); simulation.measure();
+    EXPECT_FALSE(simulation.is_thermalized());
+    EXPECT_DOUBLE_EQ(simulation.fraction_completed(),0.);
+    EXPECT_EQ(simulation.collect_results()["Sign"].count(),0);
+  }
+  for (int physical=1; physical<=4; ++physical) {
+    simulation.update(); simulation.measure();
+    EXPECT_TRUE(simulation.is_thermalized());
+    EXPECT_DOUBLE_EQ(simulation.fraction_completed(),physical/4.);
+    const auto results=simulation.collect_results();
+    EXPECT_EQ(results["Sign"].count(),physical);
+    EXPECT_EQ(results["densities"].count(),physical);
+    EXPECT_DOUBLE_EQ(results["Sign"].mean<double>(),1.);
+  }
+}
+
+TEST(CtintAtomicOracle, OrdinaryRunStopsAtTheRequestedPostWarmupWork) {
+  auto p=parameters("unused",2.,true);
+  p["THERMALIZATION"]=3;
+  p["SWEEPS"]=4;
+  HubbardInteractionExpansion simulation(p,0);
+  unsigned polls=0;
+  // Bound a regression of the old never-completing path without wall-clock
+  // waiting. Correct completion occurs before this independent safety limit.
+  EXPECT_TRUE(simulation.run([&] { return ++polls>16; }));
+  EXPECT_LT(polls,16u);
+  EXPECT_DOUBLE_EQ(simulation.fraction_completed(),1.);
+  EXPECT_EQ(simulation.collect_results()["Sign"].count(),4);
+}
+
+TEST(CtintAtomicOracle, MeasurementBlocksThatCrossWarmupCountTheFinalConfiguration) {
+  auto p=parameters("unused",2.,true);
+  p["THERMALIZATION"]=4;
+  p["SWEEPS"]=5;
+  p["MEASUREMENT_PERIOD"]=3;
+  HubbardInteractionExpansion simulation(p,0);
+  simulation.update(); simulation.measure(); // step=3: warmup
+  EXPECT_EQ(simulation.collect_results()["Sign"].count(),0);
+  EXPECT_DOUBLE_EQ(simulation.fraction_completed(),0.);
+  simulation.update(); simulation.measure(); // step=6: one final configuration
+  EXPECT_EQ(simulation.collect_results()["Sign"].count(),1);
+  EXPECT_DOUBLE_EQ(simulation.fraction_completed(),.4);
+  simulation.update(); simulation.measure(); // step=9: requested work completed
+  EXPECT_EQ(simulation.collect_results()["Sign"].count(),2);
+  EXPECT_DOUBLE_EQ(simulation.fraction_completed(),1.);
+}

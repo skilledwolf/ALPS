@@ -74,7 +74,6 @@ pert_hist(max_order)
   start_time=time(NULL);
   measurement_time=0;
   update_time=0;
-  thermalized=therm_steps==0?true:false;
   ctint_input::read_bare_green(parms,bare_green_matsubara);
   if(!(parms["ATOMIC"] | false)) {
     FourierTransformer::generate_transformer(alps::make_deprecated_parameters(parms), fourier_ptr);
@@ -113,14 +112,14 @@ void InteractionExpansion::update()
   }
 }
 void InteractionExpansion::measure(){
-  measure_observables();
+  if (is_thermalized()) measure_observables();
 }
 
 
 
 double InteractionExpansion::fraction_completed() const{
   //check for error convergence
-  if (!thermalized) 
+  if (!is_thermalized())
     return 0.;
   if(time(NULL)-start_time> max_time_in_seconds){
     std::cout<<"we ran out of time!"<<std::endl;

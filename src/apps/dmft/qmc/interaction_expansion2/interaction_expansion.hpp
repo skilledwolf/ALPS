@@ -215,7 +215,10 @@ public:
 
   InteractionExpansion(const alps::params& p, int rank);
   ~InteractionExpansion() {}
-  bool is_thermalized() const {return true;} //thermalization is done in the constructor. It's not a big deal here.
+  // Adapted from ALPS reconciliation 90a36c0d4c64ee7308dcb0651264197ffdf36449,
+  // interaction_expansion2/interaction_expansion.hpp: the first physical
+  // configuration follows the requested number of elementary warmup updates.
+  bool is_thermalized() const {return step > therm_steps;}
   void update();
   void measure();
   double fraction_completed() const;
@@ -305,7 +308,6 @@ protected:
   double weight;
   double sign;
   unsigned int measurement_method;
-  bool thermalized;
   
   simple_hist pert_hist;
   unsigned int hist_max_index;
