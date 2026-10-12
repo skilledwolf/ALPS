@@ -94,7 +94,10 @@ void generate_spline_matrix(dense_matrix & spline_matrix, double dt) {
   A(0, Np1-1) = 1.;
   A(Np1-1, 0) = -2.*dt/6.;
   A(Np1-1, 1) = -1.*dt/6.;
-  A(Np1-1, Np1-2) = 1*dt/6.;
+  // For two intervals the two interior boundary coefficients share column 1.
+  // Add their contributions so they cancel, as the derivative-sum equation
+  // requires; assignment would retain a spurious dt/6 term.
+  A(Np1-1, Np1-2) += dt/6.;
   A(Np1-1, Np1-1) = 2*dt/6.;
   
   // solve A*spline_matrix=I

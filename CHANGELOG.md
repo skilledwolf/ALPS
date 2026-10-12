@@ -6,6 +6,8 @@ User-facing changes and migration notes are recorded here, starting with the bui
 
 ### Fixed
 
+- Correct signed Hirsch-Fye heat-bath probabilities, checked matrix reconstruction and determinant signs, whole-matrix drift checks, and stable Hubbard-Stratonovich parameters. Prevent reconstruction-interval overflow/zero intervals and sum coincident Fourier spline boundary coefficients on two-interval meshes.
+
 - Accept positional plot/simulation files and standalone `--version` in the archive tool, and parse paired `CONSTRAINT` tags correctly.
 
 - Correct the ferromagnetic Ising acceptance sign in the Python and C++ tutorials, add physics regressions, and exercise the density-profile tutorial through callable simulation and plotting functions.
