@@ -51,7 +51,7 @@ struct measurement_traits<IsingMoment> {
    static const bool use_improved_estimator = true;
 };
 
-const bool measurement_traits<IsingMoment>::use_improved_estimator;
+inline const bool measurement_traits<IsingMoment>::use_improved_estimator;
 
 template <int N>
 struct measurement_traits<ONMoment<N> > {
@@ -191,7 +191,7 @@ update_info_type SpinSim<M,MIdMatrix<double,M::dim> >::do_update()
 template <class M, class MAT> 
 void SpinSim<M,MAT>::do_measurements(update_info_type update_info)
 {
-  double en=0.0;
+  double en=0.0, constant_energy=0.0;
   typedef AbstractSpinSim<MAT> parent;
   typename parent::bond_iterator bi;
   bi = (this->bonds()).first;
@@ -203,9 +203,17 @@ void SpinSim<M,MAT>::do_measurements(update_info_type update_info)
       bt_energy.resize(bt+1);
       bt_count.resize(bt+1);
     }
-    double be = this->spinfactor_[this->source(*bi)]*this->spinfactor_[this->target(*bi)]*bond_energy(spins_[this->source(*bi)],
-            spins_[this->target(*bi)],this->couplings_[*bi]);
-    en -= be;
+    const auto source=this->source(*bi),target=this->target(*bi);
+    const double factor=this->spinfactor_[source]*this->spinfactor_[target];
+    double be;
+    if(source==target) {
+      const auto parts=self_bond_energy_parts(spins_[source],this->couplings_[*bi]);
+      en-=factor*parts.first;constant_energy-=factor*parts.second;
+      be=factor*(parts.first+parts.second);
+    } else {
+      be=factor*bond_energy(spins_[source],spins_[target],this->couplings_[*bi]);
+      en-=be;
+    }
     bt_energy[bt] -= be;
     bt_count[bt]++;
   }
@@ -223,8 +231,10 @@ void SpinSim<M,MAT>::do_measurements(update_info_type update_info)
   typename M::magnetization_type mst= spins_[*si].magnetization();
   mst *= this->spinfactor_[*si];
   double m_h = 0.;
-  if (this->general_case_)
-      en+=onsite_energy(spins_[*si],this->selfinteraction_[*si]);
+  if (this->general_case_) {
+    const auto parts=onsite_energy_parts(spins_[*si],this->selfinteraction_[*si]);
+    en+=parts.first;constant_energy+=parts.second;
+  }
   if (this->has_magnetic_field_) 
     // use normed h_ - vector to allow faster computation
     m_h = this->spinfactor_[*si]*spins_[*si].mag_h(this->h_normalized);
@@ -239,8 +249,10 @@ void SpinSim<M,MAT>::do_measurements(update_info_type update_info)
     if (this->has_magnetic_field_) 
       en+=this->spinfactor_[*si]*site_energy(spins_[*si],this->h_)*this->g_;
       
-    if (this->general_case_)
-      en+=onsite_energy(spins_[*si],this->selfinteraction_[*si]);
+    if (this->general_case_) {
+      const auto parts=onsite_energy_parts(spins_[*si],this->selfinteraction_[*si]);
+      en+=parts.first;constant_energy+=parts.second;
+    }
     
     m+=this->spinfactor_[*si]*spins_[*si].magnetization();
     if (this->has_magnetic_field_) 
@@ -250,6 +262,7 @@ void SpinSim<M,MAT>::do_measurements(update_info_type update_info)
       mst+=par*this->parity(*si)*this->spinfactor_[*si]*spins_[*si].magnetization();
   }
   
+  en+=constant_energy;
   std::valarray<double> bt_en(bt_energy.size());
   std::valarray<double> bt_en_density(bt_energy.size());
   for (int i=0;i<bt_energy.size();++i) {
@@ -322,7 +335,7 @@ template <class M>
 void SpinSim<M,MIdMatrix<double,M::dim> >::do_measurements(update_info_type update_info)
 {
   typedef AbstractSpinSim<MIdMatrix<double,M::dim> > parent;
-  double en=0.0;
+  double en=0.0, constant_energy=0.0;
   typename parent::bond_iterator bi;
   bi = (this->bonds()).first;
   std::vector<double> bt_energy;
@@ -333,10 +346,17 @@ void SpinSim<M,MIdMatrix<double,M::dim> >::do_measurements(update_info_type upda
       bt_energy.resize(bt+1);
       bt_count.resize(bt+1);
     }
-    double be = this->spinfactor_[this->source(*bi)]*this->spinfactor_[this->target(*bi)]*bond_energy(spins_[this->source(*bi)],spins_[this->target(*bi)],
-        this->couplings_[*bi]);
-
-    en -= be;
+    const auto source=this->source(*bi),target=this->target(*bi);
+    const double factor=this->spinfactor_[source]*this->spinfactor_[target];
+    double be;
+    if(source==target) {
+      const auto parts=self_bond_energy_parts(spins_[source],this->couplings_[*bi]);
+      en-=factor*parts.first;constant_energy-=factor*parts.second;
+      be=factor*(parts.first+parts.second);
+    } else {
+      be=factor*bond_energy(spins_[source],spins_[target],this->couplings_[*bi]);
+      en-=be;
+    }
     bt_energy[bt] -= be;
     bt_count[bt]++;
 
@@ -356,6 +376,12 @@ void SpinSim<M,MIdMatrix<double,M::dim> >::do_measurements(update_info_type upda
   typename M::magnetization_type mst= spins_[*si].magnetization();
   mst *= this->spinfactor_[*si];
   double m_h = 0.;
+  // The isotropic specialization must include the first site's onsite term,
+  // as the generic matrix path does. This changes affected legacy energies.
+  if (this->general_case_) {
+    const auto parts=onsite_energy_parts(spins_[*si],this->selfinteraction_[*si]);
+    en+=parts.first;constant_energy+=parts.second;
+  }
   if (this->has_magnetic_field_) 
       {
         m_h = this->spinfactor_[*si]*spins_[*si].mag_h(this->h_normalized);
@@ -367,8 +393,10 @@ void SpinSim<M,MIdMatrix<double,M::dim> >::do_measurements(update_info_type upda
   for (; si !=this->sites().second ; ++si) {
     if (this->has_magnetic_field_) 
       en+=this->spinfactor_[*si]*site_energy(spins_[*si],this->h_)*this->g_;
-    if (this->general_case_)
-      en+=onsite_energy(spins_[*si],this->selfinteraction_[*si]);
+    if (this->general_case_) {
+      const auto parts=onsite_energy_parts(spins_[*si],this->selfinteraction_[*si]);
+      en+=parts.first;constant_energy+=parts.second;
+    }
     
     m+=this->spinfactor_[*si]*spins_[*si].magnetization();
     if (this->has_magnetic_field_) 
@@ -377,6 +405,7 @@ void SpinSim<M,MIdMatrix<double,M::dim> >::do_measurements(update_info_type upda
       mst+=par*this->parity(*si)*this->spinfactor_[*si]*spins_[*si].magnetization();
   }
 
+  en+=constant_energy;
   std::valarray<double> bt_en(bt_energy.size());
   std::valarray<double> bt_en_density(bt_energy.size());
   for (int i=0;i<bt_energy.size();++i) {

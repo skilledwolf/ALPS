@@ -18,6 +18,7 @@
 #include "tinyvec.h"
 #include "matrices.h"
 #include <iostream>
+#include <utility>
 
 class IsingMoment {
   public:
@@ -71,6 +72,12 @@ inline double site_energy_change(IsingMoment m, TinyVector<double,1>& h,
                          IsingMoment::update_type) 
 { return m.magnetization()==1. ? 2.*h[0] : -2.*h[0]; }
 
+inline std::pair<double,double> onsite_energy_parts(IsingMoment,const MIdMatrix<double,1>& D) {
+  return {0.,D.getElement_nc(0,0)};
+}
+inline std::pair<double,double> self_bond_energy_parts(IsingMoment,const MIdMatrix<double,1>& J) {
+  return {0.,-J.getElement_nc(0,0)};
+}
 inline double onsite_energy(IsingMoment, MIdMatrix<double,1>& D) {
   return D.getElement_nc(0,0);
 }

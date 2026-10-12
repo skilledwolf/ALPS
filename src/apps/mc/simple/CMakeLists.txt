@@ -36,3 +36,10 @@ alps_add_test(
   TARGET simplemc
   INPUT heisenberg
   OUTPUT heisenberg)
+
+if(ALPS_BUILD_TESTING)
+  add_executable(simplemc_legacy_self_loops tests/legacy_self_loops.cpp)
+  target_include_directories(simplemc_legacy_self_loops PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+  target_link_libraries(simplemc_legacy_self_loops PRIVATE ALPS::alps)
+  alps_add_gtest(simplemc_legacy_self_loops COMPONENT applications LABELS regression scientific)
+endif()

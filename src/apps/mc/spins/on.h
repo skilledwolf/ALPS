@@ -385,7 +385,13 @@ inline double onsite_energy_change(const ONMoment<N> m,
   lhs *= 2.0;
   lhs -= tmp;
   
-  double res = D.vec_mat_vec(tmp,lhs);
+  // The isotropic component is constant on the physical unit sphere.
+  // Remove it BEFORE contraction, so a huge constant cannot amplify tiny
+  // floating norm/reflection errors into a fictitious acceptance action.
+  const double constant = D.getElement_nc(0,0);
+  double res = 0.;
+  for(int i=0;i<N;++i) for(int j=0;j<N;++j)
+    res += tmp[i]*(D.getElement_nc(i,j)-(i==j?constant:0.))*lhs[j];
   return res;
 }
 
@@ -398,7 +404,11 @@ inline double onsite_energy_change(const ONMoment<N> m,
   TinyVector<double,N> lhs = m.state_;
   lhs *= 2.0;
   lhs -= tmp;
-  return D.vec_mat_vec(tmp,lhs);
+  const double constant = D.getElement_nc(0,0);
+  double res = 0.;
+  for(int i=0;i<N;++i)
+    res += tmp[i]*(D.getElement_nc(i,i)-constant)*lhs[i];
+  return res;
 }
 
 template <int N>
@@ -407,19 +417,42 @@ inline double onsite_energy_change(const ONMoment<N>,
                typename ONMoment<N>::update_type)
 {  return 0.0; }
 
-// If D is a multiple of the identity matrix, the onsite_energy is the 
-// determinant of the matrix, as the spins always have length 1.
+// The O(N) onsite Hamiltonian is -sᵀDs. For D=dI and a unit
+// moment this is -d, independent of its orientation and dimension.
+// These parts are a bespoke stable adaptation over the retained fixed-norm
+// kernels: variable energy is accumulated before adding known constants.
+template <class M>
+inline std::pair<double,double> onsite_energy_parts(const ONMoment<M::dim>& m,const M& D) {
+  // MIdMatrix's historical unchecked accessor returns its scalar even for
+  // offdiagonal indices; use the mathematical identity-matrix accessor.
+  const double constant = D.getElement(0,0);
+  double variable = 0.;
+  for(int i=0;i<M::dim;++i) for(int j=0;j<M::dim;++j)
+    variable -= m.state_[i]*(D.getElement(i,j)-(i==j?constant:0.))*m.state_[j];
+  return {variable,-constant};
+}
+template <class M>
+inline std::pair<double,double> self_bond_energy_parts(const ONMoment<M::dim>& m,const M& J) {
+  const double constant=J.getElement(0,0);
+  double variable=0.;
+  for(int i=0;i<M::dim;++i) for(int j=0;j<M::dim;++j) {
+    // Antisymmetric self-bond entries cancel analytically before multiplication.
+    const double value=.5*J.getElement(i,j)+.5*J.getElement(j,i);
+    variable-=m.state_[i]*(value-(i==j?constant:0.))*m.state_[j];
+  }
+  return {variable,-constant};
+}
 template <int N>
 inline double onsite_energy(const ONMoment<N> m, SquareMatrix<double,N>& D)
-{ return -D.vec_mat_vec(m.state_); }
+{ const auto parts=onsite_energy_parts(m,D); return parts.first+parts.second; }
 
 template <int N>
 inline double onsite_energy(const ONMoment<N> m, DiagMatrix<double,N>& D) 
-{ return -D.vec_mat_vec(m.state_); }
+{ const auto parts=onsite_energy_parts(m,D); return parts.first+parts.second; }
 
 template <int N>
-inline double onsite_energy(const ONMoment<N>, MIdMatrix<double,N>&)
-{ return -1.0; }
+inline double onsite_energy(const ONMoment<N>, MIdMatrix<double,N>& D)
+{ return -D.getElement_nc(0,0); }
 
 // O(3) models are often referred to by common name Heisenberg
 typedef ONMoment<3> HeisenbergMoment;

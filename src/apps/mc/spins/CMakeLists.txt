@@ -25,3 +25,12 @@ add_executable(spinmc_evaluate spinmc_evaluate.C)
 target_link_libraries(spinmc PRIVATE spinmc_impl)
 target_link_libraries(spinmc_evaluate PRIVATE spinmc_impl)
 alps_install_applications(spinmc spinmc_evaluate)
+
+if(ALPS_BUILD_TESTING)
+  add_executable(spinmc_scientific_corrections tests/scientific_corrections.cpp)
+  target_include_directories(spinmc_scientific_corrections PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+  target_compile_definitions(spinmc_scientific_corrections PRIVATE
+    ALPS_SPINMC_LATTICES="${PROJECT_SOURCE_DIR}/src/alps/resources/lattices.xml")
+  target_link_libraries(spinmc_scientific_corrections PRIVATE spinmc_impl)
+  alps_add_gtest(spinmc_scientific_corrections COMPONENT applications LABELS regression scientific TIMEOUT 180)
+endif()
