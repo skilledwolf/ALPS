@@ -311,8 +311,6 @@ protected:
   
   simple_hist pert_hist;
   unsigned int hist_max_index;
-  simple_hist **vertex_histograms;
-  unsigned int vertex_histogram_size;
   
   unsigned long step;        
   time_t start_time;

@@ -62,7 +62,9 @@ inline twocomplex fastcmult(const twocomplex &a, const twocomplex &b)
 
 void InteractionExpansion::compute_W_matsubara()
 {
-  static std::vector<std::vector<std::valarray<std::complex<double> > > >Wk(n_flavors); 
+  // Run-local scratch follows ALPS reconciliation 90a36c0d4c64ee7308dcb0651264197ffdf36449,
+  // interaction_expansion2/selfenergy.cpp; sizes must follow each simulation.
+  std::vector<std::vector<std::valarray<std::complex<double> > > >Wk(n_flavors);
   for(unsigned int z=0;z<n_flavors;++z){
     Wk[z].resize(n_site);
     for(unsigned int j=0;j<n_site;++j){
@@ -193,7 +195,8 @@ void InteractionExpansion::measure_densities()
 
 void InteractionExpansion::compute_W_itime()
 {
-  static std::vector<std::vector<std::vector<std::valarray<double> > > >W_z_i_j(n_flavors); 
+  // Run-local scratch, as in the pinned reconciliation source cited above.
+  std::vector<std::vector<std::vector<std::valarray<double> > > >W_z_i_j(n_flavors);
   //first index: flavor. Second index: momentum. Third index: self energy tau point.
   std::vector<std::vector<double> >density(n_flavors);
   for(unsigned int z=0;z<n_flavors;++z){
@@ -331,7 +334,7 @@ void evaluate_selfenergy_measurement_itime_rs(const alps::results_type<HubbardIn
 {
   std::cout<<"evaluating self energy measurement: itime, real space."<<std::endl;
   clock_t time0=clock();
-  std::vector<std::vector<std::vector<std::vector<double> > > >W_z_i_j(n_flavors); 
+  std::vector<std::vector<std::vector<std::vector<double> > > >W_z_i_j(n_flavors);
   //first index: flavor. Second index: momentum. Third index: self energy tau point.
   double max_error = 0.;
   for(int z=0;z<n_flavors;++z){

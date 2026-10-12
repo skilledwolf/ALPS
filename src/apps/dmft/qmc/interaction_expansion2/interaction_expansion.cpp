@@ -27,8 +27,8 @@ frequency_t c_or_cdagger::nm_;
 bool c_or_cdagger::use_static_exp_;
 unsigned int c_or_cdagger::ntau_;
 double c_or_cdagger::beta_;
-double *c_or_cdagger::omegan_;
-std::complex<double> *c_or_cdagger::exp_iomegan_tau_;
+std::vector<double> c_or_cdagger::omegan_;
+std::vector<std::complex<double>> c_or_cdagger::exp_iomegan_tau_;
 
 
 InteractionExpansion::InteractionExpansion(const alps::params &parms, int node)
@@ -88,11 +88,6 @@ pert_hist(max_order)
   //initialize the simulation variables
   initialize_simulation(parms);
   if(node==0) {print(std::cout);}
-  vertex_histograms=new simple_hist *[n_flavors*n_flavors];
-  vertex_histogram_size=100;
-  for(unsigned int i=0;i<n_flavors*n_flavors;++i){
-    vertex_histograms[i]=new simple_hist(vertex_histogram_size);
-  }
   c_or_cdagger::initialize_simulation(parms);
   
   if(n_site !=1) throw std::invalid_argument("you're trying to run this code for more than one site. Do you know what you're doing?!?");
@@ -151,23 +146,27 @@ void InteractionExpansion::initialize_simulation(const alps::params &parms)
 void c_or_cdagger::initialize_simulation(const alps::params &p)
 {
   beta_=p["BETA"];
-  nm_=p["NMATSUBARA_MEASUREMENTS"] | (p["NMATSUBARA"]|p["N_MATSUBARA"]);
-  omegan_ = new double[nm_];
+  // Adapted owning reinitialization from ALPS reconciliation
+  // 90a36c0d4c64ee7308dcb0651264197ffdf36449, interaction_expansion2/interaction_expansion.cpp.
+  // Operators compute all frequencies even when only a prefix is measured.
+  // The former measured-prefix allocation was read past its end in compute_exp.
+  nm_=p["NMATSUBARA"]|p["N_MATSUBARA"];
+  omegan_.resize(nm_);
+  exp_iomegan_tau_.clear();
   for(unsigned int i=0;i<nm_;++i) {
     omegan_[i]=(2.*i+1.)*boost::math::constants::pi<double>()/beta_;
   }
   if(p.defined("TAU_DISCRETIZATION_FOR_EXP")) {
     ntau_=p["TAU_DISCRETIZATION_FOR_EXP"];
     use_static_exp_=true;
-    exp_iomegan_tau_=new std::complex<double> [2*nm_*ntau_];
-    if(exp_iomegan_tau_==0){throw std::runtime_error("not enough memory for computing exp!"); }
+    exp_iomegan_tau_.resize(std::size_t(2)*nm_*ntau_);
     std::cout<<"starting computation of exp values for measurement"<<std::endl;
     for(unsigned int i=0;i<ntau_;++i){
       double tau=i*beta_/(double)ntau_;
       for(unsigned int o=0;o<nm_;++o)
-        exp_iomegan_tau_[2*nm_*i + o] = std::complex<double>(cos(omegan_[o]*tau), sin(omegan_[o]*tau));
+        exp_iomegan_tau_[std::size_t(2)*nm_*i + o] = std::complex<double>(cos(omegan_[o]*tau), sin(omegan_[o]*tau));
       for(unsigned int o=0;o<nm_;++o)
-        exp_iomegan_tau_[2*nm_*i + nm_ + o] = std::complex<double>(cos(omegan_[o]*tau), -sin(omegan_[o]*tau));
+        exp_iomegan_tau_[std::size_t(2)*nm_*i + nm_ + o] = std::complex<double>(cos(omegan_[o]*tau), -sin(omegan_[o]*tau));
     }
     std::cout<<"done exp computation."<<std::endl;
   } else {

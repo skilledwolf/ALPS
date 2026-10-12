@@ -48,6 +48,20 @@ alps::params parameters(const std::string& input, double beta, bool atomic) {
   if (atomic) p["ATOMIC"]=true;
   return p;
 }
+
+class FrequencyProbe : public HubbardInteractionExpansion {
+public:
+  using HubbardInteractionExpansion::HubbardInteractionExpansion;
+  void measure_one_vertex() {
+    // At U=4 and beta=2 the first-vertex proposal weight is +2.0808,
+    // independent of time or symmetrized alpha: -beta*U*(-.51)*(.51).
+    const double proposal=try_add();
+    EXPECT_NEAR(proposal,2.0808,1.e-12);
+    perform_add();
+    sign=proposal<0 ? -1. : 1.;
+    measure_observables();
+  }
+};
 }
 
 TEST(CtintAtomicOracle, OccupationsAndGreenFunctionsMatchTheFreeAtom) {
@@ -172,4 +186,50 @@ TEST(CtintAtomicOracle, MeasurementBlocksThatCrossWarmupCountTheFinalConfigurati
   simulation.update(); simulation.measure(); // step=9: requested work completed
   EXPECT_EQ(simulation.collect_results()["Sign"].count(),2);
   EXPECT_DOUBLE_EQ(simulation.fraction_completed(),1.);
+}
+
+TEST(CtintAtomicOracle, FrequencyTablesIncludeUnmeasuredFrequenciesAndReinitialize) {
+  // The independent phase oracle covers table reads beyond the measured prefix,
+  // both cached and continuous time, and sequential changes in table dimensions.
+  for (bool cached : {false,true,false}) {
+    for (unsigned frequencies : {4u,14u,6u}) {
+      SCOPED_TRACE(cached);
+      SCOPED_TRACE(frequencies);
+      auto p=parameters("unused",2.,true);
+      p["NMATSUBARA"]=static_cast<int>(frequencies);
+      p["NMATSUBARA_MEASUREMENTS"]=2;
+      if (cached) p["TAU_DISCRETIZATION_FOR_EXP"]=16;
+      c_or_cdagger::initialize_simulation(p);
+      for (int sign : {-1,1}) {
+        creator op(0,0,.625,frequencies); // Exactly five cells on this tau grid.
+        op.compute_exp(frequencies,sign);
+        for (unsigned w=0; w<frequencies; ++w) {
+          const double phase=(2.*w+1.)*std::acos(-1.)*.625/2.;
+          const std::complex<double> expected(std::cos(phase),sign*std::sin(phase));
+          EXPECT_NEAR(std::abs(op.exp_iomegat()[w]-expected),0.,1.e-12);
+        }
+      }
+    }
+  }
+}
+
+TEST(CtintAtomicOracle, MeasuredPrefixWorksWithProductionVertexAndChangedExtents) {
+  for (int frequencies : {4,14,6}) {
+    SCOPED_TRACE(frequencies);
+    auto p=parameters("unused",2.,true);
+    p["U"]=4.; p["NMATSUBARA"]=frequencies;
+    p["NMATSUBARA_MEASUREMENTS"]=2;
+    FrequencyProbe simulation(p,0);
+    simulation.measure_one_vertex();
+    const auto results=simulation.collect_results();
+    EXPECT_EQ(results["Sign"].count(),1);
+    for (int flavor=0; flavor<2; ++flavor)
+      for (const auto* prefix : {"Wk_real_","Wk_imag_"}) {
+        const auto& result=results[std::string(prefix)+std::to_string(flavor)+"_0_0"];
+        EXPECT_EQ(result.count(),1);
+        const auto values=result.mean<std::vector<double>>();
+        ASSERT_EQ(values.size(),2);
+        for (double value : values) EXPECT_TRUE(std::isfinite(value));
+      }
+  }
 }

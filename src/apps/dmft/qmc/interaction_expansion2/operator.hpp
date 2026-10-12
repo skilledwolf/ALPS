@@ -100,14 +100,14 @@ public:
   static const std::complex<double> *exp_iomegan_tau(const double &tau) 
   {
     int taun=(int)(tau*ntau_/beta_); 
-    return &(exp_iomegan_tau_[taun*2*nm_]);
+    return &(exp_iomegan_tau_[std::size_t(taun)*2*nm_]);
   }
   
 
   static const std::complex<double> *exp_min_iomegan_tau(const double &tau) 
   {
     int taun=(int)(tau*ntau_/beta_);
-    return &(exp_iomegan_tau_[taun*2*nm_ + nm_]);
+    return &(exp_iomegan_tau_[std::size_t(taun)*2*nm_ + nm_]);
   }
   
   
@@ -122,8 +122,11 @@ private:
   static bool use_static_exp_; //do we compute the exps once only or for each time slice?
   static unsigned int ntau_;
   static double beta_;
-  static double *omegan_;
-  static std::complex<double> *exp_iomegan_tau_;//huge field with exp(i omega_n tau) for discretized taus.
+  // Owning frequency tables adapted from ALPS reconciliation
+  // 90a36c0d4c64ee7308dcb0651264197ffdf36449, interaction_expansion2/operator.hpp.
+  // Still process-global: live simulations must not be interleaved.
+  static std::vector<double> omegan_;
+  static std::vector<std::complex<double>> exp_iomegan_tau_;
 
 
 
@@ -141,7 +144,7 @@ public:
         int one=1;
         double arg_array[n_matsubara];
         int nm=n_matsubara;
-        memcpy(arg_array, omegan_, n_matsubara*sizeof(double));
+        memcpy(arg_array, omegan_.data(), n_matsubara*sizeof(double));
         dscal_(&n_matsubara, &t_, arg_array, &one);
         vrda_sincos_(&nm, arg_array, sin_array, cos_array);
 #else 
@@ -150,7 +153,7 @@ public:
         int one=1;
         double arg_array = new double[n_matsubara];
         int nm=n_matsubara;
-        memcpy(arg_array, omegan_, n_matsubara*sizeof(double));
+        memcpy(arg_array, omegan_.data(), n_matsubara*sizeof(double));
         dscal_(&n_matsubara, &t_, arg_array, &one);
         vdsincos_(&nm, arg_array, sin_array, cos_array);
         delete [] arg_array;
@@ -173,9 +176,9 @@ public:
       int taun=(int)(t_*ntau_/beta_);
       assert(taun<ntau_);
       if(sign==1) 
-        exp_iomegat_=&(exp_iomegan_tau_[taun*2*nm_]);
+        exp_iomegat_=&(exp_iomegan_tau_[std::size_t(taun)*2*nm_]);
       else
-        exp_iomegat_=&(exp_iomegan_tau_[taun*2*nm_ + nm_]);
+        exp_iomegat_=&(exp_iomegan_tau_[std::size_t(taun)*2*nm_ + nm_]);
     }
 
 
@@ -184,4 +187,3 @@ public:
 } creator, annihilator;
 
 #endif
-
