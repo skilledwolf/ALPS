@@ -6,6 +6,8 @@ User-facing changes and migration notes are recorded here, starting with the bui
 
 ### Fixed
 
+- Restore archive context after serializer exceptions, resolve exact path segments, and preserve literal escapes. Replace saved collections including empty maps/parameters/observables, preserve unrelated attributes, validate owned children before deletion, and leave maps unchanged when loading fails.
+
 - Validate HDF5 transfer selections and sequence shapes before reading or replacing stored data; handle empty and Boolean sequences consistently and release string buffers and attribute handles after failed conversions.
 
 - Accept positional plot/simulation files and standalone `--version` in the archive tool, and parse paired `CONSTRAINT` tags correctly.

@@ -31,6 +31,8 @@ foreach(
   hdf5_multi_array
   hdf5_memory
   hdf5_misc
+  hdf5_paths
+  hdf5_map
   hdf5_read
   hdf5_write
   hdf5_sequence

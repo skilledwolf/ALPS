@@ -12,6 +12,7 @@
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
 #include <alps/ngs/params.hpp>
+#include <alps/hdf5/detail/collection.hpp>
 
 #include <boost/bind/bind.hpp>
 using namespace boost::placeholders;
@@ -80,13 +81,32 @@ namespace alps {
     }
 
     void params::save(hdf5::archive & ar) const {
+        // Apply the owned-children replacement contract of ALPS reconciliation
+        // 81e7ad00d (alea/src/ngs/mcresults.cpp) to existing NGS parameters.
+        // Preflight flat names before removing any previously stored entries.
+        for (auto const & entry : *this) {
+            auto const & key = entry.first;
+            auto const expected = ar.get_context() + (ar.get_context() == "/" ? "" : "/") + key;
+            if (key.empty() || key == "." || key == ".." || key.find('/') != std::string::npos
+                || key.find('@') != std::string::npos || key.find('\0') != std::string::npos
+                || ar.complete_path(key) != expected)
+                throw std::invalid_argument("parameter name is not a flat archive key: " + key);
+        }
+        const auto root = ar.get_context();
+        const auto children = hdf5::detail::preflight_collection_replace(ar, root);
+        ar.create_group(root);
+        for (auto const & child : children) {
+            const auto path = hdf5::detail::collection_child_path(root, child);
+            if (ar.is_group(path)) ar.delete_group(path);
+            else ar.delete_data(path);
+        }
         for (params::const_iterator it = begin(); it != end(); ++it)
             ar[it->first] << it->second;
     }
 
     void params::load(hdf5::archive & ar) {
         params loaded;
-        std::vector<std::string> list = ar.list_children(ar.get_context());
+        std::vector<std::string> list = hdf5::detail::collection_children(ar, ar.get_context());
         for (std::vector<std::string>::const_iterator it = list.begin(); it != list.end(); ++it) {
             detail::paramvalue value;
             if (value_reader_) {

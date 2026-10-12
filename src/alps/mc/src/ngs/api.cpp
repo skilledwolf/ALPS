@@ -20,11 +20,15 @@ namespace alps {
 
     namespace detail {
         template<typename R, typename P> void save_results_impl(R const & results, P const & params, boost::filesystem::path const & filename, std::string const & path) {
-            if (results.size()) {
-                hdf5::archive ar(filename.string(), "w");
-                ar["/parameters"] << params;
-                ar[path] << results;
-            }
+            // Adapted from ALPS reconciliation 81e7ad00d, ngs/api.cpp.
+            // An empty result set replaces its group too; unrelated groups stay.
+            hdf5::archive ar(filename.string(), "a");
+            auto const target = ar.complete_path(path);
+            if (target == "/" || target == "/parameters" || target.compare(0, 12, "/parameters/") == 0)
+                throw hdf5::invalid_path("result path overlaps the parameters group: " + target);
+            ar["/parameters"] << params;
+            ar[target] << results;
+            ar.close();
         }
     }
 
