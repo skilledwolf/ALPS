@@ -1,5 +1,6 @@
 // Copyright (C) 2026 ALPS Collaboration. SPDX-License-Identifier: MIT
 // Reconciliation 93c26bace/cb58b2745 regressions adapted to original SpinSim.
+#include "factory.h"
 #include "spinsim.h"
 #include <alps/testing/temporary_directory.hpp>
 #include <gtest/gtest.h>
@@ -27,7 +28,7 @@ template<int N> void sign_policy() {
 template<int N> void staggered_identity() {
     for(double j:{-.6,.6}) {
         auto p=parameters();p["J"]=j;p["UPDATE"]="cluster";
-        probe<N> run(p);run.start_worker();run.run();
+        probe<N> run(p);run.start_worker();run.run();run.run();
         const auto& obs=run.get_measurements();
         const auto moment=alps::RealObsevaluator(obs["|Magnetization|"]);
         const auto staggered=alps::RealObsevaluator(obs["Staggered Magnetization^2"]);
