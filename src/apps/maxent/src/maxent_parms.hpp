@@ -22,6 +22,7 @@
 #include <complex>
 #include <utility>
 #include "default_model.hpp"
+#include "data.hpp"
 
 
 class ContiParameters {
@@ -34,6 +35,7 @@ public:
   typedef std::pair<vector_type, complex_vector_type> omega_complex_type;
 
   ContiParameters(const alps::params& p);
+  ContiParameters(const alps::params& p, const alps::maxent::data& data);
   
   const DefaultModel& Default() const { return *Default_; }  
   double y(const int i) const { return y_[i]; }
@@ -59,6 +61,7 @@ protected:
   vector_type y_,sigma_,x_;
   matrix_type K_,cov_;
   vector_type t_array_;
+  std::vector<double> tau_;
 };
 
 
