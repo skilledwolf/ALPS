@@ -43,6 +43,36 @@ double spinmc_coupling_character(const MIdMatrix<T, N> &coupling) {
   return coupling.getElement(0, 0);
 }
 
+// Zero-strength edges impose no sign constraint. Treating them as negative
+// DFS tree edges can falsely classify a graph with an open nonzero path as
+// frustrated. Check the actual positive-ferro/negative-AF constraint graph.
+template<class Graph,class Signs>
+bool spinmc_cluster_frustrated(const Graph &graph,const Signs &signs) {
+  using vertex=typename boost::graph_traits<Graph>::vertex_descriptor;
+  std::vector<int> colors(boost::num_vertices(graph),0);
+  const auto indices=boost::get(boost::vertex_index,graph);
+  const auto vertices=boost::vertices(graph);
+  std::vector<vertex> pending;
+  for(auto first=vertices.first;first!=vertices.second;++first) {
+    if(colors.at(boost::get(indices,*first))) continue;
+    colors.at(boost::get(indices,*first))=1; pending.push_back(*first);
+    while(!pending.empty()) {
+      const auto current=pending.back(); pending.pop_back();
+      const auto edges=boost::out_edges(current,graph);
+      for(auto edge=edges.first;edge!=edges.second;++edge) {
+        const double sign=signs[*edge];
+        if(sign==0.) continue;
+        const auto neighbor=boost::target(*edge,graph);
+        const int expected=colors.at(boost::get(indices,current))*(sign>0.?1:-1);
+        auto &actual=colors.at(boost::get(indices,neighbor));
+        if(!actual) {actual=expected; pending.push_back(neighbor);}
+        else if(actual!=expected) return true;
+      }
+    }
+  }
+  return false;
+}
+
 template<class MAT>
 class AbstractSpinSim : public alps::scheduler::LatticeMCRun<> {
 public : 
@@ -215,7 +245,27 @@ AbstractSpinSim<MAT>::AbstractSpinSim(const alps::ProcessList& w,
     }
   }
 
+  // Frustration concerns distinct endpoints. Isotropic self-bonds are constant
+  // on the unit sphere (and Potts colors), so impose no cluster constraint.
+  // The former bond-type sign map cannot distinguish a self-bond and a regular
+  // bond of the same type; this edge-index map represents the actual graph.
+  auto edge_indices=boost::get(boost::edge_index,graph());
+  boost::vector_property_map<double,decltype(edge_indices)> cluster_signs(edge_indices);
+  ferromagnetic_=antiferromagnetic_=true;
+  for(auto bond=bonds().first;bond!=bonds().second;++bond) {
+    if(source(*bond)==target(*bond)) {cluster_signs[*bond]=0.; continue;}
+    const double character=spinmc_coupling_character(couplings_[*bond])
+        *spinfactor_[source(*bond)]*spinfactor_[target(*bond)];
+    cluster_signs[*bond]=-character;
+    if(character>0.) ferromagnetic_=false;
+    if(character<0.) antiferromagnetic_=false;
+  }
+  const bool cluster_legal=!has_magnetic_field_ && MAT::allow_cluster_update
+      && !spinmc_cluster_frustrated(graph(),cluster_signs)
+      && (parms["MODEL"]!="Potts" || ferromagnetic_);
   if (parms["UPDATE"]=="cluster") {
+    if(!cluster_legal)
+      boost::throw_exception(std::runtime_error("Cluster updates require zero field, isotropic matrices and unfrustrated distinct-endpoint bonds; Potts requires ferromagnetic bonds"));
     if (MAT::allow_cluster_update)
       cluster_updates_=true;
     else {
@@ -231,7 +281,7 @@ AbstractSpinSim<MAT>::AbstractSpinSim(const alps::ProcessList& w,
   else if (parms["UPDATE"]=="local")
     cluster_updates_=false;
   else if (parms["UPDATE"]=="")
-    cluster_updates_ = !alps::is_frustrated(graph(),couplings_det);
+    cluster_updates_ = cluster_legal;
   else
     boost::throw_exception(std::runtime_error("Illegal update type " + std::string(parms["UPDATE"])));
 
