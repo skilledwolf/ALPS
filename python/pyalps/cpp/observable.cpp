@@ -58,10 +58,9 @@ namespace alps {
             }
         }
         void observable_load(alps::mcobservable & self, alps::hdf5::archive & ar, std::string const & path) {
-            std::string current = ar.get_context();
-            ar.set_context(path);
-            self.load(ar);
-            ar.set_context(current);
+            alps::hdf5::archive input(ar);
+            input.set_context(path);
+            self.load(input);
         }
         // Construct the underlying alea observable inside libalps rather than
         // in this translation unit.
