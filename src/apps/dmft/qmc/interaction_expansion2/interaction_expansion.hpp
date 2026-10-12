@@ -368,11 +368,7 @@ public:
 //Use this for multiple bands where you have terms Un_i n_j
 class MultiBandDensityHubbardInteractionExpansion: public InteractionExpansion{
 public:
-  MultiBandDensityHubbardInteractionExpansion(const alps::params& p, int rank)
-    :InteractionExpansion(p, rank)
-  {
-    if(n_site !=1){throw std::invalid_argument("you need a different model for n_site!=1.");}
-  }
+  MultiBandDensityHubbardInteractionExpansion(const alps::params& p, int rank);
   
   double try_add();
   void perform_add();
@@ -380,6 +376,9 @@ public:
   double try_remove(unsigned int vertex_nr);
   void perform_remove(unsigned int vertex_nr);
   void reject_remove();
+protected:
+  std::vector<std::pair<spin_t,spin_t>> interaction_pairs_;
+  std::pair<spin_t,spin_t> pair_at(double uniform_draw) const;
 };
 
 #endif
