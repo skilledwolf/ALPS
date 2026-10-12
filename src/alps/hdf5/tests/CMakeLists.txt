@@ -31,6 +31,9 @@ foreach(
   hdf5_multi_array
   hdf5_memory
   hdf5_misc
+  hdf5_read
+  hdf5_write
+  hdf5_sequence
   hdf5_vecveccplx
   hdf5_exceptions
   hdf5_multiarchive
