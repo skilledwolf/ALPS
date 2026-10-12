@@ -13,6 +13,9 @@
 /* $Id$ */
 
 #include "WRun.h"
+#include <map>
+#include <cmath>
+#include <stdexcept>
 
 void WRun::create_observables()
 {
@@ -21,6 +24,8 @@ void WRun::create_observables()
   measurements << alps::RealVectorObservable("Statistics");
   measurements << alps::make_observable(alps::RealVectorObservable("Winding number^2"), is_signed_);
 
+  if (use_1D_stiffness && dimension() != 1)
+    throw std::invalid_argument("USE_1D_STIFFNESS requires one spatial dimension");
   if(use_1D_stiffness){   //@#$br: take care of D=1 ---> need a histogram of the winding numbers
      measurements << alps::make_observable(alps::RealVectorObservable("Winding number histogram"), is_signed_); 
   }
@@ -45,12 +50,23 @@ void WRun::create_observables()
     measurements << alps::make_observable(alps::RealVectorObservable("Chain density"), is_signed_);
     measurements << alps::make_observable(alps::RealVectorObservable("Chain density^2"), is_signed_);
     if (!where.empty()) {
-      for (boost::tie(it,end)=sites();it!=end;++it) 
-        if (coordinate(*it).size()>=2) {
-          chain_number[*it]=int(coordinate(*it)[1]);
-          if (coordinate(*it)[1]>=num_chains)
-            num_chains=int(coordinate(*it)[1]+1);
-        }
+      // Coordinate labels identify chains; each chain uses its actual site
+      // count, including unequal chains. Never narrow a coordinate to int.
+      std::map<double, unsigned> labels;
+      for (boost::tie(it,end)=sites();it!=end;++it) {
+        const auto& position = coordinate(*it);
+        if (position.size() < 2 || !std::isfinite(position[1]))
+          throw std::invalid_argument("CHAIN_KAPPA requires finite second site coordinates");
+        labels.emplace(position[1], 0);
+      }
+      for (auto& label : labels) {
+        label.second = chain_labels.size(); chain_labels.push_back(label.first);
+      }
+      num_chains = chain_labels.size(); chain_sizes.assign(num_chains, 0);
+      for (boost::tie(it,end)=sites();it!=end;++it) {
+        const auto chain = labels.at(coordinate(*it)[1]);
+        chain_number[*it] = chain; ++chain_sizes[chain];
+      }
     }
   }
 }
@@ -150,6 +166,7 @@ void WRun::make_meas()
 
   std::vector<int> bond_dir(dimension());
   std::valarray<double> winding_number(0., dimension());
+  std::vector<double> boundary_winding(dimension(), 0.);
   for(boost::tie(bi, bi_end) = bonds(); bi != bi_end; ++bi) {
     int s1 = source(*bi);
     int s2 = target(*bi);
@@ -158,29 +175,26 @@ void WRun::make_meas()
     for(int d=0; d<dimension(); ++d)
       bond_dir[d] = boundary_crossing[*bi].crosses(d);
     
-    cyclic_iterator i1 = first_kink(s1);
-    cyclic_iterator i2 = first_kink(s2);
-    if (i1.valid() && i2.valid()) {
-      while(true) {
-        if (i1->time() == i2->time()) {
-          int hop_dir = (i1->state() > (i1-1)->state() ? -1 : 1);
-          for(int d=0; d<dimension(); ++d) {
-            winding_number[d]+=hop_dir*v[d];
-          }
+    // Distinct worldline events can share a floating time. Only the linked
+    // pair with the same nonzero identifier represents a hop on this bond.
+    std::map<unsigned, const kink_type*> target_kinks;
+    for (const auto& kink : kinks[s2]) if (kink.id()) target_kinks.emplace(kink.id(), &kink);
+    auto previous = initial_state(s1);
+    for (const auto& kink : kinks[s1]) {
+      const auto found = target_kinks.find(kink.id());
+      if (kink.id() && found != target_kinks.end()) {
+        if (kink.time() != found->second->time())
+          throw std::logic_error("linked winding endpoints have different physical times");
+        const int hop_dir = int(previous) - int(kink.state());
+        for (int d=0; d<dimension(); ++d) {
+          winding_number[d] += hop_dir*v[d];
+          boundary_winding[d] += hop_dir*bond_dir[d];
         }
-        if (i1->time()<i2->time()) {
-          ++i1;
-          if (i1==first_kink(s1))
-            break;
-        }
-        else {
-          ++i2;
-          if (i2==first_kink(s2))
-            break;
-        } 
       }
+      previous = kink.state();
     }
   }
+
   std::valarray<double> winding_number2(0., dimension());
   winding_number2 = winding_number*winding_number;
 
@@ -189,10 +203,11 @@ void WRun::make_meas()
      //         the vector entries are 0,1,2, respectively            
      std::valarray<double> winding_numberz(3);
      for(int i=0; i<3;++i){  winding_numberz[i]=0. ;}
-     if( fabs( winding_number[0] ) <=1 ) {
-          winding_numberz[(int)winding_number[0]+1]+=Sign ; 
-          measurements["Winding number histogram"]  << winding_numberz ; //*Sign; 
-     }
+     if (std::fabs(boundary_winding[0]) <= 1)
+       winding_numberz[int(boundary_winding[0])+1] = Sign;
+     // Higher winding sectors contribute zero to these three probabilities,
+     // but remain in the same sign denominator and W^2 observable.
+     measurements["Winding number histogram"] << winding_numberz;
   }
   else{
      // determine stiffness
@@ -219,10 +234,8 @@ void WRun::make_meas()
     green=0.;
   }
   if(chain_kappa) {
-    chain_n/=double(num_sites()/num_chains);
-    
-    std::valarray<double> chain_n2(0., dimension());
-    chain_n2 = chain_n2*chain_n2;
+    for (int chain=0; chain<num_chains; ++chain) chain_n[chain] /= chain_sizes[chain];
+    std::valarray<double> chain_n2 = chain_n*chain_n;
 
     chain_n  *= Sign;
     chain_n2 *= Sign;

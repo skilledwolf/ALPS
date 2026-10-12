@@ -272,6 +272,8 @@ private:
   std::vector<state_type> initial_state_;
   std::valarray<double> green;
   std::vector<int> chain_number;
+  std::vector<unsigned> chain_sizes;
+  std::vector<double> chain_labels;
     
   alps::property_map<alps::bond_type_t,graph_type,int>::type bond_type;
   alps::property_map<alps::boundary_crossing_t,graph_type,alps::boundary_crossing>::type boundary_crossing;

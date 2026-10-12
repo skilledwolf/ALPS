@@ -42,8 +42,8 @@ void WRun::dostep()
     for (int i=0;i<worms_per_update;++i)
       make_worm();
   else {
-    int worm_num=0;
-    for (long long length=0;length<=worms_per_kink*num_kinks;++worm_num) {
+    long long worm_num=0;
+    for (long long length=0;length<=static_cast<long long>(worms_per_kink)*num_kinks;++worm_num) {
       length+=make_worm();
     }
     worms_per_update=0.99*worms_per_update+0.01*worm_num;
