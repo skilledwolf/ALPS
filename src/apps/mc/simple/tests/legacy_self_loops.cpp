@@ -14,14 +14,14 @@ template<class Worker> void compare(const std::string& magnetization) {
       "<GRAPH name=\"plain\" vertices=\"1\"><VERTEX id=\"1\"/></GRAPH></LATTICES>";}
     for(double j:{-.6,.6,1.e20}) {
         alps::Parameters p;p["LATTICE_LIBRARY"]=path;p["LATTICE"]="loop";
-        p["T"]=1.2;p["H"]=.4;p["J"]=j;p["SEED"]=173;p["WORKER_SEED"]=173;p["DISORDERSEED"]=173;
+        p["T"]=1.2;p["H"]=.4;p["J"]=j;p["SEED"]=173;p["WORKER_SEED"]=173;p["DISORDER_SEED"]=173;
         p["BASE_NAME"]="unused";p["CLONE_ID"]=0;p["SWEEPS"]=1000;p["THERMALIZATION"]=0;
         Worker loop(p);alps::ObservableSet a;loop.init_observables(p,a);
         p["LATTICE"]="plain";Worker plain(p);alps::ObservableSet b;plain.init_observables(p,b);
         for(unsigned step=0;step<256;++step) {
             loop.run(a);plain.run(b);
-            EXPECT_DOUBLE_EQ(alps::RealObsevaluator(a[magnetization]).mean(),alps::RealObsevaluator(b[magnetization]).mean());
-            if(std::abs(j)<1)EXPECT_NEAR(alps::RealObsevaluator(a["Energy"]).mean()-alps::RealObsevaluator(b["Energy"]).mean(),-j,1.e-12);
+            EXPECT_DOUBLE_EQ(a.get<alps::RealObservable>(magnetization).mean(),b.get<alps::RealObservable>(magnetization).mean());
+            if(std::abs(j)<1)EXPECT_NEAR(a.get<alps::RealObservable>("Energy").mean()-b.get<alps::RealObservable>("Energy").mean(),-j,1.e-12);
         }
     }
 }

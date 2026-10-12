@@ -28,7 +28,7 @@ struct original_run {
           measurements(dynamic_cast<alps::scheduler::MCRun *>(worker.get())) {
         if (!measurements) throw std::logic_error("missing original spinmc observation boundary");
         worker->start_worker();
-        // The scheduler clears measurements on its first thermalized boundary.
+        // Supply an initial record before using the legacy error evaluator.
         if (int(input["THERMALIZATION"]) == 0) worker->run();
     }
     std::unique_ptr<alps::scheduler::Worker> worker;
