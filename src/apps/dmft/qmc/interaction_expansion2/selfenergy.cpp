@@ -169,25 +169,15 @@ void InteractionExpansion::measure_densities()
     densities[z] = 1 + densities[z];
   }
   measurements["densities"] << static_cast<std::valarray<double> > (densities*sign);
-  double density_correlation = 0.;
-  for (unsigned int i=0; i<n_site; ++i) {
-    density_correlation += (1+dens[0][i])*(1+dens[1][i]);
-  }
-  density_correlation /= n_site;
+  const double density_correlation=n_flavors>1 ? densities[0]*densities[1] : densities[0];
   measurements["density_correlation"] << (density_correlation*sign);
-  std::valarray<double> ninj(n_site*n_site*4);
-  for (unsigned int i=0; i<n_site; ++i) {
-    for (unsigned int j=0; j<n_site; ++j) {
-      // Adapted from ALPS reconciliation 90a36c0d4c64ee7308dcb0651264197ffdf36449,
-      // interaction_expansion2/selfenergy.cpp: for the supported single-site
-      // model, the equal-flavor diagonal obeys the operator identity n_f^2=n_f.
-      // Distinct flavors retain their conditional product estimator.
-      ninj[i*n_site+j] = i==j ? 1+dens[0][i] : (1+dens[0][i])*(1+dens[0][j]);
-      ninj[i*n_site+j+1] = (1+dens[0][i])*(1+dens[1][j]);
-      ninj[i*n_site+j+2] = (1+dens[1][i])*(1+dens[0][j]);
-      ninj[i*n_site+j+3] = i==j ? 1+dens[1][i] : (1+dens[1][i])*(1+dens[1][j]);
-    }
-  }
+  // Flavor-general form extracted from reconciliation 02ad5fe5d, this file.
+  // This solver supports one site: each diagonal obeys n_f^2=n_f and the
+  // remaining entries use the conditional product of distinct flavors.
+  std::valarray<double> ninj(n_flavors*n_flavors);
+  for (unsigned first=0; first<n_flavors; ++first)
+    for (unsigned second=0; second<n_flavors; ++second)
+      ninj[first*n_flavors+second]=first==second ? densities[first] : densities[first]*densities[second];
   measurements["n_i n_j"] << static_cast<std::valarray<double> > (ninj*sign);
 }
 

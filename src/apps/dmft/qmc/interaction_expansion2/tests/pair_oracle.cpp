@@ -97,6 +97,10 @@ TEST(CtintPairOracle, EmptyInteractionGraphAdvancesTheRetainedFreeWorkerWithoutV
   const auto density=results["densities"].mean<std::vector<double>>();
   ASSERT_EQ(density.size(),4);
   for (double n : density) EXPECT_DOUBLE_EQ(n,.5);
+  const auto pairs=results["n_i n_j"].mean<std::vector<double>>();
+  ASSERT_EQ(pairs.size(),16u);
+  for(unsigned f=0;f<4;++f) for(unsigned g=0;g<4;++g)
+    EXPECT_DOUBLE_EQ(pairs[4*f+g],f==g ? .5 : .25);
   for (double order : results["PertOrder"].mean<std::vector<double>>()) EXPECT_DOUBLE_EQ(order,0.);
 }
 
