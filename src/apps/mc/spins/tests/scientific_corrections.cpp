@@ -1,7 +1,9 @@
 // Copyright (C) 2026 ALPS Collaboration. SPDX-License-Identifier: MIT
 // Independent Hamiltonian evidence for corrections to original ALPS
 // Troyer/Stoeckli spinmc matrix parsing and onsite-energy measurements.
-#include "native_run.hpp"
+#include "factory.h"
+#include "spinsim.h"
+#include <memory>
 #include "ising.h"
 #include "on.h"
 #include <boost/math/special_functions/bessel.hpp>
@@ -23,13 +25,11 @@ alps::Parameters parameters(const std::string &model) {
 struct original_run {
     explicit original_run(const alps::Parameters &input)
         : worker(SpinFactory().make_worker(alps::ProcessList(1), input, 0)),
-          source(dynamic_cast<alps::spinmc::native_observation_source *>(worker.get())),
           measurements(dynamic_cast<alps::scheduler::MCRun *>(worker.get())) {
-        if (!source || !measurements) throw std::logic_error("missing original spinmc observation boundary");
+        if (!measurements) throw std::logic_error("missing original spinmc observation boundary");
         worker->start_worker();
     }
     std::unique_ptr<alps::scheduler::Worker> worker;
-    alps::spinmc::native_observation_source *source;
     alps::scheduler::MCRun *measurements;
 };
 }
@@ -128,8 +128,8 @@ TEST(SpinMCScientificCorrections, EverySiteContributesItsConstantOnsiteEnergyInO
         const double exact = std::string(model) == "Ising" ? 3.15 : -3.15;
         for (unsigned update = 0; update < 128; ++update) {
             run.worker->run();
-            EXPECT_NEAR(run.source->native_sample().joint[0], exact, 1.e-14);
-            EXPECT_NEAR(run.source->native_sample().joint[1], exact * exact, 1.e-13);
+            EXPECT_NEAR(alps::RealObsevaluator(run.measurements->get_measurements()["Energy"]).mean(), exact, 1.e-14);
+            EXPECT_NEAR(alps::RealObsevaluator(run.measurements->get_measurements()["Energy^2"]).mean(), exact * exact, 1.e-13);
         }
         EXPECT_NEAR(alps::RealObsevaluator(run.measurements->get_measurements()["Energy"]).mean(), exact, 1.e-14);
     }
@@ -146,7 +146,7 @@ TEST(SpinMCScientificCorrections, ForcedSquareStoragePreservesScalarAndDiagonalO
         original_run run(input);
         for (unsigned update = 0; update < 128; ++update) {
             run.worker->run();
-            EXPECT_NEAR(run.source->native_sample().joint[0], -3.15, 1.e-11);
+            EXPECT_NEAR(alps::RealObsevaluator(run.measurements->get_measurements()["Energy"]).mean(), -3.15, 1.e-11);
         }
     }
 }
@@ -154,15 +154,14 @@ TEST(SpinMCScientificCorrections, ForcedSquareStoragePreservesScalarAndDiagonalO
 TEST(SpinMCScientificCorrections, ScalarCouplingInForcedSquareStorageMatchesIndependentXYDimerPartition) {
     auto input = parameters("XY"); input["S"] = 1.; input["J"] = ".6";
     input["D"] = "0 0 0"; input["THERMALIZATION"] = 1000;
-    original_run run(input); long double energy = 0, square = 0;
-    while (!run.source->native_position().thermalized) run.worker->run();
+    original_run run(input);
+    for (unsigned warmup=0; warmup<1000; ++warmup) run.worker->run();
     for (unsigned update = 0; update < 100000; ++update) {
-        run.worker->run(); const auto &sample = run.source->native_sample().joint;
-        energy += sample[0]; square += sample[1];
+        run.worker->run();
     }
     const double correlation = boost::math::cyl_bessel_i(1, .5) / boost::math::cyl_bessel_i(0, .5);
-    EXPECT_NEAR(double(energy / 100000), -.6 * correlation, .025);
-    EXPECT_NEAR(double(square / 100000), .36 * (1 - 2 * correlation), .025);
+    EXPECT_NEAR(alps::RealObsevaluator(run.measurements->get_measurements()["Energy"]).mean(), -.6 * correlation, .025);
+    EXPECT_NEAR(alps::RealObsevaluator(run.measurements->get_measurements()["Energy^2"]).mean(), .36 * (1 - 2 * correlation), .025);
 }
 
 TEST(SpinMCScientificCorrections, NonsymmetricExchangeProposalUsesOriginalBondOrientationAtBothEndpoints) {
@@ -205,13 +204,24 @@ TEST(SpinMCScientificCorrections, OrientedXYExchangeMatchesIndependentRotatedDim
           <<off_diagonal<<' '<<diagonal;
     input["J"]=matrix.str();
     original_run run(input);
-    while(!run.source->native_position().thermalized) run.worker->run();
-    long double energy=0.,square=0.;
+    for (unsigned warmup=0; warmup<1000; ++warmup) run.worker->run();
     for(unsigned update=0;update<100000;++update) {
-        run.worker->run(); const auto &sample=run.source->native_sample().joint;
-        energy+=sample[0]; square+=sample[1];
+        run.worker->run();
     }
     const double correlation=boost::math::cyl_bessel_i(1,.5)/boost::math::cyl_bessel_i(0,.5);
-    EXPECT_NEAR(double(energy/100000),-.6*correlation,.025);
-    EXPECT_NEAR(double(square/100000),.36*(1-2*correlation),.025);
+    EXPECT_NEAR(alps::RealObsevaluator(run.measurements->get_measurements()["Energy"]).mean(),-.6*correlation,.025);
+    EXPECT_NEAR(alps::RealObsevaluator(run.measurements->get_measurements()["Energy^2"]).mean(),.36*(1-2*correlation),.025);
 }
+
+TEST(SpinMCScientificCorrections, SelfBondUsesOneSymmetricQuadraticReflectionDifference) {
+    const auto input=parameters("XY");
+    std::string text="1 .7 -.4 -.2";
+    const auto symmetric=spinmc_self_bond_matrix(SquareMatrix<double,2>(text,input));
+    ONMoment<2> spin; spin.state_=TinyVector<double,2>(.6,.8);
+    const TinyVector<double,2> reflection(1.,0.);
+    // H=-x²-.3xy+.2y². The antisymmetric exchange drops out on a self-bond.
+    EXPECT_NEAR(onsite_energy_change(spin,symmetric,reflection),.288,1.e-15);
+    MIdMatrix<double,2> isotropic(.6);
+    EXPECT_DOUBLE_EQ(onsite_energy_change(spin,isotropic,reflection),0.);
+}
+
