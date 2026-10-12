@@ -120,3 +120,11 @@ if(ALPS_BUILD_TESTING)
 endif()
 
 alps_install_applications(dmft hirschfye hybridization interaction)
+
+if(ALPS_BUILD_TESTING)
+  foreach(name hirschfye_numerics dmft_fourier_spline)
+    add_executable(${name} tests/${name}.cpp)
+    target_link_libraries(${name} PRIVATE dmft_qmc_impl)
+    alps_add_gtest(${name} COMPONENT dmft LABELS scientific regression)
+  endforeach()
+endif()

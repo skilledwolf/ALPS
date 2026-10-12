@@ -36,6 +36,9 @@
 #include <iostream>
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
+#include <limits>
+#include <stdexcept>
 
 typedef boost::numeric::ublas::matrix<double,boost::numeric::ublas::column_major> dense_matrix;
 ///@brief Save a matrix
@@ -68,9 +71,25 @@ inline alps::IDump& operator >> (alps::IDump& idump, dense_matrix& m) {
 }
 
 
-/// compute Green's function matrix for a given spin configuration, from Greens
-//function for spins set to zero. Return sign of det.
-void update_from_zero(dense_matrix & Green, dense_matrix & Green0, std::vector<int> & spins, double l);
+// Numerical corrections adapted from ALPS reconciliation experiment
+// 90a36c0d4c64ee7308dcb0651264197ffdf36449, this header and hirschfyesim.C.
+// Keep the retained BLAS rank-one kernel and scheduler API; add checked
+// reconstruction and sample |determinant| with its sign kept separately.
+// acosh(exp(x)), without squaring exp(x) or cancellation as x approaches zero.
+inline double hirschfye_lambda(double beta, double u, std::uint64_t slices) {
+  if (!(beta > 0.) || !(u >= 0.) || !slices || !std::isfinite(beta) || !std::isfinite(u))
+    throw std::invalid_argument("Hirsch-Fye Hubbard-Stratonovich parameters are invalid");
+  const double x = (beta / slices) * (u / 2.);
+  const double lambda = x + std::log1p(std::sqrt(-std::expm1(-2. * x)));
+  if (!std::isfinite(lambda) || !std::isfinite(std::exp(2. * lambda)))
+    throw std::invalid_argument("Hirsch-Fye Hubbard-Stratonovich exponent is not representable");
+  return lambda;
+}
+
+double norm_max(dense_matrix const& matrix);
+// Return the determinant sign. Failed solves leave the destination unchanged.
+int update_from_zero(dense_matrix& green, dense_matrix const& green0,
+                     std::vector<int> const& spins, double lambda);
 
 
 /// attempt single spin flip and (if successful) compute Green's function matrix for the new configuration
@@ -84,23 +103,23 @@ void update_single_spin(RNG & rng, dense_matrix & Green_up, dense_matrix & Green
   // calculate ratio of determinants
   double r_up = 1 + (1-Green_up(site,site))*(exp(-2*lambda*spins[site])-1);
   double r_down = 1 + (1-Green_down(site,site))*(exp(2*lambda*spins[site])-1);
-  double det_rat = r_up*r_down; 
+  double det_rat = r_up*r_down;
+  if (!std::isfinite(det_rat))
+    throw std::runtime_error("Hirsch-Fye determinant ratio is not finite");
+  const double absolute_ratio = std::abs(det_rat);
+  const double probability = absolute_ratio / (1. + absolute_ratio);
   
   // if update successful ...
-  if (rng() < fabs(det_rat/(1+det_rat))) {
-    //if(det_rat/(1+det_rat) <0)
-    if(det_rat<0)
-      sign *=-1;
+  if (rng() < probability) {
     // update Green's function
     double tmp1 = exp(-2*lambda*spins[site])-1;
     double tmp2 = exp(+2*lambda*spins[site])-1;
     
-    double *vi_up=new double[N];
-    double *uj_up=new double[N];
-    double *vi_dn=new double[N];
-    double *uj_dn=new double[N];
+    std::vector<double> vi_up(N), uj_up(N), vi_dn(N), uj_dn(N);
     double alpha_up=tmp1/(1+(1-Green_up(site,site))*tmp1);
     double alpha_dn=tmp2/(1+(1-Green_down(site,site))*tmp2);
+    if (!std::isfinite(alpha_up) || !std::isfinite(alpha_dn))
+      throw std::runtime_error("Hirsch-Fye rank-one coefficient is not finite");
     for(int i=0;i<N;++i){
       vi_up[i]=Green_up(i,site)-(i==(int)site);
       vi_dn[i]=Green_down(i,site)-(i==(int)site);
@@ -108,14 +127,12 @@ void update_single_spin(RNG & rng, dense_matrix & Green_up, dense_matrix & Green
       uj_dn[i]=Green_down(site, i);
     }
     fortran_int_t one=1;
-    FORTRAN_ID(dger)(&N,&N,&alpha_up,vi_up,&one,uj_up,&one,&(Green_up  (0,0)),&N);
-    FORTRAN_ID(dger)(&N,&N,&alpha_dn,vi_dn,&one,uj_dn,&one,&(Green_down(0,0)),&N);
+    FORTRAN_ID(dger)(&N,&N,&alpha_up,vi_up.data(),&one,uj_up.data(),&one,&(Green_up  (0,0)),&N);
+    FORTRAN_ID(dger)(&N,&N,&alpha_dn,vi_dn.data(),&one,uj_dn.data(),&one,&(Green_down(0,0)),&N);
     // update spin
     spins[site] = -spins[site];
-    delete[] vi_up;
-    delete[] vi_dn;
-    delete[] uj_up;
-    delete[] uj_dn;
+    if(det_rat<0)
+      sign *=-1;
   }
 }
 

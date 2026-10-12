@@ -32,50 +32,51 @@
 using namespace std;
 using namespace alps;
 
-/// compute largest element of a matrix
-double norm_max(dense_matrix & m) {
-  
-  double max(0);
-  for (dense_matrix::const_iterator1 it = m.begin1(); it != m.end1(); ++it)
-    if (std::fabs((*it)) > max)
-      max = std::fabs((*it));
-  
-  return max;
-  
-}
-
-// TODO remove once dense_matrix is removed
-alps::numeric::matrix<double> alps_matrix_from_dense_matrix(dense_matrix const& m) {
-    alps::numeric::matrix<double> r(m.size1(),m.size2());
-    // Matrices are column major
-    for(std::size_t j=0; j < m.size2(); ++j)
-        for(std::size_t i=0; i < m.size1(); ++i)
-            r(i,j) = m(i,j);
-    return r;
-}
-
-/// compute Green's function for given spin configuration from Green0
-void update_from_zero(dense_matrix & Green, dense_matrix & Green0, std::vector<int> & spins, double l) {
-  
-  alps::numeric::matrix<double> M(alps_matrix_from_dense_matrix(Green)); // for sign problem cases: figure out determinant...
-  int N(spins.size());
-  std::vector<double> e_ls(N);
-  for(int i=0;i<N;++i){
-    e_ls[i]=exp(l*spins[i]);
-  }
-  // calculate a = 1 + (1-g)*(exp(v')-1) 
-  dense_matrix a(N, N);
-  for (int i=0; i<N; i++) {
-    for (int j=0; j<N; j++) {
-      a(i,j) = -Green0(i,j)*(e_ls[j]-1);
+// Checked reconstruction adapted from ALPS reconciliation experiment
+// 90a36c0d4c64ee7308dcb0651264197ffdf36449, src/apps/dmft/qmc/hirschfyesim.C.
+// Every element matters: column-major begin1() alone misses other columns.
+double norm_max(dense_matrix const& matrix) {
+  double maximum = 0.;
+  for (std::size_t column = 0; column < matrix.size2(); ++column)
+    for (std::size_t row = 0; row < matrix.size1(); ++row) {
+      const double value = std::abs(matrix(row, column));
+      if (!std::isfinite(value)) return std::numeric_limits<double>::infinity();
+      maximum = std::max(maximum, value);
     }
-    a(i,i) += e_ls[i]; 
+  return maximum;
+}
+
+int update_from_zero(dense_matrix& green, dense_matrix const& green0,
+                     std::vector<int> const& spins, double lambda) {
+  if (spins.empty() || spins.size() > static_cast<std::size_t>(std::numeric_limits<int>::max())
+      || green0.size1() != spins.size() || green0.size2() != spins.size()
+      || !std::isfinite(lambda) || !std::isfinite(norm_max(green0)))
+    throw std::invalid_argument("Invalid Hirsch-Fye reconstruction input");
+  const int n = static_cast<int>(spins.size());
+  dense_matrix matrix(n, n), restored(green0);
+  for (int column = 0; column < n; ++column) {
+    if (spins[column] != 1 && spins[column] != -1)
+      throw std::invalid_argument("Hirsch-Fye auxiliary spins must be +/-1");
+    const double exponential = std::exp(lambda * spins[column]);
+    for (int row = 0; row < n; ++row)
+      matrix(row, column) = -green0(row, column) * (exponential - 1.);
+    matrix(column, column) += exponential;
   }
-  // solve a*Green=Green0
-  // gesv solves A*X=B, input for B is Green0, output (=solution X) is Green   
-  Green = Green0; 
-  boost::numeric::ublas::vector<fortran_int_t> ipivot(N);
-  boost::numeric::bindings::lapack::gesv(a,ipivot, Green);
+  if (!std::isfinite(norm_max(matrix)))
+    throw std::runtime_error("Hirsch-Fye reconstruction matrix is not finite");
+  boost::numeric::ublas::vector<fortran_int_t> pivots(n);
+  const auto status = boost::numeric::bindings::lapack::gesv(matrix, pivots, restored);
+  if (status != 0 || !std::isfinite(norm_max(restored)))
+    throw std::runtime_error("Hirsch-Fye Green-function matrix solve failed");
+  int sign = 1;
+  for (int i = 0; i < n; ++i) {
+    if (!std::isfinite(matrix(i, i)) || matrix(i, i) == 0.)
+      throw std::runtime_error("Hirsch-Fye Green-function matrix solve failed");
+    if (matrix(i, i) < 0.) sign *= -1;
+    if (pivots(i) != i + 1) sign *= -1;
+  }
+  green.swap(restored);
+  return sign;
 }
 
 
@@ -132,8 +133,7 @@ green_tau(N+1, n_site, 2)
   }
   
   // initialize lambda
-  double tmp = exp(beta/N*u/2);
-  lambda = log(tmp + sqrt(tmp*tmp-1));
+  lambda = hirschfye_lambda(beta, u, N);
   
   // initialize bath Green's function matrices
   green_matrix_from_vector(bare_green_tau, Green0_up, Green0_down);
@@ -143,8 +143,8 @@ green_tau(N+1, n_site, 2)
   
   
   // initialize Green's function matrices
-  update_from_zero(Green_up, Green0_up, spins, lambda);
-  update_from_zero(Green_down, Green0_down, spins, -lambda);
+  sign = update_from_zero(Green_up, Green0_up, spins, lambda)
+       * update_from_zero(Green_down, Green0_down, spins, -lambda);
   
   
   // create measurement objects
@@ -275,24 +275,23 @@ void HirschFyeRun::dostep()
   }
 #endif
 	
-  // check if precision has deteriorated
-  if (check_counter%N_check == 0) {
-    
-    dense_matrix Green_diff_up(Green_up), Green_diff_down(Green_down);
-    
-    update_from_zero(Green_up, Green0_up, spins, lambda);
-    update_from_zero(Green_down, Green0_down, spins, -lambda);
-    
-    Green_diff_up -= Green_up;
-    Green_diff_down -= Green_down;
-    
-    if (norm_max(Green_diff_up) > tolerance || norm_max(Green_diff_down) > tolerance)
-      N_check /= 2;
-    else 
-      N_check *= 2;
-	  
+  // Reconstruct both channels before publishing either of them or their sign.
+  if (check_counter >= N_check) {
+    dense_matrix restored_up, restored_down;
+    const int restored_sign = update_from_zero(restored_up, Green0_up, spins, lambda)
+                            * update_from_zero(restored_down, Green0_down, spins, -lambda);
+    dense_matrix difference_up(Green_up), difference_down(Green_down);
+    difference_up -= restored_up;
+    difference_down -= restored_down;
+    Green_up.swap(restored_up);
+    Green_down.swap(restored_down);
+    sign = restored_sign;
+    if (norm_max(difference_up) > tolerance || norm_max(difference_down) > tolerance)
+      N_check = std::max(1, N_check / 2);
+    else
+      N_check = N_check > std::numeric_limits<int>::max() / 2
+        ? std::numeric_limits<int>::max() : N_check * 2;
     check_counter = 0;
-    
   }
   
 }
