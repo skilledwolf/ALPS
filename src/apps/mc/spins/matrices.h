@@ -70,7 +70,8 @@ class SquareMatrix {
      * are ok!
      * The version is faster than getElement(int i, int j).
      */
-    inline T getElement_nc(int i, int j) const { return elem_[i][j]; }
+    // Same row-major storage as the checked accessor; no bounds check.
+    inline T getElement_nc(int i, int j) const { return elem_[i*N+j]; }
    
     inline T* getElements() const { return elem_; } 
  
@@ -198,7 +199,7 @@ void SquareMatrix<T,N>::setMatrix(std::string& str, alps::Parameters parms) {
       T theElement = myHelper.getNextElement();
       for (int i=0; i<N*N; i++)
         elem_[i] = 0.;
-      for (int j=0; j<N*N; j+=N)
+      for (int j=0; j<N*N; j+=N+1)
         elem_[j] = theElement;
       }
       break;
@@ -207,7 +208,7 @@ void SquareMatrix<T,N>::setMatrix(std::string& str, alps::Parameters parms) {
       // build a diagnonal matrix, elements are given in the string
       for (int i=0; i<N*N; i++)
         elem_[i]=0.;
-      for (int j=0; j<N*N; j+=N)
+      for (int j=0; j<N*N; j+=N+1)
         elem_[j] = myHelper.getNextElement();
       break;
       

@@ -407,8 +407,8 @@ inline double onsite_energy_change(const ONMoment<N>,
                typename ONMoment<N>::update_type)
 {  return 0.0; }
 
-// If D is a multiple of the identity matrix, the onsite_energy is the 
-// determinant of the matrix, as the spins always have length 1.
+// The O(N) onsite Hamiltonian is -sᵀDs. For D=dI and a unit
+// moment this is -d, independent of its orientation and dimension.
 template <int N>
 inline double onsite_energy(const ONMoment<N> m, SquareMatrix<double,N>& D)
 { return -D.vec_mat_vec(m.state_); }
@@ -418,8 +418,8 @@ inline double onsite_energy(const ONMoment<N> m, DiagMatrix<double,N>& D)
 { return -D.vec_mat_vec(m.state_); }
 
 template <int N>
-inline double onsite_energy(const ONMoment<N>, MIdMatrix<double,N>&)
-{ return -1.0; }
+inline double onsite_energy(const ONMoment<N>, MIdMatrix<double,N>& D)
+{ return -D.getElement_nc(0,0); }
 
 // O(3) models are often referred to by common name Heisenberg
 typedef ONMoment<3> HeisenbergMoment;

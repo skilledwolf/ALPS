@@ -356,6 +356,10 @@ void SpinSim<M,MIdMatrix<double,M::dim> >::do_measurements(update_info_type upda
   typename M::magnetization_type mst= spins_[*si].magnetization();
   mst *= this->spinfactor_[*si];
   double m_h = 0.;
+  // The isotropic specialization must include the first site's onsite term,
+  // as the generic matrix path does. This changes affected legacy energies.
+  if (this->general_case_)
+    en+=onsite_energy(spins_[*si],this->selfinteraction_[*si]);
   if (this->has_magnetic_field_) 
       {
         m_h = this->spinfactor_[*si]*spins_[*si].mag_h(this->h_normalized);

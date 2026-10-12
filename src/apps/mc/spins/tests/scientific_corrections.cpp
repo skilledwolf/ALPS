@@ -1,0 +1,123 @@
+// Copyright (C) 2026 ALPS Collaboration. SPDX-License-Identifier: MIT
+// Independent Hamiltonian evidence for corrections to original ALPS
+// Troyer/Stoeckli spinmc matrix parsing and onsite-energy measurements.
+#include "native_run.hpp"
+#include "ising.h"
+#include "on.h"
+#include <boost/math/special_functions/bessel.hpp>
+#include <gtest/gtest.h>
+
+namespace {
+alps::Parameters parameters(const std::string &model) {
+    alps::Parameters result;
+    result["MODEL"] = model; result["LATTICE"] = "dimer";
+    result["LATTICE_LIBRARY"] = std::string(ALPS_SPINMC_LATTICES);
+    result["UPDATE"] = "local"; result["T"] = 1.2;
+    result["SWEEPS"] = 100000; result["THERMALIZATION"] = 0;
+    result["SEED"] = 173; result["RNG"] = "mt19937";
+    result["J"] = "0"; result["h"] = "0"; result["S"] = 1.5;
+    return result;
+}
+struct original_run {
+    explicit original_run(const alps::Parameters &input)
+        : worker(SpinFactory().make_worker(alps::ProcessList(1), input, 0)),
+          source(dynamic_cast<alps::spinmc::native_observation_source *>(worker.get())),
+          measurements(dynamic_cast<alps::scheduler::MCRun *>(worker.get())) {
+        if (!source || !measurements) throw std::logic_error("missing original spinmc observation boundary");
+        worker->start_worker();
+    }
+    std::unique_ptr<alps::scheduler::Worker> worker;
+    alps::spinmc::native_observation_source *source;
+    alps::scheduler::MCRun *measurements;
+};
+}
+
+TEST(SpinMCScientificCorrections, ScalarAndDiagonalSquareInputsRepresentDeclaredHamiltonian) {
+    alps::Parameters symbols; symbols["d"] = .7;
+    std::string scalar = "d";
+    SquareMatrix<double, 2> identity(scalar, symbols);
+    EXPECT_DOUBLE_EQ(identity.getElement(0, 0), .7); EXPECT_DOUBLE_EQ(identity.getElement(1, 1), .7);
+    EXPECT_DOUBLE_EQ(identity.getElement(0, 1), 0); EXPECT_DOUBLE_EQ(identity.getElement(1, 0), 0);
+    EXPECT_NEAR(identity.vec_mat_vec(TinyVector<double, 2>(.6, .8)), .7, 1.e-15);
+    std::string diagonal = "2 3 5";
+    SquareMatrix<double, 3> anisotropy(diagonal, symbols);
+    EXPECT_DOUBLE_EQ(anisotropy.det(), 30);
+    // v=(1,2,3) gives vᵀDv=2+12+45, independent of parser indexing.
+    EXPECT_DOUBLE_EQ(anisotropy.vec_mat_vec(TinyVector<double, 3>(1, 2, 3)), 59);
+    for (unsigned i = 0; i < 3; ++i) for (unsigned j = 0; j < 3; ++j)
+        EXPECT_DOUBLE_EQ(anisotropy.getElement_nc(i, j), i != j ? 0 : i == 0 ? 2 : i == 1 ? 3 : 5);
+}
+
+TEST(SpinMCScientificCorrections, FullAndTriangularInputsRetainOffDiagonalHamiltonian) {
+    alps::Parameters symbols;
+    std::string triangular = "2 .3 -1", complete = "2 .3 .3 -1";
+    SquareMatrix<double, 2> first(triangular, symbols), second(complete, symbols);
+    ONMoment<2> spin; spin.state_ = TinyVector<double, 2>(.6, .8);
+    const TinyVector<double, 2> reflection(1, 0);
+    // H=-[2*x²+0.6*x*y-y²], at (+.6,.8) and (-.6,.8).
+    EXPECT_NEAR(onsite_energy(spin, first), -.368, 1.e-15);
+    EXPECT_NEAR(onsite_energy_change(spin, first, reflection), .576, 1.e-15);
+    EXPECT_NEAR(onsite_energy(spin, second), -.368, 1.e-15);
+    auto reflected = spin; reflected.update(reflection);
+    EXPECT_NEAR(onsite_energy(reflected, second), .208, 1.e-15);
+    EXPECT_NEAR(onsite_energy(reflected, second) - onsite_energy(spin, second), .576, 1.e-15);
+    for (unsigned i = 0; i < 2; ++i) for (unsigned j = 0; j < 2; ++j)
+        EXPECT_DOUBLE_EQ(first.getElement_nc(i, j), second.getElement(i, j));
+}
+
+TEST(SpinMCScientificCorrections, IsotropicONOnsiteEnergyDependsOnDeclaredScalar) {
+    for (const auto coefficient : {0., .7, -2.}) {
+        MIdMatrix<double, 2> xy(coefficient); MIdMatrix<double, 3> heisenberg(coefficient);
+        MIdMatrix<double, 4> o4(coefficient);
+        EXPECT_DOUBLE_EQ(onsite_energy(ONMoment<2>{}, xy), -coefficient);
+        EXPECT_DOUBLE_EQ(onsite_energy(ONMoment<3>{}, heisenberg), -coefficient);
+        EXPECT_DOUBLE_EQ(onsite_energy(ONMoment<4>{}, o4), -coefficient);
+    }
+}
+
+TEST(SpinMCScientificCorrections, EverySiteContributesItsConstantOnsiteEnergyInOriginalWorker) {
+    for (const auto *model : {"Ising", "XY", "Heisenberg", "O(4)"}) {
+        SCOPED_TRACE(model);
+        auto input = parameters(model); input["D"] = ".7";
+        original_run run(input);
+        // Original Ising convention has +D; original O(N) convention has
+        // -sᵀDs. Both include all 2 sites and the declared S²=2.25.
+        const double exact = std::string(model) == "Ising" ? 3.15 : -3.15;
+        for (unsigned update = 0; update < 128; ++update) {
+            run.worker->run();
+            EXPECT_NEAR(run.source->native_sample().joint[0], exact, 1.e-14);
+            EXPECT_NEAR(run.source->native_sample().joint[1], exact * exact, 1.e-13);
+        }
+        EXPECT_NEAR(alps::RealObsevaluator(run.measurements->get_measurements()["Energy"]).mean(), exact, 1.e-14);
+    }
+}
+
+TEST(SpinMCScientificCorrections, ForcedSquareStoragePreservesScalarAndDiagonalOnsiteHamiltonians) {
+    for (const auto *model : {"XY", "Heisenberg"}) for (bool diagonal_input : {false, true}) {
+        SCOPED_TRACE(std::string(model) + (diagonal_input ? " diagonal" : " scalar"));
+        auto input = parameters(model);
+        // Full zero J forces general matrix storage, independently of the
+        // scalar/diagonal representation used for the same D=.7I.
+        input["J"] = std::string(model) == "XY" ? "0 0 0 0" : "0 0 0 0 0 0 0 0 0";
+        input["D"] = diagonal_input ? (std::string(model) == "XY" ? ".7 .7" : ".7 .7 .7") : ".7";
+        original_run run(input);
+        for (unsigned update = 0; update < 128; ++update) {
+            run.worker->run();
+            EXPECT_NEAR(run.source->native_sample().joint[0], -3.15, 1.e-11);
+        }
+    }
+}
+
+TEST(SpinMCScientificCorrections, ScalarCouplingInForcedSquareStorageMatchesIndependentXYDimerPartition) {
+    auto input = parameters("XY"); input["S"] = 1.; input["J"] = ".6";
+    input["D"] = "0 0 0"; input["THERMALIZATION"] = 1000;
+    original_run run(input); long double energy = 0, square = 0;
+    while (!run.source->native_position().thermalized) run.worker->run();
+    for (unsigned update = 0; update < 100000; ++update) {
+        run.worker->run(); const auto &sample = run.source->native_sample().joint;
+        energy += sample[0]; square += sample[1];
+    }
+    const double correlation = boost::math::cyl_bessel_i(1, .5) / boost::math::cyl_bessel_i(0, .5);
+    EXPECT_NEAR(double(energy / 100000), -.6 * correlation, .025);
+    EXPECT_NEAR(double(square / 100000), .36 * (1 - 2 * correlation), .025);
+}
