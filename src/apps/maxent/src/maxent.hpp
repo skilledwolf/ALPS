@@ -38,6 +38,8 @@ public :
 
   double omega_coord(const int i) const { return MaxEntParameters::omega_coord(i); }
 
+  double bin_width(const int i) const { return delta_omega(i); }
+
   double Default(const int i) const { return def_[i]; }  
   const vector_type& Default() const { return def_; }
 
@@ -132,7 +134,7 @@ private:
   vector_type alpha;
   const double norm;
   const int max_it;
-  std::string name,Kernel_type;
+  std::string name,Kernel_type,output_file;
   bool finished,verbose,text_output,self;
   boost::filesystem::path dir;
   std::ofstream spex_str;
