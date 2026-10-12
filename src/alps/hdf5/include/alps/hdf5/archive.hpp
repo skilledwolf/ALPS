@@ -35,6 +35,7 @@
 #endif
 
 #include <map>
+#include <memory>
 #include <vector>
 #include <string>
 #include <numeric>
@@ -128,6 +129,9 @@ namespace alps {
                 void set_context(std::string const & context);
                 std::string complete_path(std::string path) const;
 
+                // Release this view; other copies keep the shared file open.
+                // Explicit close reports flush/close/publication errors. Destructors
+                // are best-effort, so checkpoint callers must close explicitly.
                 void close();
                 bool is_open();
 
@@ -215,12 +219,12 @@ namespace alps {
                 std::string file_key(std::string filename, bool large, bool memory) const;
 
                 std::string current_;
-                detail::archivecontext * context_;
+                std::shared_ptr<detail::archivecontext> context_;
 
 #ifndef ALPS_NGS_SINGLE_THREAD
                 static boost::recursive_mutex mutex_;
 #endif
-                static std::map<std::string, std::pair<detail::archivecontext *, std::size_t> > ref_cnt_;
+                static std::map<std::string, std::weak_ptr<detail::archivecontext>> contexts_;
 
         };
 
