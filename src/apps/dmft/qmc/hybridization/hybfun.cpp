@@ -13,6 +13,9 @@
  *****************************************************************************/
 
 #include"hybfun.hpp"
+#include <algorithm>
+#include <cmath>
+#include <stdexcept>
 //construct a hybridization function. ntime: number of time slices.
 //noffidag_orbitals: number of offdiagonal orbitals. ndiag_orbitals: number
 //of diagonal orbitals. 
@@ -21,6 +24,8 @@ green_function<double>(p["N_TAU"]+1, 1, p["N_ORBITALS"])
 {
   if(!p.defined("N_TAU") || (int)(p["N_TAU"])==0) throw std::invalid_argument("define parameter N_TAU, the number of hybridization time slices!");
   beta_=p["BETA"];
+  if (!std::isfinite(beta_) || beta_<=0.)
+    throw std::invalid_argument("Hybridization table BETA must be finite and positive");
 
   //read in Green's function from a file
   read_hybridization_function(p);
@@ -89,15 +94,22 @@ void hybfun::read_hybridization_function(const alps::params &p){
 }
 
 std::ostream &operator<<(std::ostream &os, const hybfun &hyb){
+  // Short-mesh bound adapted from ALPS reconciliation
+  // 90a36c0d4c64ee7308dcb0651264197ffdf36449, hybridization/hybfun.cpp.
+  // Send the complete diagnostic to its caller's stream as well.
   os<<"the hybridization function is: "<<std::endl;
-  for(int i=0;i<10;++i){ std::cout<<i<<" "; for(std::size_t j=0;j<hyb.nflavor();++j){ std::cout<<hyb(i,j)<<" ";} std::cout<<std::endl; }
+  for(std::size_t i=0;i<std::min<std::size_t>(10,hyb.ntime());++i){ os<<i<<" "; for(std::size_t j=0;j<hyb.nflavor();++j){ os<<hyb(i,j)<<" ";} os<<std::endl; }
   os<<"... *** etc *** ...\n";
-  os<<hyb.ntime()-1<<" "; for(std::size_t j=0;j<hyb.nflavor();++j){ std::cout<<hyb(hyb.ntime()-1,j)<<" ";} std::cout<<std::endl;
+  os<<hyb.ntime()-1<<" "; for(std::size_t j=0;j<hyb.nflavor();++j){ os<<hyb(hyb.ntime()-1,j)<<" ";} os<<std::endl;
   return os;
 }
 
 //linear interpolation of the hybridization function. 
 double hybfun::interpolate(double time, int orbital) const{
+  if (!std::isfinite(time) || time < -beta_ || time > beta_)
+    throw std::invalid_argument("Hybridization interpolation time must lie in [-BETA,BETA]");
+  if (orbital < 0 || static_cast<unsigned>(orbital) >= nflavor())
+    throw std::out_of_range("Hybridization interpolation orbital is outside the table");
 
   ///TODO: do a spline here, write a better/faster interpolation routine.
   double sign=1;
@@ -112,6 +124,9 @@ double hybfun::interpolate(double time, int orbital) const{
   time=beta_-time;
 
   double n = time/beta_*(ntime()-1);
+  // Equal operator times select -Delta(beta). Do not evaluate the adjacent
+  // point at this endpoint: it lies beyond the allocated time mesh.
+  if (n >= ntime()-1) return sign*operator()(ntime()-1,orbital);
   int n_lower = (int)n; // interpolate linearly between n_lower and n_lower+1
 
   return sign*(operator()(n_lower,orbital) + (n-n_lower)*(operator()(n_lower+1,orbital)-operator()(n_lower,orbital)));

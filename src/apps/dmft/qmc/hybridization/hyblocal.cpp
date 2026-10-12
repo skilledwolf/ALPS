@@ -70,22 +70,24 @@ double local_configuration::local_weight_change(const segment &seg, int orb, boo
   //std::cout<<clmagenta<<"chemical potential weight is: "<<weight<<" mu: "<<mu_[orb]<<" length: "<<length<<cblack<<std::endl;
   
   //the interaction term needs the overlap between this orbital and all the other orbitals
-  static std::vector<double> overlaps(n_orbitals_, 0.); for(int i=0;i<n_orbitals_;++i) overlaps[i]=0.;
   for(int i=0;i<n_orbitals_;++i){
+    // Each orbital's overlap is consumed only in this iteration. A local
+    // scalar also permits later models with different orbital counts; the
+    // former static vector retained only the first model's allocation.
+    double overlap=0.;
     if(i==orb) continue;
     
     if(zero_order_orbital_occupied_[i]){
-      overlaps[i]=length;
+      overlap=length;
     }else{
       //find the first segment with time t_start > seg.t_start
       for(std::set<segment>::const_iterator it=segments_[i].begin(); it != segments_[i].end();++it){
-        overlaps[i]+=segment_overlap(seg, *it);
+        overlap+=segment_overlap(seg, *it);
       }
     }
-    //std::cout<<clmagenta<<"weight of orbital: "<<orb<<" wrt orbital: "<<i<<" is: "<<std::exp(U_(orb,i)*overlaps[i])<<" for overlap: "<<overlaps[i]<<cblack<<std::endl;
-    weight*=std::exp(-sgn*U_(orb,i)*overlaps[i]);
+    weight*=std::exp(-sgn*U_(orb,i)*overlap);
     /*if(zero_order_orbital_occupied_[i]){
-     std::cout<<"weight got an additional factor:"<<std::exp(-sgn*U_(orb,i)*overlaps[i])<<std::endl;
+     std::cout<<"weight got an additional factor:"<<std::exp(-sgn*U_(orb,i)*overlap)<<std::endl;
      }*/
   }
   //this is the retarded interaction stuff
@@ -276,23 +278,21 @@ double local_configuration::local_energy(const segment &seg, int orb,bool d_mu_o
     //std::cout<<clmagenta<<"chemical potential weight is: "<<weight<<" mu: "<<mu_[orb]<<" length: "<<length<<cblack<<std::endl;
     
     //the interaction term needs the overlap between this orbital and all the other orbitals
-    static std::vector<double> overlaps(n_orbitals_, 0.);
-    for(int i=0;i<n_orbitals_;++i) overlaps[i]=0.;
     for(int i=0;i<n_orbitals_;++i){
+        double overlap=0.;
         if(i==orb) continue;
         
         if(zero_order_orbital_occupied_[i]){
-            overlaps[i]=length;
+            overlap=length;
         }else{
             //find the first segment with time t_start > seg.t_start
             for(std::set<segment>::const_iterator it=segments_[i].begin(); it != segments_[i].end();++it){
-                overlaps[i]+=segment_overlap(seg, *it);
+                overlap+=segment_overlap(seg, *it);
             }
         }
-        //std::cout<<clmagenta<<"weight of orbital: "<<orb<<" wrt orbital: "<<i<<" is: "<<std::exp(U_(orb,i)*overlaps[i])<<" for overlap: "<<overlaps[i]<<cblack<<std::endl;
-        energy -= U_(orb,i)*overlaps[i];
+        energy -= U_(orb,i)*overlap;
         /*if(zero_order_orbital_occupied_[i]){
-         std::cout<<"weight got an additional factor:"<<std::exp(-sgn*U_(orb,i)*overlaps[i])<<std::endl;
+         std::cout<<"weight got an additional factor:"<<std::exp(-sgn*U_(orb,i)*overlap)<<std::endl;
          }*/
     }
     //this is the retarded interaction stuff
@@ -585,7 +585,10 @@ void local_configuration::get_density_vectors(std::vector<std::vector<double> > 
 void local_configuration::measure_nnw(int i, std::vector<double> &nnw_re, double sign) const{
   int N_W=nnw_re.size();
   //wm=0 has to be treated separately
-  nnw_re[0]+= segment_density(i)*beta_;//length of segments
+  // Adapted from ALPS reconciliation commit
+  // 90a36c0d4c64ee7308dcb0651264197ffdf36449, this file: the zero-frequency
+  // integral is a signed numerator, just like every nonzero-frequency mode.
+  nnw_re[0]+= segment_density(i)*beta_*sign;//length of segments
   if(N_W == 1) return;
   for(segment_container_t::const_iterator it=segments_[i].begin();it!=segments_[i].end();++it){//same contribution for winding segments
     double wm=0;

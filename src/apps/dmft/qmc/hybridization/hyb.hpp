@@ -43,7 +43,7 @@ public:
   //Monte Carlo update and measurements functions
   void measure();
   void update();
-  bool is_thermalized() const { return (sweeps >= thermalization_sweeps); }
+  bool is_thermalized() const { return (sweeps > thermalization_sweeps); }
   double fraction_completed() const;
   friend std::ostream &operator<<(std::ostream &os, const hybridization &hyb);
 

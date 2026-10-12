@@ -6,6 +6,8 @@ User-facing changes and migration notes are recorded here, starting with the bui
 
 ### Fixed
 
+- Correct CT-HYB signed zero-frequency density measurements and warmup exclusion. Bound table interpolation and short-mesh diagnostics, initialize absent retarded tables, avoid G2-only empty-buffer access, and remove overlap scratch shared across differently sized models.
+
 - Accept positional plot/simulation files and standalone `--version` in the archive tool, and parse paired `CONSTRAINT` tags correctly.
 
 - Correct the ferromagnetic Ising acceptance sign in the Python and C++ tutorials, add physics regressions, and exercise the density-profile tutorial through callable simulation and plotting functions.

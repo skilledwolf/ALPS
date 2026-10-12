@@ -13,6 +13,9 @@
  *****************************************************************************/
 
 #include"hybretintfun.hpp"
+#include <algorithm>
+#include <cmath>
+#include <stdexcept>
 //construct a retarded interaction function. ntime: number of time slices.
 //noffidag_orbitals: number of offdiagonal orbitals. ndiag_orbitals: number
 //of diagonal orbitals. 
@@ -20,10 +23,12 @@ ret_int_fun::ret_int_fun(const alps::params &p):
 green_function<double>(p["N_TAU"]+1, 1, 2)//2 "flavors": K and K'
 {
   bool use_retarded_interaction=p.defined("RET_INT_K");
-  if(!use_retarded_interaction) return;
+  if(!use_retarded_interaction) { beta_=p["BETA"]; clear(); return; }
 
   if(!p.defined("N_TAU") || (int)(p["N_TAU"])==0) throw std::invalid_argument("define parameter N_TAU, the number of retarded interaction time slices!");
   beta_=p["BETA"];
+  if (!std::isfinite(beta_) || beta_<=0.)
+    throw std::invalid_argument("Retarded table BETA must be finite and positive");
   
   //read in Green's function from a file
   read_interaction_K_function(p);
@@ -85,17 +90,22 @@ void ret_int_fun::read_interaction_K_function(const alps::params &p){
 }
 
 std::ostream &operator<<(std::ostream &os, const ret_int_fun &K){
+  // Short-mesh bound adapted from ALPS reconciliation
+  // 90a36c0d4c64ee7308dcb0651264197ffdf36449, hybridization/hybretintfun.cpp.
   os<<"the retarded interaction function and derivative are: "<<std::endl;
-  for(int i=0;i<10;++i){ std::cout<<i<<" "; for(std::size_t j=0;j<K.nflavor();++j){ std::cout<<K(i,j)<<" ";} std::cout<<std::endl; }
+  for(std::size_t i=0;i<std::min<std::size_t>(10,K.ntime());++i){ os<<i<<" "; for(std::size_t j=0;j<K.nflavor();++j){ os<<K(i,j)<<" ";} os<<std::endl; }
   os<<"... *** etc *** ...\n";
-  os<<K.ntime()-1<<" "; for(std::size_t j=0;j<K.nflavor();++j){ std::cout<<K(K.ntime()-1,j)<<" ";} std::cout<<std::endl;
+  os<<K.ntime()-1<<" "; for(std::size_t j=0;j<K.nflavor();++j){ os<<K(K.ntime()-1,j)<<" ";} os<<std::endl;
   return os;
 }
 //linear interpolation of the retarded interaction function 
 double ret_int_fun::interpolate(double time) const{
+  if (!std::isfinite(time) || std::abs(time) > beta_)
+    throw std::invalid_argument("Retarded interpolation time must lie in [-BETA,BETA]");
   time=std::abs(time);
 
   double n = time/beta_*(ntime()-1);
+  if (n >= ntime()-1) return operator()(ntime()-1,0);
   int n_lower = (int)n; // interpolate linearly between n_lower and n_lower+1
 
   return operator()(n_lower,0) + (n-n_lower)*(operator()(n_lower+1,0)-operator()(n_lower,0));
@@ -103,10 +113,13 @@ double ret_int_fun::interpolate(double time) const{
 
 //linear interpolation of the retarded interaction function.
 double ret_int_fun::interpolate_deriv(double time) const{
+  if (!std::isfinite(time) || std::abs(time) > beta_)
+    throw std::invalid_argument("Retarded derivative time must lie in [-BETA,BETA]");
   //if(time<-beta_ || time > beta_) std::cout<< "!!" << std::endl;
   if(time<0.) return -1.*interpolate_deriv(-time);
 
   double n = time/beta_*(ntime()-1);
+  if (n >= ntime()-1) return operator()(ntime()-1,1);
   int n_lower = (int)n; // interpolate linearly between n_lower and n_lower+1
 
   return operator()(n_lower,1) + (n-n_lower)*(operator()(n_lower+1,1)-operator()(n_lower,1));
