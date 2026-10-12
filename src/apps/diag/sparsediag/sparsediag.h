@@ -106,11 +106,13 @@ void SparseDiagMatrix<T>::do_subspace()
   int n;
   
   if (this->dimension()>1) {
-    int max_iter = this->get_parameters().value_or_default("MAX_ITERATIONS",std::min(int(10*this->dimension()),1000));  
+    int max_iter = this->get_parameters().value_or_default("MAX_ITERATIONS",int(10*std::min(std::size_t(this->dimension()),std::size_t(100))));
     int num_eigenvalues = this->get_parameters().value_or_default("NUMBER_EIGENVALUES",1);
     ietl::lanczos_iteration_nlowest<double> iter(max_iter,num_eigenvalues);
     std::cerr << "Starting Lanczos \n";
     lanczos.calculate_eigenvalues(iter,generator);
+    if (iter.error_code()!=0)
+      throw std::runtime_error("Sparse diagonalization failed to converge within MAX_ITERATIONS");
     std::cerr << "Finished Lanczos\n";
     n=std::min(num_eigenvalues,int(lanczos.eigenvalues().size()));
     ev.resize(n);
@@ -127,14 +129,16 @@ void SparseDiagMatrix<T>::do_subspace()
       // calculate eigen vectors
       ietl::Info<magnitude_type> info; // (m1, m2, ma, eigenvalue, residualm, status).
   
-      try {
-        eigenvectors.clear();
-        lanczos.eigenvectors(lanczos.eigenvalues().begin(),lanczos.eigenvalues().begin()+n,
-                             std::back_inserter(eigenvectors),info,generator); 
-      }
-      catch (std::runtime_error& e) {
-        std::cout <<"Exception during eigenvector calculation: " <<  e.what() << "\n";
-      }  
+      // Failed eigenvectors cannot support valid measurements; propagate the
+      // error rather than publishing a partially filled measurement record.
+      eigenvectors.clear();
+      lanczos.eigenvectors(lanczos.eigenvalues().begin(),lanczos.eigenvalues().begin()+n,
+                           std::back_inserter(eigenvectors),info,generator);
+      if (eigenvectors.size()!=static_cast<std::size_t>(n) || info.size()!=n)
+        throw std::runtime_error("Sparse diagonalization returned incomplete eigenvectors");
+      for (int i=0;i<n;++i)
+        if (info.error_info(i)!=ietl::Info<magnitude_type>::ok || !std::isfinite(info.residual(i)))
+          throw std::runtime_error("Sparse diagonalization failed to calculate an eigenvector");
     }
     else {
       vector_type v(1);

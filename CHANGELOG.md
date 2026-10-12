@@ -6,6 +6,8 @@ User-facing changes and migration notes are recorded here, starting with the bui
 
 ### Fixed
 
+- Reject failed full/sparse diagonalizations instead of publishing incomplete spectra or eigenvector measurements, avoid overflow in default Lanczos iteration counts, and retain fixed quantum-number and momentum sector labels.
+
 - Accept positional plot/simulation files and standalone `--version` in the archive tool, and parse paired `CONSTRAINT` tags correctly.
 
 - Correct the ferromagnetic Ising acceptance sign in the Python and C++ tutorials, add physics regressions, and exercise the density-profile tutorial through callable simulation and plotting functions.

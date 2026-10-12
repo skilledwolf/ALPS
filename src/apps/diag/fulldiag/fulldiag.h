@@ -499,7 +499,9 @@ void FullDiagMatrix<T>::do_subspace()
   this->build();
   if (this->dimension()) {
     mag_vector_type eigenvalues(this->dimension());
-    pick_real_complex<T>::heev(this->calc_vectors() ? 'V' : 'N',boost::numeric::bindings::upper(this->matrix()),eigenvalues);
+    // Do not publish a spectrum after a failed LAPACK factorization.
+    const int status = pick_real_complex<T>::heev(this->calc_vectors() ? 'V' : 'N',boost::numeric::bindings::upper(this->matrix()),eigenvalues);
+    if (status != 0) throw std::runtime_error("Full diagonalization failed: LAPACK status " + std::to_string(status));
     this->perform_measurements();
     copy(eigenvalues.begin(),eigenvalues.end(),std::back_inserter(this->measurements_.rbegin()->average_values["Energy"]));
     this->eigenvalues_.push_back(eigenvalues);
