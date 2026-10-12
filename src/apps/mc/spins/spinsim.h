@@ -51,7 +51,7 @@ struct measurement_traits<IsingMoment> {
    static const bool use_improved_estimator = true;
 };
 
-const bool measurement_traits<IsingMoment>::use_improved_estimator;
+inline const bool measurement_traits<IsingMoment>::use_improved_estimator;
 
 template <int N>
 struct measurement_traits<ONMoment<N> > {
