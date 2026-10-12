@@ -75,6 +75,32 @@ TEST(SpinMCScientificCorrections, FullAndTriangularInputsRetainOffDiagonalHamilt
         EXPECT_DOUBLE_EQ(first.getElement_nc(i, j), second.getElement(i, j));
 }
 
+TEST(SpinMCScientificCorrections, HugeFixedNormConstantsDoNotEnterVariableEnergyOrProposalActions) {
+    alps::Parameters symbols;
+    ONMoment<2> spin;spin.state_=TinyVector<double,2>(.6,.8+2.e-16);
+    const TinyVector<double,2> direction(1.+2.e-16,0.);
+    for(const char* offset:{"1e10","1e100"}) {
+        std::string isotropic=std::string(offset)+" 0 0 "+offset;
+        SquareMatrix<double,2> full(isotropic,symbols);
+        const auto parts=onsite_energy_parts(spin,full);
+        EXPECT_DOUBLE_EQ(parts.first,0.);
+        EXPECT_DOUBLE_EQ(parts.second,-std::stod(offset));
+        EXPECT_DOUBLE_EQ(onsite_energy(spin,full),parts.second);
+        EXPECT_DOUBLE_EQ(onsite_energy_change(spin,full,direction),0.);
+        EXPECT_DOUBLE_EQ(self_bond_energy_parts(spin,full).first,0.);
+    }
+    std::string anisotropic="10000000000 .3 .3 10000000001";
+    SquareMatrix<double,2> matrix(anisotropic,symbols);
+    spin.state_=TinyVector<double,2>(.6,.8);
+    // H=-1e10 - y² - .6*x*y: variable energy -.64-.288.
+    EXPECT_NEAR(onsite_energy_parts(spin,matrix).first,-.928,2.e-15);
+    EXPECT_NEAR(onsite_energy_change(spin,matrix,TinyVector<double,2>(1,0)),.576,2.e-15);
+    std::string antisymmetric="0 1e100 -1e100 0";
+    SquareMatrix<double,2> self(antisymmetric,symbols);
+    EXPECT_DOUBLE_EQ(self_bond_energy_parts(spin,self).first,0.);
+    EXPECT_DOUBLE_EQ(self_bond_energy_parts(spin,self).second,0.);
+}
+
 TEST(SpinMCScientificCorrections, IsotropicONOnsiteEnergyDependsOnDeclaredScalar) {
     for (const auto coefficient : {0., .7, -2.}) {
         MIdMatrix<double, 2> xy(coefficient); MIdMatrix<double, 3> heisenberg(coefficient);

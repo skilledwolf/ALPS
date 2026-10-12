@@ -19,6 +19,7 @@
 #include "matrices.h"
 #include "tinyvec.h"
 #include <iostream>
+#include <utility>
 
 template <unsigned int Q>
 class PottsMoment {
@@ -115,6 +116,14 @@ inline double site_energy(PottsMoment<Q> m, TinyVector<double,2>& h_) {
 template<unsigned int Q>
 inline double onsite_energy(PottsMoment<Q>, MIdMatrix<double,2>) {
   return 0.0;
+}
+template<unsigned int Q>
+inline std::pair<double,double> onsite_energy_parts(PottsMoment<Q>,const MIdMatrix<double,2>&) {
+  return {0.,0.};
+}
+template<unsigned int Q>
+inline std::pair<double,double> self_bond_energy_parts(PottsMoment<Q>,const MIdMatrix<double,2>& J) {
+  return {0.,-J.getElement_nc(0,0)};
 }
 
 /**

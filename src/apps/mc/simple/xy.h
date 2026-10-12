@@ -135,12 +135,16 @@ public:
 protected:
   void update_energy() {
     bond_iterator itr, itr_end;
-    energy_ = 0;
-    for (boost::tie(itr, itr_end) = bonds(); itr != itr_end; ++itr)
-      energy_ -=
-        coupling_[bond_type(*itr)] * real(spins_[source(*itr)] * conj(spins_[target(*itr)]));
+    variable_energy_=constant_energy_=0.;
+    for (boost::tie(itr, itr_end) = bonds(); itr != itr_end; ++itr) {
+      // The represented moments have fixed unit norm; a self bond is exactly
+      // constant, independently of tiny floating normalization residuals.
+      if(source(*itr)==target(*itr)) constant_energy_-=coupling_[bond_type(*itr)];
+      else variable_energy_-=coupling_[bond_type(*itr)]*real(spins_[source(*itr)]*conj(spins_[target(*itr)]));
+    }
     for (int s = 0; s < num_sites(); ++s)
-      energy_ -= field_ * real(spins_[s]);
+      variable_energy_ -= field_ * real(spins_[s]);
+    energy_=variable_energy_+constant_energy_;
   }
 
 private:
@@ -154,6 +158,7 @@ private:
   alps::mc_steps mcs_;
   std::vector<spin_type> spins_;
   double energy_;
+  double variable_energy_=0.,constant_energy_=0.;
 };
 
 #endif // ALPS_SIMPLE_MC_XY_H
