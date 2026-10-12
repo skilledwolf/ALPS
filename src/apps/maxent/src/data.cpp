@@ -19,7 +19,7 @@ void finite(const std::vector<double>& v) {
     for (double x : v) require(std::isfinite(x), "MaxEnt data must be finite");
 }
 }
-void alps::maxent::validate_data(const data& d) {
+void maxent_detail::validate_data(const data& d) {
     const auto n = d.values.size();
     require(n >= 4 && n <= std::size_t(std::numeric_limits<int>::max()),
             "MaxEnt requires between 4 and INT_MAX data values");
@@ -43,17 +43,17 @@ void alps::maxent::validate_data(const data& d) {
         }
     }
 }
-int maxent_detail::data_count(const alps::maxent::data& d) {
-    alps::maxent::validate_data(d);
+int maxent_detail::data_count(const maxent_detail::data& d) {
+    maxent_detail::validate_data(d);
     return static_cast<int>(d.values.size());
 }
-alps::maxent::data maxent_detail::legacy_data(const alps::params& p) {
+maxent_detail::data maxent_detail::legacy_data(const alps::params& p) {
     const int count = p["NDAT"];
     require(count >= 4, "NDAT must be at least 4");
     const auto n = static_cast<std::size_t>(count);
     const bool covariance = p.defined("COVARIANCE_MATRIX");
     const bool hdf = p.defined("DATA") && (p["DATA_IN_HDF5"] | false);
-    alps::maxent::data d;
+    maxent_detail::data d;
     d.values.resize(n);
     if (!covariance) d.errors.resize(n);
     if (hdf) {
@@ -98,6 +98,6 @@ alps::maxent::data maxent_detail::legacy_data(const alps::params& p) {
     bool explicit_tau = false;
     for (int i = 0; i < count; ++i) explicit_tau |= p.defined("TAU_" + std::to_string(i));
     if (explicit_tau) for (int i = 0; i < count; ++i) d.tau.push_back(p["TAU_" + std::to_string(i)]);
-    alps::maxent::validate_data(d);
+    maxent_detail::validate_data(d);
     return d;
 }

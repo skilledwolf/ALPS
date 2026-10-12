@@ -6,6 +6,8 @@ User-facing changes and migration notes are recorded here, starting with the bui
 
 ### Fixed
 
+- Correct MaxEnt complex and bosonic kernels, prior interpolation, rectangular decompositions, and temperature-only inputs. Reject malformed data/covariance/priors and invalid minimizer controls or numerical results. Honor exact output filenames and make all text diagnostics opt-in.
+
 - Accept positional plot/simulation files and standalone `--version` in the archive tool, and parse paired `CONSTRAINT` tags correctly.
 
 - Correct the ferromagnetic Ising acceptance sign in the Python and C++ tutorials, add physics regressions, and exercise the density-profile tutorial through callable simulation and plotting functions.

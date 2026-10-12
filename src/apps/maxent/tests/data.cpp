@@ -11,9 +11,9 @@ alps::params controls() {
     alps::params p; p["NDAT"] = 4; p["NFREQ"] = 4; p["T"] = .5;
     p["OMEGA_MAX"] = 4.; p["FREQUENCY_GRID"] = "linear"; return p;
 }
-alps::maxent::data valid() { return {{-.1, -.2, -.2, -.1}, {.01, .01, .01, .01}, {}, {0., .5, 1., 2.}}; }
+maxent_detail::data valid() { return {{-.1, -.2, -.2, -.1}, {.01, .01, .01, .01}, {}, {0., .5, 1., 2.}}; }
 struct covariance_probe : ContiParameters {
-    covariance_probe(const alps::params& p, const alps::maxent::data& d) : ContiParameters(p,d) {
+    covariance_probe(const alps::params& p, const maxent_detail::data& d) : ContiParameters(p,d) {
         vector_type frequencies(4); for (int i=0; i<4; ++i) frequencies[i] = i+.5;
         setup_kernel(p, 4, frequencies);
     }
@@ -25,13 +25,13 @@ TEST(MaxEntData, OwningValuesTemperatureOnlyAndDefaultNorm) {
     d = valid(); d.tau[1] = 3.; EXPECT_THROW(ContiParameters(p,d), std::invalid_argument);
 }
 TEST(MaxEntData, RejectsInvalidShapesAndNumbers) {
-    auto d = valid(); d.values.resize(3); EXPECT_THROW(alps::maxent::validate_data(d), std::invalid_argument);
-    d = valid(); d.errors.resize(3); EXPECT_THROW(alps::maxent::validate_data(d), std::invalid_argument);
-    d = valid(); d.errors[0] = 0; EXPECT_THROW(alps::maxent::validate_data(d), std::invalid_argument);
-    d = valid(); d.values[0] = std::numeric_limits<double>::infinity(); EXPECT_THROW(alps::maxent::validate_data(d), std::invalid_argument);
-    d = valid(); d.covariance.resize(16); EXPECT_THROW(alps::maxent::validate_data(d), std::invalid_argument);
-    d.errors.clear(); d.covariance[1] = .5; EXPECT_THROW(alps::maxent::validate_data(d), std::invalid_argument);
-    d.covariance.assign(15, 0.); EXPECT_THROW(alps::maxent::validate_data(d), std::invalid_argument);
+    auto d = valid(); d.values.resize(3); EXPECT_THROW(maxent_detail::validate_data(d), std::invalid_argument);
+    d = valid(); d.errors.resize(3); EXPECT_THROW(maxent_detail::validate_data(d), std::invalid_argument);
+    d = valid(); d.errors[0] = 0; EXPECT_THROW(maxent_detail::validate_data(d), std::invalid_argument);
+    d = valid(); d.values[0] = std::numeric_limits<double>::infinity(); EXPECT_THROW(maxent_detail::validate_data(d), std::invalid_argument);
+    d = valid(); d.covariance.resize(16); EXPECT_THROW(maxent_detail::validate_data(d), std::invalid_argument);
+    d.errors.clear(); d.covariance[1] = .5; EXPECT_THROW(maxent_detail::validate_data(d), std::invalid_argument);
+    d.covariance.assign(15, 0.); EXPECT_THROW(maxent_detail::validate_data(d), std::invalid_argument);
 }
 TEST(MaxEntData, CovarianceMustHaveNonnegativeUsableSpectrum) {
     auto d = valid(); d.errors.clear(); d.covariance.assign(16,0.);

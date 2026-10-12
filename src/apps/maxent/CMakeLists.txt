@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 add_library(alps_maxent STATIC
-  src/maxent_run.cpp src/maxent_helper.cpp src/maxent_simulation.cpp src/maxent_parms.cpp)
+  src/data.cpp src/maxent_run.cpp src/maxent_helper.cpp src/maxent_simulation.cpp src/maxent_parms.cpp)
 add_library(ALPS::maxent ALIAS alps_maxent)
 set_target_properties(alps_maxent PROPERTIES EXPORT_NAME maxent
   CXX_VISIBILITY_PRESET hidden VISIBILITY_INLINES_HIDDEN ON)

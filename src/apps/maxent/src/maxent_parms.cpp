@@ -40,7 +40,7 @@ int frequency_count(const alps::params& p) {
 ContiParameters::ContiParameters(const alps::params& p)
 : ContiParameters(p, maxent_detail::legacy_data(p)) {}
 
-ContiParameters::ContiParameters(const alps::params& p, const alps::maxent::data& data) :
+ContiParameters::ContiParameters(const alps::params& p, const maxent_detail::data& data) :
 Default_(make_default_model(p, "DEFAULT_MODEL", data.prior_omega, data.prior_density)),
 T_(p.defined("T") ? static_cast<double>(p["T"]) : 1./static_cast<double>(p["BETA"])),
 ndat_(maxent_detail::data_count(data)), nfreq_(frequency_count(p)),
@@ -141,8 +141,8 @@ void ContiParameters::setup_kernel(const alps::params& p, const int ntab, const 
       for (int i=0; i<ndat(); ++i) {
         double tau;
         if (!tau_.empty())
-          tau = tau_[i]; 
-        else 
+          tau = tau_[i];
+        else
           tau = i / ((ndat()-1)* T_);
         for (int j=0; j<ntab; ++j) {
           double omega = freq[j]; //Default().omega_of_t(double(j)/(ntab-1));
@@ -156,8 +156,8 @@ void ContiParameters::setup_kernel(const alps::params& p, const int ntab, const 
       for (int i=0; i<ndat(); ++i) {
         double tau;
         if (!tau_.empty())
-          tau = tau_[i]; 
-        else 
+          tau = tau_[i];
+        else
           tau = i / ((ndat()-1) * T_);
         for (int j=0; j<ntab; ++j) {
           // This kernel is even in omega. Use nonpositive exponent arguments
@@ -167,35 +167,35 @@ void ContiParameters::setup_kernel(const alps::params& p, const int ntab, const 
               (std::exp(-omega*tau) + std::exp(-omega*(1./T_-tau))) /
               -std::expm1(-omega/T_);
         }
-      }    
+      }
     }
-    //for zero temperature, only positive frequency matters 
+    //for zero temperature, only positive frequency matters
     else if (p_kernel == "Boris") {
       if (alps::is_master())
         std::cerr << "Using Boris' kernel" << std::endl;
       for (int i=0; i<ndat(); ++i) {
         if (tau_.empty()) throw std::invalid_argument("Boris kernel requires explicit tau");
-        double tau = tau_[i]; 
+        double tau = tau_[i];
         for (int j=0; j<ntab; ++j) {
           double omega = freq[j];
           K_(i,j) = -std::exp(-omega*tau);
         }
-      }    
+      }
     }
-    else 
+    else
       boost::throw_exception(std::invalid_argument("unknown integration kernel"));
-  } 
+  }
   else if (p_data == "frequency" && p_kernel == "fermionic" &&
            (p["PARTICLE_HOLE_SYMMETRY"]|false)) {
     std::cerr << "using particle hole symmetric kernel for fermionic data" << std::endl;
     for (int i=0; i<ndat(); ++i) {
       double omegan = (2*i+1)*boost::math::constants::pi<double>()*T_;
       for (int j=0; j<ntab; ++j) {
-        double omega = freq[j]; 
+        double omega = freq[j];
         K_(i,j) =  -omegan / (omegan*omegan + omega*omega);
       }
     }
-  } 
+  }
   else if (p_data == "frequency" && p_kernel == "bosonic" &&
            (p["PARTICLE_HOLE_SYMMETRY"]|false)) {
     //std::cerr << "using particle hole symmetric kernel for bosonic data" << std::endl;
@@ -205,7 +205,7 @@ void ContiParameters::setup_kernel(const alps::params& p, const int ntab, const 
     for (int i=0; i<ndat(); ++i) {
       double Omegan = (2*i)*boost::math::constants::pi<double>()*T_;
       for (int j=0; j<ntab; ++j) {
-        double Omega = freq[j]; 
+        double Omega = freq[j];
         K_(i,j) = i == 0 ? -1. : -Omega*Omega / (Omegan*Omegan + Omega*Omega);
       }
     }
@@ -216,18 +216,18 @@ void ContiParameters::setup_kernel(const alps::params& p, const int ntab, const 
     //  }
     //}
     //std::cout<<"debug kernel checksum is: "<<z<<std::endl;
-  } 
+  }
   else if (p_data == "frequency" && p_kernel == "anomalous" &&
            (p["PARTICLE_HOLE_SYMMETRY"]|false)) {
     std::cerr << "using particle hole symmetric kernel for anomalous fermionic data" << std::endl;
     for(int i=0;i<ndat();++i){
       double omegan = (2*i+1)*boost::math::constants::pi<double>()*T_;
       for (int j=0; j<ntab; ++j) {
-        double omega = freq[j]; 
+        double omega = freq[j];
         K_(i,j) =  omega*omega / (omegan*omegan + omega*omega);
       }
     }
-  } 
+  }
   else if (p_data == "frequency") {
     if (alps::is_master())
       std::cerr << "assume frequency space data" << std::endl;
@@ -242,7 +242,7 @@ void ContiParameters::setup_kernel(const alps::params& p, const int ntab, const 
       for (int i=0; i<ndat()/2; ++i) {
         std::complex<double> iomegan(0, (2*i+1)*boost::math::constants::pi<double>()*T_);
         for (int j=0; j<ntab; ++j) {
-          double omega = freq[j]; 
+          double omega = freq[j];
           Kc(i,j) =  1. / (iomegan - omega);
         }
       }
@@ -253,11 +253,11 @@ void ContiParameters::setup_kernel(const alps::params& p, const int ntab, const 
       for (int i=0; i<ndat()/2; ++i) {
         std::complex<double> iomegan(0, 2*i*boost::math::constants::pi<double>()*T_);
         for (int j=0; j<ntab; ++j) {
-          double omega = freq[j]; 
+          double omega = freq[j];
           //Kc(i,j) =  -1. / (iomegan - omega);
           Kc(i,j) = i == 0 ? -1. : omega / (iomegan - omega);
         }
-      }    
+      }
     }
     else if (p_kernel == "anomalous"){
       std::cerr<<"Using general anomalous kernel omega / (iomega_n - omega) for, e.g., omega*Delta"<<std::endl;
@@ -267,10 +267,10 @@ void ContiParameters::setup_kernel(const alps::params& p, const int ntab, const 
           double omega = freq[j];
           Kc(i,j) =  -omega / (iomegan - omega);
         }
-      }   
+      }
     }
-    else 
-      boost::throw_exception(std::invalid_argument("unknown integration kernel"));    
+    else
+      boost::throw_exception(std::invalid_argument("unknown integration kernel"));
     for (int i=0; i<ndat(); i+=2) {
       for (int j=0; j<ntab; ++j) {
         K_(i,j) = Kc(i/2,j).real();
@@ -324,7 +324,7 @@ void ContiParameters::setup_kernel(const alps::params& p, const int ntab, const 
       if (alps::is_master() && p["VERBOSE"]|false)
         std::cout << "# " << var(new_ndat_+i) << "\n";
     }
-  } 
+  }
   //else {
   //  for (int i=0; i<ndat(); ++i)
   //    sigma[i] = static_cast<double>(p["SIGMA_"+boost::lexical_cast<std::string>(i)])/static_cast<double>(p["NORM"] | 1.);
@@ -376,7 +376,7 @@ void ContiParameters::setup_kernel(const alps::params& p, const int ntab, const 
 
 MaxEntParameters::MaxEntParameters(const alps::params& p) :
 ContiParameters(p),
-U_(ndat(), ndat()), Vt_(ndat(), nfreq()), Sigma_(ndat(), ndat()), 
+U_(ndat(), ndat()), Vt_(ndat(), nfreq()), Sigma_(ndat(), ndat()),
 omega_coord_(nfreq()), delta_omega_(nfreq()), ns_(0)
 {
   using namespace boost::numeric;
@@ -404,14 +404,14 @@ omega_coord_(nfreq()), delta_omega_(nfreq()), ns_(0)
   //  std::cout<<omega_coord_[i]<<" "<<delta_omega_[i]<<std::endl;
   //}
   setup_kernel(p, nfreq(), omega_coord_);
-  
+
   //perform the SVD decomposition K = U Sigma V^T
   const int rank = std::min(ndat(), nfreq());
   vector_type S(rank);
   U_.resize(ndat(), rank); Vt_.resize(rank, nfreq());
   matrix_type Kt = K_; // gesvd destroys K!
   if (bindings::lapack::gesvd('S','S',Kt, S, U_, Vt_) != 0)
-    throw std::runtime_error("kernel singular value decomposition failed"); 
+    throw std::runtime_error("kernel singular value decomposition failed");
   if (p["VERBOSE"]|false) std::cout << "# Singular values of the Kernel:\n";
     const double prec = std::sqrt(std::numeric_limits<double>::epsilon())*nfreq()*S[0];
   if (p["VERBOSE"]|false) std::cout << "# eps = " << sqrt(std::numeric_limits<double>::epsilon()) << std::endl << "# prec = " << prec << std::endl;
@@ -421,12 +421,12 @@ omega_coord_(nfreq()), delta_omega_(nfreq()), ns_(0)
   }
   if (ns() == 0)
     boost::throw_exception(std::logic_error("all singular values smaller than the precision"));
-  
+
   //(truncated) U has dimension ndat() * ns_; ndat() is # of input (matsubara frequency/imag time) points
   //(truncated) Sigma has dimension ns_*ns_ (number of singular eigenvalues)
   //(truncated) V^T has dimensions ns_* nfreq(); nfreq() is number of output (real) frequencies
   //ns_ is the dimension of the singular space.
-  
+
   U_.resize(ndat(), ns_, true);
   Vt_.resize(ns_, nfreq(), true);
   Sigma_.resize(ns_, ns_);
@@ -435,7 +435,7 @@ omega_coord_(nfreq()), delta_omega_(nfreq()), ns_(0)
     std::cout << "# " << s << "\t" << S[s] <<"\n";
     Sigma_(s,s) = S[s];
   }
-  //compute Ut and 
+  //compute Ut and
   matrix_type Ut = ublas::trans(U_);             //U^T has dimension ns_*ndat()
   vector_type t = ublas::prec_prod(Ut, y_);      //t has dimension ns_
   vector_type y2 = ublas::prec_prod(U_, t);      //y2 has dimension ndat(), which is dimension of y

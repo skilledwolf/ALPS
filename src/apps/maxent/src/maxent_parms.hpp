@@ -28,16 +28,16 @@
 class ContiParameters {
 
 public:
-  
+
   typedef boost::numeric::ublas::matrix<double, boost::numeric::ublas::column_major> matrix_type;
   typedef boost::numeric::ublas::vector<double> vector_type;
   typedef boost::numeric::ublas::vector<std::complex<double> > complex_vector_type;
   typedef std::pair<vector_type, complex_vector_type> omega_complex_type;
 
   ContiParameters(const alps::params& p);
-  ContiParameters(const alps::params& p, const alps::maxent::data& data);
-  
-  const DefaultModel& Default() const { return *Default_; }  
+  ContiParameters(const alps::params& p, const maxent_detail::data& data);
+
+  const DefaultModel& Default() const { return *Default_; }
   double y(const int i) const { return y_[i]; }
   double cov(const int i,const int j) const { return cov_(i,j); }
   double sigma(const int i) const { return sigma_[i]; }
@@ -49,7 +49,7 @@ public:
   }
 
 private:
-  
+
   boost::shared_ptr<DefaultModel> Default_;
   const double T_;
   int ndat_;
@@ -70,9 +70,9 @@ protected:
 class MaxEntParameters : public ContiParameters
 {
 public:
-  
+
   MaxEntParameters(const alps::params& p);
-  
+
   const vector_type& y() const { return y_; }
   const matrix_type& K() const { return K_; }
   const matrix_type& U() const { return U_; }
@@ -94,5 +94,5 @@ private:
   int ns_;
 };
 
-    
+
 #endif
