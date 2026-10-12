@@ -15,9 +15,13 @@
 #ifndef ALPS_APPLICATIONS_MC_SPIN_ABSTRACTSPINMC_H_
 #define ALPS_APPLICATIONS_MC_SPIN_ABSTRACTSPINMC_H_
 
-#include <alps/scheduler.h>
 #include <alps/alea.h>
+#include <alps/lattice.h>
+#include <alps/osiris/dump.h>
+#include <alps/random/buffered_rng.h>
 #include <boost/property_map/vector_property_map.hpp>
+#include <boost/random/uniform_real.hpp>
+#include <boost/random/variate_generator.hpp>
 
 #include <alps/model/sign.h>
 #include <boost/tuple/tuple.hpp>
@@ -35,11 +39,20 @@ struct update_info_type
 };
 
  
+// The classical spin simulation: lattice, couplings and sweep bookkeeping.
+// It used to be a scheduler run (alps::scheduler::LatticeMCRun) and now
+// owns only its lattice. The parameters, measurements and random numbers
+// belong to whoever drives it; SpinRun (spinrun.h) runs it under the legacy
+// scheduler. The parameters are mutable because constructing the simulation
+// inserts UPDATE (see below).
 template<class MAT>
-class AbstractSpinSim : public alps::scheduler::LatticeMCRun<> {
+class AbstractSpinSim : public alps::graph_helper<> {
 public : 
-  AbstractSpinSim(const alps::ProcessList&,const alps::Parameters&,int);
-  ~AbstractSpinSim();  
+  typedef boost::variate_generator<alps::buffered_rng_base&, boost::uniform_real<> >
+    random_type;
+
+  AbstractSpinSim(alps::Parameters&, alps::ObservableSet&, random_type&);
+  virtual ~AbstractSpinSim();
  
   bool change_parameter(const std::string& name, const alps::StringValue& value);
   void dostep();
@@ -52,6 +65,10 @@ public :
   virtual void do_measurements(update_info_type)=0;
 
 protected: 
+  // Bound before anything is resolved from them.
+  alps::Parameters& parms;
+  alps::ObservableSet& measurements;
+  random_type& random_01;
   // Resolved first, directly after the base class has built the lattice.
   spinmc::settings<MAT::dim> settings_;
   double beta_;
@@ -84,9 +101,12 @@ protected:
 };  
 
 template<class MAT>
-AbstractSpinSim<MAT>::AbstractSpinSim(const alps::ProcessList& w, 
-        const alps::Parameters& myparms,int n)
-  : alps::scheduler::LatticeMCRun<>(w,myparms,n),
+AbstractSpinSim<MAT>::AbstractSpinSim(alps::Parameters& p,
+        alps::ObservableSet& m, random_type& r)
+  : alps::graph_helper<>(p),
+  parms(p),
+  measurements(m),
+  random_01(r),
   settings_(spinmc::resolve_settings<MAT::dim>(parms)),
   beta_(settings_.beta),
   sweeps_(settings_.sweeps),
@@ -331,8 +351,6 @@ void AbstractSpinSim<MAT>::save(alps::ODump& dump) const {
 template<class MAT>
 void AbstractSpinSim<MAT>::load(alps::IDump& dump) {
   dump >> sweeps_done_ >> thermalization_fraction_ >> thermalization_sweeps_;
-  if(where.empty())
-    measurements.compact();
 }
 
 #endif

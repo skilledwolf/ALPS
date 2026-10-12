@@ -66,10 +66,12 @@ template <class M, class MAT>
 class SpinSim : public AbstractSpinSim<MAT> {
 public:
   typedef M moment_type;
-  SpinSim(const alps::ProcessList& w,const alps::Parameters& p,int n);
+  typedef typename AbstractSpinSim<MAT>::random_type random_type;
+  SpinSim(alps::Parameters& p, alps::ObservableSet& m, random_type& r);
 
   void save(alps::ODump& dump) const;
   void load(alps::IDump& dump);
+  void clear_spins() { spins_ = std::vector<moment_type>(); }
   update_info_type do_update();
   void do_measurements(update_info_type);
 
@@ -83,10 +85,12 @@ class SpinSim<M,MIdMatrix<double,M::dim> >
         : public AbstractSpinSim<MIdMatrix<double,M::dim> > {
 public:
   typedef M moment_type;
-  SpinSim(const alps::ProcessList& w,const alps::Parameters& p,int n);
+  typedef typename AbstractSpinSim<MIdMatrix<double,M::dim> >::random_type random_type;
+  SpinSim(alps::Parameters& p, alps::ObservableSet& m, random_type& r);
 
   void save(alps::ODump& dump) const;
   void load(alps::IDump& dump);
+  void clear_spins() { spins_ = std::vector<moment_type>(); }
   update_info_type do_update();
   void do_measurements(update_info_type);
   
@@ -97,16 +101,16 @@ private:
 
 
 template <class M, class MAT>
-SpinSim<M, MAT>::SpinSim(const alps::ProcessList& w,const alps::Parameters& p,int n)
- : AbstractSpinSim<MAT>::AbstractSpinSim(w,p,n),
+SpinSim<M, MAT>::SpinSim(alps::Parameters& p, alps::ObservableSet& m, random_type& r)
+ : AbstractSpinSim<MAT>::AbstractSpinSim(p,m,r),
    spins_(this->num_sites())
 {
 }
 
 template <class M>
-SpinSim<M, MIdMatrix<double,M::dim> >::SpinSim(const alps::ProcessList& w,
-                const alps::Parameters& p,int n)
- : AbstractSpinSim<MIdMatrix<double,M::dim> >::AbstractSpinSim(w,p,n),
+SpinSim<M, MIdMatrix<double,M::dim> >::SpinSim(alps::Parameters& p,
+                alps::ObservableSet& m, random_type& r)
+ : AbstractSpinSim<MIdMatrix<double,M::dim> >::AbstractSpinSim(p,m,r),
    spins_(this->num_sites())
 {
 }
@@ -132,8 +136,6 @@ void SpinSim<M, MAT>::load(alps::IDump& dump)
 { 
   AbstractSpinSim<MAT>::load(dump);
   dump >> spins_;
-  if (AbstractSpinSim<MAT>::where.empty())
-    spins_ = std::vector<moment_type>();
 }
 
 template <class M>
@@ -141,8 +143,6 @@ void SpinSim<M, MIdMatrix<double,M::dim> >::load(alps::IDump& dump)
 { 
   AbstractSpinSim<MIdMatrix<double,M::dim> >::load(dump);
   dump >> spins_;
-  if (AbstractSpinSim<MIdMatrix<double,M::dim> >::where.empty())
-    spins_ = std::vector<moment_type>();
 }
 
 

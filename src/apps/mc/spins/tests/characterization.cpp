@@ -364,36 +364,36 @@ const std::string ising = R"p(LATTICE="chain lattice";L=4;MODEL="Ising";T=1;SWEE
 // The factory chooses the matrix type from the largest number of
 // space-separated values among J, J', J0..J3, D, D' and D0..D3.
 TEST(SpinmcCharacterization, ChoosesTheMatrixTypeFromTheLongestCouplingText) {
-    EXPECT_EQ(built(heisenberg + "J=1"), "SpinSim<ONMoment<3>,MIdMatrix<double,3>>");
-    EXPECT_EQ(built(heisenberg + R"p(J="1 2 3")p"), "SpinSim<ONMoment<3>,DiagMatrix<double,3>>");
+    EXPECT_EQ(built(heisenberg + "J=1"), "SpinRun<ONMoment<3>,MIdMatrix<double,3>>");
+    EXPECT_EQ(built(heisenberg + R"p(J="1 2 3")p"), "SpinRun<ONMoment<3>,DiagMatrix<double,3>>");
     EXPECT_EQ(built(heisenberg + R"p(J="1 0.5 1 0 0 1")p"),
-              "SpinSim<ONMoment<3>,SquareMatrix<double,3>>");
+              "SpinRun<ONMoment<3>,SquareMatrix<double,3>>");
     EXPECT_EQ(built(heisenberg + R"p(J="1 0 0 0 1 0 0 0 1")p"),
-              "SpinSim<ONMoment<3>,SquareMatrix<double,3>>");
+              "SpinRun<ONMoment<3>,SquareMatrix<double,3>>");
     EXPECT_EQ(built(heisenberg + R"p(J=1;D="0.1 0.2 0.3")p"),
-              "SpinSim<ONMoment<3>,DiagMatrix<double,3>>");
+              "SpinRun<ONMoment<3>,DiagMatrix<double,3>>");
 
-    EXPECT_EQ(built(xy + "J=1"), "SpinSim<ONMoment<2>,MIdMatrix<double,2>>");
-    EXPECT_EQ(built(xy + R"p(J="1 2")p"), "SpinSim<ONMoment<2>,DiagMatrix<double,2>>");
-    EXPECT_EQ(built(xy + R"p(J="1 0.5 1")p"), "SpinSim<ONMoment<2>,SquareMatrix<double,2>>");
-    EXPECT_EQ(built(xy + R"p(J="1 0 0 1")p"), "SpinSim<ONMoment<2>,SquareMatrix<double,2>>");
+    EXPECT_EQ(built(xy + "J=1"), "SpinRun<ONMoment<2>,MIdMatrix<double,2>>");
+    EXPECT_EQ(built(xy + R"p(J="1 2")p"), "SpinRun<ONMoment<2>,DiagMatrix<double,2>>");
+    EXPECT_EQ(built(xy + R"p(J="1 0.5 1")p"), "SpinRun<ONMoment<2>,SquareMatrix<double,2>>");
+    EXPECT_EQ(built(xy + R"p(J="1 0 0 1")p"), "SpinRun<ONMoment<2>,SquareMatrix<double,2>>");
 
-    EXPECT_EQ(built(ising + "J=1"), "SpinSim<IsingMoment,MIdMatrix<double,1>>");
+    EXPECT_EQ(built(ising + "J=1"), "SpinRun<IsingMoment,MIdMatrix<double,1>>");
     EXPECT_EQ(built(R"p(LATTICE="chain lattice";L=4;MODEL="O(4)";J=1;T=1;SWEEPS=10;SEED=1)p"),
-              "SpinSim<ONMoment<4>,MIdMatrix<double,4>>");
+              "SpinRun<ONMoment<4>,MIdMatrix<double,4>>");
     EXPECT_EQ(built(R"p(LATTICE="chain lattice";L=4;MODEL="Potts";q=3;J=1;T=1;SWEEPS=10;SEED=1)p"),
-              "SpinSim<PottsMoment<3u>,MIdMatrix<double,2>>");
+              "SpinRun<PottsMoment<3u>,MIdMatrix<double,2>>");
 }
 
 // J' and D' take part in the choice although no bond or site reads them, and
 // J4 is read for bond type 4 but takes no part in the choice.
 TEST(SpinmcCharacterization, CountsPrimedCouplingsButNotHigherBondTypes) {
     EXPECT_EQ(built(heisenberg + R"p(J=1;J'="1 2 3")p"),
-              "SpinSim<ONMoment<3>,DiagMatrix<double,3>>");
+              "SpinRun<ONMoment<3>,DiagMatrix<double,3>>");
     EXPECT_EQ(built(heisenberg + R"p(J=1;D'="1 2 3")p"),
-              "SpinSim<ONMoment<3>,DiagMatrix<double,3>>");
+              "SpinRun<ONMoment<3>,DiagMatrix<double,3>>");
     EXPECT_EQ(built(heisenberg + R"p(J=1;J4="1 2 3")p"),
-              "SpinSim<ONMoment<3>,MIdMatrix<double,3>>");
+              "SpinRun<ONMoment<3>,MIdMatrix<double,3>>");
     // Values are split at spaces only, so an expression with spaces counts
     // as several values: three here, which selects the diagonal type.
     EXPECT_EQ(construction_error(heisenberg + R"p(J="2 * 0.5")p"), "Illegal term in expression");
