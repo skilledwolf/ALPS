@@ -33,6 +33,16 @@ struct update_info_type
 };
 
  
+// A scalar isotropic coupling retains its sign in every moment dimension.
+// A determinant loses that sign for even dimensions and cannot identify the
+// ferromagnetic/staggered estimator or scalar cluster frustration policy.
+template<class MAT>
+double spinmc_coupling_character(const MAT &coupling) { return coupling.det(); }
+template<class T, int N>
+double spinmc_coupling_character(const MIdMatrix<T, N> &coupling) {
+  return coupling.getElement(0, 0);
+}
+
 template<class MAT>
 class AbstractSpinSim : public alps::scheduler::LatticeMCRun<> {
 public : 
@@ -69,7 +79,7 @@ protected:
   boost::vector_property_map<double,site_type_map> spinfactor_; /* S */
   boost::vector_property_map<MAT,site_type_map> selfinteraction_; /* D */
   boost::vector_property_map<MAT,bond_type_map> couplings_; /* J */ 
-  boost::vector_property_map<double,bond_type_map> couplings_det; /* |J| */
+  boost::vector_property_map<double,bond_type_map> couplings_det; /* positive ferro / negative AF cluster signs */
  
   bool use_error_limit;
   bool ferromagnetic_;
@@ -193,11 +203,13 @@ AbstractSpinSim<MAT>::AbstractSpinSim(const alps::ProcessList& w,
       bond_type[*b] = num_bond_types;
       this_J = this_J * (quantum_convention_ ? 1. : -1.);
       couplings_[*b]=this_J;
-      double det = this_J.det();
-      couplings_det[*b] = det;
-      if (det>0.)
+      const double character = spinmc_coupling_character(this_J);
+      // is_frustrated expects positive ferromagnetic edge signs. this_J
+      // enters H=+sᵀthis_J s, so its negative is that operational sign.
+      couplings_det[*b] = -character;
+      if (character>0.)
         ferromagnetic_=false;
-      else if (det<0.)
+      else if (character<0.)
         antiferromagnetic_=false;
       num_bond_types++;
     }
