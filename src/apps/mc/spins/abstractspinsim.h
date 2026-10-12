@@ -23,6 +23,7 @@
 #include <boost/tuple/tuple.hpp>
 #include <boost/tuple/tuple_comparison.hpp>
 #include "matrices.h"
+#include "settings.h"
 
 typedef alps::uint64_t uint64_t;
 
@@ -50,6 +51,8 @@ public :
   virtual void do_measurements(update_info_type)=0;
 
 protected: 
+  // Resolved first, directly after the base class has built the lattice.
+  spinmc::settings<MAT::dim> settings_;
   double beta_;
   uint64_t sweeps_;
   TinyVector<double,MAT::dim> h_;
@@ -83,11 +86,12 @@ template<class MAT>
 AbstractSpinSim<MAT>::AbstractSpinSim(const alps::ProcessList& w, 
         const alps::Parameters& myparms,int n)
   : alps::scheduler::LatticeMCRun<>(w,myparms,n),
-  beta_(parms.defined("beta") ? double(parms["beta"]) : 1./double(parms.required_value("T"))),
-  sweeps_(static_cast<uint64_t>(parms.required_value("SWEEPS"))),
-  h_(parms.defined("h") ? TinyVector<double,MAT::dim>(parms["h"],parms) : TinyVector<double,MAT::dim>(0.0)),
+  settings_(spinmc::resolve_settings<MAT::dim>(parms)),
+  beta_(settings_.beta),
+  sweeps_(settings_.sweeps),
+  h_(settings_.h),
   sweeps_done_(0),
-  thermalization_(parms.value_or_default("THERMALIZATION",sweeps_/10)),
+  thermalization_(settings_.thermalization),
   thermalization_fraction_(0.),
   thermalization_sweeps_(0),
   general_case_(false),
@@ -98,9 +102,9 @@ AbstractSpinSim<MAT>::AbstractSpinSim(const alps::ProcessList& w,
   couplings_det(boost::get(alps::bond_type_t(),graph())),
   ferromagnetic_(true),
   antiferromagnetic_(true),
-  quantum_convention_(parms.defined("CONVENTION") && parms["CONVENTION"]=="quantum"),
-  g_(parms.defined("g") ? alps::evaluate<double>(parms["g"],parms) : 1.),
-  print_sweeps_(parms.value_or_default("PRINT_SWEEPS",0))
+  quantum_convention_(settings_.quantum_convention),
+  g_(settings_.g),
+  print_sweeps_(settings_.print_sweeps)
 {
   // 2009-01-27: wistaria@comp-phys.org
   // moved from the inilializaton list to avoid 'internal compiler error' in gcc 4.3.x
@@ -113,30 +117,24 @@ AbstractSpinSim<MAT>::AbstractSpinSim(const alps::ProcessList& w,
   std::map <int,bool> bond_type_visited;
   std::map <int,bool> site_type_visited;
 
-  if (parms.defined("ERROR_VARIABLE"))
-    if (parms.defined("ERROR_LIMIT"))
-      use_error_limit = true;
-    else {
-      use_error_limit = false;
-    }
-  else
-    use_error_limit = false; 
+  use_error_limit = settings_.use_error_limit;
 
   if (has_magnetic_field_ && quantum_convention_) 
     boost::throw_exception(
       std::runtime_error("Cannot use quantum convention with nonzero magnetic field ."));
 
 
-  if (parms["UPDATE"]=="cluster" && has_magnetic_field_) 
+  // Reading UPDATE through the worker's mutable parameters has always
+  // inserted an empty value when it is absent, and that entry is saved with
+  // the run. Keep the insertion until the saved parameter set may change.
+  (void)parms["UPDATE"];
+
+  if (settings_.update==spinmc::update_request::cluster && has_magnetic_field_)
     {boost::throw_exception(std::runtime_error("Illegal update type " 
-               + std::string(parms["UPDATE"]) 
+               + settings_.update_text
                + " with magnetic field not set to zero."));}
 
-  std::string J_string;
-  if (parms.defined("J"))
-    J_string = parms["J"];
-  else
-    J_string = "1.0";
+  std::string J_string = settings_.default_coupling;
 
   for (site_iterator si = sites().first; si!=sites().second; si++) {
     int type = site_type(*si);
@@ -203,7 +201,7 @@ AbstractSpinSim<MAT>::AbstractSpinSim(const alps::ProcessList& w,
     }
   }
 
-  if (parms["UPDATE"]=="cluster") {
+  if (settings_.update==spinmc::update_request::cluster) {
     if (MAT::allow_cluster_update)
       cluster_updates_=true;
     else {
@@ -216,12 +214,12 @@ AbstractSpinSim<MAT>::AbstractSpinSim(const alps::ProcessList& w,
       boost::throw_exception(std::runtime_error("wrong parameter submitted"));
     }
   }
-  else if (parms["UPDATE"]=="local")
+  else if (settings_.update==spinmc::update_request::local)
     cluster_updates_=false;
-  else if (parms["UPDATE"]=="")
+  else if (settings_.update==spinmc::update_request::automatic)
     cluster_updates_ = !alps::is_frustrated(graph(),couplings_det);
   else
-    boost::throw_exception(std::runtime_error("Illegal update type " + std::string(parms["UPDATE"])));
+    boost::throw_exception(std::runtime_error("Illegal update type " + settings_.update_text));
 
   cluster_updates_ = cluster_updates_ && MAT::allow_cluster_update;
 
