@@ -54,6 +54,7 @@ WRun::WRun(const alps::ProcessList& w, const alps::Parameters& myparms,int n)
     Sign(1),
     nonlocal(parms.value_or_default("NONLOCAL",true)),
     use_1D_stiffness(parms.value_or_default("USE_1D_STIFFNESS",false)),  //@#$br
+    last_id_(0),
     chain_number(num_sites()),
     bond_type(alps::get_or_default(alps::bond_type_t(),graph(),0)),
     boundary_crossing(alps::get_or_default(alps::boundary_crossing_t(),graph(),alps::boundary_crossing()))
