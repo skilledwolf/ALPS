@@ -90,3 +90,16 @@ TEST_F(ArchiveLifetime, FailedReplacementLeavesDestinationIntact) {
     EXPECT_TRUE(boost::filesystem::is_directory(marker));
     EXPECT_FALSE(ar.is_open());
 }
+
+TEST_F(ArchiveLifetime, RelativeAndAbsoluteNamesShareOneOwner) {
+    { alps::hdf5::archive seed(filename, "a"); seed.write("/value", 1); }
+    auto const relative = boost::filesystem::relative(filename, boost::filesystem::current_path());
+    alps::hdf5::archive reader(relative, "r");
+    EXPECT_EQ(reader.get_filename(), relative.string());
+    alps::hdf5::archive writer(filename, "a");
+    writer.write("/value", 17);
+    writer.close();
+    int value = 0;
+    reader.read("/value", value);
+    EXPECT_EQ(value, 17);
+}

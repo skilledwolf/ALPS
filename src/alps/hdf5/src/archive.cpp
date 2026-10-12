@@ -241,6 +241,13 @@ namespace alps {
                 return 0;
             }
 
+            boost::filesystem::path absolute_filename(boost::filesystem::path const & filename) {
+                auto const absolute = boost::filesystem::absolute(filename);
+                // Resolve directory symlinks before interpreting '..'. Leave the
+                // final component intact: rename replaces that directory entry.
+                return boost::filesystem::weakly_canonical(absolute.parent_path()) / absolute.filename();
+            }
+
             struct ALPS_HDF5_DECL archivecontext : boost::noncopyable {
 
                 archivecontext(std::string const & filename, bool write, bool replace, bool compress, bool large, bool memory)
@@ -249,7 +256,8 @@ namespace alps {
                     , replace_(!memory && replace)
                     , large_(large)
                     , memory_(memory)
-                    , filename_(filename)
+                    , filename_(absolute_filename(filename).string())
+                    , display_filename_(filename)
                 {
                     construct();
                 }
@@ -309,6 +317,7 @@ namespace alps {
                 bool large_;
                 bool memory_;
                 std::string filename_;
+                std::string display_filename_;
                 std::string suffix_;
                 hid_t file_id_ = -1;
                 bool failed_ = false;
@@ -480,7 +489,26 @@ namespace alps {
         // owns finalization independently of the callback's archive views.
         void save_checkpoint(boost::filesystem::path const & filename,
                              std::function<void(archive &)> const & save) {
-            auto const target = boost::filesystem::absolute(filename).lexically_normal();
+            auto const target = detail::absolute_filename(filename);
+            // Bespoke follow-up to the 81e7ad00d ownership contract: an open
+            // destination could otherwise keep a stale file in the registry or
+            // publish an older writable view over this checkpoint later.
+            auto require_closed_destination = [&] {
+                for (auto const & entry : archive::contexts_) {
+                    auto active = entry.second.lock();
+                    if (!active || active->file_id_ < 0) continue;
+                    auto const path = boost::filesystem::path(active->filename_);
+                    bool const same = path == target || (boost::filesystem::exists(path)
+                        && boost::filesystem::exists(target) && boost::filesystem::equivalent(path, target));
+                    if (same) throw archive_error("checkpoint destination is still open: " + target.string());
+                }
+            };
+            {
+#ifndef ALPS_NGS_SINGLE_THREAD
+                boost::lock_guard<boost::recursive_mutex> lock(archive::mutex_);
+#endif
+                require_closed_destination();
+            }
             boost::filesystem::path directory;
             do {
                 directory = target.parent_path() / boost::filesystem::unique_path(
@@ -508,7 +536,15 @@ namespace alps {
                     }
                     if (failure) std::rethrow_exception(failure);
                 }
-                boost::filesystem::rename(temporary, target);
+                {
+#ifndef ALPS_NGS_SINGLE_THREAD
+                    boost::lock_guard<boost::recursive_mutex> lock(archive::mutex_);
+#endif
+                    // A callback may have opened the old destination. Coordinate
+                    // this check and rename with archive construction/close.
+                    require_closed_destination();
+                    boost::filesystem::rename(temporary, target);
+                }
             } catch (...) {
                 boost::system::error_code ignored;
                 boost::filesystem::remove_all(directory, ignored);
@@ -521,7 +557,7 @@ namespace alps {
         std::string const & archive::get_filename() const {
             if (!context_ || context_->file_id_ < 0)
                 throw archive_closed("the archive is closed" + ALPS_STACKTRACE);
-            return context_->filename_;
+            return context_->display_filename_;
         }
 
         // Adapted from ALPS reconciliation 988651d41, archive.cpp. Keep the
@@ -1290,7 +1326,10 @@ namespace alps {
         }
 
         std::string archive::file_key(std::string filename, bool large, bool memory) const {
-            return (large ? "l" : (memory ? "m" : "_")) + filename;
+            // Relative/absolute aliases share ownership. Keep the display spelling
+            // in archivecontext, but use stable absolute paths for file operations.
+            return (large ? "l" : (memory ? "m" : "_"))
+                + detail::absolute_filename(filename).string();
         }
     
 #ifndef ALPS_NGS_SINGLE_THREAD
