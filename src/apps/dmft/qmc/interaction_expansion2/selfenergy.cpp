@@ -176,10 +176,14 @@ void InteractionExpansion::measure_densities()
   std::valarray<double> ninj(n_site*n_site*4);
   for (unsigned int i=0; i<n_site; ++i) {
     for (unsigned int j=0; j<n_site; ++j) {
-      ninj[i*n_site+j] = (1+dens[0][i])*(1+dens[0][j]);
+      // Adapted from ALPS reconciliation 90a36c0d4c64ee7308dcb0651264197ffdf36449,
+      // interaction_expansion2/selfenergy.cpp: for the supported single-site
+      // model, the equal-flavor diagonal obeys the operator identity n_f^2=n_f.
+      // Distinct flavors retain their conditional product estimator.
+      ninj[i*n_site+j] = i==j ? 1+dens[0][i] : (1+dens[0][i])*(1+dens[0][j]);
       ninj[i*n_site+j+1] = (1+dens[0][i])*(1+dens[1][j]);
       ninj[i*n_site+j+2] = (1+dens[1][i])*(1+dens[0][j]);
-      ninj[i*n_site+j+3] = (1+dens[1][i])*(1+dens[1][j]);
+      ninj[i*n_site+j+3] = i==j ? 1+dens[1][i] : (1+dens[1][i])*(1+dens[1][j]);
     }
   }
   measurements["n_i n_j"] << static_cast<std::valarray<double> > (ninj*sign);
