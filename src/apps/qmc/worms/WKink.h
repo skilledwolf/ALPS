@@ -64,8 +64,15 @@ class Kink {
 public:
   typedef Kink<state_type> kink_type;
 
-  Kink() {}
-  Kink(double t, state_type s) : t_(t), state_(s) {}
+  // Fresh wormheads are unlinked (id zero). Explicit initialization also
+  // makes list insertion/copying independent of prior storage contents.
+  Kink() : state_(state_type()), id_(0) {}
+  Kink(double t, state_type s) : t_(t), state_(s), id_(0) {}
+  // A time_struct has already been normalized by the update arithmetic.
+  // Converting it through double would flip the stored endpoints0 and1.
+  static kink_type at_time(time_struct t, state_type s) {
+    kink_type result; result.t_ = t; result.state_ = s; return result;
+  }
 
   state_type state() const { return state_; }
   void set_state(state_type s) { state_=s; }
@@ -212,4 +219,3 @@ private:
 };
 
 #endif
-
