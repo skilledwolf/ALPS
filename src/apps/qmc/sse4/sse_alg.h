@@ -101,14 +101,18 @@ public:
         opstring.resize(nops);
         op_indices.resize(nops);
         
-        // startconf
+        nworms_therm = 0;
+        count_therm = 0;
+    }
+    
+    // The start configuration: a random state on each site and identities
+    // in the operator string. SSE_run draws it last in its constructor.
+    void initialize_configuration()
+    {
         for (unsigned i = 0; i < nsites; ++i)
             state[i] = worker.mrandom_int(nbstates[lattice.sitei2alps_type(i)]);
         for (op_iterator op = opstring.begin() ; op != opstring.end(); ++op)
             op->vertex_index = IDENTITY;
-            
-        nworms_therm = 0;
-        count_therm = 0;
     }
     
     void save(alps::ODump& dump) const
