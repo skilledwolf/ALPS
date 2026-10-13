@@ -17,6 +17,7 @@
 #include <alps/scheduler/task.h>
 #include <alps/scheduler/types.h>
 #include <alps/scheduler/scheduler.h>
+#include <alps/scheduler/progress.h>
 #include <alps/expression.h>
 #include <alps/parser/parser.h>
 
@@ -205,7 +206,7 @@ void Task::halt()
 
 double Task::work() const
 {
-  return (finished_ ? 0. : (parms.defined("WORK_FACTOR") ? alps::evaluate<double>(parms["WORK_FACTOR"], parms) : 1. ));
+  return (finished_ ? 0. : work_factor(parms));
 }
 
 // astreich, 06/23

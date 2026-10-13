@@ -17,6 +17,8 @@
 #include <alps/scheduler/task.h>
 #include <alps/scheduler/types.h>
 #include <alps/scheduler/scheduler.h>
+#include <alps/scheduler/progress.h>
+#include <alps/scheduler/run_files.h>
 #include <alps/scheduler/seeds.h>
 #include <alps/expression.h>
 #include <alps/parser/parser.h>
@@ -250,11 +252,7 @@ bool WorkerTask::finished(double& more_time, double& percentage) const
   if(w<=0.)
     return true;
 
-  percentage = 1.-w;
-  if (percentage < 0.)
-    percentage=0.;
-  else if (percentage>1.)
-    percentage=1.;
+  percentage = reported_percentage(w);
   // estinate remaining time
   if(more_time<0)
     start_time=0; // new estimate
@@ -376,8 +374,7 @@ double WorkerTask::work() const
 {
   if (finished_)
     return 0.;
-  return (parms.defined("WORK_FACTOR") ? alps::evaluate<double>(parms["WORK_FACTOR"], parms) : 1. )
-         *(1.-work_done());
+  return remaining_work(parms, work_done());
 }
 
 inline boost::filesystem::path optional_complete(boost::filesystem::path const& p, boost::filesystem::path const& dir)
@@ -411,19 +408,10 @@ void WorkerTask::write_xml_body(alps::oxstream& out, const boost::filesystem::pa
       }
       else {
         // search file name
-        int j=0;
-        bool found=false;
-        std::string name;
-        do {
-          found = false;
-          name =fn.filename().string();
-          name = name.substr(0, name.find_last_of('.'));
-          name+= ".run" + boost::lexical_cast<std::string,int>(j+1);
-          for (unsigned int k=0;k<runfiles.size();++k)
-          if(runfiles[k].out.filename().string()==name)
-            found=true;
-          j++;
-        } while (found);
+        std::vector<std::string> taken;
+        for (unsigned int k=0;k<runfiles.size();++k)
+          taken.push_back(runfiles[k].out.filename().string());
+        std::string name = run_checkpoint_name(fn, taken);
         runfiles[i].out = boost::filesystem::path(name);
 #ifdef ALPS_HAVE_HDF5
         runfiles[i].hdf5out = boost::filesystem::path(name+".h5");
