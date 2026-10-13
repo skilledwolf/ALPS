@@ -426,21 +426,30 @@ TEST_F(TaskLayer, SavesPooledResultsAndResumesFromItsCheckpoint) {
     EXPECT_DOUBLE_EQ(resumed.work_done(), 10. / 16.);
 }
 
-// get_and_remove_observable pools differently from get_measurements: it merges
-// the runs from the left and then merges the simulation's own observable of
-// that name too. A task resumed from its checkpoint holds the previously
-// pooled results there, so they are counted again. Nothing in ALPS calls it.
-TEST_F(TaskLayer, GetAndRemoveObservableCountsSavedResultsAgain) {
+// get_and_remove_observable merges the runs' observable of that name and, like
+// get_measurements, uses the simulation's own observable only for a name no
+// run has. A task resumed from its checkpoint holds the previously pooled
+// results there, and they are not counted again.
+TEST_F(TaskLayer, GetAndRemoveObservablePoolsLikeGetMeasurements) {
     {
         probe_simulation task(here, compose("resume", "STEPS=16;SEED=5", source_runs(3)));
         task.steps(1);
         task.checkpoint(dir / "resume.xml");
     }
     probe_simulation resumed(here, dir / "resume.xml");
+    const double pooled_mean = mean(resumed.get_measurements(), "Value");
     EXPECT_EQ(count(resumed.get_measurements(), "Value"), 10.);
     const alps::ObservableSet removed = resumed.get_and_remove_observable("Value");
-    EXPECT_EQ(count(removed, "Value"), 20.);
+    EXPECT_EQ(count(removed, "Value"), 10.);
+    EXPECT_EQ(mean(removed, "Value"), pooled_mean);
     EXPECT_FALSE(resumed.get_measurements().has("Value"));
+
+    alps::RealObservable extra("Extra");
+    extra << 4.5;
+    extra << 5.5;
+    resumed << extra;
+    EXPECT_DOUBLE_EQ(mean(resumed.get_and_remove_observable("Extra"), "Extra"), 5.);
+    EXPECT_FALSE(resumed.get_measurements().has("Extra"));
 }
 
 // Checkpointed under a new name, the runs are renamed after the new task file.

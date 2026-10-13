@@ -143,9 +143,14 @@ ObservableSet MCSimulation::get_and_remove_observable(const std::string& obsname
     }
   }
   if (measurements.has(obsname)) {
-    obs_set << measurements[obsname];
-    if(measurements[obsname].is_signed())
-      obs_set << measurements[measurements[obsname].sign_name()];
+    // As in get_measurements, the simulation's own observable only stands in
+    // for one that no run has. After a resume it holds the saved results of
+    // the runs, which must not be counted again.
+    if (!obs_set.has(obsname)) {
+      obs_set << measurements[obsname];
+      if(measurements[obsname].is_signed())
+        obs_set << measurements[measurements[obsname].sign_name()];
+    }
     measurements.removeObservable(obsname);
   }
   if (compactit)
