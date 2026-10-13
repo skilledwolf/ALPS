@@ -272,6 +272,20 @@ TEST(SpinmcCharacterization, CountsPrimedCouplingsButNotHigherBondTypes) {
     EXPECT_EQ(construction_error(heisenberg + R"p(J="2 * 0.5")p"), "Illegal term in expression");
 }
 
+// The model library names the coupling of bond type 1 J'. A ladder's rungs
+// have bond type 1, so J' without J1 is rejected instead of giving the rungs
+// J. A chain has no such bonds and still accepts an unused J'.
+TEST(SpinmcCharacterization, RejectsPrimedCouplingsThatWouldBeIgnored) {
+    const std::string ladder =
+        R"p(LATTICE="ladder";L=4;MODEL="Heisenberg";T=1;SWEEPS=10;SEED=1;)p";
+    EXPECT_EQ(construction_error(ladder + "J=1;J'=0.5"),
+              R"(J' is not read: bond type 1 takes J1, falling back to J. Set J1, for example J1="J'", or remove J')");
+    EXPECT_EQ(built(ladder + "J=1;J1=0.5;J'=0.5"), "SpinSim<ONMoment<3>,MIdMatrix<double,3>>");
+    EXPECT_EQ(built(ladder + R"p(J=1;J'=0.5;J1="J'")p"),
+              "SpinSim<ONMoment<3>,MIdMatrix<double,3>>");
+    EXPECT_EQ(built(heisenberg + "J=1;J'=0.5"), "SpinSim<ONMoment<3>,MIdMatrix<double,3>>");
+}
+
 // An unsupported number of values is reported with the model and every
 // counted parameter that has that many values. Absent parameters are skipped.
 TEST(SpinmcCharacterization, ReportsUnsupportedModelsAndMatrixSizes) {

@@ -97,6 +97,39 @@ TEST(SpinmcCouplings, ResolvesCouplingsPerBondClass) {
     EXPECT_DOUBLE_EQ(unset.bonds[0].coupling.getElement(0, 0), 1.);
 }
 
+// The model library names the couplings of bond types 1 and 2 J' and J''.
+// They are not read, so bonds of those types without J1 or J2 are rejected
+// instead of taking J. J' stays usable in expressions.
+TEST(SpinmcCouplings, RejectsPrimedCouplingsThatWouldBeIgnored) {
+    const std::vector<bond_class> legs = {{0, 0, 0}};
+    const std::vector<bond_class> ladder = {{0, 0, 0}, {1, 0, 0}};
+    const std::vector<bond_class> second = {{0, 0, 0}, {2, 0, 0}};
+    const auto error = [](const std::string& text, const std::vector<bond_class>& classes) {
+        try {
+            resolve_couplings<MIdMatrix<double, 1>>(parameters(text), {0}, classes, false, "1");
+        } catch (const std::runtime_error& e) {
+            return std::string(e.what());
+        }
+        return std::string();
+    };
+    const std::string ignored_j1 =
+        R"(J' is not read: bond type 1 takes J1, falling back to J. Set J1, for example J1="J'", or remove J')";
+    EXPECT_EQ(error("J=1;J'=0.5", ladder), ignored_j1);
+    EXPECT_EQ(error("J'=0.5", ladder), ignored_j1);
+    EXPECT_EQ(error("J=1;J''=0.5", second),
+              R"(J'' is not read: bond type 2 takes J2, falling back to J. Set J2, for example J2="J''", or remove J'')");
+
+    // Without bonds of the primed type, or with their J<type>, J' is accepted.
+    EXPECT_EQ(error("J=1;J'=0.5", legs), "");
+    EXPECT_EQ(error("J=1;J''=0.5", ladder), "");
+    EXPECT_EQ(error("J=1;J'=0.5;J1=0.25", ladder), "");
+    const auto c = resolve_couplings<MIdMatrix<double, 1>>(parameters(R"p(J=1;J'=0.25;J1="J'")p"),
+                                                           {0}, ladder, false, "1");
+    EXPECT_EQ(c.bonds[1].coupling_parameter, "J1");
+    EXPECT_DOUBLE_EQ(c.bonds[0].coupling.getElement(0, 0), -1.);
+    EXPECT_DOUBLE_EQ(c.bonds[1].coupling.getElement(0, 0), -0.25);
+}
+
 TEST(SpinmcCouplings, ClassifiesCouplingSigns) {
     const std::vector<bond_class> one = {{0, 0, 0}};
     const auto antiferro = resolve_couplings<MIdMatrix<double, 1>>(parameters("J=1"), {0}, one,

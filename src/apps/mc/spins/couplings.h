@@ -18,7 +18,8 @@
 // visits them, so the terms resolve without building a lattice graph.
 //
 // The parameter names recorded for each term are new; they report which
-// parameter supplied a value and do not change what is read.
+// parameter supplied a value and do not change what is read. Also new: J' and
+// J'' are rejected for bond types 1 and 2 without J1 or J2 (see below).
 
 #ifndef ALPS_APPLICATIONS_MC_SPIN_COUPLINGS_H_
 #define ALPS_APPLICATIONS_MC_SPIN_COUPLINGS_H_
@@ -126,6 +127,15 @@ couplings<MAT> resolve_couplings(const alps::Parameters& parms,
     bond_terms<MAT> bond;
     bond.bonds = bond_classes[i];
     const std::string name = "J"+boost::lexical_cast<std::string,int>(bond.bonds.type);
+    // The model library names the couplings of bond types 1 and 2 J' and J''.
+    // Only J<type> and J are read here, so reject a primed coupling that would
+    // otherwise be ignored in favour of J.
+    const std::string primed = bond.bonds.type == 1 ? "J'" : bond.bonds.type == 2 ? "J''" : "";
+    if (!primed.empty() && parms.defined(primed) && !parms.defined(name))
+      boost::throw_exception(std::runtime_error(
+        primed + " is not read: bond type " + boost::lexical_cast<std::string,int>(bond.bonds.type)
+        + " takes " + name + ", falling back to J. Set " + name + ", for example " + name
+        + "=\"" + primed + "\", or remove " + primed));
     std::string J_name = parms.value_or_default(name,default_coupling);
     MAT this_J;
     this_J.setMatrix(J_name,parms);
