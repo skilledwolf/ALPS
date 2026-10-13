@@ -62,6 +62,23 @@ TEST(SchedulerSeeds, AdvancesRunSeeds) {
     }
 }
 
+// A task advances SEED as its runs read it: the first run's engine and the
+// next run's SEED come from the same value.
+TEST(SchedulerSeeds, AdvancesFromTheSeedTheWorkerReads) {
+    for (const auto& row : rows("run")) {
+        const alps::StringValue seed(row[0]);
+        const auto cpus = boost::lexical_cast<uint32_t>(row[1]);
+        uint32_t engine_seed;
+        try {
+            engine_seed = worker_seed(with("SEED", row[0]));
+        } catch (const boost::bad_lexical_cast&) {
+            EXPECT_THROW(next_run_seed(seed, cpus), boost::bad_lexical_cast) << row[0];
+            continue;
+        }
+        EXPECT_EQ(next_run_seed(seed, cpus), uint32_t(engine_seed + cpus)) << row[0];
+    }
+}
+
 TEST(SchedulerSeeds, SeedsWorkerEngines) {
     for (const auto& row : rows("worker")) {
         const auto p = with("SEED", row[0]);

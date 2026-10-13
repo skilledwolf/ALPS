@@ -120,8 +120,8 @@ protected:
     alps::scheduler::Scheduler scheduler;
 };
 
-// Each run created advances the task's SEED by the processes per run. The
-// sum is computed as int32_t(SEED) + uint32_t(cpus), in unsigned arithmetic.
+// Each run created advances the task's SEED by the processes per run,
+// modulo 2^32.
 TEST_F(TaskSeeds, AdvancesTheTaskSeedForEachRun) {
     EXPECT_EQ(seeds("SEED=5"), std::make_pair(std::string("6"), std::string("5")));
     EXPECT_EQ(seeds("T=1"), std::make_pair(std::string("1"), std::string("0")));
@@ -131,11 +131,14 @@ TEST_F(TaskSeeds, AdvancesTheTaskSeedForEachRun) {
     EXPECT_EQ(seeds("SEED=7;DISORDERSEED=3").first, "8");
 }
 
-// A SEED above INT32_MAX seeds the first run's engine, but cannot be advanced.
-TEST_F(TaskSeeds, CannotAdvanceSeedsAboveInt32Max) {
-    EXPECT_NE(task_error("SEED=2147483648"), "");
-    EXPECT_EQ(task_error("SEED=2147483648"), task_error("SEED=4294967295"));
-    EXPECT_EQ(construction_error("SEED=2147483648"), "");
+// Every SEED a run's engine accepts can be advanced, including those above
+// INT32_MAX. Seeds the engine rejects still fail when the run is built.
+TEST_F(TaskSeeds, AdvancesSeedsAboveInt32Max) {
+    EXPECT_EQ(seeds("SEED=2147483648"),
+              std::make_pair(std::string("2147483649"), std::string("2147483648")));
+    EXPECT_EQ(seeds("SEED=4294967295"),
+              std::make_pair(std::string("0"), std::string("4294967295")));
+    EXPECT_NE(task_error("SEED=4294967296"), "");
 }
 
 } // namespace
