@@ -84,13 +84,33 @@ TEST(SchedulerSeeds, SeedsTheDisorderGeneratorWithDisorderseed) {
     EXPECT_EQ(alps::Disorder::random(), after_max);
 }
 
-// Expressions reseed the disorder generator from DISORDERSEED read as a
-// signed int, so a seed the worker accepts can make every evaluation fail.
-TEST(SchedulerSeeds, ExpressionsRejectDisorderSeedsAboveIntMax) {
+// Expressions reseed the disorder generator from DISORDERSEED read as the
+// worker reads it, so every seed the worker accepts works in expressions.
+TEST(SchedulerSeeds, ExpressionsAcceptTheDisorderSeedsTheWorkerAccepts) {
     const auto p = parameters("SEED=1;DISORDERSEED=3000000000;J=2");
     probe_run run(here, p, 0);
-    EXPECT_THROW(alps::evaluate<double>("J", p), boost::bad_lexical_cast);
+    EXPECT_DOUBLE_EQ(alps::evaluate<double>("J", p), 2.);
     EXPECT_DOUBLE_EQ(alps::evaluate<double>("J", parameters("DISORDERSEED=7;J=2")), 2.);
+
+    // A DISORDERSEED other than the last seed reseeds the generator.
+    const double after_large = disorder_draw_after_seed(3000000001u);
+    alps::Disorder::seed(123);
+    alps::evaluate<double>("J", parameters("DISORDERSEED=3000000001;J=2"));
+    EXPECT_EQ(alps::Disorder::random(), after_large);
+
+    const double after_max = disorder_draw_after_seed(4294967295u);
+    alps::Disorder::seed(123);
+    alps::evaluate<double>("J", parameters("DISORDERSEED=-1;J=2"));
+    EXPECT_EQ(alps::Disorder::random(), after_max);
+
+    // The last seed again does not reseed: the stream continues.
+    alps::Disorder::seed(3000000001u);
+    alps::Disorder::random();
+    const double second = alps::Disorder::random();
+    alps::Disorder::seed(3000000001u);
+    alps::Disorder::random();
+    alps::evaluate<double>("J", parameters("DISORDERSEED=3000000001;J=2"));
+    EXPECT_EQ(alps::Disorder::random(), second);
 }
 
 class TaskSeeds : public ::testing::Test {
