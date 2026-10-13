@@ -49,7 +49,12 @@ class counting_run : public alps::scheduler::MCRun {
 public:
     counting_run(const alps::ProcessList& where, const alps::Parameters& p, int node)
         : alps::scheduler::MCRun(where, p, node), steps_done_(0) {
-        measurements << alps::RealObservable("Value");
+        // BINNING=0 records Value without binning, for the one merge that
+        // cannot take binned data (GetAndRemoveObservableCountsSavedResultsAgain).
+        if (static_cast<int>(parms.value_or_default("BINNING", 1)))
+            measurements << alps::RealObservable("Value");
+        else
+            measurements << alps::SimpleRealObservable("Value");
     }
     void dostep() {
         ++steps_done_;
@@ -190,13 +195,14 @@ protected:
         return file;
     }
 
-    // Source runs with SEED 11, 22, ... and 2, 3, ... steps, out of STEPS=16.
+    // Source runs with SEED 11, 22, ... and 2, 3, ... steps, out of STEPS=16,
+    // and any further parameters.
     // Every run has at least two values, since the mean of one is NaN.
-    std::vector<std::pair<fs::path, fs::path>> source_runs(int n) {
+    std::vector<std::pair<fs::path, fs::path>> source_runs(int n, const std::string& more = "") {
         std::vector<std::pair<fs::path, fs::path>> out;
         for (int i = 1; i <= n; ++i)
             out.push_back(source_run("source" + std::to_string(i),
-                                     "STEPS=16;SEED=" + std::to_string(11 * i), i + 1));
+                                     "STEPS=16;SEED=" + std::to_string(11 * i) + more, i + 1));
         return out;
     }
 
@@ -430,9 +436,15 @@ TEST_F(TaskLayer, SavesPooledResultsAndResumesFromItsCheckpoint) {
 // the runs from the left and then merges the simulation's own observable of
 // that name too. A task resumed from its checkpoint holds the previously
 // pooled results there, so they are counted again. Nothing in ALPS calls it.
+//
+// Value is unbinned here. Results loaded from an HDF5 checkpoint have bin
+// size 0, since the bin size is not saved, and merging them into binned data
+// divides by that bin size: SIGFPE on x86, a silent double count on arm64.
+// That undefined case is not pinned.
 TEST_F(TaskLayer, GetAndRemoveObservableCountsSavedResultsAgain) {
     {
-        probe_simulation task(here, compose("resume", "STEPS=16;SEED=5", source_runs(3)));
+        probe_simulation task(here, compose("resume", "STEPS=16;SEED=5;BINNING=0",
+                                            source_runs(3, ";BINNING=0")));
         task.steps(1);
         task.checkpoint(dir / "resume.xml");
     }
