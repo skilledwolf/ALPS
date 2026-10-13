@@ -8,6 +8,10 @@ add_executable(scheduler_task_characterization task_characterization.cpp)
 target_link_libraries(scheduler_task_characterization PRIVATE ALPS::alps)
 alps_add_gtest(scheduler_task_characterization COMPONENT scheduler)
 
+add_executable(scheduler_task_rules task_rules.cpp)
+target_link_libraries(scheduler_task_rules PRIVATE ALPS::alps)
+alps_add_gtest(scheduler_task_rules COMPONENT scheduler)
+
 # seed_vectors.txt is shared with the check of pyalps/seeds.py below.
 add_executable(scheduler_seeds seeds.cpp)
 target_compile_definitions(scheduler_seeds PRIVATE
