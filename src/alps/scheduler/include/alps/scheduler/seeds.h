@@ -61,12 +61,12 @@ inline unsigned int disorder_seed(const Parameters& parms)
 }
 
 /// SEED of the next run of a task, after a run with SEED seed that uses
-/// cpus processes. The sum int32_t(seed) + cpus is unsigned, so a negative
-/// SEED advances to a large value. A SEED above INT32_MAX cannot be read
-/// and fails with boost::bad_lexical_cast.
+/// cpus processes: SEED read as worker_seed reads it, plus cpus, modulo
+/// 2^32. A SEED that worker_seed cannot read fails the same way, with
+/// boost::bad_lexical_cast.
 inline uint32_t next_run_seed(const StringValue& seed, uint32_t cpus)
 {
-  return static_cast<int32_t>(seed)+cpus;
+  return static_cast<uint32_t>(seed)+cpus;
 }
 
 /// SEED that pyalps.writeInputFiles gives task index (from 0) of ntasks:
