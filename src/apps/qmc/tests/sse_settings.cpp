@@ -8,6 +8,8 @@
 #include <gtest/gtest.h>
 
 #include <limits>
+#include <stdexcept>
+#include <string>
 
 TEST(SSESettings, SweepAliasesHaveFixedPrecedence) {
     alps::Parameters p;
@@ -41,10 +43,39 @@ TEST(SSESettings, SweepsPreserveUnsignedIntegerBoundaries) {
     EXPECT_EQ(dirloop_sse::resolve_sweeps(p), 0u);
     p["SWEEPS"] = "18446744073709551615";
     EXPECT_EQ(dirloop_sse::resolve_sweeps(p), std::numeric_limits<boost::uint64_t>::max());
-    p["SWEEPS"] = -1;
-    EXPECT_EQ(dirloop_sse::resolve_sweeps(p), std::numeric_limits<boost::uint64_t>::max());
+    p["SWEEPS"] = "-0";
+    EXPECT_EQ(dirloop_sse::resolve_sweeps(p), 0u);
     p["SWEEPS"] = "18446744073709551616";
     EXPECT_THROW(dirloop_sse::resolve_sweeps(p), boost::bad_lexical_cast);
+}
+
+// StringValue's unsigned conversion would wrap these around to counts that
+// are never reached; they are rejected under the name that was read.
+TEST(SSESettings, NegativeCountsAreRejected) {
+    for (const char* name : {"SWEEPS", "MCS", "Steps"}) {
+        SCOPED_TRACE(name);
+        alps::Parameters p;
+        p[name] = -1;
+        try {
+            dirloop_sse::resolve_sweeps(p);
+            ADD_FAILURE() << "expected a negative count to be rejected";
+        } catch (const std::out_of_range& error) {
+            EXPECT_EQ(std::string(error.what()), "negative " + std::string(name) + " is illegal");
+        }
+    }
+    for (const char* name : {"THERMALIZATION", "thermalization"}) {
+        SCOPED_TRACE(name);
+        alps::Parameters p;
+        p[name] = "-18446744073709551615";
+        try {
+            dirloop_sse::resolve_thermalization(p, 20);
+            ADD_FAILURE() << "expected a negative count to be rejected";
+        } catch (const std::out_of_range& error) {
+            EXPECT_EQ(std::string(error.what()), "negative " + std::string(name) + " is illegal");
+        }
+    }
+    EXPECT_THROW(dirloop_sse::resolve_count(alps::StringValue("-x"), "SWEEPS"),
+                 boost::bad_lexical_cast);
 }
 
 TEST(SSESettings, SweepsRequirePlainIntegers) {
@@ -93,8 +124,8 @@ TEST(SSESettings, ThermalizationPreservesUnsignedIntegerBoundaries) {
     EXPECT_EQ(dirloop_sse::resolve_thermalization(p, 20), 0u);
     p["THERMALIZATION"] = "18446744073709551615";
     EXPECT_EQ(dirloop_sse::resolve_thermalization(p, 20), std::numeric_limits<boost::uint64_t>::max());
-    p["THERMALIZATION"] = -1;
-    EXPECT_EQ(dirloop_sse::resolve_thermalization(p, 20), std::numeric_limits<boost::uint64_t>::max());
+    p["THERMALIZATION"] = "-0";
+    EXPECT_EQ(dirloop_sse::resolve_thermalization(p, 20), 0u);
     p["THERMALIZATION"] = "18446744073709551616";
     EXPECT_THROW(dirloop_sse::resolve_thermalization(p, 20), boost::bad_lexical_cast);
 }
