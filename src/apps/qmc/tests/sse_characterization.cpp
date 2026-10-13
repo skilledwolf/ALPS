@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Characterize the existing SSE scheduler settings before extracting them.
 #include "../sse4/sse.h"
+#include "construction_draws.h"
 
 #include <alps/osiris/xdrdump.h>
 #include <alps/testing/temporary_directory.hpp>
@@ -247,4 +248,26 @@ TEST(SSECharacterization, ResumeRestoresThermalizationButUsesNewSweepCount) {
     resumed.dostep();
     EXPECT_DOUBLE_EQ(resumed.work_done(), 3.0 / 40);
     dump(resumed, "resume_after");
+}
+
+// The start configuration is drawn while the run is constructed: one number
+// per site of the four-site chain.
+TEST(SSECharacterization, DrawsTheStartConfigurationDuringConstruction) {
+    SSE_run run(processes(), parameters(), 0);
+    EXPECT_EQ(construction_draws(parameters(), [&] { return run.mrandom_real(); }), 4);
+}
+
+// Constructing a run reseeds the process-wide disorder generator from
+// DISORDERSEED, so expressions evaluated beforehand, for example to check the
+// parameters, do not change the disorder the run sees.
+TEST(SSECharacterization, ConstructionReseedsTheDisorderGenerator) {
+    alps::Parameters p = parameters();
+    p["DISORDERSEED"] = 7;
+    alps::Disorder::seed(7);
+    const double first = alps::Disorder::random();
+    const double a = alps::evaluate<double>("random()", p);
+    const double b = alps::evaluate<double>("random()", p);
+    EXPECT_NE(a, b);
+    SSE_run run(processes(), p, 0);
+    EXPECT_EQ(alps::Disorder::random(), first);
 }
