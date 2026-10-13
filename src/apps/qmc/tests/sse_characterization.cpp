@@ -110,11 +110,10 @@ TEST(SSECharacterization, SweepCountsUsePlainUnsignedIntegerConversion) {
     EXPECT_THROW(SSE_run(processes(), p, 0), boost::bad_lexical_cast);
     p["SWEEPS"] = "20.5";
     EXPECT_THROW(SSE_run(processes(), p, 0), boost::bad_lexical_cast);
+    // A negative count would wrap around to one that is never reached.
     p["SWEEPS"] = -1;
     p["THERMALIZATION"] = 0;
-    SSE_run run(processes(), p, 0);
-    run.dostep();
-    EXPECT_DOUBLE_EQ(run.work_done(), 1.0 / double(std::numeric_limits<boost::uint64_t>::max()));
+    EXPECT_THROW(SSE_run(processes(), p, 0), std::out_of_range);
 }
 
 TEST(SSECharacterization, ZeroSweepTargetIsAcceptedAtConstruction) {
@@ -176,10 +175,7 @@ TEST(SSECharacterization, ThermalizationUsesPlainUnsignedIntegerConversion) {
     p["THERMALIZATION"] = "2.5";
     EXPECT_THROW(SSE_run(processes(), p, 0), boost::bad_lexical_cast);
     p["THERMALIZATION"] = -1;
-    SSE_run run(processes(), p, 0);
-    steps(run, 3);
-    EXPECT_FALSE(run.is_thermalized());
-    EXPECT_DOUBLE_EQ(run.work_done(), 0.0);
+    EXPECT_THROW(SSE_run(processes(), p, 0), std::out_of_range);
 }
 
 TEST(SSECharacterization, ThermalizationFractionUsesStrictComparison) {
@@ -206,6 +202,8 @@ TEST(SSECharacterization, SweepChangesAcceptPositiveAliasesAndRejectOtherSetting
         EXPECT_FALSE(run.change_parameter(name, alps::StringValue(0)));
         EXPECT_DOUBLE_EQ(run.work_done(), 4.0 / 40);
     }
+    EXPECT_THROW(run.change_parameter("SWEEPS", alps::StringValue(-1)), std::out_of_range);
+    EXPECT_DOUBLE_EQ(run.work_done(), 4.0 / 40);
     EXPECT_FALSE(run.change_parameter("THERMALIZATION", alps::StringValue(3)));
     EXPECT_FALSE(run.change_parameter("T", alps::StringValue(3)));
     EXPECT_FALSE(run.change_parameter("SEED", alps::StringValue(3)));

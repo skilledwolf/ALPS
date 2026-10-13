@@ -100,11 +100,11 @@ public:
         boost::uint64_t new_nsweeps = 0;
         
         if (name == "SWEEPS")
-            new_nsweeps = boost::uint64_t(value);
+            new_nsweeps = dirloop_sse::resolve_count(value, name);
         if (name == "MCS")
-            new_nsweeps = boost::uint64_t(value);
+            new_nsweeps = dirloop_sse::resolve_count(value, name);
         if (name == "Steps")
-            new_nsweeps = boost::uint64_t(value);
+            new_nsweeps = dirloop_sse::resolve_count(value, name);
 
         if (new_nsweeps > 0) {
             nsweeps = new_nsweeps;
