@@ -214,17 +214,23 @@ TEST(WormCharacterization, ValidationOrderRetainsTemperatureThenEtaThenThermaliz
   }
 }
 
-TEST(WormCharacterization, SweepsAreRequiredOnlyAfterThermalization) {
+TEST(WormCharacterization, SweepsAreRequiredAtConstruction) {
+  // SWEEPS used to be read only when progress was first reported after
+  // thermalization, and a negative count made progress negative forever.
   auto p = worm_parameters();
   p.erase("SWEEPS");
-  WormProbe run(p);
-  EXPECT_DOUBLE_EQ(run.work_done(), 0);
-  start_without_log(run);
-  run.dostep();
-  EXPECT_DOUBLE_EQ(run.work_done(), 0);
-  run.dostep();
-  EXPECT_TRUE(run.is_thermalized());
-  EXPECT_THROW(run.work_done(), std::runtime_error);
+  EXPECT_THROW({ WormProbe run(p); }, std::runtime_error);
+  p["SWEEPS"] = "2*U";
+  EXPECT_THROW({ WormProbe run(p); }, boost::bad_lexical_cast);
+  p["SWEEPS"] = -1;
+  EXPECT_THROW({ WormProbe run(p); }, std::out_of_range);
+  for (const char* value : {"nan", "inf"}) {
+    SCOPED_TRACE(value);
+    p["SWEEPS"] = value;
+    EXPECT_THROW({ WormProbe run(p); }, std::invalid_argument);
+  }
+  p["SWEEPS"] = 0;
+  EXPECT_NO_THROW({ WormProbe run(p); });
 }
 
 TEST(WormCharacterization, ProgressStartsAtThermalizationBoundary) {

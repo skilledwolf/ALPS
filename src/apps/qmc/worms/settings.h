@@ -14,7 +14,10 @@
 #define ALPS_APPLICATIONS_WORM_SETTINGS_H
 
 #include <alps/parameter.h>
+#include <boost/throw_exception.hpp>
+#include <cmath>
 #include <cstdint>
+#include <stdexcept>
 
 namespace worm {
 
@@ -24,6 +27,21 @@ namespace worm {
 inline std::int32_t resolve_thermalization(const alps::Parameters& p)
 {
   return p.required_value("THERMALIZATION");
+}
+
+// The number of sweeps after thermalization, converted to a double without
+// expression evaluation, as WRun::work_done always did. A negative count made
+// the progress negative and an infinite one kept it at zero, so the run never
+// finished; both are rejected, as is a count that is not a number. Zero is
+// accepted, as before.
+inline double resolve_sweeps(const alps::Parameters& p)
+{
+  const double sweeps = p.required_value("SWEEPS");
+  if (!std::isfinite(sweeps))
+    boost::throw_exception(std::invalid_argument("SWEEPS must be a finite number"));
+  if (sweeps < 0)
+    boost::throw_exception(std::out_of_range("negative SWEEPS is illegal"));
+  return sweeps;
 }
 
 } // namespace worm
