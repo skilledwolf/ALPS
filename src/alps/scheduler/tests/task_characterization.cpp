@@ -507,4 +507,29 @@ TEST_F(TaskLayer, AppliesChangedParametersToEveryLoadedRun) {
     }
 }
 
+// A checkpointed task has its parameters both in <task>.h5 and in the task
+// file. The task file is read last, so editing it changes the parameters,
+// and the change reaches every run.
+TEST_F(TaskLayer, ReadsParametersEditedInTheTaskFile) {
+    {
+        probe_simulation task(here, compose("edit", "STEPS=16;SEED=5", source_runs(2)));
+        task.steps(1);
+        task.checkpoint(dir / "edit.xml");
+    }
+    ASSERT_TRUE(fs::exists(dir / "edit.h5"));
+    std::string text = read_file(dir / "edit.xml");
+    const std::string from = "<PARAMETER name=\"STEPS\">16</PARAMETER>";
+    ASSERT_NE(text.find(from), std::string::npos);
+    text.replace(text.find(from), from.size(), "<PARAMETER name=\"STEPS\">32</PARAMETER>");
+    {
+        std::ofstream out((dir / "edit.xml").string().c_str());
+        out << text;
+    }
+    probe_simulation resumed(here, dir / "edit.xml");
+    EXPECT_EQ(std::string(resumed.get_parameters()["STEPS"]), "32");
+    EXPECT_EQ(std::string(resumed.run(0).parameters()["STEPS"]), "32");
+    EXPECT_EQ(std::string(resumed.run(1).parameters()["STEPS"]), "32");
+    EXPECT_DOUBLE_EQ(resumed.work_done(), 6. / 32.);
+}
+
 } // namespace
