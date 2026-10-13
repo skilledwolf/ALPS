@@ -4,9 +4,14 @@
 #include "../qwl/qwl_sse.h"
 #include <alps/osiris/xdrdump.h>
 #include <alps/testing/temporary_directory.hpp>
+#include <cstdint>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
+#include <iterator>
+#include <string>
 #include <tuple>
+#include <vector>
 
 namespace {
 alps::Parameters qwl_parameters() {
@@ -37,9 +42,7 @@ struct SavedHistogram {
 };
 
 // Decode the established simulation checkpoint format rather than exposing
-// private members. Identity operators have uninitialized bond fields in the
-// original implementation; their unused bonds are normalized to zero here.
-// Active operator bonds, all histogram values and the spin state are retained.
+// private members. Every operator bond, histogram value and spin is retained.
 struct QwlState {
   SavedHistogram g, histo, histoup, nmeasurements, transition_prob;
   SavedHistogram uniform_structure_factor, staggered_structure_factor;
@@ -64,10 +67,8 @@ struct QwlState {
     dump >> doing_multicanonical >> upwalker >> thistime >> all_done >> spins;
     ops.resize(cutoff);
     bonds.resize(cutoff);
-    for (unsigned int i = 0; i < cutoff; ++i) {
+    for (unsigned int i = 0; i < cutoff; ++i)
       dump >> ops[i] >> bonds[i];
-      if (!ops[i]) bonds[i] = 0;
-    }
   }
 
   bool operator==(const QwlState& rhs) const {
@@ -279,6 +280,56 @@ TEST(QwlCharacterization, OnlySweepsCanChange) {
     EXPECT_FALSE(run.change_parameter(key, alps::StringValue(8)));
   }
   maybe_dump(run, "changed_sweeps");
+}
+
+std::string checkpoint_bytes(const QWL_SSE_Simulation& run) {
+  alps::testing::TemporaryDirectory directory;
+  const boost::filesystem::path path((directory.path() / "qwl.dump").string());
+  {
+    alps::OXDRFileDump dump(path);
+    run.save(dump);
+  }
+  std::ifstream in(path.string(), std::ios::binary);
+  return std::string(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+}
+
+// Leaves freed blocks of many sizes filled with a pattern, so that memory a
+// constructor fails to initialize is unlikely to be zero.
+void dirty_freed_memory() {
+  for (std::size_t size = 16; size <= 16384; size += 16) {
+    std::vector<unsigned char>* block = new std::vector<unsigned char>(size, 0xab);
+    delete block;
+  }
+}
+
+// The operator string starts as identities on bond 0, every field set.
+TEST(QwlCharacterization, StartsFromInitializedIdentityOperators) {
+  auto p = qwl_parameters();
+  p["CUTOFF"] = 12;
+  QWL_SSE_Simulation run(local_process(), p, 0);
+  const auto state = state_of(run);
+  ASSERT_EQ(state.ops.size(), 12u);
+  for (unsigned int i = 0; i < state.ops.size(); ++i) {
+    EXPECT_EQ(state.ops[i], 0u) << i;
+    EXPECT_EQ(state.bonds[i], 0u) << i;
+  }
+}
+
+// Every saved operator field is initialized, so identical runs write
+// identical checkpoints, also before their first sweep.
+TEST(QwlCharacterization, IdenticalRunsWriteIdenticalCheckpoints) {
+  auto p = qwl_parameters();
+  p["CUTOFF"] = 12;
+  for (int steps : {0, 10}) {
+    SCOPED_TRACE(steps);
+    QWL_SSE_Simulation first(local_process(), p, 0);
+    for (int i = 0; i < steps; ++i) first.dostep();
+    const std::string expected = checkpoint_bytes(first);
+    dirty_freed_memory();
+    QWL_SSE_Simulation second(local_process(), p, 0);
+    for (int i = 0; i < steps; ++i) second.dostep();
+    EXPECT_EQ(checkpoint_bytes(second), expected);
+  }
 }
 
 TEST(QwlCharacterization, CheckpointRestoresScheduleAndSpinState) {

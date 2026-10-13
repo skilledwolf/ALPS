@@ -80,7 +80,7 @@ class QWL_SSE_Simulation : public scheduler::LatticeModelMCRun<> {
 
   struct vertextype {
     vertextype()
-      : op(0) {
+      : op(0), bond(0), vs(0), vv(), vn(), vvisited() {
     };
     boost::uint32_t op;
     boost::uint32_t bond;
