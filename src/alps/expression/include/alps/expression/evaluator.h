@@ -29,7 +29,7 @@ public:
   typedef boost::mt19937 random_type;
 private:
   static random_type rng_;
-  static int last_seed_;
+  static unsigned int last_seed_;
 public:
   static boost::variate_generator<random_type&,boost::uniform_real<> > random;
   static boost::variate_generator<random_type&,boost::normal_distribution<> > gaussian_random;

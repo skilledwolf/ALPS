@@ -30,8 +30,8 @@
 //      disorder generator with disorder_seed (DISORDERSEED, default 0, the
 //      same for all runs).
 // Parameter expressions also reseed the disorder generator whenever
-// DISORDERSEED, read as a signed int, differs from its last seed
-// (alps::Disorder::seed_if_unseeded); that read is not covered here.
+// DISORDERSEED, read as disorder_seed reads it, is not 0 and differs from
+// its last seed (alps::Disorder::seed_if_unseeded).
 // Parapack and the ngs scheduler derive their seeds separately.
 
 #ifndef ALPS_SCHEDULER_SEEDS_H

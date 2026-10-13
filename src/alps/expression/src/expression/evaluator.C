@@ -21,7 +21,7 @@ namespace alps {
 
 Disorder::random_type Disorder::rng_;
 
-int Disorder::last_seed_;
+unsigned int Disorder::last_seed_;
   
 ALPS_DECL  boost::variate_generator<Disorder::random_type&, boost::uniform_real<> > 
   Disorder::random(Disorder::rng_, boost::uniform_real<>());
@@ -37,7 +37,8 @@ void Disorder::seed(unsigned int i)
 
 void Disorder::seed_if_unseeded(const alps::Parameters& p) 
 {
-  int s = p.value_or_default("DISORDERSEED",0);
+  // Read DISORDERSEED as the scheduler's workers read it, as unsigned int.
+  unsigned int s = p.value_or_default("DISORDERSEED",0);
   if (s && s != last_seed_)
     seed(s);
 }
