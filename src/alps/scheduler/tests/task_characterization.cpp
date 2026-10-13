@@ -443,10 +443,10 @@ TEST_F(TaskLayer, GetAndRemoveObservableCountsSavedResultsAgain) {
     EXPECT_FALSE(resumed.get_measurements().has("Value"));
 }
 
-// Checkpointed under a new name, the runs are renamed after the new task file.
-// The local run is saved, but of the runs on dump only the HDF5 halves are
-// copied: the XDR checkpoints are not, so the new task cannot be resumed.
-TEST_F(TaskLayer, DropsTheXdrCheckpointsOfDumpedRunsUnderANewName) {
+// Checkpointed under a new name, the runs are renamed after the new task file:
+// the local run is saved and the runs on dump are copied, so the new task
+// resumes. Later checkpoints into another directory copy them again.
+TEST_F(TaskLayer, CopiesDumpedRunsUnderANewName) {
     probe_simulation task(here, compose("resume", "STEPS=16;SEED=5", source_runs(3)));
     task.steps(1);
     task.checkpoint(dir / "moved.xml");
@@ -458,17 +458,24 @@ TEST_F(TaskLayer, DropsTheXdrCheckpointsOfDumpedRunsUnderANewName) {
                                        {"hdf5", "moved.run2.h5"},
                                        {"osiris", "moved.run3"},
                                        {"hdf5", "moved.run3.h5"}}));
-    EXPECT_TRUE(fs::exists(dir / "moved.run1"));
-    EXPECT_FALSE(fs::exists(dir / "moved.run2"));
-    EXPECT_FALSE(fs::exists(dir / "moved.run3"));
-    EXPECT_EQ(read_file(dir / "moved.run2.h5"), read_file(dir / "resume.run2.h5"));
-    try {
-        probe_simulation resumed(here, dir / "moved.xml");
-        FAIL() << "expected an exception";
-    } catch (const std::exception& error) {
-        EXPECT_EQ(std::string(error.what()),
-                  "failed to open file " + (dir / "moved.run2").string() + " for reading");
+    for (const char* run : {"run2", "run3"}) {
+        EXPECT_EQ(read_file(dir / ("moved." + std::string(run))),
+                  read_file(dir / ("resume." + std::string(run))));
+        EXPECT_EQ(read_file(dir / ("moved." + std::string(run) + ".h5")),
+                  read_file(dir / ("resume." + std::string(run) + ".h5")));
     }
+    probe_simulation resumed(here, dir / "moved.xml");
+    EXPECT_EQ(resumed.status(), (std::vector<RunStatus>{local_run, on_dump, on_dump}));
+    EXPECT_DOUBLE_EQ(resumed.work_done(), 10. / 16.);
+
+    fs::create_directories(dir / "elsewhere");
+    task.checkpoint(dir / "elsewhere" / "moved.xml");
+    EXPECT_EQ(read_file(dir / "elsewhere" / "moved.run2"), read_file(dir / "resume.run2"));
+    EXPECT_EQ(read_file(dir / "elsewhere" / "moved.run3.h5"),
+              read_file(dir / "resume.run3.h5"));
+    probe_simulation elsewhere(here, dir / "elsewhere" / "moved.xml");
+    EXPECT_EQ(elsewhere.run(2).steps_done(), 4u);
+    EXPECT_DOUBLE_EQ(elsewhere.work_done(), 10. / 16.);
 }
 
 // A changed parameter that the runs accept reaches every loaded run, also
