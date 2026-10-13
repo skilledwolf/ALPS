@@ -13,6 +13,7 @@
 #define ALPS_QWL_SSE_H
 
 #include "qwl_histogram.h"
+#include "settings.h"
 #include <boost/lexical_cast.hpp>
 #include <alps/scheduler/montecarlo.h>
 #include <alps/alea.h>
@@ -175,19 +176,13 @@ QWL_SSE_Simulation::QWL_SSE_Simulation(const ProcessList& where,const Parameters
     if (is_bipartite()) staggered_structure_factor.resize(g_size,g_left);
   }    
   includeLfactor=parms.value_or_default("INCLUDE_COMBINATORICS_FACTORS",1);
-  use_zhou_bhatt=parms.value_or_default("USE_ZHOU_BHATT_METHOD",1.);
-  if (use_zhou_bhatt) {
-    block_sweeps_total=g.size();
-    logf=log(double(parms.value_or_default("INITIAL_MODIFICATION_FACTOR",exp(1.))));
-    minimum_histogram=1./logf;
-    flatness_treshold=parms.value_or_default("FLATNESS_TRESHOLD",1E10);
-  }
-  else {
-    block_sweeps_total=parms.value_or_default("BLOCK_SWEEPS",10000);
-    logf=log(double(parms.value_or_default("INITIAL_INCREASE_FACTOR",exp(L*log((double)num_sites())/block_sweeps_total))));
-    minimum_histogram=0.;
-    flatness_treshold=parms.value_or_default("FLATNESS_TRESHOLD",0.2);
-  }
+  const qwl::wang_landau_schedule schedule=
+    qwl::resolve_wang_landau_schedule(parms,L,g.size(),num_sites());
+  use_zhou_bhatt=schedule.use_zhou_bhatt;
+  block_sweeps_total=schedule.block_sweeps_total;
+  logf=schedule.logf;
+  minimum_histogram=schedule.minimum_histogram;
+  flatness_treshold=schedule.flatness_treshold;
   init_tables();
   init_measurements();
 }

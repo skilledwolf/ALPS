@@ -23,6 +23,7 @@
 #include "model.h"
 #include "measurement.h"
 #include "sse_alg.h"
+#include "settings.h"
 
 class SSE_run : public QMCRun<> {    
 public:
@@ -39,13 +40,8 @@ public:
         model(params, *this, lattice),
         algorithm(lattice, model, *this, params)
     {
-        nsweeps = params.defined("SWEEPS") ?
-            boost::uint64_t(params["SWEEPS"]) : (params.defined("MCS") ? 
-                boost::uint64_t(params["MCS"]) : boost::uint64_t(params["Steps"]));
-        
-        nthermalization = params.defined("THERMALIZATION") ?
-                boost::uint64_t(params["THERMALIZATION"]) : (params.defined("thermalization") ?
-                boost::uint64_t(params["thermalization"]) : nsweeps / 10);
+        nsweeps = dirloop_sse::resolve_sweeps(params);
+        nthermalization = dirloop_sse::resolve_thermalization(params, nsweeps);
                 
         measurements_skip = parms.value_or_default("SKIP", 1);
 

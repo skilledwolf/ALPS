@@ -24,6 +24,8 @@
 #include <boost/optional.hpp>
 #include <boost/assert.hpp>
 
+#include "settings.h"
+
 template <class G=typename alps::scheduler::LatticeModelMCRun<>::graph_type, class StateType = boost::uint8_t>
 class QMCRun : public alps::scheduler::LatticeModelMCRun<G> 
              , public alps::MeasurementOperators
@@ -80,12 +82,7 @@ template <class G, class StateType>
 QMCRun<G,StateType>::QMCRun(const alps::ProcessList& w, const alps::Parameters& p,int n,bool issymbolic)
   : super_type(w,p,n,issymbolic )
   , alps::MeasurementOperators(p)
-  , beta(p.defined("Beta") ? alps::evaluate<double>(p["Beta"],p)
-      :  (p.defined("beta") ? alps::evaluate<double>(p["beta"],p)
-        : (p.defined("BETA") ? alps::evaluate<double>(p["BETA"],p)
-           : (p.defined("T") ? 1./alps::evaluate<double>(p["T"],p)
-              : (p.defined("TEMPERATURE") ? 1./alps::evaluate<double>(p["TEMPERATURE"],p)
-                 : 1./alps::evaluate<double>(p["temperature"],p)))))),
+  , beta(qmc::resolve_inverse_temperature(p)),
     is_signed_(this->has_sign_problem()),
     is_spin_model_(false),
     is_charge_model_(false),
