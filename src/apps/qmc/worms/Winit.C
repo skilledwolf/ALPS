@@ -67,6 +67,8 @@ WRun::WRun(const alps::ProcessList& w, const alps::Parameters& myparms,int n)
     boost::throw_exception(std::out_of_range("negative eta is illegal"));
   if(thermal_sweeps<0)
     boost::throw_exception( std::out_of_range("negative thermalization is illegal"));
+  // work_done reads SWEEPS only after thermalization; check it now
+  worm::resolve_sweeps(parms);
   
   // kinks
   if(!where.empty()) {

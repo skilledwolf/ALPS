@@ -13,13 +13,14 @@
 /* $Id$ */
 
 #include "WRun.h"
+#include "settings.h"
 
 using namespace alps;
 //#define TIMINGS
 
 double WRun::work_done() const
 {
-  return (is_thermalized() ? (steps-thermal_sweeps)/double(parms.required_value("SWEEPS")) :0.);
+  return (is_thermalized() ? (steps-thermal_sweeps)/worm::resolve_sweeps(parms) :0.);
 }  
 
 void WRun::start()

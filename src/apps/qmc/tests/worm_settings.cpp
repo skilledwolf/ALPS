@@ -97,3 +97,30 @@ TEST(WormSettings, ThermalizationKeepsInt32Range) {
   p["THERMALIZATION"] = "-2147483649";
   EXPECT_THROW(worm::resolve_thermalization(p), boost::bad_lexical_cast);
 }
+
+TEST(WormSettings, SweepsUseRequiredPlainNumber) {
+  alps::Parameters p;
+  EXPECT_THROW(worm::resolve_sweeps(p), std::runtime_error);
+  p["SWEEPS"] = 8;
+  EXPECT_DOUBLE_EQ(worm::resolve_sweeps(p), 8);
+  p["SWEEPS"] = "1e3";
+  EXPECT_DOUBLE_EQ(worm::resolve_sweeps(p), 1000);
+  p["SWEEPS"] = 2.5;
+  EXPECT_DOUBLE_EQ(worm::resolve_sweeps(p), 2.5);
+  p["SWEEPS"] = 0;
+  EXPECT_DOUBLE_EQ(worm::resolve_sweeps(p), 0);
+  p["U"] = 2;
+  p["SWEEPS"] = "2*U";
+  EXPECT_THROW(worm::resolve_sweeps(p), boost::bad_lexical_cast);
+}
+
+TEST(WormSettings, SweepsRejectNegativeAndNonFiniteCounts) {
+  alps::Parameters p;
+  p["SWEEPS"] = -1;
+  EXPECT_THROW(worm::resolve_sweeps(p), std::out_of_range);
+  for (const char* value : {"nan", "inf", "-inf"}) {
+    SCOPED_TRACE(value);
+    p["SWEEPS"] = value;
+    EXPECT_THROW(worm::resolve_sweeps(p), std::invalid_argument);
+  }
+}

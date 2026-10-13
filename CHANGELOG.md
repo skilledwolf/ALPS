@@ -6,6 +6,7 @@ User-facing changes and migration notes are recorded here, starting with the bui
 
 ### Fixed
 
+- Check the worm `SWEEPS` count when a run is constructed rather than when progress is first reported after thermalization, and reject negative or non-finite counts, with which a run never finished.
 - Release HDF5 scalar string buffers after reads, including failed conversions, and owned observables when clearing an `ObservableSet`.
 - Correct scalar/vector Monte Carlo result negation and keep uncertainties nonnegative under negative scaling or reciprocal arithmetic. Preserve empty histogram ranges, avoid invalid access during empty vector/valarray conversions, and create private temporary files on Unix independently of the caller's umask.
 - Initialize Monte Carlo completion scheduling before first use.

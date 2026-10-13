@@ -7,7 +7,7 @@ Looper's `temperature` and `mc_steps` already provide that separation.
 
 | Solver | Temperature keys, in precedence order | Sweep count | Thermalization | Changing settings on resume |
 | --- | --- | --- | --- | --- |
-| worm | `Beta`, `beta`, `BETA`, `T`, `TEMPERATURE`, `temperature`; expressions evaluated | `SWEEPS`, required when checking progress after thermalization | Required plain integer; negative rejected | Worker rejects changed values except `SEED`; `SWEEPS` cannot be extended |
+| worm | `Beta`, `beta`, `BETA`, `T`, `TEMPERATURE`, `temperature`; expressions evaluated | `SWEEPS`, required plain number at construction; negative or non-finite rejected | Required plain integer; negative rejected | Worker rejects changed values except `SEED`; `SWEEPS` cannot be extended |
 | dirloop_sse | Same temperature rule as worm | Plain unsigned integer: `SWEEPS`, `MCS`, `Steps` | `THERMALIZATION`, `thermalization`, then integer `sweeps / 10` | Positive sweep count changes accepted; checkpoint restores its saved thermalization |
 | loop | `T`, `TEMPERATURE`, `BETA`, `INVERSE_TEMPERATURE`; expressions evaluated; lowercase `beta` ignored | Integer range, default `[65536:]` | Expression if present, otherwise minimum sweeps divided by eight | `mc_steps` checkpoint restores its schedule; driver can call `set_sweeps` to extend it |
 | qwl | Ignored; beta is fixed at 1 | Wang-Landau schedule, then multicanonical `SWEEPS` | No thermalization setting | Application accepts only a changed `SWEEPS` (worker also permits `SEED`) |
