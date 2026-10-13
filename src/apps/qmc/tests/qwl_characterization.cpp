@@ -2,6 +2,7 @@
 // Characterizes the existing QWL worker before extracting its settings logic.
 #include <gtest/gtest.h>
 #include "../qwl/qwl_sse.h"
+#include "construction_draws.h"
 #include <alps/osiris/xdrdump.h>
 #include <alps/testing/temporary_directory.hpp>
 #include <cstdlib>
@@ -306,4 +307,17 @@ TEST(QwlCharacterization, CheckpointRestoresScheduleAndSpinState) {
   maybe_dump(restored, "checkpoint_restored");
   restored.dostep();
   maybe_dump(restored, "checkpoint_continued");
+}
+
+class QwlProbe : public QWL_SSE_Simulation {
+public:
+  explicit QwlProbe(const alps::Parameters& p) : QWL_SSE_Simulation(local_process(), p, 0) {}
+  double draw() { return random_01(); }
+};
+
+// The start configuration is drawn while the run is constructed: one number
+// per site of the four-site chain.
+TEST(QwlCharacterization, DrawsTheStartConfigurationDuringConstruction) {
+  QwlProbe run(qwl_parameters());
+  EXPECT_EQ(construction_draws(qwl_parameters(), [&] { return run.draw(); }), 4);
 }

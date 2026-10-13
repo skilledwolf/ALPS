@@ -101,6 +101,7 @@ class QWL_SSE_Simulation : public scheduler::LatticeModelMCRun<> {
   
   void init_measurements();
   void init_tables();
+  void initialize_configuration();
   void diagonal_update();
   void diagonal_update_multicanonical();
   void vertexbuild();
@@ -151,8 +152,6 @@ QWL_SSE_Simulation::QWL_SSE_Simulation(const ProcessList& where,const Parameters
   state.resize(num_sites());
   statev.resize(num_sites());
   staten.resize(num_sites());
-  for (site_iterator it=sites().first;it!=sites().second;++it) 
-    state[*it]=random_state();
   beta=1;
   logf_steps_total=parms.value_or_default("NUMBER_OF_WANG_LANDAU_STEPS",16);
   norder_min=parms.value_or_default("EXPANSION_ORDER_MINIMUM",0);
@@ -185,6 +184,16 @@ QWL_SSE_Simulation::QWL_SSE_Simulation(const ProcessList& where,const Parameters
   flatness_treshold=schedule.flatness_treshold;
   init_tables();
   init_measurements();
+  // Draw the start configuration only after everything is set up and
+  // checked. Nothing above draws random numbers.
+  initialize_configuration();
+}
+
+// The start configuration: a random state on each site. The operator string
+// starts with identities.
+void QWL_SSE_Simulation::initialize_configuration() {
+  for (site_iterator it=sites().first;it!=sites().second;++it) 
+    state[*it]=random_state();
 }
 
 void QWL_SSE_Simulation::save(ODump& dump) const {  

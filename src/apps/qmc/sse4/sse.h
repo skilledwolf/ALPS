@@ -50,6 +50,9 @@ public:
             
         sweeps_done = 0;
         measurements_done = 0;
+        // Draw the start configuration only after everything is set up and
+        // checked. Nothing above draws random numbers.
+        algorithm.initialize_configuration();
     }
     
     void save(alps::ODump& dump) const

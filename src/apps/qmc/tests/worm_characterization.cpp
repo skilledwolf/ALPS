@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Characterize the existing worm/QMCRun parameter contract before extracting it.
 #include "../worms/WRun.h"
+#include "construction_draws.h"
 
 #include <alps/hdf5/archive.hpp>
 #include <alps/hdf5/vector.hpp>
@@ -41,6 +42,7 @@ public:
   explicit WormProbe(const alps::Parameters& p)
       : WRun(alps::ProcessList(1, alps::Process(0)), p, 0) {}
   double inverse_temperature() const { return beta; }
+  double draw() { return random_01(); }
 };
 
 void start_without_log(WormProbe& run) {
@@ -212,6 +214,12 @@ TEST(WormCharacterization, ValidationOrderRetainsTemperatureThenEtaThenThermaliz
   } catch (const std::out_of_range& error) {
     EXPECT_STREQ(error.what(), "negative thermalization is illegal");
   }
+}
+
+// Worm builds its start configuration without random numbers.
+TEST(WormCharacterization, DrawsNoRandomNumbersDuringConstruction) {
+  WormProbe run(worm_parameters());
+  EXPECT_EQ(construction_draws(worm_parameters(), [&] { return run.draw(); }), 0);
 }
 
 TEST(WormCharacterization, SweepsAreRequiredOnlyAfterThermalization) {
