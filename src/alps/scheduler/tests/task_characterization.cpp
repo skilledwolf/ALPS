@@ -49,7 +49,12 @@ class counting_run : public alps::scheduler::MCRun {
 public:
     counting_run(const alps::ProcessList& where, const alps::Parameters& p, int node)
         : alps::scheduler::MCRun(where, p, node), steps_done_(0) {
-        measurements << alps::RealObservable("Value");
+        // BINNING=0 records Value without binning, for the one merge that
+        // cannot take binned data (GetAndRemoveObservableCountsSavedResultsAgain).
+        if (static_cast<int>(parms.value_or_default("BINNING", 1)))
+            measurements << alps::RealObservable("Value");
+        else
+            measurements << alps::SimpleRealObservable("Value");
     }
     void dostep() {
         ++steps_done_;
@@ -190,13 +195,14 @@ protected:
         return file;
     }
 
-    // Source runs with SEED 11, 22, ... and 2, 3, ... steps, out of STEPS=16.
+    // Source runs with SEED 11, 22, ... and 2, 3, ... steps, out of STEPS=16,
+    // and any further parameters.
     // Every run has at least two values, since the mean of one is NaN.
-    std::vector<std::pair<fs::path, fs::path>> source_runs(int n) {
+    std::vector<std::pair<fs::path, fs::path>> source_runs(int n, const std::string& more = "") {
         std::vector<std::pair<fs::path, fs::path>> out;
         for (int i = 1; i <= n; ++i)
             out.push_back(source_run("source" + std::to_string(i),
-                                     "STEPS=16;SEED=" + std::to_string(11 * i), i + 1));
+                                     "STEPS=16;SEED=" + std::to_string(11 * i) + more, i + 1));
         return out;
     }
 
@@ -432,7 +438,8 @@ TEST_F(TaskLayer, SavesPooledResultsAndResumesFromItsCheckpoint) {
 // results there, and they are not counted again.
 TEST_F(TaskLayer, GetAndRemoveObservablePoolsLikeGetMeasurements) {
     {
-        probe_simulation task(here, compose("resume", "STEPS=16;SEED=5", source_runs(3)));
+        probe_simulation task(here, compose("resume", "STEPS=16;SEED=5;BINNING=0",
+                                            source_runs(3, ";BINNING=0")));
         task.steps(1);
         task.checkpoint(dir / "resume.xml");
     }
@@ -514,6 +521,31 @@ TEST_F(TaskLayer, AppliesChangedParametersToEveryLoadedRun) {
     } catch (const std::runtime_error& error) {
         EXPECT_STREQ(error.what(), "Cannot change parameter X");
     }
+}
+
+// A checkpointed task has its parameters both in <task>.h5 and in the task
+// file. The task file is read last, so editing it changes the parameters,
+// and the change reaches every run.
+TEST_F(TaskLayer, ReadsParametersEditedInTheTaskFile) {
+    {
+        probe_simulation task(here, compose("edit", "STEPS=16;SEED=5", source_runs(2)));
+        task.steps(1);
+        task.checkpoint(dir / "edit.xml");
+    }
+    ASSERT_TRUE(fs::exists(dir / "edit.h5"));
+    std::string text = read_file(dir / "edit.xml");
+    const std::string from = "<PARAMETER name=\"STEPS\">16</PARAMETER>";
+    ASSERT_NE(text.find(from), std::string::npos);
+    text.replace(text.find(from), from.size(), "<PARAMETER name=\"STEPS\">32</PARAMETER>");
+    {
+        std::ofstream out((dir / "edit.xml").string().c_str());
+        out << text;
+    }
+    probe_simulation resumed(here, dir / "edit.xml");
+    EXPECT_EQ(std::string(resumed.get_parameters()["STEPS"]), "32");
+    EXPECT_EQ(std::string(resumed.run(0).parameters()["STEPS"]), "32");
+    EXPECT_EQ(std::string(resumed.run(1).parameters()["STEPS"]), "32");
+    EXPECT_DOUBLE_EQ(resumed.work_done(), 6. / 32.);
 }
 
 } // namespace
