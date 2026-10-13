@@ -187,7 +187,7 @@ TEST(QwlCharacterization, OriginalScheduleHasDifferentDefaults) {
 
 TEST(QwlCharacterization, ExplicitScheduleAndOrderBounds) {
   auto p = qwl_parameters();
-  p["EXPANSION_ORDER_MINIMUM"] = 2;
+  p["EXPANSION_ORDER_MINIMUM"] = 0;
   p["EXPANSION_ORDER_MAXIMUM"] = 4;
   p["CUTOFF"] = 8;
   p["NUMBER_OF_WANG_LANDAU_STEPS"] = 3;
@@ -196,23 +196,32 @@ TEST(QwlCharacterization, ExplicitScheduleAndOrderBounds) {
   p["BLOCK_SWEEPS"] = 97; // ignored by the Zhou-Bhatt schedule
   QWL_SSE_Simulation run(local_process(), p, 0);
   const auto state = state_of(run);
-  EXPECT_EQ(state.g.left, 2u);
-  EXPECT_EQ(state.g.values.size(), 3u);
+  EXPECT_EQ(state.g.left, 0u);
+  EXPECT_EQ(state.g.values.size(), 5u);
   EXPECT_EQ(state.cutoff, 8u);
-  EXPECT_EQ(state.block_sweeps_total, 3u);
+  EXPECT_EQ(state.block_sweeps_total, 5u);
   EXPECT_DOUBLE_EQ(state.logf, std::log(4.));
   EXPECT_DOUBLE_EQ(state.minimum_histogram, 1. / std::log(4.));
   EXPECT_DOUBLE_EQ(state.flatness_treshold, .125);
   EXPECT_TRUE(run.get_measurements().has("Coefficients 3"));
-  // The original worker crashes while stepping at a positive minimum order;
-  // this constructor characterization deliberately does not step that case.
-  maybe_dump(run, "positive_minimum_initial");
+  maybe_dump(run, "explicit_bounds_initial");
 }
 
 TEST(QwlCharacterization, RejectsInvalidOrderBounds) {
   auto p = qwl_parameters();
   p["EXPANSION_ORDER_MINIMUM"] = -1;
   EXPECT_THROW(QWL_SSE_Simulation(local_process(), p, 0), std::runtime_error);
+  // Sampling and evaluation start at order 0, so windows are rejected.
+  p["EXPANSION_ORDER_MINIMUM"] = 2;
+  p["EXPANSION_ORDER_MAXIMUM"] = 4;
+  p["CUTOFF"] = 8;
+  try {
+    QWL_SSE_Simulation run(local_process(), p, 0);
+    ADD_FAILURE() << "expected an order window to be rejected";
+  } catch (const std::runtime_error& error) {
+    EXPECT_STREQ(error.what(),
+                 "EXPANSION_ORDER_MINIMUM must be 0; order windows are not supported");
+  }
   p["EXPANSION_ORDER_MINIMUM"] = 0;
   p["EXPANSION_ORDER_MAXIMUM"] = 5;
   p["CUTOFF"] = 4;

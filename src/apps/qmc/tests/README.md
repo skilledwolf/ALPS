@@ -60,6 +60,6 @@ the opcode of identity operators; the unused bond of each identity operator is
 normalized to zero in its canonical HDF5 snapshot. Active operator bonds are
 retained. All other decoded state is compared without normalization.
 
-QWL can be constructed with a positive `EXPANSION_ORDER_MINIMUM`, but stepping
-that configuration crashes in the unchanged solver. The tests characterize
-construction only for that case. Fixing it is separate from preserving settings.
+QWL rejects a positive `EXPANSION_ORDER_MINIMUM`. It starts sampling at
+expansion order 0 and normalizes and evaluates the stored coefficients as if
+they began there; before this was checked, stepping such a run crashed.

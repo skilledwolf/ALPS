@@ -6,6 +6,7 @@ User-facing changes and migration notes are recorded here, starting with the bui
 
 ### Fixed
 
+- Reject a positive `EXPANSION_ORDER_MINIMUM` in `qwl` with an error instead of crashing on the first sweep. `qwl` samples and evaluates expansion orders from 0 and does not support order windows.
 - Release HDF5 scalar string buffers after reads, including failed conversions, and owned observables when clearing an `ObservableSet`.
 - Correct scalar/vector Monte Carlo result negation and keep uncertainties nonnegative under negative scaling or reciprocal arithmetic. Preserve empty histogram ranges, avoid invalid access during empty vector/valarray conversions, and create private temporary files on Unix independently of the caller's umask.
 - Initialize Monte Carlo completion scheduling before first use.
