@@ -6,6 +6,7 @@ User-facing changes and migration notes are recorded here, starting with the bui
 
 ### Fixed
 
+- Initialize every field of `qwl`'s operator string. Checkpoints wrote the uninitialized bond of identity operators, so identical runs could save different checkpoint bytes.
 - Release HDF5 scalar string buffers after reads, including failed conversions, and owned observables when clearing an `ObservableSet`.
 - Correct scalar/vector Monte Carlo result negation and keep uncertainties nonnegative under negative scaling or reciprocal arithmetic. Preserve empty histogram ranges, avoid invalid access during empty vector/valarray conversions, and create private temporary files on Unix independently of the caller's umask.
 - Initialize Monte Carlo completion scheduling before first use.

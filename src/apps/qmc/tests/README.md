@@ -52,13 +52,12 @@ Worker log timestamps are excluded by saving solver payloads directly.
 The scheduler accepts a changed `SEED` parameter without reseeding a resumed
 worker; the application's `change_parameter` hook is not called for it.
 
-Two preexisting uninitialized fields prevent comparing every raw checkpoint
-byte. Worm's `last_id_` counter is also copied into kink IDs. Its canonical
-HDF5 snapshot retains kink times, states, site counts, and IDs relative to
-`last_id_`, preserving pairing and relative ID history. QWL initializes only
-the opcode of identity operators; the unused bond of each identity operator is
-normalized to zero in its canonical HDF5 snapshot. Active operator bonds are
-retained. All other decoded state is compared without normalization.
+A preexisting uninitialized field prevents comparing every raw checkpoint
+byte: worm's `last_id_` counter, which is also copied into kink IDs. Its
+canonical HDF5 snapshot retains kink times, states, site counts, and IDs
+relative to `last_id_`, preserving pairing and relative ID history. All other
+decoded state, including every QWL operator bond, is compared without
+normalization.
 
 QWL can be constructed with a positive `EXPANSION_ORDER_MINIMUM`, but stepping
 that configuration crashes in the unchanged solver. The tests characterize
