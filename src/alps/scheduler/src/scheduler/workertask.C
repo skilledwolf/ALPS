@@ -385,6 +385,20 @@ inline boost::filesystem::path optional_complete(boost::filesystem::path const& 
     return boost::filesystem::absolute(p,dir);
 }
 
+// Copies a checkpoint of a run on dump to its new location, unless it is
+// already there.
+inline void copy_checkpoint(boost::filesystem::path const& from, boost::filesystem::path const& to)
+{
+  if (!boost::filesystem::exists(from))
+    return;
+  if (boost::filesystem::exists(to)) {
+    if (boost::filesystem::equivalent(from,to))
+      return;
+    boost::filesystem::remove(to);
+  }
+  boost::filesystem::copy_file(from,to);
+}
+
 // checkpoint: save into a file
 void WorkerTask::write_xml_body(alps::oxstream& out, const boost::filesystem::path& fn, bool) const {
   boost::filesystem::path dir=fn.parent_path();
@@ -396,6 +410,11 @@ void WorkerTask::write_xml_body(alps::oxstream& out, const boost::filesystem::pa
     else if(runs[i]==0)
       boost::throw_exception(std::logic_error("run does not exist but marked as existing"));
     else {
+      // where the checkpoints of a run on dump are before they get new names
+      const boost::filesystem::path dumped=runfiles[i].in;
+#ifdef ALPS_HAVE_HDF5
+      const boost::filesystem::path dumped_hdf5=runfiles[i].hdf5in;
+#endif
       if (!runfiles[i].out.empty()) {
         runfiles[i].in=optional_complete(runfiles[i].out,dir);
 #ifdef ALPS_HAVE_HDF5
@@ -421,17 +440,9 @@ void WorkerTask::write_xml_body(alps::oxstream& out, const boost::filesystem::pa
       if(workerstatus[i] == LocalRun || workerstatus[i] == RemoteRun) {
         runs[i]->save_to_file(optional_complete(runfiles[i].out,dir),optional_complete(runfiles[i].hdf5out,dir));
       } else if (workerstatus[i] == RunOnDump) {
-        if(optional_complete(runfiles[i].out,dir).string()!=runfiles[i].in.string()) {
-          boost::filesystem::remove(boost::filesystem::absolute(runfiles[i].out,dir));
-          boost::filesystem::copy_file(boost::filesystem::absolute(runfiles[i].in,dir),boost::filesystem::absolute(runfiles[i].out,dir));
-        }
+        copy_checkpoint(optional_complete(dumped,dir),optional_complete(runfiles[i].out,dir));
 #ifdef ALPS_HAVE_HDF5
-        if(optional_complete(runfiles[i].hdf5out,dir).string()!=runfiles[i].hdf5in.string()) {
-          if (boost::filesystem::exists(optional_complete(runfiles[i].hdf5out,dir)))
-            boost::filesystem::remove(optional_complete(runfiles[i].hdf5out,dir));
-          if (boost::filesystem::exists(optional_complete(runfiles[i].hdf5in,dir)))
-            boost::filesystem::copy_file(optional_complete(runfiles[i].hdf5in,dir),optional_complete(runfiles[i].hdf5out,dir));
-        }
+        copy_checkpoint(optional_complete(dumped_hdf5,dir),optional_complete(runfiles[i].hdf5out,dir));
 #endif
       }
       else

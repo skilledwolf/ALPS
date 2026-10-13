@@ -6,6 +6,7 @@ User-facing changes and migration notes are recorded here, starting with the bui
 
 ### Fixed
 
+- Copy the checkpoints of runs that a resumed task keeps on dump when the task is checkpointed under a new name or into another directory, for example when a job file gives it an `OUTPUT` other than its `INPUT`. Only their HDF5 files were copied, and not on later checkpoints, so the new task file listed missing files and could not be resumed. A checkpoint that is already in place is no longer removed before being copied onto itself.
 - Release HDF5 scalar string buffers after reads, including failed conversions, and owned observables when clearing an `ObservableSet`.
 - Correct scalar/vector Monte Carlo result negation and keep uncertainties nonnegative under negative scaling or reciprocal arithmetic. Preserve empty histogram ranges, avoid invalid access during empty vector/valarray conversions, and create private temporary files on Unix independently of the caller's umask.
 - Initialize Monte Carlo completion scheduling before first use.
