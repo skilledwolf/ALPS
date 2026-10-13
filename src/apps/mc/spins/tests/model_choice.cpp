@@ -68,10 +68,14 @@ TEST(SpinmcModelChoice, ChoosesMomentAndMatrixType) {
 }
 
 TEST(SpinmcModelChoice, ReportsUnsupportedChoices) {
-    EXPECT_EQ(choice_error(R"p(MODEL="Ising")p"), "parameter D not defined");
-    EXPECT_EQ(choice_error(R"p(MODEL="Ising";J="1 2";D=0)p"), "invalid parameters");
-    EXPECT_EQ(choice_error(R"p(MODEL="Heisenberg";D="1 2")p"), "parameter J not defined");
-    EXPECT_EQ(choice_error(R"p(MODEL="XY";J="1 2 3 4 5")p"), "parameter D not defined");
+    EXPECT_EQ(choice_error(R"p(MODEL="Ising")p"),
+              "invalid parameters: cannot produce model Ising without J, J', J0-J3, D, D' or D0-D3");
+    EXPECT_EQ(choice_error(R"p(MODEL="Ising";J="1 2";D=0)p"),
+              R"(invalid parameters: cannot produce model Ising from 2 values in J="1 2")");
+    EXPECT_EQ(choice_error(R"p(MODEL="Heisenberg";D="1 2")p"),
+              R"(invalid parameters: cannot produce model Heisenberg from 2 values in D="1 2")");
+    EXPECT_EQ(choice_error(R"p(MODEL="XY";J="1 2 3 4 5")p"),
+              R"(invalid parameters: cannot produce model XY from 5 values in J="1 2 3 4 5")");
     EXPECT_EQ(choice_error(R"p(MODEL="Potts")p"), "parameter q not defined");
     EXPECT_EQ(choice_error(R"p(MODEL="Potts";q=5)p"),
               "5-state Potts model not implemented in file factory.C");

@@ -272,15 +272,26 @@ TEST(SpinmcCharacterization, CountsPrimedCouplingsButNotHigherBondTypes) {
     EXPECT_EQ(construction_error(heisenberg + R"p(J="2 * 0.5")p"), "Illegal term in expression");
 }
 
-// An unsupported number of values is reported by printing the D and J texts,
-// so an absent D turns the report into a missing-parameter error.
+// An unsupported number of values is reported with the model and every
+// counted parameter that has that many values. Absent parameters are skipped.
 TEST(SpinmcCharacterization, ReportsUnsupportedModelsAndMatrixSizes) {
-    EXPECT_EQ(construction_error(ising + R"p(J="1 2")p"), "parameter D not defined");
-    EXPECT_EQ(construction_error(ising + R"p(J="1 2";D=0)p"), "invalid parameters");
-    EXPECT_EQ(construction_error(heisenberg + R"p(J="1 2")p"), "parameter D not defined");
-    EXPECT_EQ(construction_error(heisenberg + R"p(J=1;D="1 2")p"), "invalid parameters");
-    EXPECT_EQ(construction_error(xy + R"p(J="1 2 3 4 5")p"), "parameter D not defined");
-    EXPECT_EQ(construction_error(heisenberg + R"p(J=1;J'="1 2")p"), "parameter D not defined");
+    EXPECT_EQ(construction_error(ising + R"p(J="1 2")p"),
+              R"(invalid parameters: cannot produce model Ising from 2 values in J="1 2")");
+    EXPECT_EQ(construction_error(ising + R"p(J="1 2";D=0)p"),
+              R"(invalid parameters: cannot produce model Ising from 2 values in J="1 2")");
+    EXPECT_EQ(construction_error(heisenberg + R"p(J="1 2")p"),
+              R"(invalid parameters: cannot produce model Heisenberg from 2 values in J="1 2")");
+    EXPECT_EQ(construction_error(heisenberg + R"p(J=1;D="1 2")p"),
+              R"(invalid parameters: cannot produce model Heisenberg from 2 values in D="1 2")");
+    EXPECT_EQ(construction_error(xy + R"p(J="1 2 3 4 5")p"),
+              R"(invalid parameters: cannot produce model XY from 5 values in J="1 2 3 4 5")");
+    EXPECT_EQ(construction_error(heisenberg + R"p(J=1;J'="1 2")p"),
+              R"(invalid parameters: cannot produce model Heisenberg from 2 values in J'="1 2")");
+    EXPECT_EQ(construction_error(heisenberg + R"p(J0="1 2";D1="3 4")p"),
+              "invalid parameters: cannot produce model Heisenberg from 2 values in "
+              R"(J0="1 2" D1="3 4")");
+    EXPECT_EQ(construction_error(ising),
+              "invalid parameters: cannot produce model Ising without J, J', J0-J3, D, D' or D0-D3");
     // O(4) and Potts ignore the count. An O(4) coupling with two values
     // fails only when the coupling is read.
     EXPECT_EQ(construction_error(

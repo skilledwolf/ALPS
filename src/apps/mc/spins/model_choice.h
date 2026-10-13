@@ -12,9 +12,9 @@
 
 // Which classical spin simulation the parameters select. The choice was moved
 // unchanged out of SpinFactory (spinmc_factory.C), together with its helpers
-// countElements, findDominantMatrixString and produceError: same reads, same
-// order and the same errors. It depends on parameters only, so it can be
-// checked without a lattice.
+// countElements, findDominantMatrixString and produceError: same reads and
+// same order. produce_error now names the parameters it rejects. It depends on
+// parameters only, so it can be checked without a lattice.
 
 #ifndef ALPS_APPLICATIONS_MC_SPIN_MODEL_CHOICE_H_
 #define ALPS_APPLICATIONS_MC_SPIN_MODEL_CHOICE_H_
@@ -23,8 +23,6 @@
 #include <boost/config.hpp>
 #include <boost/throw_exception.hpp>
 #include <algorithm>
-#include <cstdlib>
-#include <iostream>
 #include <stdexcept>
 #include <string>
 
@@ -99,17 +97,25 @@ inline int find_dominant_matrix_string(const alps::Parameters& parms)
 }
 
 /**
- * Outputs an error message and aborts the computation if an invalid number of
- * elements is provided in the input for a matrix parameter.
+ * Reports an invalid number of elements in the input for a matrix parameter,
+ * naming the parameters with the offending number of values. It reads only
+ * parameters that are defined, so a missing J or D is not reported instead.
  */
-inline void produce_error(const alps::Parameters& parms)
+inline void produce_error(const alps::Parameters& parms, int count)
 {
-  std::cerr << "Invalid parameters given:\n"
-            << "Cannot produce model " << parms["MODEL"] << " with strings "
-            << parms["D"] << " for D and " << parms["J"]
-            << " for J.\nAborting\n";
-  boost::throw_exception(std::runtime_error("invalid parameters"));
-  std::exit(-5);
+  static const char* const counted[] = {"J", "J'", "J0", "J1", "J2", "J3",
+                                        "D", "D'", "D0", "D1", "D2", "D3"};
+  std::string message = "invalid parameters: cannot produce model "
+    + std::string(parms["MODEL"]);
+  if (count == 0)
+    message += " without J, J', J0-J3, D, D' or D0-D3";
+  else {
+    message += " from " + std::to_string(count) + " values in";
+    for (const char* name : counted)
+      if (parms.defined(name) && count_elements(parms[name]) == count)
+        message += std::string(" ") + name + "=\"" + std::string(parms[name]) + "\"";
+  }
+  boost::throw_exception(std::runtime_error(message));
 }
 
 /**
@@ -125,7 +131,7 @@ inline simulation_kind choose_simulation(const alps::Parameters& parms)
     if (maxElemCount == 1)
       return simulation_kind::ising;
     else {
-      produce_error(parms);
+      produce_error(parms, maxElemCount);
     }
   else if (parms["MODEL"]=="O(4)")
     return simulation_kind::o4;
@@ -140,7 +146,7 @@ inline simulation_kind choose_simulation(const alps::Parameters& parms)
       case 9:
         return simulation_kind::heisenberg_square;
       default:
-        produce_error(parms);
+        produce_error(parms, maxElemCount);
     }
   else if (parms["MODEL"]=="XY")
     switch (maxElemCount) {
@@ -153,7 +159,7 @@ inline simulation_kind choose_simulation(const alps::Parameters& parms)
       case 4:
         return simulation_kind::xy_square;
       default:
-        produce_error(parms);
+        produce_error(parms, maxElemCount);
     }
 
   else if (parms["MODEL"]=="Potts")
