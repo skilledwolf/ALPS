@@ -459,6 +459,21 @@ TEST_F(TaskLayer, GetAndRemoveObservablePoolsLikeGetMeasurements) {
     EXPECT_FALSE(resumed.get_measurements().has("Extra"));
 }
 
+// The same with binned data. Merging the saved results again also divided by
+// their bin size, which is 0 after loading from HDF5: SIGFPE on x86, and a
+// double count on arm64, which does not trap integer division by zero.
+TEST_F(TaskLayer, GetAndRemoveObservableLeavesBinnedSavedResultsAlone) {
+    {
+        probe_simulation task(here, compose("resume", "STEPS=16;SEED=5", source_runs(3)));
+        task.steps(1);
+        task.checkpoint(dir / "resume.xml");
+    }
+    probe_simulation resumed(here, dir / "resume.xml");
+    const alps::ObservableSet removed = resumed.get_and_remove_observable("Value");
+    EXPECT_EQ(count(removed, "Value"), 10.);
+    EXPECT_FALSE(resumed.get_measurements().has("Value"));
+}
+
 // Checkpointed under a new name, the runs are renamed after the new task file.
 // The local run is saved, but of the runs on dump only the HDF5 halves are
 // copied: the XDR checkpoints are not, so the new task cannot be resumed.

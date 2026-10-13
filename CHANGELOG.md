@@ -6,7 +6,7 @@ User-facing changes and migration notes are recorded here, starting with the bui
 
 ### Fixed
 
-- Stop `MCSimulation::get_and_remove_observable` from counting a resumed task's saved results again. Like `get_measurements`, it now uses the simulation's own copy of an observable only when no run has it.
+- Stop `MCSimulation::get_and_remove_observable` from counting a resumed task's saved results again, and, for binned observables on x86, from dividing by zero while merging them. Like `get_measurements`, it now uses the simulation's own copy of an observable only when no run has it.
 - Release HDF5 scalar string buffers after reads, including failed conversions, and owned observables when clearing an `ObservableSet`.
 - Correct scalar/vector Monte Carlo result negation and keep uncertainties nonnegative under negative scaling or reciprocal arithmetic. Preserve empty histogram ranges, avoid invalid access during empty vector/valarray conversions, and create private temporary files on Unix independently of the caller's umask.
 - Initialize Monte Carlo completion scheduling before first use.
