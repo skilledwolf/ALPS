@@ -177,7 +177,10 @@ XMLTag parse_tag(std::istream& in, bool skip_comments)
       tag.attributes[n]=v;
       in >> c;
     }
-    detail::skip_comment(in,true);
+    // The loop has read the '?' of the closing "?>". Skipping to the next
+    // "?>" instead would swallow the rest of a file that has no second
+    // processing instruction.
+    detail::xml_close_tag(in);
   }
   else if( tag.name=="!") {
     tag.type=XMLTag::COMMENT;
