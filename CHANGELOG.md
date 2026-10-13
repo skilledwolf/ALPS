@@ -6,6 +6,7 @@ User-facing changes and migration notes are recorded here, starting with the bui
 
 ### Fixed
 
+- Stop Monte Carlo runs resumed from a checkpoint from repeating random numbers. Loading or reseeding a buffered generator now discards numbers buffered from its previous state. Before, a resumed run reused up to 10,240 numbers from the start of the original run.
 - Release HDF5 scalar string buffers after reads, including failed conversions, and owned observables when clearing an `ObservableSet`.
 - Correct scalar/vector Monte Carlo result negation and keep uncertainties nonnegative under negative scaling or reciprocal arithmetic. Preserve empty histogram ranges, avoid invalid access during empty vector/valarray conversions, and create private temporary files on Unix independently of the caller's umask.
 - Initialize Monte Carlo completion scheduling before first use.

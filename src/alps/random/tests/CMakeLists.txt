@@ -17,7 +17,7 @@
 #   FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 #   DEALINGS IN THE SOFTWARE.
 
-foreach(name random_choice uniform_on_sphere_n)
+foreach(name buffered_rng random_choice uniform_on_sphere_n)
   add_executable(${name} ${name}.C)
 
   target_link_libraries(${name} PRIVATE ALPS::alps)

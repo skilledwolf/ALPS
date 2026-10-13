@@ -124,14 +124,16 @@ public:
   /// \param rng generator to be copied
   buffered_rng(RNG rng) : rng_(rng) {}
 
+  // Seeding and read() replace the engine state. Numbers still buffered
+  // were drawn from the old state, so they are discarded.
   template <class IT>
-  void seed(IT start, IT end) { rng_.seed(start, end); }
+  void seed(IT start, IT end) { rng_.seed(start, end); discard_buffer(); }
   /// seed from an integer using seed_with_sequence
   /// \sa seed_with_sequence()
-  void seed(uint32_t s) { seed_with_sequence(rng_,s); }
+  void seed(uint32_t s) { seed_with_sequence(rng_,s); discard_buffer(); }
   void seed();
   /// seed with the pseudo_des generator
-  void seed(pseudo_des& inigen) { seed_with_generator(rng_, inigen); }
+  void seed(pseudo_des& inigen) { seed_with_generator(rng_, inigen); discard_buffer(); }
 
   result_type min BOOST_PREVENT_MACRO_SUBSTITUTION () const { return rng_.min BOOST_PREVENT_MACRO_SUBSTITUTION (); }
   result_type max BOOST_PREVENT_MACRO_SUBSTITUTION () const { return rng_.max BOOST_PREVENT_MACRO_SUBSTITUTION (); }
@@ -143,6 +145,7 @@ public:
 
 protected:
   void fill_buffer();
+  void discard_buffer() { ptr_ = buf_.end(); }
   RNG rng_;
 };
 
@@ -150,12 +153,14 @@ template <class RNG>
 void buffered_rng<RNG>::seed()
 {
   rng_.seed();
+  discard_buffer();
 }
 
 template <class RNG>
 void buffered_rng<RNG>::read(std::istream& is)
 {
   is >> rng_;
+  discard_buffer();
 }
 
 template <class RNG>
