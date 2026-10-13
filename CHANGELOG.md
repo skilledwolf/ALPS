@@ -6,6 +6,7 @@ User-facing changes and migration notes are recorded here, starting with the bui
 
 ### Fixed
 
+- Reject `J'` and `J''` in `spinmc` on lattices with bonds of type 1 or 2 when `J1` or `J2` is not given. The model library uses them for those bond types, but `spinmc` ignored them and gave the bonds `J`.
 - Report which parameters `spinmc` cannot use when their number of values fits no matrix type for the model. When `J` or `D` was absent, the error claimed `parameter D not defined` (or `J`) instead.
 - Release HDF5 scalar string buffers after reads, including failed conversions, and owned observables when clearing an `ObservableSet`.
 - Correct scalar/vector Monte Carlo result negation and keep uncertainties nonnegative under negative scaling or reciprocal arithmetic. Preserve empty histogram ranges, avoid invalid access during empty vector/valarray conversions, and create private temporary files on Unix independently of the caller's umask.
