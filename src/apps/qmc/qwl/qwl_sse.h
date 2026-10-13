@@ -161,6 +161,10 @@ QWL_SSE_Simulation::QWL_SSE_Simulation(const ProcessList& where,const Parameters
   int g_size=norder_max-g_left+1;
   if (g_left<0)
     boost::throw_exception(std::runtime_error("EXPANSION_ORDER_MINIMUM must not be negative"));
+  // Sampling starts at expansion order 0, and the stored coefficients are
+  // normalized and evaluated as if they began there.
+  if (g_left>0)
+    boost::throw_exception(std::runtime_error("EXPANSION_ORDER_MINIMUM must be 0; order windows are not supported"));
   g.resize(g_size,g_left);
   histo.resize(g_size,g_left);
   histoup.resize(g_size,g_left);
