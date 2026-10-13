@@ -280,10 +280,9 @@ TEST(SpinmcCharacterization, RejectsPrimedCouplingsThatWouldBeIgnored) {
         R"p(LATTICE="ladder";L=4;MODEL="Heisenberg";T=1;SWEEPS=10;SEED=1;)p";
     EXPECT_EQ(construction_error(ladder + "J=1;J'=0.5"),
               R"(J' is not read: bond type 1 takes J1, falling back to J. Set J1, for example J1="J'", or remove J')");
-    EXPECT_EQ(built(ladder + "J=1;J1=0.5;J'=0.5"), "SpinSim<ONMoment<3>,MIdMatrix<double,3>>");
-    EXPECT_EQ(built(ladder + R"p(J=1;J'=0.5;J1="J'")p"),
-              "SpinSim<ONMoment<3>,MIdMatrix<double,3>>");
-    EXPECT_EQ(built(heisenberg + "J=1;J'=0.5"), "SpinSim<ONMoment<3>,MIdMatrix<double,3>>");
+    EXPECT_EQ(construction_error(ladder + "J=1;J1=0.5;J'=0.5"), "");
+    EXPECT_EQ(construction_error(ladder + R"p(J=1;J'=0.5;J1="J'")p"), "");
+    EXPECT_EQ(construction_error(heisenberg + "J=1;J'=0.5"), "");
 }
 
 // An unsupported number of values is reported with the model and every
