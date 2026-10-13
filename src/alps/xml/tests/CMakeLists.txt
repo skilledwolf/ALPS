@@ -23,3 +23,7 @@ foreach(name xmlhandler xmlparser xmlstream)
   target_link_libraries(${name} PRIVATE ALPS::xml)
   alps_add_gtest(${name} COMPONENT xml LABELS compatibility)
 endforeach()
+
+add_executable(xml_parse_tag parse_tag.cpp)
+target_link_libraries(xml_parse_tag PRIVATE ALPS::xml)
+alps_add_gtest(xml_parse_tag COMPONENT xml)
