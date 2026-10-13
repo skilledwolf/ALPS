@@ -432,16 +432,11 @@ TEST_F(TaskLayer, SavesPooledResultsAndResumesFromItsCheckpoint) {
     EXPECT_DOUBLE_EQ(resumed.work_done(), 10. / 16.);
 }
 
-// get_and_remove_observable pools differently from get_measurements: it merges
-// the runs from the left and then merges the simulation's own observable of
-// that name too. A task resumed from its checkpoint holds the previously
-// pooled results there, so they are counted again. Nothing in ALPS calls it.
-//
-// Value is unbinned here. Results loaded from an HDF5 checkpoint have bin
-// size 0, since the bin size is not saved, and merging them into binned data
-// divides by that bin size: SIGFPE on x86, a silent double count on arm64.
-// That undefined case is not pinned.
-TEST_F(TaskLayer, GetAndRemoveObservableCountsSavedResultsAgain) {
+// get_and_remove_observable merges the runs' observable of that name and, like
+// get_measurements, uses the simulation's own observable only for a name no
+// run has. A task resumed from its checkpoint holds the previously pooled
+// results there, and they are not counted again.
+TEST_F(TaskLayer, GetAndRemoveObservablePoolsLikeGetMeasurements) {
     {
         probe_simulation task(here, compose("resume", "STEPS=16;SEED=5;BINNING=0",
                                             source_runs(3, ";BINNING=0")));
@@ -449,9 +444,33 @@ TEST_F(TaskLayer, GetAndRemoveObservableCountsSavedResultsAgain) {
         task.checkpoint(dir / "resume.xml");
     }
     probe_simulation resumed(here, dir / "resume.xml");
+    const double pooled_mean = mean(resumed.get_measurements(), "Value");
     EXPECT_EQ(count(resumed.get_measurements(), "Value"), 10.);
     const alps::ObservableSet removed = resumed.get_and_remove_observable("Value");
-    EXPECT_EQ(count(removed, "Value"), 20.);
+    EXPECT_EQ(count(removed, "Value"), 10.);
+    EXPECT_EQ(mean(removed, "Value"), pooled_mean);
+    EXPECT_FALSE(resumed.get_measurements().has("Value"));
+
+    alps::RealObservable extra("Extra");
+    extra << 4.5;
+    extra << 5.5;
+    resumed << extra;
+    EXPECT_DOUBLE_EQ(mean(resumed.get_and_remove_observable("Extra"), "Extra"), 5.);
+    EXPECT_FALSE(resumed.get_measurements().has("Extra"));
+}
+
+// The same with binned data. Merging the saved results again also divided by
+// their bin size, which is 0 after loading from HDF5: SIGFPE on x86, and a
+// double count on arm64, which does not trap integer division by zero.
+TEST_F(TaskLayer, GetAndRemoveObservableLeavesBinnedSavedResultsAlone) {
+    {
+        probe_simulation task(here, compose("resume", "STEPS=16;SEED=5", source_runs(3)));
+        task.steps(1);
+        task.checkpoint(dir / "resume.xml");
+    }
+    probe_simulation resumed(here, dir / "resume.xml");
+    const alps::ObservableSet removed = resumed.get_and_remove_observable("Value");
+    EXPECT_EQ(count(removed, "Value"), 10.);
     EXPECT_FALSE(resumed.get_measurements().has("Value"));
 }
 
