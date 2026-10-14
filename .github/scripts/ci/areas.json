@@ -103,6 +103,7 @@
         "tests/cmake/**",
         ".github/scripts/**",
         ".github/dependencies.json",
+        ".github/wheel-matrix.json",
         ".github/workflows/_wheels.yml",
         "python/pyalps/tests/**"
       ],

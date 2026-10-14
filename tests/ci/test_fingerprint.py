@@ -305,13 +305,16 @@ class Workflow(unittest.TestCase):
 
     def test_areas_cover_the_inputs_their_jobs_read(self):
         # tests/ci/test_numeric_bindings.py (static) scans these trees, and
-        # run_wheel_tests.py (packaging) runs tests/cmake against the wheel.
+        # run_wheel_tests.py (packaging) checks installed SDK consumers alongside
+        # the wheel; full compatibility runs also exercise source contracts.
         config = fp.Config.load(os.path.join(CI_SCRIPTS, "areas.json"))
         for area, path in (("static", "src/alps/ietl/include/ietl/jd.h"),
                            ("static", "python/pyalps/cpp/pyalea.cpp"),
                            ("static", "tests/integration/CMakeLists.txt"),
                            ("static", "third_party/boost_numeric_bindings/README.md"),
                            ("packaging", "tests/cmake/test_sdk_contracts.py"),
+                           ("packaging", "tests/cmake/test_python_sdk_version.py"),
+                           ("packaging", ".github/wheel-matrix.json"),
                            ("packaging", "python/pyalps/tests/test_binding_surface.py"),
                            ("linux", ".github/scripts/run_with_timeout.py"),
                            ("mpi", "src/alps/parapack/tests/collect_mpi.op-3"),
