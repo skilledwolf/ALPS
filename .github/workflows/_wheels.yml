@@ -263,6 +263,12 @@ jobs:
         name: mpi-python-reports
         path: _build/mpi
 'on':
+  workflow_dispatch:
+    inputs:
+      full:
+        description: Build and validate every wheel platform
+        type: boolean
+        default: false
   workflow_call:
     inputs:
       full:
