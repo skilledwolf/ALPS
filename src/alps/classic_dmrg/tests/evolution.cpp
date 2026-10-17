@@ -869,3 +869,50 @@ TEST(ClassicDmrgTargeting, LargeEnergiesInImaginaryTime) {
     expect_exact_targeting(initial_for(50.0), Model(chain_xxz(8, 1.0, 1.0, 50.0)), sector, {},
                            targeting(0.5, 4, 64), options_for(64, sector), 1e-9);
 }
+
+TEST(ClassicDmrgEvolution, IterationsIncludeTheIdentityParts) {
+    // The initial and final Hamiltonians have different identity parts,
+    // which the engine never sees. The preparation's iterations add the
+    // initial one, as initial.energies do; time-step targeting's add the
+    // final one, as energies do; the Trotter method's carry no energy.
+    auto with = [](Model model, double constant) {
+        model.op.terms.push_back(mdl::LocalTerm{Complex(constant), {}, {}});
+        return model;
+    };
+    Model const initial(chain_xxz(8, 1.0, 0.0)), final_model(chain_xxz(8, 1.0, 1.0));
+    Model const shifted_initial = with(initial, 0.75), shifted_final = with(final_model, -0.4);
+    for (auto method : {cd::EvolutionMethod::trotter, cd::EvolutionMethod::targeting}) {
+        SCOPED_TRACE(method == cd::EvolutionMethod::trotter ? "trotter" : "targeting");
+        auto evolution = real_time(0.1, 3, 64);
+        evolution.method = method;
+        auto run = [&](Model const& a, Model const& b, std::vector<double>& rows) {
+            return cd::evolve(a.op, b.op, a.basis, evolution, options_for(64, {{"Sz", 0.}}), {},
+                              [&](cd::Iteration const& row) { rows.push_back(row.energy); });
+        };
+        std::vector<double> plain_rows, rows;
+        auto const plain = run(initial, final_model, plain_rows);
+        auto const shifted = run(shifted_initial, shifted_final, rows);
+        std::size_t const prepared = shifted.initial.iterations.size();
+        ASSERT_EQ(prepared, plain.initial.iterations.size());
+        ASSERT_EQ(rows.size(), plain_rows.size());
+        ASSERT_GT(rows.size(), prepared);
+        for (std::size_t i = 0; i < prepared; ++i) {
+            EXPECT_EQ(rows[i], shifted.initial.iterations[i].energy) << i;
+            EXPECT_NEAR(rows[i], plain_rows[i] + 0.75, 1e-12) << i;
+        }
+        EXPECT_NEAR(shifted.initial.energies.at(0), plain.initial.energies.at(0) + 0.75, 1e-12);
+        EXPECT_NEAR(rows[prepared - 1], shifted.initial.energies[0], 1e-9);
+        ASSERT_EQ(shifted.energies.size(), plain.energies.size());
+        for (std::size_t k = 0; k < shifted.energies.size(); ++k)
+            EXPECT_NEAR(shifted.energies[k], plain.energies[k] - 0.4, 1e-12) << k;
+        std::size_t finite = 0;
+        for (std::size_t i = prepared; i < rows.size(); ++i) {
+            ASSERT_EQ(std::isnan(rows[i]), std::isnan(plain_rows[i])) << i;
+            if (std::isnan(rows[i])) continue;
+            ++finite;
+            EXPECT_NEAR(rows[i], plain_rows[i] - 0.4, 1e-12) << i;
+            EXPECT_NEAR(rows[i], shifted.energies[0], 1e-9) << i; // <H_final> is conserved
+        }
+        EXPECT_EQ(finite > 0, method == cd::EvolutionMethod::targeting);
+    }
+}

@@ -860,9 +860,11 @@ struct Engine {
         : problem(p), options(o), callback(std::move(cb)), lattice(p.num_sites, dmtk::OBC), hami(lattice) {}
 
     void observe(dmtk::System<T> const& s) {
-        // An evolution's iterations report the final Hamiltonian's energy
-        // where time-step targeting computes it, else NaN.
-        double const energy = evolving ? s.energy[0] + problem.final_scalar.real() : s.energy[0];
+        // Iterations report the energy with the Hamiltonian's identity part,
+        // as Result::energies do: the initial Hamiltonian's while solving,
+        // the final one's while evolving, where time-step targeting computes
+        // it (else NaN, which stays NaN).
+        double const energy = s.energy[0] + (evolving ? problem.final_scalar : problem.scalar).real();
         Iteration row{s.get_dir() == dmtk::RIGHT2LEFT ? Direction::right_to_left : Direction::left_to_right,
                       static_cast<std::size_t>(s.get_iter()), energy, s.truncation_error(), s.entropy()};
         rows.push_back(row);

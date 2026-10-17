@@ -146,6 +146,11 @@ struct Measurement {
     std::vector<std::vector<double>> values;
 };
 
+// One completed DMRG iteration. Its energy includes the Hamiltonian's
+// identity part (its constant terms), as Result::energies do, so a solve's
+// iterations converge to energies[0]; solve_molecular()'s include the core
+// energy, and evolve() says what its iterations carry. The engine's log
+// stream prints energies without the identity part.
 struct Iteration {
     Direction direction;
     std::size_t index;
@@ -307,10 +312,12 @@ struct EvolutionResult {
 // options.arithmetic. num_eigenvalues must be one and keep_mps unset
 // (Evolution::keep_mps keeps the evolved states). Measurements are taken at
 // the measured steps as solve() takes them. The callback observes every
-// iteration of the preparation and of the evolution. The Trotter method's
-// iterations carry no energy (NaN). Time-step targeting's carry the final
-// Hamiltonian's <psi|H|psi> at their configuration, except those of the
-// first half sweep, which builds its block operators.
+// iteration of the preparation and of the evolution. The preparation's
+// carry the initial Hamiltonian's energy, as initial.energies do. The
+// Trotter method's iterations carry no energy (NaN). Time-step targeting's
+// carry the final Hamiltonian's <psi|H|psi> at their configuration, as
+// `energies` do, except those of the first half sweep, which builds its
+// block operators. Both energies include their Hamiltonian's identity part.
 ALPS_CLASSIC_DMRG_DECL EvolutionResult evolve(models::CompiledOperator const& initial,
     models::CompiledOperator const& final_hamiltonian, models::PhysicalBasis const& basis,
     Evolution const& evolution, Options const& options = {}, Measurements const& measurements = {},

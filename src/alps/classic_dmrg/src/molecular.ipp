@@ -216,14 +216,17 @@ Lowered lower(models::Term const& input, Site& site) {
     return output;
 }
 
+// Changed here: the iterations include the core energy, as
+// MolecularResult::energy does.
 struct Observer {
     MolecularResult& result;
     IterationCallback const& callback;
+    double core_energy;
     static bool observe(dmtk::System<double>& system, std::size_t signal, void* data) {
         if (signal != dmtk::SYSTEM_SIGNAL_END_ITER) return false;
         auto& observer = *static_cast<Observer*>(data);
         Iteration row{system.get_dir() == dmtk::RIGHT2LEFT ? Direction::right_to_left : Direction::left_to_right,
-                      static_cast<std::size_t>(system.get_iter()), system.energy[0],
+                      static_cast<std::size_t>(system.get_iter()), system.energy[0] + observer.core_energy,
                       system.truncation_error(), system.entropy()};
         observer.result.iterations.push_back(row);
         if (observer.callback) observer.callback(row);
@@ -577,7 +580,7 @@ MolecularResult solve_molecular(MolecularInput const& input, Options const& opti
     }
     MolecularResult result;
     result.orbitals = n;
-    Observer observer{result, callback};
+    Observer observer{result, callback, core};
     dmtk::MolecularSystem system(h, lattice, "ALPS_molecular", std::move(integrals),
                                  orbitals.operators[c_up], orbitals.operators[c_dn]);
     system.set_store_products(true).set_use_hc(false).set_grow_symmetric(false).set_verbose(0);

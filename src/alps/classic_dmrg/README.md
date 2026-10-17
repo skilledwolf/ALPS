@@ -43,7 +43,7 @@ auto const& density = result.measurements.at("n").values[0];  // row = target st
 | `site_terms(model, op)`, `pair_terms(model, a, b)` | builders over a model's local operator names: one term per site, one term per ordered site pair (i-major, on-site product at i = j); no two columns are ever combined |
 | `solve(op, basis, options, measurements, callback)` | the engine on a compiled operator and its physical basis |
 | `solve(model, …)` | validates Hermiticity, compiles the `Hamiltonian` under its declared charges and convention, solves on `physical_basis(model)` |
-| `Result` | ascending `energies`, `measurements` (rows follow the targets, columns the terms with their factor `sites`), the `iterations` observed (direction, index, energy, truncation error, entropy), `final_truncation_error`, the resolved `options`, with `keep_mps` the `mps` of every target |
+| `Result` | ascending `energies`, `measurements` (rows follow the targets, columns the terms with their factor `sites`), the `iterations` observed (direction, index, energy with the constant terms, truncation error, entropy), `final_truncation_error`, the resolved `options`, with `keep_mps` the `mps` of every target |
 | `MatrixProductState`, `MpsTensor` | a targeted state's site tensors (`[left bond][local state][right bond]`, row-major, `real` or `complex` entries) and its `center` |
 | `evolve(initial, final, basis, evolution, options, measurements, callback)`, `evolve(initial_model, final_model, …)` | time evolution of the ground state of `initial` under `final` ([below](#time-evolution)) |
 | `Evolution` | `time_step`, `steps`, `imaginary`, `states`, optional `truncation_error`, `measure_steps`, `drives`, `keep_mps`, `method` (`EvolutionMethod::trotter` or `targeting`, [below](#time-step-targeting)), `half_sweeps` |
@@ -65,6 +65,11 @@ auto const& density = result.measurements.at("n").values[0];  // row = target st
   XML catalog's bond terms). The sum must be Hermitian, which is checked on
   the dense matrix of every site and site pair, and must conserve every
   charge of the sector.
+- Terms without factors, the identity part of the Hamiltonian, never reach
+  the engine. Every reported energy adds them back: `Result::energies` and
+  the `energy` of every `Iteration`, so the iterations converge to
+  `energies[0]`. A measured operator's scalar part is added to its values
+  in the same way. Only the engine's log prints energies without them.
 - Fermions under the strict convention need integer charges whose summed
   parity is the fermion parity on every site: the particle number `N` of
   the built-in sites, or else the smallest such set, such as the XML
@@ -220,9 +225,10 @@ two half sweeps, a measured one four.
 - A `Drive` adds `coefficients[n] * op` to `final` during step `n`; pyalps
   samples a function of time at the step midpoints `(n + 1/2) dt`, which
   keeps the scheme second order.
-- The callback observes the preparation's iterations and then every
-  iteration of the evolution, which carry no energy (NaN) but their
-  truncation error and entropy.
+- The callback observes the preparation's iterations, with the initial
+  Hamiltonian's energy as `initial.energies`, and then every iteration of
+  the evolution, which carry no energy (NaN) but their truncation error
+  and entropy.
 
 A product initial state, such as a domain wall prepared as the ground
 state of fields alone, needs `Options::warmup_configuration`. Without it,
@@ -275,8 +281,9 @@ applies `final` itself to the superblock state:
   built once. `truncation_errors[n]` is the squared norm the state itself
   lost in step `n` (the four targets share the kept states, so a
   truncation keeps more states than the state alone would need). The
-  iterations report `<psi|H_final|psi>` at their configuration, except the
-  first building half sweep's, which report NaN.
+  iterations report `<psi|H_final|psi>` at their configuration, with its
+  constant terms as `energies`, except the first building half sweep's,
+  which report NaN.
 
 Each configuration costs four products with `H`, and the last one of a step
 also costs the Krylov vectors. The mixed density matrix keeps more states
@@ -304,9 +311,10 @@ two-particle ones in the PySCF convention
 spin-summed (`two_rdm`) and by spin block (`two_rdm_aa`, `two_rdm_ab` with
 σ = α and τ = β, `two_rdm_bb`; `two_rdm` is `aa + ab + ab.transpose(2,3,0,1)
 + bb` to rounding, and QDK's `aaaa`, `aabb` and `bbbb` blocks are these), the
-iterations and the final truncation error. The engine works from the
-integrals themselves, and the RDMs are read from the final state by a walk
-over the chain, not measured as engine terms (both below). The
+iterations (whose energies also include `core_energy`) and the final
+truncation error. The engine works from the integrals themselves, and
+the RDMs are read from the final state by a walk over the chain, not
+measured as engine terms (both below). The
 sweep, truncation, Lanczos, scratch and callback options are those of
 `solve()`; `sector` and `warmup_configuration` must be empty,
 `num_eigenvalues` one and arithmetic real.
@@ -618,9 +626,9 @@ anisotropy, sector targets, an unrestricted solve, three targeted states,
 hard-core bosons, the Hubbard chain at and away from half filling, frustrated
 spinless fermions on a next-nearest-neighbour chain, complex hopping phases,
 truncated ramped sweeps converging from above, iteration observation and
-abort); measurements against `ALPS::ed` (site and pair spin terms, fermion
-densities and hopping correlations, split charge components, scalar terms,
-one row per target); equivalent operator forms (reversed factors, scales in
+abort, iteration energies with a constant term); measurements against
+`ALPS::ed` (site and pair spin terms, fermion densities and hopping
+correlations, split charge components, scalar terms, one row per target); equivalent operator forms (reversed factors, scales in
 the matrices, projector-form terms, `Nup` and `Ndown` as fermionic charges);
 the private scratch directory; the rejected inputs; and the kept MPS
 (`classic_dmrg_mps`), contracted to a vector and compared with the
@@ -637,7 +645,9 @@ site and pair measurements, the kept states and the Loschmidt amplitude;
 it checks an identity and an eigenstate evolution, the `dt^2` shrinking of
 the Trotter error, energy conservation, imaginary time in real and complex
 arithmetic (against the Trotter product and the ED ground energy), drives,
-the measured-step bookkeeping, the reported truncation and the rejections.
+the measured-step bookkeeping, the reported truncation, the rejections, and
+iteration energies when the initial and final Hamiltonians have different
+constant terms.
 Its time-step targeting tests compare every step with `exp(-iHt)` to 1e-9,
 and every iteration's energy with the conserved `<H_final>`:
 - fields to the XX chain, whose block operators the evolution builds;
@@ -669,9 +679,9 @@ the same integrals written as an `ALPS::models` Hamiltonian and solved by
 vector, sign by sign, against the same diagonalization for one to six
 orbitals; under truncation (variational energy, RDM traces, the CI vector's
 norm, and its 1-RDMs and 2-RDM spin blocks against the run's); for callback
-observation and abort with the scratch directory removed; and for the rejected
-inputs; and its kept MPS against the CI vector of the same run on every
-determinant, padded, exact and truncated. `classic_dmrg_multisite` locks the engine's long-range hopping and
+observation and abort with the scratch directory removed; for the core
+energy in the iterations; and for the rejected inputs; and its kept MPS
+against the CI vector of the same run on every determinant, padded, exact and truncated. `classic_dmrg_multisite` locks the engine's long-range hopping and
 four-site fermion products, which the molecular solver used before it had
 its own operator engine, against an exact diagonalization for 4, 6 and 8
 sites. With the `dmrg` application built, `ctest -L dmrg` also runs

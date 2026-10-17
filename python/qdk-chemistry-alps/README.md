@@ -29,7 +29,7 @@ spin = dmrg.spin_spin_correlations()         # <S_i . S_j>, from the RDMs
 | `max_bond_dim` | 200 | Kept states in every half sweep, and the cap under error-based truncation. |
 | `warmup_states` | 20 | Kept states while the blocks grow. |
 | `sweeps` | 20 | Sweeps before the final measurement pass. |
-| `convergence_tol` | 1e-10 | Lanczos tolerance of the engine; inspect `last_result.iterations` for sweep convergence. |
+| `convergence_tol` | 1e-10 | Lanczos tolerance of the engine; inspect `last_result.iterations` for sweep convergence (their energies include the core energy, as `last_result.energy` does). |
 | `truncation_tol` | 0 | Zero keeps the fixed-state schedule; a positive value targets that discarded weight, capped at `max_bond_dim`. |
 | `integral_cutoff` | 1e-12 | Integrals of smaller magnitude are dropped before the symmetry check. |
 | `wavefunction_container` | `auto` | `auto`: a `StateVectorContainer` while the CI vector fits in `ci_memory_limit_gb`, otherwise an `RdmContainer`. `statevector`: always the CI vector (`MemoryError` beyond the limit). `rdm`: an `RdmContainer` without a CI vector. |

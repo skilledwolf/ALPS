@@ -257,7 +257,8 @@ NB_MODULE(classic_dmrg_c, m) {
                  + ", " + std::to_string(measurement.values.size()) + "x" + std::to_string(measurement.sites.size()) + ")";
         });
 
-    nb::class_<classic::Iteration>(m, "Iteration", "One completed DMRG iteration.")
+    nb::class_<classic::Iteration>(m, "Iteration",
+        "One completed DMRG iteration; its energy includes the Hamiltonian's constant terms (and core_energy).")
         .def_prop_ro("direction", [](classic::Iteration const& it) { return direction_name(it.direction); })
         .def_ro("index", &classic::Iteration::index)
         .def_ro("energy", &classic::Iteration::energy)

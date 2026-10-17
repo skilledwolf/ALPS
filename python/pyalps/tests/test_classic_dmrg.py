@@ -571,6 +571,59 @@ def test_evolve_by_time_step_targeting_under_next_nearest_neighbours():
         dmrg.make_evolution(time_step=0.1, steps=1, method="rk4")
 
 
+def test_iteration_energies_include_the_constant_terms():
+    # The engine never sees a Hamiltonian's identity part; every iteration
+    # energy adds it back, as the energies do: in solve, in the evolution's
+    # preparation (the initial constant) and its targeting iterations (the
+    # final one), and the molecular core energy.
+    spin = models.spin()
+
+    def shifted(model, constant):
+        if constant:
+            model.add(models.located(spin, "I", 0) * constant)
+        return model
+
+    def xx(constant=0.0):
+        return shifted(models.xxz(lat.chain(6, bc="open"), Jxy=1.0, Jz=0.0), constant)
+
+    def heisenberg(constant=0.0):
+        return shifted(models.heisenberg(lat.chain(6, bc="open")), constant)
+
+    fields = dict(sweeps=dmrg.fixed_sweeps(3, 16), sector={"Sz": 0.0})
+    seen = []
+    result = dmrg.solve(xx(0.75), callback=lambda row: seen.append(row.energy), **fields)
+    plain = dmrg.solve(xx(), **fields)
+    np.testing.assert_array_equal(seen, result.iteration_energies)
+    np.testing.assert_allclose(result.iteration_energies, plain.iteration_energies + 0.75, rtol=0, atol=1e-12)
+    assert result.iteration_energies[-1] == pytest.approx(result.energy, abs=1e-9)
+
+    def evolve(initial, final, rows):
+        return dmrg.evolve(initial, final, time_step=0.1, steps=2, states=32, method="targeting",
+                           callback=lambda row: rows.append(row.energy), **fields)
+
+    rows, plain_rows = [], []
+    run = evolve(xx(0.75), heisenberg(-0.4), rows)
+    plain_run = evolve(xx(), heisenberg(), plain_rows)
+    rows, plain_rows, n = np.array(rows), np.array(plain_rows), len(run.initial.iterations)
+    np.testing.assert_array_equal(rows[:n], run.initial.iteration_energies)
+    np.testing.assert_allclose(rows[:n], plain_rows[:n] + 0.75, rtol=0, atol=1e-12)
+    assert rows[n - 1] == pytest.approx(run.initial.energy, abs=1e-9)
+    finite = np.isfinite(rows[n:])
+    assert finite.any() and np.array_equal(finite, np.isfinite(plain_rows[n:]))
+    np.testing.assert_allclose(rows[n:][finite], plain_rows[n:][finite] - 0.4, rtol=0, atol=1e-12)
+    np.testing.assert_allclose(rows[n:][finite], run.energies[0], atol=1e-9)
+    np.testing.assert_allclose(run.energies, plain_run.energies - 0.4, rtol=0, atol=1e-12)
+
+    h1, eri = symmetric_integrals(3, seed=3)
+    seen = []
+    molecular = dmrg.solve_molecular(h1, eri, 2, 1, core_energy=0.25, sweeps=dmrg.fixed_sweeps(3, 64),
+                                     callback=lambda row: seen.append(row.energy))
+    electronic = dmrg.solve_molecular(h1, eri, 2, 1, sweeps=dmrg.fixed_sweeps(3, 64))
+    np.testing.assert_array_equal(seen, molecular.iteration_energies)
+    np.testing.assert_allclose(molecular.iteration_energies, electronic.iteration_energies + 0.25, rtol=0, atol=1e-12)
+    assert molecular.iteration_energies[-1] == pytest.approx(molecular.energy, abs=1e-9)
+
+
 def test_evolve_trotter_error_scales_as_the_step_squared():
     chain = lat.chain(8, bc="open")
     initial, final = models.xxz(chain, Jxy=1.0, Jz=0.0), models.xxz(chain, Jxy=1.0, Jz=1.0, h=0.2)
