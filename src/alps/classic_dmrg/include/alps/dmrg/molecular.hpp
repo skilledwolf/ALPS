@@ -75,6 +75,7 @@ struct MolecularResult {
     std::vector<std::uint64_t> ci_alpha;
     std::vector<std::uint64_t> ci_beta;
     std::vector<double> ci_coefficients;
+    // Their energies include core_energy, as `energy` does.
     std::vector<Iteration> iterations;
     double final_truncation_error = 0.;
     // With Options::keep_mps: the final state as one MatrixProductState over

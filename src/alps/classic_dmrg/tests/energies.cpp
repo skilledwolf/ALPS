@@ -12,6 +12,7 @@
 #include <cmath>
 #include <complex>
 #include <stdexcept>
+#include <vector>
 
 using namespace classic_test;
 
@@ -147,4 +148,25 @@ TEST(ClassicDmrgEnergies, IterationsAreObservedAndCanAbortTheSolve) {
     // The engine state is restored after the aborted solve.
     auto const again = cd::solve(model, exact_options(16, {{"Sz", 0.}}));
     EXPECT_NEAR(again.energies[0], result.energies[0], 1e-10);
+}
+
+TEST(ClassicDmrgEnergies, IterationsIncludeTheIdentityPart) {
+    // The identity part never reaches the engine, which sweeps the same terms
+    // with and without it; the iterations add it back, as the energies do.
+    auto const site = mdl::spin(0.5);
+    auto const plain = mdl::heisenberg(lat::chain(6, 1.0, lat::Boundary::open), 1.0);
+    auto shifted = mdl::heisenberg(lat::chain(6, 1.0, lat::Boundary::open), 1.0);
+    shifted.add(mdl::TermSum::located(site, "I", 0) * std::complex<double>(0.75));
+    std::vector<double> seen;
+    auto const result = cd::solve(shifted, exact_options(16, {{"Sz", 0.}}), {},
+                                  [&](cd::Iteration const& row) { seen.push_back(row.energy); });
+    auto const reference = cd::solve(plain, exact_options(16, {{"Sz", 0.}}));
+    ASSERT_EQ(seen.size(), result.iterations.size());
+    ASSERT_EQ(result.iterations.size(), reference.iterations.size());
+    for (std::size_t i = 0; i < seen.size(); ++i) {
+        EXPECT_EQ(seen[i], result.iterations[i].energy) << i;
+        EXPECT_NEAR(seen[i], reference.iterations[i].energy + 0.75, 1e-12) << i;
+    }
+    EXPECT_NEAR(result.energies[0], reference.energies[0] + 0.75, 1e-12);
+    EXPECT_NEAR(result.iterations.back().energy, result.energies[0], 1e-9);
 }

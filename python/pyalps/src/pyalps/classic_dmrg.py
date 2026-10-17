@@ -19,8 +19,10 @@ The operators are anything ``models.compile_observable`` accepts: compiled
 operators, located terms or, on a model, operator names (``{"n": "n"}``
 measures ``n`` on every site).
 Every completed iteration reaches ``callback(iteration)``, which may raise to
-abort. The engine is serialized process-wide. The bindings are present when
-pyalps was built against an SDK with the ``classic_dmrg`` component.
+abort. Its ``energy``, like ``result.iteration_energies``, includes the
+Hamiltonian's constant terms, as ``result.energies`` do. The engine is
+serialized process-wide. The bindings are present when pyalps was built
+against an SDK with the ``classic_dmrg`` component.
 
 ``keep_mps=True`` also returns every targeted state as a
 ``MatrixProductState`` in ``result.mps``: the engine's block rotations of
@@ -181,7 +183,8 @@ def solve_molecular(one_body, two_body, n_alpha, n_beta, *, core_energy=0.0, int
     integrals in chemist notation, ``(pq|rs)``, with the real-orbital
     eightfold symmetry after ``integral_cutoff`` drops smaller entries. The
     ground state of the ``(n_alpha, n_beta)`` sector is returned as a
-    ``MolecularResult``: ``energy`` (including ``core_energy``), the spin
+    ``MolecularResult``: ``energy`` (including ``core_energy``, as do the
+    iteration energies), the spin
     blocks ``one_rdm_alpha``/``one_rdm_beta`` with ``dm1[p, q] = <c+_q c_p>``
     and ``two_rdm[p, q, r, s] = sum_ab <c+_pa c+_rb c_sb c_qa>``, with its
     spin blocks ``two_rdm_aa``/``two_rdm_ab``/``two_rdm_bb`` as PySCF's
@@ -363,7 +366,12 @@ def evolve(initial, final, basis=None, *, evolution=None, options=None, measurem
     ``i + 1``. ``method="targeting"`` is time-step targeting with a Krylov
     step: ``final`` may couple any sites, there is no time-step error and
     there are no drives; each step takes ``half_sweeps`` half sweeps (2).
-    Measurements are named operators as for :func:`solve`.
+    Measurements are named operators as for :func:`solve`. ``callback``
+    sees the preparation's iterations, whose energy is the initial
+    Hamiltonian's, then the evolution's: NaN with Trotter gates, and
+    ``<H_final>`` with targeting after its first half sweep. Both include
+    the Hamiltonian's constant terms, as ``initial.energies`` and
+    ``energies`` do.
 
     The preparation is checked as :func:`solve` checks a solve and is
     repeated from the product state when the uniform warm-up misplaced

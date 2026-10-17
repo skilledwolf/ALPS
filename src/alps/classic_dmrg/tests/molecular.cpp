@@ -468,6 +468,24 @@ TEST(ClassicMolecular, CallbackObservesAndAbortsAndScratchIsRemoved) {
     std::filesystem::remove_all(parent);
 }
 
+TEST(ClassicMolecular, IterationsIncludeTheCoreEnergy) {
+    // The core energy never reaches the engine; the iterations add it, as
+    // the energy does.
+    auto input = input_for(4, 2, 1);
+    std::vector<double> seen;
+    auto const result = cd::solve_molecular(input, exact(32), [&](cd::Iteration const& row) { seen.push_back(row.energy); });
+    input.core_energy = 0.;
+    auto const electronic = cd::solve_molecular(input, exact(32));
+    ASSERT_EQ(seen.size(), result.iterations.size());
+    ASSERT_EQ(seen.size(), electronic.iterations.size());
+    for (std::size_t i = 0; i < seen.size(); ++i) {
+        EXPECT_EQ(seen[i], result.iterations[i].energy) << i;
+        EXPECT_NEAR(seen[i], electronic.iterations[i].energy + .731, 1e-12) << i;
+    }
+    EXPECT_NEAR(result.energy, electronic.energy + .731, 1e-12);
+    EXPECT_NEAR(result.iterations.back().energy, result.energy, 1e-9);
+}
+
 TEST(ClassicMolecular, RejectedInputs) {
     auto const good = input_for(3, 1, 1);
     auto rejects = [](cd::MolecularInput const& input, cd::Options const& options = exact(16)) {
