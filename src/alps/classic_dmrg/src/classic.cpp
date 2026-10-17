@@ -32,8 +32,11 @@
 #include <array>
 #include <cmath>
 #include <complex>
+#include <functional>
 #include <limits>
 #include <map>
+#include <optional>
+#include <ostream>
 #include <set>
 #include <stdexcept>
 #include <string>
@@ -707,6 +710,240 @@ void check_sector(Problem const& problem, std::size_t targets) {
     if (dimension < targets) throw std::invalid_argument("classic DMRG target count exceeds the selected-sector dimension");
 }
 
+// ------------------------------------------------------------ warm-up check
+//
+// Written here (WarmupCheck). The uniform warm-up gives each partial chain
+// the uniform share of the sector, and the sweeps move charge only across
+// the cut, so a ground state with unevenly distributed charges can end as an
+// excited state whose energy no longer changes. A product state of lower
+// energy proves it, as the DMRG energy is variational.
+
+// The Hamiltonian's diagonal on product states: its identity part, an
+// energy per site and state, and a table per coupled site pair. Only terms
+// whose factors keep every charge and the parity have diagonal entries.
+struct ProductEnergies {
+    double constant = 0.;
+    std::vector<std::vector<double>> site;                    // [site][state]
+    std::map<std::pair<int, int>, std::vector<double>> pairs; // (i, j), i < j -> [s * dim(j) + t]
+    // Per site: the coupled site, the pair's table and whether this site is i.
+    std::vector<std::vector<std::tuple<int, std::vector<double> const*, bool>>> adjacent;
+};
+
+ProductEnergies product_energies(Problem const& problem) {
+    auto dim = [&](int i) {
+        return problem.sites[static_cast<std::size_t>(problem.site_index[static_cast<std::size_t>(i)])].dim;
+    };
+    auto diagonal = [&](Factor const& f, int s) { return f.matrix[static_cast<std::size_t>(s * dim(f.site) + s)]; };
+    std::size_t const n = static_cast<std::size_t>(problem.num_sites);
+    ProductEnergies out;
+    out.constant = problem.scalar.real();
+    out.site.resize(n);
+    for (std::size_t i = 0; i < n; ++i) out.site[i].assign(static_cast<std::size_t>(dim(static_cast<int>(i))), 0.);
+    for (auto const& term : problem.hamiltonian) {
+        bool kept = true;
+        for (auto const& f : term.factors) {
+            kept = kept && !f.odd;
+            for (long d : f.delta) kept = kept && d == 0;
+        }
+        if (!kept) continue;
+        if (term.factors.size() == 1) {
+            auto const& f = term.factors[0];
+            for (int s = 0; s < dim(f.site); ++s)
+                out.site[static_cast<std::size_t>(f.site)][static_cast<std::size_t>(s)] += (term.coefficient * diagonal(f, s)).real();
+            continue;
+        }
+        Factor const* first = &term.factors[0];
+        Factor const* second = &term.factors[1];
+        if (first->site > second->site) std::swap(first, second);
+        int const d1 = dim(first->site), d2 = dim(second->site);
+        auto& table = out.pairs[{first->site, second->site}];
+        if (table.empty()) table.assign(static_cast<std::size_t>(d1 * d2), 0.);
+        for (int s = 0; s < d1; ++s)
+            for (int t = 0; t < d2; ++t)
+                table[static_cast<std::size_t>(s * d2 + t)] += (term.coefficient * diagonal(*first, s) * diagonal(*second, t)).real();
+    }
+    out.adjacent.resize(n);
+    for (auto const& [sites, table] : out.pairs) {
+        out.adjacent[static_cast<std::size_t>(sites.first)].emplace_back(sites.second, &table, true);
+        out.adjacent[static_cast<std::size_t>(sites.second)].emplace_back(sites.first, &table, false);
+    }
+    return out;
+}
+
+// A product state of the sector and its energy (WarmupCheck).
+struct ProductState {
+    std::vector<std::size_t> configuration;
+    double energy = 0.;
+};
+
+// The lowest product state of the sector this search finds, or nothing when
+// the sector fixes no charge. The start places the sites in chain order,
+// each in its lowest state next to the sites already placed among the
+// states that leave the remaining sites a reachable sector (a choice that
+// leads nowhere is remembered and the search backs up, as check_sector
+// counts). Passes over the sites then change a site's state at fixed charges
+// or move charges between two sites, the first change that lowers the
+// energy at each site, until a pass changes nothing.
+std::optional<ProductState> lowest_product_state(Problem const& problem) {
+    using Tuple = std::array<long, QN_MAX_SIZE>;
+    std::vector<std::size_t> conserved;
+    Tuple target{};
+    for (std::size_t c = 0; c < problem.charges.size(); ++c)
+        if (problem.charges[c].conserved) {
+            target[conserved.size()] = problem.charges[c].target;
+            conserved.push_back(c);
+        }
+    if (conserved.empty()) return std::nullopt;
+    int const n = problem.num_sites;
+    auto at = [](auto& vector, int i) -> decltype(auto) { return vector[static_cast<std::size_t>(i)]; };
+    auto site = [&](int i) -> Site const& { return problem.sites[static_cast<std::size_t>(at(problem.site_index, i))]; };
+    std::vector<std::vector<Tuple>> charges(static_cast<std::size_t>(n)); // [site][state]
+    for (int i = 0; i < n; ++i)
+        for (int s = 0; s < site(i).dim; ++s) {
+            Tuple q{};
+            for (std::size_t j = 0; j < conserved.size(); ++j) q[j] = site(i).twice[conserved[j]][static_cast<std::size_t>(s)];
+            at(charges, i).push_back(q);
+        }
+    auto const energies = product_energies(problem);
+    std::vector<int> state(static_cast<std::size_t>(n), 0);
+    // Site i's energy in state a next to the current states, site `other` in state b.
+    auto local = [&](int i, int a, int other, int b) {
+        double e = at(energies.site, i)[static_cast<std::size_t>(a)];
+        for (auto const& [j, table, first] : at(energies.adjacent, i)) {
+            int const t = j == other ? b : at(state, j);
+            e += first ? (*table)[static_cast<std::size_t>(a * site(j).dim + t)]
+                       : (*table)[static_cast<std::size_t>(t * site(i).dim + a)];
+        }
+        return e;
+    };
+
+    std::vector<Tuple> low(static_cast<std::size_t>(n) + 1), high(static_cast<std::size_t>(n) + 1); // suffix ranges
+    for (int i = n; i-- > 0;)
+        for (std::size_t j = 0; j < conserved.size(); ++j) {
+            long lo = std::numeric_limits<long>::max(), hi = std::numeric_limits<long>::min();
+            for (auto const& q : at(charges, i)) { lo = std::min(lo, q[j]); hi = std::max(hi, q[j]); }
+            at(low, i)[j] = at(low, i + 1)[j] + lo;
+            at(high, i)[j] = at(high, i + 1)[j] + hi;
+        }
+    std::vector<Tuple> prefix(static_cast<std::size_t>(n) + 1);
+    std::vector<std::vector<int>> order(static_cast<std::size_t>(n));
+    std::vector<std::size_t> next(static_cast<std::size_t>(n), 0);
+    std::set<std::pair<int, Tuple>> dead;
+    auto rank = [&](int i) { // site i's states by their energy next to sites 0..i-1
+        std::vector<std::pair<double, int>> ranked;
+        for (int a = 0; a < site(i).dim; ++a) {
+            double e = at(energies.site, i)[static_cast<std::size_t>(a)];
+            for (auto const& [j, table, first] : at(energies.adjacent, i))
+                if (j < i) e += (*table)[static_cast<std::size_t>(at(state, j) * site(i).dim + a)];
+            ranked.emplace_back(e, a);
+        }
+        std::stable_sort(ranked.begin(), ranked.end(),
+                         [](auto const& x, auto const& y) { return x.first < y.first; });
+        at(order, i).clear();
+        for (auto const& entry : ranked) at(order, i).push_back(entry.second);
+        at(next, i) = 0;
+    };
+    rank(0);
+    for (int i = 0; i < n;) {
+        bool placed = false;
+        while (!placed && at(next, i) < at(order, i).size()) {
+            int const a = at(order, i)[at(next, i)++];
+            Tuple q = at(prefix, i);
+            bool reachable = true;
+            for (std::size_t j = 0; j < conserved.size(); ++j) {
+                q[j] += at(charges, i)[static_cast<std::size_t>(a)][j];
+                long const rest = target[j] - q[j];
+                reachable = reachable && rest >= at(low, i + 1)[j] && rest <= at(high, i + 1)[j];
+            }
+            if (!reachable || dead.count({i + 1, q})) continue;
+            at(state, i) = a;
+            at(prefix, i + 1) = q;
+            placed = true;
+        }
+        if (placed) {
+            if (++i < n) rank(i);
+            continue;
+        }
+        dead.emplace(i, at(prefix, i));
+        if (i-- == 0) throw std::logic_error("classic DMRG found no product state in a nonempty sector");
+    }
+
+    double magnitude = 0.;
+    for (auto const& row : energies.site)
+        for (double e : row) magnitude = std::max(magnitude, std::abs(e));
+    for (auto const& entry : energies.pairs)
+        for (double e : entry.second) magnitude = std::max(magnitude, std::abs(e));
+    double const gain = 1e-12 * (1. + magnitude); // a smaller change is rounding
+    bool improved = true;
+    for (int pass = 0; improved && pass < 64; ++pass) {
+        improved = false;
+        for (int i = 0; i < n; ++i) {
+            bool moved = false;
+            for (int a = 0; a < site(i).dim && !moved; ++a) {
+                if (a == at(state, i)) continue;
+                Tuple change{};
+                bool neutral = true;
+                for (std::size_t j = 0; j < conserved.size(); ++j) {
+                    change[j] = at(charges, i)[static_cast<std::size_t>(a)][j] - at(charges, i)[static_cast<std::size_t>(at(state, i))][j];
+                    neutral = neutral && change[j] == 0;
+                }
+                double const own = local(i, a, -1, 0) - local(i, at(state, i), -1, 0);
+                if (neutral) {
+                    if (own < -gain) {
+                        at(state, i) = a;
+                        moved = true;
+                    }
+                    continue;
+                }
+                for (int k = 0; k < n && !moved; ++k) {
+                    if (k == i) continue;
+                    auto const& from = at(charges, k)[static_cast<std::size_t>(at(state, k))];
+                    for (int b = 0; b < site(k).dim && !moved; ++b) {
+                        bool opposite = b != at(state, k);
+                        for (std::size_t j = 0; j < conserved.size() && opposite; ++j)
+                            opposite = at(charges, k)[static_cast<std::size_t>(b)][j] - from[j] == -change[j];
+                        if (!opposite) continue;
+                        // Site i changes first, then site k next to it.
+                        if (own + local(k, b, i, a) - local(k, at(state, k), i, a) < -gain) {
+                            at(state, i) = a;
+                            at(state, k) = b;
+                            moved = true;
+                        }
+                    }
+                }
+            }
+            improved = improved || moved;
+        }
+    }
+
+    ProductState out;
+    out.energy = energies.constant;
+    for (int i = 0; i < n; ++i) {
+        out.configuration.push_back(static_cast<std::size_t>(at(state, i)));
+        out.energy += at(energies.site, i)[static_cast<std::size_t>(at(state, i))];
+    }
+    for (auto const& [sites, table] : energies.pairs)
+        out.energy += table[static_cast<std::size_t>(at(state, sites.first) * site(sites.second).dim + at(state, sites.second))];
+    return out;
+}
+
+// The check of a solve's ground-state energy against the product state.
+WarmupCheck warmup_check(ProductState const& product, double energy, double lanczos_tolerance) {
+    WarmupCheck check;
+    check.configuration = product.configuration;
+    check.product_energy = product.energy;
+    check.uniform_energy = energy;
+    check.misplaced = product.energy < energy - lanczos_tolerance * std::max(1., std::abs(energy));
+    return check;
+}
+
+void report_misplaced(std::ostream* log, WarmupCheck const& check) {
+    if (log)
+        *log << "classic DMRG: the uniform warm-up ended at E = " << check.uniform_energy
+             << ", above the product state at E = " << check.product_energy
+             << "; repeating from it as the warm-up configuration\n";
+}
+
 // ----------------------------------------------------------- time evolution
 
 void validate_evolution(Evolution const& evolution, Options const& options) {
@@ -1211,8 +1448,9 @@ struct Engine {
     // of bond gates (detail::EvolvingSystem). Adjacent half steps of A are
     // merged into one half sweep of their gate products, which is exact,
     // drives included; a measured step closes its A half step and measures
-    // in an identity half sweep.
-    EvolutionResult evolve(Evolution const& evolution) {
+    // in an identity half sweep. With `product`, a preparation that ends
+    // above it returns before the evolution, with only `initial` set.
+    EvolutionResult evolve(Evolution const& evolution, ProductState const* product = nullptr) {
         register_charges();
         build_blocks();
         build_hamiltonian();
@@ -1246,6 +1484,10 @@ struct Engine {
         rows.clear();
         initial.final_truncation_error = S.truncation_error();
         initial.options = resolved(S);
+        if (product) {
+            initial.warmup_check = warmup_check(*product, initial.energies.at(0), initial.options.lanczos_tolerance);
+            if (initial.warmup_check->misplaced) return result; // evolve() repeats the preparation
+        }
 
         S.corr += measured;
         S.init_correlations();
@@ -1444,14 +1686,31 @@ Result solve(models::CompiledOperator const& hamiltonian, models::PhysicalBasis 
     Problem const problem = prepare(hamiltonian, basis, options, measurements);
     check_sector(problem, options.num_eigenvalues);
     check_warmup_configuration(problem, options);
-    dmtk::InvocationGuard invocation(options.scratch_parent, options.log);
-    // Every engine object is destroyed before the guard restores the engine state.
-    if (options.arithmetic == Arithmetic::complex) {
-        Engine<Complex> engine(problem, options, std::move(callback));
+    auto const product = options.warmup_configuration.empty() ? lowest_product_state(problem) : std::nullopt;
+    // A repeated solve reports to the same callback object.
+    IterationCallback const observer = callback ? IterationCallback(std::ref(callback)) : IterationCallback{};
+    auto solve_once = [&](Options const& run_options) {
+        dmtk::InvocationGuard invocation(run_options.scratch_parent, run_options.log);
+        // Every engine object is destroyed before the guard restores the engine state.
+        if (run_options.arithmetic == Arithmetic::complex) {
+            Engine<Complex> engine(problem, run_options, observer);
+            return engine.run();
+        }
+        Engine<double> engine(problem, run_options, observer);
         return engine.run();
+    };
+    Result result = solve_once(options);
+    if (!product) return result;
+    auto check = warmup_check(*product, result.energies.at(0), result.options.lanczos_tolerance);
+    if (check.misplaced) {
+        report_misplaced(options.log, check);
+        Options repeat = options;
+        repeat.warmup_configuration = product->configuration;
+        Result repeated = solve_once(repeat);
+        if (repeated.energies.at(0) < result.energies.at(0)) result = std::move(repeated);
     }
-    Engine<double> engine(problem, options, std::move(callback));
-    return engine.run();
+    result.warmup_check = std::move(check);
+    return result;
 }
 
 Result solve(models::Hamiltonian const& model, Options const& options, Measurements const& measurements,
@@ -1470,14 +1729,28 @@ EvolutionResult evolve(models::CompiledOperator const& initial, models::Compiled
     prepare_evolution(problem, final_hamiltonian, evolution, initial.site_dims);
     check_sector(problem, 1);
     check_warmup_configuration(problem, options);
-    dmtk::InvocationGuard invocation(options.scratch_parent, options.log);
-    // Every engine object is destroyed before the guard restores the engine state.
-    if (evolution.imaginary && options.arithmetic == Arithmetic::real) {
-        Engine<double> engine(problem, options, std::move(callback));
-        return engine.evolve(evolution);
-    }
-    Engine<Complex> engine(problem, options, std::move(callback));
-    return engine.evolve(evolution);
+    auto const product = options.warmup_configuration.empty() ? lowest_product_state(problem) : std::nullopt;
+    // A repeated preparation reports to the same callback object.
+    IterationCallback const observer = callback ? IterationCallback(std::ref(callback)) : IterationCallback{};
+    auto evolve_once = [&](Options const& run_options, ProductState const* checked) {
+        dmtk::InvocationGuard invocation(run_options.scratch_parent, run_options.log);
+        // Every engine object is destroyed before the guard restores the engine state.
+        if (evolution.imaginary && run_options.arithmetic == Arithmetic::real) {
+            Engine<double> engine(problem, run_options, observer);
+            return engine.evolve(evolution, checked);
+        }
+        Engine<Complex> engine(problem, run_options, observer);
+        return engine.evolve(evolution, checked);
+    };
+    EvolutionResult result = evolve_once(options, product ? &*product : nullptr);
+    if (!result.initial.warmup_check || !result.initial.warmup_check->misplaced) return result;
+    auto const check = *result.initial.warmup_check;
+    report_misplaced(options.log, check);
+    Options repeat = options;
+    repeat.warmup_configuration = check.configuration;
+    result = evolve_once(repeat, nullptr);
+    result.initial.warmup_check = check;
+    return result;
 }
 
 EvolutionResult evolve(models::Hamiltonian const& initial, models::Hamiltonian const& final_hamiltonian,

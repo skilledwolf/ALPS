@@ -5,6 +5,7 @@
 iteration observation and the option surface."""
 
 import itertools
+import warnings
 
 import numpy as np
 import pytest
@@ -136,10 +137,50 @@ def test_warmup_configuration_places_an_unevenly_distributed_ground_state():
                         warmup_configuration=configuration)
     assert result.energy == pytest.approx(-0.5 * L, abs=1e-10)  # only the wall reaches -L/2
     assert list(result.options.warmup_configuration) == configuration
+    assert result.warmup_check is None  # a configured warm-up is not checked
     with pytest.raises(ValueError, match="warmup_configuration has Sz = -8, but the sector asks for 0"):
         dmrg.solve(op, xx.physical_basis(), sector={"Sz": 0}, warmup_configuration=configuration)
     with pytest.raises(ValueError, match="one state per site"):
         dmrg.solve(op, xx.physical_basis(), sector={"Sz": 0}, warmup_configuration=[0, 1])
+
+
+def test_uniform_warmup_is_checked_against_product_states():
+    # The wall above without its configuration: the uniform warm-up ends
+    # above the wall's product state, so the solve is repeated from the
+    # product state the check found, with a warning. The Neel pattern of
+    # staggered fields is the uniform warm-up's own and passes silently.
+    L, wall = 32, 8
+    xx = models.xxz(lat.chain(L, bc="open"), Jxy=1.0, Jz=0.0)
+    site = xx.site_for(0)
+
+    def fields(h):
+        out = models.TermSum()
+        for i in range(L):
+            out += h(i) * site.Sz(i)
+        return models.compile_observable(xx, out)
+
+    walled = fields(lambda i: -1.0 if i < wall else 1.0)
+    with pytest.warns(RuntimeWarning, match="above the product state"):
+        result = dmrg.solve(walled, xx.physical_basis(), sector={"Sz": wall - L / 2}, sweeps=dmrg.fixed_sweeps(4, 32))
+    check = result.warmup_check
+    assert check.misplaced and check.uniform_energy > check.product_energy + 1
+    assert check.product_energy == pytest.approx(-0.5 * L, abs=1e-12)
+    assert list(check.configuration) == [0] * wall + [1] * (L - wall)
+    assert list(result.options.warmup_configuration) == list(check.configuration)
+    assert result.energy == pytest.approx(-0.5 * L, abs=1e-10)
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        neel = dmrg.solve(fields(lambda i: 1.0 if i % 2 else -1.0), xx.physical_basis(), sector={"Sz": 0},
+                          sweeps=dmrg.fixed_sweeps(4, 32))
+    assert not neel.warmup_check.misplaced and len(neel.options.warmup_configuration) == 0
+    assert neel.energy == pytest.approx(-0.5 * L, abs=1e-10)
+
+    with pytest.warns(RuntimeWarning, match="the preparation was repeated"):
+        run = dmrg.evolve(walled, xx, time_step=0.05, steps=1, states=32, sector={"Sz": wall - L / 2},
+                          sweeps=dmrg.fixed_sweeps(4, 32), measure_steps=[0])
+    assert run.initial.warmup_check.misplaced
+    assert run.initial.energy == pytest.approx(-0.5 * L, abs=1e-10)
 
 
 def test_catalog_models_solve_like_exact_diagonalization():

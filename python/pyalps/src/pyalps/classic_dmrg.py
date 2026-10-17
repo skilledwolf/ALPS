@@ -46,8 +46,10 @@ Krylov step instead: any final Hamiltonian, no time-step error, no drives.
 Every measured step reports its time, the final Hamiltonian's energy, the
 measurements and, with ``keep_mps``, its state; ``overlaps`` and
 ``loschmidt_echo`` contract the kept states. A product initial state, such
-as this domain wall of fields alone, needs ``warmup_configuration`` (one
-local state per site; 0 is up).
+as this domain wall of fields alone, takes ``warmup_configuration`` (one
+local state per site; 0 is up); without it the uniform warm-up misplaces
+the wall's charges, and the preparation is repeated once the check of the
+warm-up finds the wall below it (``initial.warmup_check``).
 
 >>> xx = models.xxz(models.lattice.chain(20, bc="open"), Jxy=1.0, Jz=0.0)
 >>> site = xx.site_for(0)
@@ -71,6 +73,8 @@ matrices in the PySCF convention, their spin blocks, any further
 ``correlation_matrix`` and ``spin_spin_correlations`` derive orbital-resolved
 quantities from those RDMs; ``ci_occupations`` unpacks the CI determinants.
 """
+
+import warnings as _warnings
 
 from . import models as _models  # registers the model types first  # noqa: F401
 
@@ -131,9 +135,29 @@ def make_measurements(measurements=None, expectation=None, model=None):
     return result
 
 
+def _checked(result, initial):
+    """Warn when the uniform warm-up ended above a product state (``WarmupCheck``)."""
+    check = (result.initial if initial else result).warmup_check
+    if check is not None and check.misplaced:
+        _warnings.warn(
+            f"the uniform DMRG warm-up ended at E = {check.uniform_energy:.10g}, above the product state "
+            f"warmup_check.configuration at E = {check.product_energy:.10g}; "
+            f"{'the preparation' if initial else 'the solve'} was repeated from that configuration",
+            RuntimeWarning, stacklevel=3)
+    return result
+
+
 def solve(model, basis=None, *, options=None, measurements=None, expectation=None, callback=None,
           log_file=None, **fields):
-    """Run the DMRG on a ``Hamiltonian``, a ``CatalogModel`` or a ``CompiledOperator`` with its ``PhysicalBasis``."""
+    """Run the DMRG on a ``Hamiltonian``, a ``CatalogModel`` or a ``CompiledOperator`` with its ``PhysicalBasis``.
+
+    Without ``warmup_configuration``, a solve in a sector that fixes a charge
+    checks its ground-state energy against the lowest product state of the
+    sector that a cheap search finds (``result.warmup_check``). A lower
+    product state proves that the uniform warm-up misplaced charges; the
+    solve is then repeated from that product state, keeping the lower
+    energy, and a ``RuntimeWarning`` says so.
+    """
     _models.require_bound(model)
     catalog = getattr(_models, "CatalogModel", None)
     requests = make_measurements(measurements, expectation, model if basis is None else basis)
@@ -145,8 +169,8 @@ def solve(model, basis=None, *, options=None, measurements=None, expectation=Non
         model, basis = model.compile_hamiltonian(), model.physical_basis()
     resolved = make_options(options, **fields)
     if basis is None:
-        return _classic_dmrg_c.solve(model, resolved, requests, callback, log_file)
-    return _classic_dmrg_c.solve(model, basis, resolved, requests, callback, log_file)
+        return _checked(_classic_dmrg_c.solve(model, resolved, requests, callback, log_file), False)
+    return _checked(_classic_dmrg_c.solve(model, basis, resolved, requests, callback, log_file), False)
 
 
 def solve_molecular(one_body, two_body, n_alpha, n_beta, *, core_energy=0.0, integral_cutoff=0.0, observables=None,
@@ -341,6 +365,10 @@ def evolve(initial, final, basis=None, *, evolution=None, options=None, measurem
     there are no drives; each step takes ``half_sweeps`` half sweeps (2).
     Measurements are named operators as for :func:`solve`.
 
+    The preparation is checked as :func:`solve` checks a solve and is
+    repeated from the product state when the uniform warm-up misplaced
+    charges (``result.initial.warmup_check``).
+
     Returns an ``EvolutionResult``: ``initial`` (the preparing solve),
     ``steps``, ``times`` and ``energies`` (``<H_final>``) of the measured
     steps, ``measurements`` with one row per measured step,
@@ -375,9 +403,10 @@ def evolve(initial, final, basis=None, *, evolution=None, options=None, measurem
     requests = make_measurements(measurements, expectation, context)
     resolved = make_options(options, **fields)
     if both_models and basis is None:
-        return _classic_dmrg_c.evolve(initial, final, resolved_evolution, resolved, requests, callback, log_file)
-    return _classic_dmrg_c.evolve(initial_op, final_op, initial_basis, resolved_evolution, resolved, requests,
-                                  callback, log_file)
+        return _checked(_classic_dmrg_c.evolve(initial, final, resolved_evolution, resolved, requests, callback,
+                                               log_file), True)
+    return _checked(_classic_dmrg_c.evolve(initial_op, final_op, initial_basis, resolved_evolution, resolved, requests,
+                                           callback, log_file), True)
 
 
 def _evolve_configuration(configuration, final, basis, evolution, options, measurements, expectation, callback,

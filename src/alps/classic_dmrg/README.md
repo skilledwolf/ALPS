@@ -45,6 +45,7 @@ auto const& density = result.measurements.at("n").values[0];  // row = target st
 | `solve(model, …)` | validates Hermiticity, compiles the `Hamiltonian` under its declared charges and convention, solves on `physical_basis(model)` |
 | `Result` | ascending `energies`, `measurements` (rows follow the targets, columns the terms with their factor `sites`), the `iterations` observed (direction, index, energy, truncation error, entropy), `final_truncation_error`, the resolved `options`, with `keep_mps` the `mps` of every target |
 | `MatrixProductState`, `MpsTensor` | a targeted state's site tensors (`[left bond][local state][right bond]`, row-major, `real` or `complex` entries) and its `center` |
+| `WarmupCheck` | `Result::warmup_check` after a uniform warm-up in a sector: the product state (`configuration`, `product_energy`) the ground-state energy (`uniform_energy`) was checked against, and whether it lay below (`misplaced`), so that the solve was repeated from it ([below](#the-check-of-the-uniform-warm-up)) |
 | `evolve(initial, final, basis, evolution, options, measurements, callback)`, `evolve(initial_model, final_model, …)` | time evolution of the ground state of `initial` under `final` ([below](#time-evolution)) |
 | `evolve(configuration, final, basis, …)`, `evolve(configuration, final_model, …)` | time evolution of a product state, one local-state index per site, under `final` ([below](#product-initial-states)) |
 | `Evolution` | `time_step`, `steps`, `imaginary`, `states`, optional `truncation_error`, `measure_steps`, `drives`, `keep_mps`, `method` (`EvolutionMethod::trotter` or `targeting`, [below](#time-step-targeting)), `half_sweeps` |
@@ -104,13 +105,17 @@ so they correct a misplaced charge only where an exchange across the cut
 lowers the energy. With fields alone nothing moves, and the solve keeps an
 excited product state. Weak hopping moves charges slowly: with 1e-3 of the
 exchange, 24 sweeps still leave three spin pairs misplaced on the wall
-below (-18.006 instead of -24). Nothing warns about either case. Measured on 48 sites with fields `-1`
-left of site 12 and `+1` from it on (`Sz = -12`), four sweeps of 32 states:
+below (-18.006 instead of -24). With fields alone the energy stops
+changing, so the solve looks converged. `solve()` checks for this after a
+uniform warm-up and repeats from a product state
+([below](#the-check-of-the-uniform-warm-up)).
+Measured on 48 sites with fields `-1` left of site 12 and `+1` from it on
+(`Sz = -12`), four sweeps of 32 states:
 
-| initial Hamiltonian | default warm-up | with `warmup_configuration` | exact |
-| --- | --- | --- | --- |
-| fields alone | -8 | -24 | -24 |
-| fields and XX exchange `J = 0.1` | -18.557 (-24.00125 after 12 sweeps) | -24.0012508 | -24.0012508 (free fermions) |
+| initial Hamiltonian | uniform warm-up | `solve()` (checked, repeated) | with `warmup_configuration` | exact |
+| --- | --- | --- | --- | --- |
+| fields alone | -8 | -24 | -24 | -24 |
+| fields and XX exchange `J = 0.1` | -18.557 (-24.00125 after 12 sweeps) | -24.0012508 | -24.0012508 | -24.0012508 (free fermions) |
 
 `Options::warmup_configuration` names a product configuration instead,
 as one local-state index per site, indexing that site's states in the
@@ -122,10 +127,12 @@ file changes. The configuration only places the charges: the sweeps still
 optimize the state, and any configuration with the right charge profile
 works. It needs one state per site, and its conserved charges must add up
 to the sector; `solve()` and `evolve()` reject anything else. The
-`evolve()` preparation uses it too. `ResolvedOptions` reports it.
+`evolve()` preparation uses it too. `ResolvedOptions` reports it. A
+configuration also spares the check's second solve and covers the slow
+cases the check misses.
 
-Without a configuration the default stays the uniform warm-up. The
-alternatives the engine already offers each fail elsewhere:
+Without a configuration the warm-up stays uniform. The alternatives the
+engine already offers each fail elsewhere:
 
 - growing from both ends (`set_grow_symmetric`) finds the centred wall
   but not the one at site 12;
@@ -137,6 +144,109 @@ alternatives the engine already offers each fail elsewhere:
 A weak coupling added to fields alone does not fix it either: 1e-3 of
 the exchange gives -14.009 instead of -24 on the centred 48-site wall
 with four sweeps.
+
+### The check of the uniform warm-up
+
+The DMRG energy is variational, so a product state of the sector below the
+ground-state energy proves the solve wrong. In every stuck case measured
+below, the charges misplaced against fields or potentials cost more
+energy than the correlations gain, so such a product state exists. After
+a solve with a uniform warm-up in a sector that fixes a charge, `solve()`
+searches the diagonal of the Hamiltonian for a low product state of the
+sector. The search
+places the sites in chain order, each in its lowest state next to those
+already placed, among the states that leave the remaining sites a
+reachable sector. Passes over the sites then change one site's state at
+fixed charges, or move charge between two sites, whenever that lowers the
+energy, until a pass changes nothing. If the product state lies below the
+ground-state energy by more than the Lanczos tolerance (relative to the
+energy), the solve is repeated with it as `warmup_configuration` and the
+solve of lower ground-state energy is returned. `Result::warmup_check`
+reports the product state, its energy, the uniform warm-up's energy and
+whether it was `misplaced`. `Options::log` notes a repeat, and pyalps
+raises a `RuntimeWarning`. The iteration callback observes both solves.
+`evolve()` checks its preparation the same way and evolves the repeated
+preparation.
+
+The search is cheap: 0.02–0.03 ms on the 48-site chains below, where a
+solve takes 0.2–2 s, 0.3 ms for 100 sites of bosons (four states) or of
+the Hubbard model (two charges), 1 ms for 200 Hubbard sites and 6 ms for
+a 1000-site spin chain. On every case below a prototype of it found the
+same product energy as an exact dynamic program over prefix charges and
+neighbouring states followed by the same passes, which took 2.9 s for
+the 200-site Hubbard chain. A converged solve never lies above a
+product state, so the check fires only on solves that are provably wrong,
+and nothing changes where it does not fire. Across the 104 checks in
+`ctest -L "classic_dmrg|dmrg"` and the 51 in the pyalps tests, it fired
+only on the walls those tests misplace on purpose. The solves whose
+ground state is a product state ended within 4e-15 of the product energy,
+against a threshold of `1e-7 |E|` (the engine's default Lanczos
+tolerance). Measured with four sweeps of
+32 states on 48 sites unless noted (walls: fields `-1` left of the wall,
+`+1` from it on; irregular fields: `2 frac(0.3247179572 (i + 1)) - 1`):
+
+| case | uniform warm-up | product state | `solve()` | exact or converged |
+| --- | --- | --- | --- | --- |
+| fields alone, wall at 24, `Sz = 0` | -2 | -24 | -24 | -24 |
+| fields alone, wall at 12 | -8 | -24 | -24 | -24 |
+| irregular fields, `Sz = 0` | -11.5686148 | -11.8562049 | -11.8562049 | -11.8562049 |
+| wall at 12, XX 0.1 / 0.3 / 0.5 / 1 | -18.557 / -19.676 / -20.805 / -23.669 | -24 | -24.0012508 / -24.0113148 / -24.0317722 / -24.1366171 | the same (free fermions) |
+| wall at 36 reversed, XX 0.1 | -20.385 | -24 | -24.0012508 | -24.0012508 |
+| wall at 12, XXZ `Jxy = 0.1` / `0.3`, `Jz = 0.5` | -15.899 / -16.987 | -18.375 | -18.3766685 / -18.3901601 | the same (12 sweeps of 64) |
+| irregular fields, XX 1e-3 | -11.1776 | -11.8562049 | -11.8562139 | -11.8562139 |
+| trap `0.01 (i - 23.5)^2`, `Sz = -12`, no hopping | -36.23 | -44.63 | -44.63 | -44.63 |
+| Hubbard, 16 sites, `U = 4`, `-2 n` on the left half, `N = 8`, `t = 0` | -10 | -16 | -16 | -16 |
+| ladder (24 rungs), wall at 12, XX 0 / 0.1 / 0.5 | -8 / -18.789 / -21.988 | -24 | -24 / -24.0025079 / -24.0682516 | the same (12 sweeps of 64) |
+| next-nearest-neighbour chain, wall at 12, XX 0.1 / 0.5 | -18.595 / -21.026 | -24 | -24.0036360 / -24.0838050 | the same (12 sweeps of 64) |
+
+Not flagged, and unchanged: the Heisenberg chain (-21.0860 against the
+product -11.75), the Neel and charge-density-wave patterns of staggered
+fields alone (exactly at the product energy, -24), the Heisenberg and XX
+chains in staggered fields, the Ising-like XXZ chain (`Jz = 4`),
+interacting spinless fermions (`V = 3`), the Hubbard chain at and away
+from half filling, the trap with hopping from 0.02 on, the 16-site
+Hubbard step with hopping from 0.1 on and the wall at 12 with XX from 1.4
+on. All of these converge by default.
+
+The check misses a failed solve whose correlations lower its energy below
+every product state. In the cases measured those solves are slow, not
+stuck. The energy still drops in the last of the four sweeps, and more
+sweeps converge them:
+
+| case | four sweeps (drop in the last) | eight sweeps | twelve sweeps | exact |
+| --- | --- | --- | --- | --- |
+| wall at 12, XX 1.1 | -24.2506646 (0.36) | -24.3803258 | -24.3803258 | -24.3803258 |
+| wall at 12, XX 1.2 / 1.3 | -24.8362186 (0.22) / -25.4281916 (0.075) | -24.8372965 / -25.4284058 | the same | -24.8372965 / -25.4284058 |
+| 96 sites, wall at 24, XX 1.5 | -52.4262869 (0.85) | -53.6843527 | -53.6846990 | -53.6847010 |
+| 96 sites, wall at 24, XX 2 | -61.9580179 (0.48) | -62.1586680 | -62.1586680 | -62.1586701 |
+
+Where the check fires, the solve looks converged only if nothing moves
+(fields alone, the trap without hopping). With weak hopping the energy
+still drops, by 1.8 in the last of four sweeps on the wall with XX 0.1,
+which converges in eight sweeps. Where the check stays silent, that drop
+is the indicator to watch.
+| wall at 12, XXZ `Jxy = 0.1`, `Jz = 1` | -13.3399120 (0.51) | -13.3522348 | -13.3522348 | -13.3522349 (from the wall's configuration) |
+
+Two other ways to detect the misplacement fail on these cases:
+
+- Comparing the converged charge profile with the uniform targets
+  measures how uneven the ground state is, not whether the solve failed.
+  The largest distance of a prefix charge from its uniform share is
+  1.4–6 on the failed solves above, but also 3.3 and 4.4 on the trap
+  with hopping 1 and 0.2, which the default solves exactly (Neel and
+  charge-density-wave patterns: 0.5).
+- Deriving a configuration from the charge profile after the first sweep
+  and repeating fixes the walls with hopping and the Hubbard step. It
+  fails where the first sweep moved nothing: fields alone (the walls end at
+  -4 and -10, irregular fields at -11.672) and the trap without hopping
+  (-42.51). Done unconditionally, it also spoils converged solves:
+  half-filled free spinless fermions end at -96.79 instead of -102.20.
+
+Repeating every solve from the product state would cost a second solve
+and is worse where the ground state is far from a product state. The
+96-site wall with XX 2 ends at -60.35 instead of -61.96, and a uniform XX
+chain in a field at -13.50 instead of -15.76. So the solve is repeated
+only when the check fires, and the lower energy is kept.
 
 ## Matrix product states
 
@@ -226,9 +336,11 @@ two half sweeps, a measured one four.
   truncation error and entropy.
 
 A product initial state, such as a domain wall prepared as the ground
-state of fields alone, needs `Options::warmup_configuration`. Without it,
-the preparation can return an excited product state
-([above](#unevenly-distributed-ground-states)). The domain-wall tutorial
+state of fields alone, takes `Options::warmup_configuration`. Without it,
+the uniform warm-up ends in an excited product state
+([above](#unevenly-distributed-ground-states)), which the check finds
+above the wall; the preparation is then repeated from the wall
+(`EvolutionResult::initial.warmup_check`). The domain-wall tutorial
 passes the wall as its configuration.
 
 The tests below compare every step with the dense Trotter product and the
@@ -725,6 +837,12 @@ warm-up configuration: field-only walls at the centre and at a quarter
 (energy and every `Sz`), irregular fields (against the sorted optimum),
 the XX chain in a wall and in irregular fields (against free fermions),
 a Hubbard potential step with two charges, and an `evolve()` preparation.
+Without a configuration the check finds the field-only wall (-8) and the
+XX wall (-18.557) above the wall's product state, repeats both solves
+and an `evolve()` preparation from it and reaches the exact energies. It
+passes the Neel and charge-density-wave patterns of staggered fields,
+whose product ground states the uniform warm-up reaches exactly at the
+product energy, and the correlated Neel state of the XX chain.
 The molecular solver (`classic_dmrg_molecular`, also labelled `chemistry`)
 is checked against an occupation-number exact diagonalization for one to five
 and for seven orbitals, with and without padding, energies and every RDM element; against

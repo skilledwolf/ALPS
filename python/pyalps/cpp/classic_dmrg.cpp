@@ -285,6 +285,19 @@ NB_MODULE(classic_dmrg_c, m) {
         .def_ro("arithmetic", &classic::ResolvedOptions::arithmetic)
         .def_ro("sector", &classic::ResolvedOptions::sector);
 
+    nb::class_<classic::WarmupCheck>(m, "WarmupCheck",
+        "The check of a uniform warm-up: the lowest product state of the sector a cheap search finds on the "
+        "Hamiltonian's diagonal against the ground-state energy. `misplaced` means the warm-up misplaced charges "
+        "and the solve (or evolve's preparation) was repeated with `configuration` as its warmup_configuration.")
+        .def_ro("configuration", &classic::WarmupCheck::configuration)
+        .def_ro("product_energy", &classic::WarmupCheck::product_energy)
+        .def_ro("uniform_energy", &classic::WarmupCheck::uniform_energy)
+        .def_ro("misplaced", &classic::WarmupCheck::misplaced)
+        .def("__repr__", [](classic::WarmupCheck const& check) {
+            return "WarmupCheck(misplaced=" + std::string(check.misplaced ? "True" : "False") + ", uniform_energy="
+                 + std::to_string(check.uniform_energy) + ", product_energy=" + std::to_string(check.product_energy) + ")";
+        });
+
     nb::class_<classic::MatrixProductState>(m, "MatrixProductState",
         "A targeted state after the final sweep as the engine holds it: site tensors indexed "
         "[left bond, local state, right bond], local states in each site's PhysicalBasis order, mixed "
@@ -332,6 +345,8 @@ NB_MODULE(classic_dmrg_c, m) {
         .def_ro("options", &classic::Result::options)
         .def_ro("mps", &classic::Result::mps,
                 "With keep_mps: one MatrixProductState per targeted state, in energy order; otherwise empty.")
+        .def_ro("warmup_check", &classic::Result::warmup_check,
+                "The WarmupCheck of a uniform warm-up in a sector that fixes a charge; otherwise None.")
         .def_prop_ro("energy", [](classic::Result const& r) { return r.energies.empty() ? 0. : r.energies.front(); },
                      "The ground-state energy.")
         .def_prop_ro("iteration_energies", [](classic::Result const& r) {
