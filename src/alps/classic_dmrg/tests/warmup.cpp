@@ -10,7 +10,10 @@
 // sweeps (the 48-site wall at E = -8 instead of -24); the configuration's
 // prefix charges place them before the sweeps start. A Hubbard potential
 // step covers two charges at once and evolve() the preparation of its
-// initial state.
+// initial state. Without a configuration, the check of the uniform warm-up
+// (Result::warmup_check) finds the walls above a product state and repeats
+// from it, and passes the Neel and charge-density-wave patterns, which the
+// uniform warm-up finds.
 #include "support.hpp"
 #include <gtest/gtest.h>
 
@@ -22,6 +25,8 @@
 #include <cmath>
 #include <cstddef>
 #include <numeric>
+#include <sstream>
+#include <string>
 #include <vector>
 
 using namespace classic_test;
@@ -88,9 +93,12 @@ cd::Options options_for(std::vector<std::size_t> configuration, int up) {
 struct Case {
     double energy;
     std::vector<double> sz;
+    cd::Result result;
 };
 
-Case solve(std::vector<double> const& h, double J, int up) {
+// The XX chain J (S^x S^x + S^y S^y) in fields h with `up` spins up, from
+// the best configuration or, with `uniform`, from the default warm-up.
+Case solve(std::vector<double> const& h, double J, int up, bool uniform = false, std::ostream* log = nullptr) {
     auto const xx = mdl::xxz(lat::chain(length, 1.0, lat::Boundary::open), 1.0, 0.0);
     auto op = fields(xx, h);
     if (J != 0.) {
@@ -100,8 +108,20 @@ Case solve(std::vector<double> const& h, double J, int up) {
     }
     cd::Measurements requests;
     requests.terms["Sz"] = cd::site_terms(xx, "Sz");
-    auto const result = cd::solve(op, mdl::physical_basis(xx), options_for(best_configuration(h, up), up), requests);
-    return {result.energies.at(0), result.measurements.at("Sz").values.at(0)};
+    auto options = options_for(uniform ? std::vector<std::size_t>{} : best_configuration(h, up), up);
+    options.log = log;
+    auto result = cd::solve(op, mdl::physical_basis(xx), options, requests);
+    auto const sz = result.measurements.at("Sz").values.at(0);
+    return {result.energies.at(0), sz, std::move(result)};
+}
+
+mdl::Hamiltonian xx_chain() { return mdl::xxz(lat::chain(length, 1.0, lat::Boundary::open), 1.0, 0.0); }
+
+// +1 on even sites, -1 on odd ones.
+std::vector<double> staggered() {
+    std::vector<double> h(length);
+    for (int i = 0; i < length; ++i) h[static_cast<std::size_t>(i)] = i % 2 ? -1. : 1.;
+    return h;
 }
 
 } // namespace
@@ -111,6 +131,7 @@ TEST(ClassicDmrgWarmup, FieldOnlyWallsAreTheirConfiguration) {
         auto const h = wall_fields(wall);
         auto const found = solve(h, 0., wall);
         EXPECT_NEAR(found.energy, -length / 2., 1e-10) << "wall at " << wall;
+        EXPECT_FALSE(found.result.warmup_check) << "a configured warm-up is not checked";
         ASSERT_EQ(found.sz.size(), static_cast<std::size_t>(length));
         for (int i = 0; i < length; ++i)
             EXPECT_NEAR(found.sz[static_cast<std::size_t>(i)], i < wall ? 0.5 : -0.5, 1e-10) << wall << " " << i;
@@ -169,6 +190,103 @@ TEST(ClassicDmrgWarmup, EvolutionPreparesItsInitialStateFromTheConfiguration) {
     requests.terms["Sz"] = cd::site_terms(xx, "Sz");
     auto const result = cd::evolve(fields(xx, wall_fields(wall)), mdl::compile_hamiltonian(xx).op, mdl::physical_basis(xx),
                                    evolution, options_for(best_configuration(wall_fields(wall), wall), wall), requests);
+    EXPECT_NEAR(result.initial.energies.at(0), -length / 2., 1e-10);
+    auto const& sz = result.measurements.at("Sz").values.at(0);
+    for (int i = 0; i < length; ++i) EXPECT_NEAR(sz[static_cast<std::size_t>(i)], i < wall ? 0.5 : -0.5, 1e-10) << i;
+}
+
+TEST(ClassicDmrgWarmup, UniformWarmupAboveAProductStateIsRepeated) {
+    // The uniform warm-up leaves the field-only wall at E = -8, above the
+    // wall itself; the check finds the wall and the solve repeats from it.
+    int const wall = length / 4;
+    std::ostringstream log;
+    auto const found = solve(wall_fields(wall), 0., wall, true, &log);
+    ASSERT_TRUE(found.result.warmup_check);
+    auto const& check = *found.result.warmup_check;
+    EXPECT_TRUE(check.misplaced);
+    EXPECT_NEAR(check.uniform_energy, -8., 1e-10);
+    EXPECT_NEAR(check.product_energy, -length / 2., 1e-12);
+    EXPECT_EQ(check.configuration, best_configuration(wall_fields(wall), wall));
+    EXPECT_EQ(found.result.options.warmup_configuration, check.configuration);
+    EXPECT_NEAR(found.energy, -length / 2., 1e-10);
+    for (int i = 0; i < length; ++i) EXPECT_NEAR(found.sz[static_cast<std::size_t>(i)], i < wall ? 0.5 : -0.5, 1e-10) << i;
+    EXPECT_NE(log.str().find("above the product state"), std::string::npos);
+
+    // Both solves report to one callback object, which keeps its state.
+    std::size_t observed = 0;
+    auto options = options_for({}, wall);
+    auto const counted = cd::solve(fields(xx_chain(), wall_fields(wall)), mdl::physical_basis(xx_chain()), options, {},
+                                   [n = std::size_t{0}, &observed](cd::Iteration const&) mutable { observed = ++n; });
+    ASSERT_TRUE(counted.warmup_check && counted.warmup_check->misplaced);
+    EXPECT_GT(observed, counted.iterations.size());
+
+    // Weak hopping: the uniform warm-up's four sweeps end at -18.557, above
+    // the wall's product state; the repeat reaches the free-fermion energy.
+    auto const h = wall_fields(wall);
+    auto const hopping = solve(h, 0.1, wall, true);
+    ASSERT_TRUE(hopping.result.warmup_check);
+    EXPECT_TRUE(hopping.result.warmup_check->misplaced);
+    EXPECT_NEAR(hopping.result.warmup_check->uniform_energy, -18.557, 1e-3);
+    EXPECT_NEAR(hopping.energy, free_fermion_energy(h, 0.1, wall), 1e-8);
+}
+
+TEST(ClassicDmrgWarmup, NeelAndChargeDensityWavePatternsPassTheCheck) {
+    // Staggered fields, half filling: the uniform shares agree with the
+    // alternating product ground state to half a charge on every partial
+    // chain, so the default warm-up reaches it, exactly at the check's
+    // product energy, and nothing is repeated.
+    auto const neel = solve(staggered(), 0., length / 2, true);
+    ASSERT_TRUE(neel.result.warmup_check);
+    EXPECT_FALSE(neel.result.warmup_check->misplaced);
+    EXPECT_NEAR(neel.result.warmup_check->product_energy, -length / 2., 1e-12);
+    EXPECT_NEAR(neel.energy, -length / 2., 1e-10);
+    EXPECT_TRUE(neel.result.options.warmup_configuration.empty());
+
+    auto const fermions = mdl::spinless_fermion_model(lat::chain(length, 1.0, lat::Boundary::open), 1.0, 0.0, 0.0);
+    auto potential = cd::site_terms(fermions, "n");
+    auto const h = staggered();
+    for (auto& term : potential.terms) term.coefficient *= h.at(static_cast<std::size_t>(term.factors[0].site));
+    cd::Options options;
+    options.sweeps = cd::fixed_sweeps(4, 32);
+    options.sector = {{"N", length / 2.}};
+    auto const cdw = cd::solve(potential, mdl::physical_basis(fermions), options);
+    ASSERT_TRUE(cdw.warmup_check);
+    EXPECT_FALSE(cdw.warmup_check->misplaced);
+    EXPECT_NEAR(cdw.warmup_check->product_energy, -length / 2., 1e-12);
+    EXPECT_NEAR(cdw.energies.at(0), -length / 2., 1e-10);
+
+    // With hopping the ground state is correlated and lies below the Neel
+    // product state, the lowest product state there is.
+    auto const xx_neel = solve(staggered(), 1., length / 2, true);
+    ASSERT_TRUE(xx_neel.result.warmup_check);
+    EXPECT_FALSE(xx_neel.result.warmup_check->misplaced);
+    EXPECT_NEAR(xx_neel.result.warmup_check->product_energy, -length / 2., 1e-12);
+    EXPECT_NEAR(xx_neel.energy, free_fermion_energy(staggered(), 1., length / 2), 1e-6);
+    EXPECT_LT(xx_neel.energy, -length / 2. - 1.);
+
+    // A sector that fixes no charge has no uniform targets to check.
+    cd::Options open;
+    open.sweeps = cd::fixed_sweeps(2, 16);
+    auto const unrestricted = cd::solve(mdl::heisenberg(lat::chain(8, 1.0, lat::Boundary::open), 1.0), open);
+    EXPECT_FALSE(unrestricted.warmup_check);
+}
+
+TEST(ClassicDmrgWarmup, EvolutionRepeatsAMisplacedPreparation) {
+    int const wall = length / 4;
+    auto const xx = mdl::xxz(lat::chain(length, 1.0, lat::Boundary::open), 1.0, 0.0);
+    cd::Evolution evolution;
+    evolution.time_step = 0.05;
+    evolution.steps = 1;
+    evolution.states = 32;
+    evolution.measure_steps = {0};
+    cd::Measurements requests;
+    requests.terms["Sz"] = cd::site_terms(xx, "Sz");
+    auto const result = cd::evolve(fields(xx, wall_fields(wall)), mdl::compile_hamiltonian(xx).op, mdl::physical_basis(xx),
+                                   evolution, options_for({}, wall), requests);
+    ASSERT_TRUE(result.initial.warmup_check);
+    EXPECT_TRUE(result.initial.warmup_check->misplaced);
+    EXPECT_NEAR(result.initial.warmup_check->uniform_energy, -8., 1e-10);
+    EXPECT_EQ(result.initial.options.warmup_configuration, result.initial.warmup_check->configuration);
     EXPECT_NEAR(result.initial.energies.at(0), -length / 2., 1e-10);
     auto const& sz = result.measurements.at("Sz").values.at(0);
     for (int i = 0; i < length; ++i) EXPECT_NEAR(sz[static_cast<std::size_t>(i)], i < wall ? 0.5 : -0.5, 1e-10) << i;

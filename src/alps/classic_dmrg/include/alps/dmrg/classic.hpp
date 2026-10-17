@@ -63,7 +63,8 @@ struct Options {
     // uniform warm-up misplaces them there, and the sweeps move charge only
     // across the cut: a Hamiltonian of fields alone keeps the misplaced
     // product state, and weak hopping corrects it slowly.
-    // Its conserved charges must add up to the sector. Empty: uniform shares.
+    // Its conserved charges must add up to the sector. Empty: uniform shares,
+    // checked against product states afterwards (Result::warmup_check).
     std::vector<std::size_t> warmup_configuration;
     // Lowest states targeted together; the ground state is always the first.
     std::size_t num_eigenvalues = 1;
@@ -168,6 +169,34 @@ struct ResolvedOptions {
     std::map<std::string, double> sector;
 };
 
+// The check of a uniform warm-up (no warmup_configuration, a sector that
+// fixes a charge). The DMRG energy is variational, so a product state below
+// the ground-state energy proves that the warm-up misplaced charges the
+// sweeps did not move back. The check takes the lowest product state of the
+// sector that a cheap search finds on the diagonal of the Hamiltonian: sites
+// in chain order, each in its lowest state next to those already placed,
+// then single-site changes and charge moves between two sites while they
+// lower the energy. It is not the lowest product state in general, so the
+// check proves failures and never flags a converged solve, but it misses a
+// failed solve whose correlations lower its energy below every product
+// state. Where measured, those were slow rather than stuck: the energy
+// still dropped between the last sweeps, and more sweeps converged them.
+struct WarmupCheck {
+    // The product state, as a warmup_configuration, and its energy.
+    std::vector<std::size_t> configuration;
+    double product_energy = 0.;
+    // The ground-state energy that the uniform warm-up and its sweeps reached.
+    double uniform_energy = 0.;
+    // product_energy lies below uniform_energy by more than the Lanczos
+    // tolerance (relative to the energy). solve() then repeats with
+    // `configuration` as its warmup_configuration and returns the solve of
+    // lower ground-state energy, whose ResolvedOptions::warmup_configuration
+    // tells which; evolve() repeats its preparation and evolves the repeated
+    // state. The iteration callback observes both, and Options::log notes
+    // the repeat.
+    bool misplaced = false;
+};
+
 struct Result {
     // Ascending energies of the targeted states.
     std::vector<double> energies;
@@ -179,6 +208,8 @@ struct Result {
     // targets share the tensors outside the two sites split at the closing
     // configuration.
     std::vector<MatrixProductState> mps;
+    // Set when the warm-up was uniform and the sector fixes a charge.
+    std::optional<WarmupCheck> warmup_check;
 };
 
 // Observes every completed DMRG iteration and may throw to abort the solve.
@@ -276,7 +307,7 @@ struct EvolutionResult {
     // The DMRG of the initial Hamiltonian that prepared the initial state:
     // its energy, iterations and resolved options (with the arithmetic the
     // whole run used). Its measurements and mps are empty: measure step 0
-    // for the initial state's.
+    // for the initial state's. Its warmup_check is set as solve() sets it.
     Result initial;
     // The measured steps, ascending, and their times (steps * time_step;
     // the imaginary time tau in imaginary time).
