@@ -18,7 +18,7 @@ A nonuniform spin-1 product state evolves through ALPS time-dependent DMRG and a
 
 ## Run
 
-After [setup](../install.md), and with the `qdk` package's Q# simulator installed, run from the **ALPS repository root**:
+After [setup](../install.md), run from the **ALPS repository root**; the Q# simulator comes with the `qdk` package, which qdk-chemistry installs:
 
 ```bash
 python python/qdk-chemistry-alps/examples/spin_one_quench.py --output /tmp/alps-demos

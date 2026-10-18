@@ -65,13 +65,14 @@ python python/qdk-chemistry-alps/examples/quickstart.py
 python -m pytest python/qdk-chemistry-alps --require-solver-stack -ra
 ```
 
-Expect `['alps_classic_dmrg', 'alps_ed']`, and ED and DMRG energies of `-3.0925653195` that agree within `1e-8`. `--require-solver-stack` fails instead of skipping when pyalps, qdk-chemistry or the classic DMRG bindings are missing, so a packaging-only run cannot pass for a numerical one. Inspect the skip report: tests marked `pyscf` and `local_qdk` skip without their prerequisites.
+Expect `['alps_classic_dmrg', 'alps_ed']`, and ED and DMRG energies of `-3.0925653195` that agree within `1e-8`. `--require-solver-stack` fails instead of skipping when pyalps, qdk-chemistry or the classic DMRG bindings are missing, so a packaging-only run cannot pass for a numerical one. Inspect the skip report: tests marked `pyscf`, `local_qdk` and `qsharp` skip without their prerequisites.
 
 | Capability | Needed for | Test marker |
 | --- | --- | --- |
 | `pyscf` | Molecular examples and reference energies | `pyscf` |
 | A qdk-chemistry providing `RdmContainer` | RDM-only wavefunctions past the CI-vector limit | `local_qdk` |
 | pyalps `classic_dmrg` bindings | `alps_classic_dmrg` | `classic_dmrg` |
+| The `qdk` package's Q# simulator, which qdk-chemistry installs | The two quench examples | `qsharp` |
 
 Without `RdmContainer`, the DMRG calculator still exposes the RDMs through `make_rdms()` and returns state vectors, but raises `RuntimeError` naming the class before solving when its settings call for an `RdmContainer`. See [Work past the CI limit](how-to/large-active-spaces.md).
 

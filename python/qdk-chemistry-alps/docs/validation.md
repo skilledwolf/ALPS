@@ -22,7 +22,7 @@ After [installing the solver stack](install.md), run from the **ALPS repository 
 python -m pytest python/qdk-chemistry-alps --require-solver-stack -ra
 ```
 
-`--require-solver-stack` makes a missing pyalps, qdk-chemistry or classic DMRG binding a failure instead of a skip. Inspect the skip report: the `RdmContainer` cases need a qdk-chemistry that provides it, and the `pyscf` cases need PySCF. Reinstall the SDK and pyalps after native changes before rerunning the suite.
+`--require-solver-stack` makes a missing pyalps, qdk-chemistry or classic DMRG binding a failure instead of a skip. Inspect the skip report: the `RdmContainer` cases need a qdk-chemistry that provides it, the `pyscf` cases need PySCF, and the `qsharp` cases need the Q# simulator of the `qdk` package, which qdk-chemistry installs. Reinstall the SDK and pyalps after native changes before rerunning the suite.
 
 ## What the suite compares
 

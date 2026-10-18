@@ -13,7 +13,7 @@ over.
 
 # Examples
 
-Explore a model, inspect its observables, and compare representations or computational methods. All seven examples run with released qdk-chemistry 2.2.1; the two quenches also need the `qdk` package's Q# simulator. ALPS reference calculations and Q# circuit simulations both study quantum models on ordinary computers.
+Explore a model, inspect its observables, and compare representations or computational methods. All seven examples run with released qdk-chemistry 2.2.1; the two quenches also run Q# circuits on the simulator of the `qdk` package, which qdk-chemistry installs. ALPS reference calculations and Q# circuit simulations both study quantum models on ordinary computers.
 
 | Example | Scientific question or technique |
 | --- | --- |

@@ -17,7 +17,7 @@ A single physical model drives three calculations: independent exact propagation
 
 ## Run
 
-After [setup](../install.md), and with the `qdk` package's Q# simulator installed, run from the **ALPS repository root**:
+After [setup](../install.md), run from the **ALPS repository root**; the Q# simulator comes with the `qdk` package, which qdk-chemistry installs:
 
 ```bash
 python python/qdk-chemistry-alps/examples/spin_quench.py --output /tmp/alps-demos

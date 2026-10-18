@@ -6,13 +6,13 @@ Adapted from skilledwolf/alpsx (private repository), branch
 agent/v3-execution-and-api-audit at d37e51227,
 python/qdk-chemistry-alps/docs/how-to/hardware-export.md. Changes: pyalps names
 (models.to_pauli_operator, compile_observable for observables,
-models.lattice); the Q# quench and spin-1 example links and the comparison
-figure are not carried over; output re-measured.
+models.lattice); the comparison figure is not carried over; output
+re-measured.
 -->
 
 # Export a qubit operator
 
-Build a supported model in ALPS and export its Hamiltonian as a QDK `QubitOperator`. The result describes a Hamiltonian on a qubit register. It does not prepare a state, choose an algorithm or execute a circuit; running on quantum hardware needs further preparation, compilation and execution steps.
+Build a supported model in ALPS and export its Hamiltonian as a QDK `QubitOperator`. The result describes a Hamiltonian on a qubit register. It does not prepare a state, choose an algorithm or execute a circuit. The [quench examples](../examples/spin-quench.md) add explicit circuit construction and **software simulation**; running on quantum hardware would require further preparation, compilation and execution steps.
 
 The native route supports finite spin and boson spaces, with binary and Gray encoding, and strict spinless and spinful fermions, including pairing. The separate chemistry route below supports several fermion encodings for the real, spin-symmetric, particle-conserving class representable as restricted chemistry integrals. See [Capabilities and limits](../capabilities.md) for the precise boundaries.
 
@@ -32,7 +32,7 @@ sz = models.to_pauli_operator(
 initial_bits = encoding.encode_basis_bits([0, 1, 2, 1])
 ```
 
-Keep `encoding` alongside the QDK container and use it for observables and state preparation. Four spin-1 sites occupy eight qubits with some unused local states; see [higher spins](../conventions.md#higher-spins-and-finite-local-spaces). The same native route handles explicit finite boson cutoffs and general supported fermions; see the [pairing example](../examples/fermion-pairing.md).
+Keep `encoding` alongside the QDK container and use it for observables and state preparation. Four spin-1 sites occupy eight qubits with some unused local states; see [higher spins](../conventions.md#higher-spins-and-finite-local-spaces). The [anisotropy example](../examples/spin-one-anisotropy.md) explains the physics; the [quench example](../examples/spin-one-quench.md) executes Q# circuits and checks leakage. The same native route handles explicit finite boson cutoffs and general supported fermions; see the [pairing example](../examples/fermion-pairing.md).
 
 ## Fermions through chemistry integrals
 
@@ -98,7 +98,7 @@ h1, eri, e_core = interop.hamiltonian_to_integrals(H)
 
 For the blocked Jordan–Wigner route, `ci_vector_to_qubit_statevector` maps ALPS CI amplitudes into the exported register: the operator's expectation in that state reproduces the ALPS energy, and the tests check exactly that, with a bit-reversed register as a negative control. It does not perform the additional state transformation needed for Bravyi–Kitaev or parity encodings, and it is not a circuit state-preparation method.
 
-The [Hubbard example](../examples/hubbard-reference.md) shows the solver call and [observable measurements](observables.md). Correlations test more of the state than energy alone.
+The [Hubbard example](../examples/hubbard-reference.md) shows the solver call and [observable measurements](observables.md). For a separately executed dynamics comparison, continue with the [Q# quench](../examples/spin-quench.md), which matches initial states and observation times as well as the Hamiltonian. Correlations test more of the state than energy alone.
 
 ## Conventions to carry across the boundary
 

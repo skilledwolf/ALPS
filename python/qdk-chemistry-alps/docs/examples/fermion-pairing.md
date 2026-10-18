@@ -6,8 +6,8 @@ Adapted from skilledwolf/alpsx (private repository), branch
 agent/v3-execution-and-api-audit at d37e51227,
 python/qdk-chemistry-alps/docs/examples/fermion-pairing.md. Changes: pyalps
 names (models.to_pauli_operator, compile_observable for observables); plain
-commands; figure, data and numbers re-measured; the quench and spin-1 links
-and the SDK-consumer note are not carried over.
+commands; figure, data and numbers re-measured; the SDK-consumer note is not
+carried over.
 -->
 
 # Spinless pairing without chemistry integrals
@@ -87,7 +87,7 @@ occupation = models.to_pauli_operator(
 
 ![Pairing-chain parity spectra and occupations](../figures/demos/fermion_pairing.png)
 
-[Saved numerical data and provenance](../figures/demos/fermion_pairing.json). The model yields six qubits and 32 Pauli terms. The example checks both parity conservation and particle-number nonconservation, including a nonzero $F_{01}$. Ground-state occupations in the figure come from NumPy diagonalization of the exported operator; this example demonstrates interoperability, not circuit execution.
+[Saved numerical data and provenance](../figures/demos/fermion_pairing.json). The model yields six qubits and 32 Pauli terms. The example checks both parity conservation and particle-number nonconservation, including a nonzero $F_{01}$. Ground-state occupations in the figure come from NumPy diagonalization of the exported operator; this example demonstrates interoperability, while the [quench](spin-quench.md) demonstrates QDK circuit execution.
 
 ## Model and independent checks
 
@@ -99,4 +99,4 @@ Declare no conserved quantum numbers for this pairing model: the export refuses 
 
 Keep `encoded` alongside the QDK object: it supplies the layout and state-index map. QDK's blocked/interleaved chemistry metadata does not describe this convention, so those fields are left unset. The `ci_vector_to_qubit_statevector` helper belongs to the blocked chemistry path and must not be used here.
 
-This direct route allocates neither a global dense Hamiltonian nor four-index integrals during export. The example's separate verification intentionally uses small dense matrices. Export has an explicit term limit and reports the pruned coefficient weight. Fermionic export uses binary Jordan–Wigner encoding; constrained sites, mixtures of higher-dimensional bosonic and fermionic sites, and automatic tapering remain outside its supported scope. Finite bosonic spaces separately support binary and Gray encodings; see [Conventions](../conventions.md#higher-spins-and-finite-local-spaces). This example makes no claim about quantum advantage.
+This direct route allocates neither a global dense Hamiltonian nor four-index integrals during export. The example's separate verification intentionally uses small dense matrices. Export has an explicit term limit and reports the pruned coefficient weight. Fermionic export uses binary Jordan–Wigner encoding; constrained sites, mixtures of higher-dimensional bosonic and fermionic sites, and automatic tapering remain outside its supported scope. Finite bosonic spaces separately support binary and Gray encodings, as demonstrated by the [spin-1 example](spin-one-anisotropy.md); see [Conventions](../conventions.md#higher-spins-and-finite-local-spaces). This example makes no claim about quantum advantage.

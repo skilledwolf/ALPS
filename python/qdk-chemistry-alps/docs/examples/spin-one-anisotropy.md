@@ -95,6 +95,8 @@ Nonuniform terms expose ordering mistakes. Same-site operator multiplication occ
 Reuse `models.make_qubit_encoding(h, scheme=...)` for the Hamiltonian, observables and state. Binary uses local codes `00,01,10`; Gray uses `00,01,11`. The remaining code is unphysical. [Conventions](../conventions.md#higher-spins-and-finite-local-spaces) explains register order and the identity-preserving trace completion. An observable goes through the same encoding:
 
 ```python
+spin = h.site_for(0)
+expression = sum((spin.Sz(i) * spin.Sz(i) for i in range(4)), models.TermSum()) / 4   # mean (S^z)^2
 encoding = models.make_qubit_encoding(h, scheme="gray")
 hamiltonian = models.to_pauli_operator(h, encoding=encoding, tolerance=0.0)
 observable = models.to_pauli_operator(models.compile_observable(h, expression), models.physical_basis(h),

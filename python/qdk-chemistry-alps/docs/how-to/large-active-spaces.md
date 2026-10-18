@@ -6,14 +6,14 @@ Adapted from skilledwolf/alpsx (private repository), branch
 agent/v3-execution-and-api-audit at d37e51227,
 python/qdk-chemistry-alps/docs/how-to/large-active-spaces.md. Changes: the
 classic calculator's CI-vector estimate (1 kB per determinant) replaces the
-MPS reconstruction workspace; the experimental mps container mode is not
-carried over, and the MPS that pyalps returns is pointed to instead; output
+MPS reconstruction workspace; the RDM example is pyalps's; the experimental
+mps container mode is not carried over, and the MPS that pyalps returns is pointed to instead; output
 and figure re-measured.
 -->
 
 # Work past the CI limit
 
-The DMRG state can stay affordable when a configuration-interaction (CI) vector on every determinant of the sector would exceed memory. That depends on the model and the number of kept states; DMRG is not cheap for every large system. This guide explains how `alps_classic_dmrg` handles the CI-vector limit.
+The DMRG state can stay affordable when a configuration-interaction (CI) vector on every determinant of the sector would exceed memory. That depends on the model and the number of kept states; DMRG is not cheap for every large system. This guide explains how `alps_classic_dmrg` handles the CI-vector limit. For a runnable route with released qdk-chemistry, start with [Fourteen-site RDM observables](../examples/rdm-observables.md), which reads the RDMs through pyalps directly; returning a QDK `RdmContainer`, as described below, needs a qdk-chemistry build that provides it.
 
 ## The problem, concretely
 
@@ -53,7 +53,7 @@ The run takes about 6 s and 270 MB on an Apple M-series laptop. The wavefunction
 
 The `wavefunction_container` setting controls the whole behaviour:
 
-- **`"auto"`** (default): return the CI vector while it fits `ci_memory_limit_gb`, otherwise an `RdmContainer`. The choice is made before the solve. Where qdk-chemistry lacks `RdmContainer` (released 2.2.1), a run past the limit raises `RuntimeError` naming the class before solving.
+- **`"auto"`** (default): return the CI vector while it fits `ci_memory_limit_gb`, otherwise an `RdmContainer`. The choice is made before the solve. Where qdk-chemistry lacks `RdmContainer` (released 2.2.1), a run past the limit raises `RuntimeError` naming the class before solving. For direct measurements with released packages, use the [native RDM example](../examples/rdm-observables.md).
 - **`"statevector"`**: always return the CI vector, and raise `MemoryError` past the limit. Use it when downstream code needs determinants and should fail rather than get something else.
 - **`"rdm"`**: return an `RdmContainer` without a CI vector. This avoids the CI cost when only RDMs are needed.
 

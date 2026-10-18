@@ -5,8 +5,8 @@ SPDX-License-Identifier: MIT
 Adapted from skilledwolf/alpsx (private repository), branch
 agent/v3-execution-and-api-audit at d37e51227,
 python/qdk-chemistry-alps/docs/examples/custom-spin.md. Changes: pyalps names;
-plain commands; figure and data re-measured; the presentation notes and the
-quench link are not carried over.
+plain commands; figure and data re-measured; the presentation notes are not
+carried over.
 -->
 
 # A custom spin model goes into QDK
@@ -76,7 +76,7 @@ The exported operator has six qubits, 18 Pauli terms and maximum support three, 
 
 ![Custom-model spectra and mapped observables](../figures/demos/custom_spin_export.png)
 
-[Saved numerical data and provenance](../figures/demos/custom_spin_export.json). This is **static operator export**; the example does not evolve the three-site interaction.
+[Saved numerical data and provenance](../figures/demos/custom_spin_export.json). This is **static operator export**; the example does not evolve the three-site interaction. The [quench example](spin-quench.md) evolves a model with two-site interactions.
 
 ## Why the phase and ordering checks matter
 

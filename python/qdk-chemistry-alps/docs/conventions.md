@@ -6,8 +6,8 @@ Adapted from skilledwolf/alpsx (private repository), branch
 agent/v3-execution-and-api-audit at d37e51227,
 python/qdk-chemistry-alps/docs/conventions.md. Changes: pyalps names
 (pyalps.models.to_pauli_operator, compile_observable for observables); the
-MPS-container and Q# register sections and the fork history are not carried
-over; the RDM checks name this repository's tests.
+MPS-container section and the fork history are not carried over; the Q#
+register section names both tested qdk versions; the RDM checks name this repository's tests.
 -->
 
 # Conventions
@@ -88,6 +88,10 @@ Codes in the table put the least significant bit on the right. `encode_basis_bit
 For unused levels, the local extension is $E(A)=VAV^\dagger + \operatorname{Tr}(A)/d\,(I−VV^\dagger)$. Physical action is exact up to numerical error, and scalar identities remain identities on the entire register. Same-site products are multiplied **before** extension, which is why encoded `Sz²` is not generally the square of encoded `Sz` outside the physical space. Export the actual observable instead of multiplying already exported operators.
 
 This trace completion preserves the exact finite model's ground energy but can introduce unphysical ground degeneracies; it does not preserve the full excited spectrum. Use `physical_weight` or `models.local_valid_projector` to diagnose membership. An explicit positive `models.invalid_state_penalty` lifts those degeneracies without changing the physical block.
+
+## Q# circuit register and state dumps
+
+The [quench example](examples/spin-quench.md) maps ALPS site i to Q# array element `q[i]`. It reverses QDK Chemistry Pauli labels when constructing Q# Pauli arrays. In the tested qdk 1.32.3 and 1.33.1 interpreters, `StateDump` lists the first allocated qubit as the most significant bit; the example verifies that with an asymmetric excitation. The state-dump order and QDK Chemistry's dense Pauli-matrix order are different interfaces, even within the same QDK package.
 
 ## Two-electron integrals
 
