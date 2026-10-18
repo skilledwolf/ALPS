@@ -18,10 +18,10 @@ Export a model that does not need a matching named QDK factory. This six-spin cl
 After [setup](../install.md), run from the **ALPS repository root**:
 
 ```bash
-python python/qdk-chemistry-alps/examples/custom_spin_export.py --output figures
+python python/qdk-chemistry-alps/examples/custom_spin_export.py --output /tmp/alps-demos
 ```
 
-The source is [`examples/custom_spin_export.py`](../../examples/custom_spin_export.py); `--output` is optional and needs `matplotlib`.
+The source is [`examples/custom_spin_export.py`](../../examples/custom_spin_export.py); `--output` is optional, needs `matplotlib`, and is best a directory outside the repository.
 
 ## Physical model
 

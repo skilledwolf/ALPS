@@ -19,10 +19,10 @@ A QDK user constructs a Hubbard Hamiltonian, selects `alps_ed` or `alps_classic_
 After [setup](../install.md), run from the **ALPS repository root**:
 
 ```bash
-python python/qdk-chemistry-alps/examples/hubbard_reference.py --output figures
+python python/qdk-chemistry-alps/examples/hubbard_reference.py --output /tmp/alps-demos
 ```
 
-The source is [`examples/hubbard_reference.py`](../../examples/hubbard_reference.py); `--output` is optional and needs `matplotlib`.
+The source is [`examples/hubbard_reference.py`](../../examples/hubbard_reference.py); `--output` is optional, needs `matplotlib`, and is best a directory outside the repository.
 
 ## Physical model
 

@@ -10,9 +10,9 @@
 import time
 
 import numpy as np
+from demo_support import bit_reversal, finish, parser, pauli_matrix, site_matrix
 from pyalps import models
 from pyalps.models import Hamiltonian, Spin
-from demo_support import bit_reversal, finish, parser, pauli_matrix, site_matrix
 
 from qdk_chemistry_alps.interop import hamiltonian_to_qubit_operator
 

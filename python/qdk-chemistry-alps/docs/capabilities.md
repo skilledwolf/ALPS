@@ -22,7 +22,7 @@ Choose the route by **input representation and intended calculation**. The ED/DM
 | DMRG measurements | Local observables, correlations and reduced density matrices of the final sweep, derived from the RDMs; further operators through `observables` before the run. A full spatial 2-RDM has $K^4$ entries for $K$ orbitals. |
 | Returned wavefunction | CI coefficients and determinants while the CI vector fits `ci_memory_limit_gb`. An RDM-only return needs a qdk-chemistry build providing `RdmContainer`; released qdk-chemistry 2.2.1 lacks it. |
 
-These plugins do not accept arbitrary `QubitOperator`s or expose every native ALPS solver. The DMRG engine keeps no state after the run: there is no continuation, and the calculator returns no matrix product state (`pyalps.classic_dmrg.solve_molecular(..., keep_mps=True)` does). Start with [Hubbard energies and correlations](examples/hubbard-reference.md).
+These plugins do not accept arbitrary `QubitOperator`s or expose every native ALPS solver. The calculator keeps no DMRG state after the run: there is no continuation, and the calculator returns no matrix product state (`pyalps.classic_dmrg.solve_molecular(..., keep_mps=True)` does). Start with [Hubbard energies and correlations](examples/hubbard-reference.md).
 
 ## ALPS model → QDK qubit operator
 

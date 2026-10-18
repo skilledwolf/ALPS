@@ -19,10 +19,10 @@ An ALPS model outside the restricted electronic-integral bridge can still become
 After [setup](../install.md), run from the **ALPS repository root**:
 
 ```bash
-python python/qdk-chemistry-alps/examples/fermion_pairing.py --output figures
+python python/qdk-chemistry-alps/examples/fermion_pairing.py --output /tmp/alps-demos
 ```
 
-The source is [`examples/fermion_pairing.py`](../../examples/fermion_pairing.py); `--output` is optional and needs `matplotlib`.
+The source is [`examples/fermion_pairing.py`](../../examples/fermion_pairing.py); `--output` is optional, needs `matplotlib`, and is best a directory outside the repository.
 
 ## Physical model
 
@@ -95,7 +95,7 @@ A separate reference in the script applies fermion creation and annihilation dir
 
 ## Encoding and limits
 
-Declare no conserved quantum numbers for this pairing model; declaring `N` is rejected. The compiler produces a full-space Jordan–Wigner operator in ALPS local-basis order, not a projected particle sector. Site 0 occupies the least significant bits. Spinless occupation is one bit per site; supported spinful sites use two bits and keep their local fermionic phases.
+Declare no conserved quantum numbers for this pairing model: the export refuses a declared `N` that the Hamiltonian does not conserve. The compiler produces a full-space Jordan–Wigner operator in ALPS local-basis order, not a projected particle sector. Site 0 occupies the least significant bits. Spinless occupation is one bit per site; supported spinful sites use two bits and keep their local fermionic phases.
 
 Keep `encoded` alongside the QDK object: it supplies the layout and state-index map. QDK's blocked/interleaved chemistry metadata does not describe this convention, so those fields are left unset. The `ci_vector_to_qubit_statevector` helper belongs to the blocked chemistry path and must not be used here.
 

@@ -12,7 +12,7 @@ operators replace alpsx's callables; figure and output re-measured.
 
 # Measure observables
 
-`alps_classic_dmrg` measures every element of the one- and two-particle reduced density matrices (RDMs), by spin block, in its final sweep. Occupations, correlation functions and $\langle\mathbf S_i\cdot\mathbf S_j\rangle$ are derived from them, so they do not need the configuration-interaction (CI) vector and stay affordable beyond the [CI-vector limit](large-active-spaces.md). The engine keeps no state after the run: everything comes from that final sweep. Check [solver convergence](converging-dmrg.md) separately.
+`alps_classic_dmrg` measures every element of the one- and two-particle reduced density matrices (RDMs), by spin block, in its final sweep. Occupations, correlation functions and $\langle\mathbf S_i\cdot\mathbf S_j\rangle$ are derived from them, so they do not need the configuration-interaction (CI) vector and stay affordable beyond the [CI-vector limit](large-active-spaces.md). The calculator keeps no DMRG state after the run: everything comes from that final sweep. Check [solver convergence](converging-dmrg.md) separately.
 
 ## Everything at once
 
