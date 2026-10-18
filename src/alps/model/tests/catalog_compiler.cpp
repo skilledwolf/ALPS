@@ -7,15 +7,18 @@
 // src/model/tests/models/catalog_compiler.cpp. Adaptation: the shipped XML
 // catalogs replace alpsx's TOML fixtures ("boson Hubbard" with Nmax=1 and
 // "spinless fermions" stand in for its "boson" and "complex fermion" models);
-// the charge accessors are new.
+// the charge accessors and the n-site refusal test are new.
 // This translation unit deliberately includes no ED or matrix-storage header.
 #include <alps/model/catalog.hpp>
 #include <gtest/gtest.h>
 
+#include <filesystem>
+#include <fstream>
 #include <map>
 #include <stdexcept>
 #include <string>
 #include <vector>
+#include <unistd.h>
 
 namespace {
 alps::Parameters parameters(int sites) {
@@ -104,4 +107,46 @@ TEST(CatalogCompiler, ChargesComeFromTheBasisConstraints) {
     p["CONSERVED_QUANTUMNUMBERS"] = "Sz";
     alps::models::CatalogModel<> undeclared(p);
     EXPECT_THROW(undeclared.conserved_quantum_numbers(), std::invalid_argument);
+}
+
+// Only hamiltonian_matrix applies <NSITETERM>s (ALPSim/ALPS PR 223). On a
+// lattice with <NSITE>s the catalog refuses a Hamiltonian or global operator
+// that has them; on a lattice without, they contribute nothing.
+TEST(CatalogCompiler, NSiteTermsAreRefusedNotDropped) {
+    auto const dir = std::filesystem::temp_directory_path()
+        / ("alps_catalog_nsite_" + std::to_string(::getpid()));
+    std::filesystem::create_directories(dir);
+    std::ofstream(dir / "lattices.xml") << R"(<LATTICES>
+<GRAPH name="triangle" vertices="3"><EDGE source="1" target="2"/><EDGE source="2" target="3"/>
+<NSITE><SITE id="1"/><SITE id="2"/><SITE id="3"/></NSITE></GRAPH>
+<GRAPH name="path" vertices="3"><EDGE source="1" target="2"/><EDGE source="2" target="3"/></GRAPH>
+</LATTICES>)";
+    std::ofstream(dir / "models.xml") << R"(<MODELS>
+<SITEBASIS name="spin half"><QUANTUMNUMBER name="Sz" min="-1/2" max="1/2"/>
+<OPERATOR name="Sz" matrixelement="Sz"/></SITEBASIS>
+<BASIS name="spin half"><SITEBASIS ref="spin half"/></BASIS>
+<GLOBALOPERATOR name="triple"><NSITETERM sites="i j k">Sz(i)*Sz(j)*Sz(k)</NSITETERM></GLOBALOPERATOR>
+<HAMILTONIAN name="Ising"><BASIS ref="spin half"/>
+<BONDTERM source="i" target="j">Sz(i)*Sz(j)</BONDTERM></HAMILTONIAN>
+<HAMILTONIAN name="three-spin"><BASIS ref="spin half"/>
+<BONDTERM source="i" target="j">Sz(i)*Sz(j)</BONDTERM>
+<NSITETERM sites="i j k">Sz(i)*Sz(j)*Sz(k)</NSITETERM></HAMILTONIAN>
+</MODELS>)";
+    alps::Parameters p;
+    p["LATTICE_LIBRARY"] = (dir / "lattices.xml").string();
+    p["MODEL_LIBRARY"] = (dir / "models.xml").string();
+    p["GRAPH"] = "triangle";
+    p["MODEL"] = "three-spin";
+    EXPECT_THROW(alps::models::CatalogModel<> refused(p), std::runtime_error);
+    p["MODEL"] = "Ising";
+    alps::models::CatalogModel<> ising(p);
+    EXPECT_FALSE(ising.compile_hamiltonian().terms.empty());
+    EXPECT_THROW(ising.compile_operator(std::string("triple")), std::invalid_argument);
+    p["GRAPH"] = "path";
+    alps::models::CatalogModel<> path(p);
+    EXPECT_TRUE(path.compile_operator(std::string("triple")).terms.empty());
+    p["MODEL"] = "three-spin";
+    alps::models::CatalogModel<> without_groups(p);
+    EXPECT_EQ(without_groups.compile_hamiltonian(), path.compile_hamiltonian());
+    std::filesystem::remove_all(dir);
 }

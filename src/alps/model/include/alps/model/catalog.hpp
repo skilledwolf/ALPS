@@ -12,7 +12,8 @@
 // <alps/models/compiled.hpp> operators; conserved_quantum_numbers, sector
 // and local_charge follow the charge derivation of alpsx's
 // src/solvers/diag/src/runtime/catalog_problem.cpp. Added here: kit operator
-// names resolve through <alps/models/operator_names.hpp>.
+// names resolve through <alps/models/operator_names.hpp>, and global
+// operators with n-site terms (ALPSim/ALPS PR 223) are refused.
 #ifndef ALPS_MODEL_CATALOG_HPP
 #define ALPS_MODEL_CATALOG_HPP
 
@@ -305,6 +306,12 @@ void CatalogModel<Scalar,G>::append_operator(CompiledOperator& result, const Bon
 template <class Scalar, class G>
 void CatalogModel<Scalar,G>::append_operator(CompiledOperator& result, const GlobalOperator& op) const
 {
+  // Only hamiltonian_matrix applies <NSITETERM>s (ALPSim/ALPS PR 223).
+  // model_helper refuses them in the Hamiltonian; a global operator with
+  // them is refused here instead of being compiled without them.
+  if (op.has_nsite_terms() && graph_.num_nsite_groups())
+    throw std::invalid_argument("catalog model: global operator " + op.name()
+      + " has <NSITETERM>s (n-site terms) and the lattice has <NSITE>s; only site and bond terms compile");
   // Preserve expression evaluation order, including random calls.
   for (auto it = graph_.sites().first; it != graph_.sites().second; ++it)
     append_operator(result, op.site_term(graph_.site_type(*it)), *it);
