@@ -496,6 +496,16 @@ TEST(ClassicDmrgEvolution, ProductConfigurationsOnOddAndFourSiteChains) {
     expect_trotter_and_exact(four, four, {{"Sz", 0.}}, {}, real_time(0.05, 8, 64), 64, 1e-9, 1e-2, {0, 0, 1, 1});
 }
 
+TEST(ClassicDmrgEvolution, FourSitesNeverTruncate) {
+    // The one configuration of four sites holds single-site blocks, and the
+    // block a half sweep grows there is never read: a single kept state
+    // follows the Trotter product exactly, and no weight is reported lost.
+    Model const four(chain_xxz(4, 0.8, 1.5, -0.2));
+    expect_trotter_and_exact(four, four, {{"Sz", 0.}}, {}, real_time(0.05, 8, 1), 64, 1e-9, 1e-2, {0, 0, 1, 1});
+    expect_trotter_and_exact(ising_quench(4), ising_quench(4), {}, {}, real_time(0.05, 8, 1), 64, 1e-9, 2e-2,
+                             std::vector<std::size_t>(4, 0));
+}
+
 TEST(ClassicDmrgEvolution, ProductConfigurationWithoutConservedCharges) {
     // All spins up under the transverse-field Ising chain, which conserves no
     // charge: the blocks span every sector, and the warm-up's first step also

@@ -403,7 +403,12 @@ public:
     // to bond (b, b + 1) at the step where both its sites are explicit.
     // `measure` measures corr at every step, as the unstored path of sweep()
     // does, so every term is measured at some configuration. Returns the
-    // discarded weight summed over the half sweep's truncations.
+    // squared norm the state lost in the half sweep's truncations: the
+    // weight a truncation discards is lost when the next configuration
+    // carries the state through the kept states. The block grown at the last
+    // configuration is never read, since the next half sweep resumes there
+    // from the untruncated state, so that truncation costs nothing; on four
+    // sites, whose one configuration is the last, none does.
     double half_sweep(std::size_t direction, std::vector<BondGate<T> const*> const& gates, bool measure) {
         int const ls = this->lattice().ls();
         if (gates.size() != static_cast<std::size_t>(ls - 1))
@@ -414,7 +419,7 @@ public:
         this->qn = this->qnt;
         this->dir = direction;
         bool const right_to_left = direction == dmtk::RIGHT2LEFT;
-        double discarded = 0.;
+        double lost = 0.;
         for (int step = 1; step < ls - 2; ++step) {
             this->iter = step;
             this->signal_emit(dmtk::SYSTEM_SIGNAL_START_ITER);
@@ -436,6 +441,8 @@ public:
             } else {
                 this->init_iteration(this->leftblock, site1, site2, this->rightblock, true);
                 this->gs = this->seed;
+                // The weight of the state the previous truncation kept.
+                lost += std::max(0., 1. - std::real(product(this->gs, this->gs)));
             }
             auto apply = [&](int block, int bond) {
                 ++visits_[static_cast<std::size_t>(bond)];
@@ -461,14 +468,13 @@ public:
                 this->rotate(dmtk::LEFT, this->newblock);
                 this->write_iter(dmtk::LEFT);
             }
-            discarded += std::max(0., this->truncation_error());
             if (measure) this->measure();
             this->signal_emit(dmtk::SYSTEM_SIGNAL_END_ITER);
         }
         for (int count : visits_)
             if (count != 1) throw std::logic_error("classic DMRG time evolution visited a bond other than once");
         continued_ = true;
-        return discarded;
+        return lost;
     }
 
     // Time-step targeting from here on: `final_hamiltonian` (named apart

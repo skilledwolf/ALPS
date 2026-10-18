@@ -1547,9 +1547,9 @@ struct Engine {
             for (auto const& gate : g) pointers.push_back(gate.identity() ? nullptr : &gate);
             if (measure) // every value must be taken again in this half sweep
                 for (auto& term : S.corr) term.set_value(T(std::numeric_limits<double>::quiet_NaN()));
-            double const discarded = S.half_sweep(direction, pointers, measure);
+            double const lost = S.half_sweep(direction, pointers, measure);
             direction = direction == dmtk::RIGHT2LEFT ? dmtk::LEFT2RIGHT : dmtk::RIGHT2LEFT;
-            return discarded;
+            return lost;
         };
 
         for (std::size_t p = 0; p < problem.measurements.size(); ++p)

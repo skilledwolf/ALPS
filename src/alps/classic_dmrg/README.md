@@ -55,7 +55,13 @@ auto const& density = result.measurements.at("n").values[0];  // row = target st
 
 ## What the engine accepts
 
-- At least four sites. Every term acts on at most two distinct sites, its
+- At least four sites. On four sites the one configuration holds
+  single-site blocks, so the superblock is the whole space and a solve is
+  exact whatever the kept states. Its iterations still report the weight
+  their density matrices' truncations discard, of blocks no configuration
+  reads; `final_truncation_error` is that of the closing configuration,
+  whose truncation the returned state never undergoes on any length.
+- Every term acts on at most two distinct sites, its
   factors in either site order. A local factor is split into components of
   definite charge change (for the sector's charges and the fermionic
   charges) and definite parity change, so `Sx Sx` is fine; the components
@@ -329,17 +335,25 @@ two half sweeps, a measured one four.
   measurements as `solve()` takes them, and with `keep_mps` the state as a
   `MatrixProductState` whose centre is where the measuring half sweep
   ended (site 2 or `L - 2`).
-- `truncation_errors[n]` is the weight discarded in the half sweeps of step
-  `n` (the shared half sweep of two merged half steps counts for the
-  earlier step; entry 0 covers the initial measurement); the squared norm
-  the state has lost is about their sum.
+- `truncation_errors[n]` is the squared norm the truncations in the half
+  sweeps of step `n` took from the state (the shared half sweep of two
+  merged half steps counts for the earlier step; entry 0 covers the initial
+  measurement); the squared norm the state has lost is about their sum. A
+  truncation's discarded weight is lost when the next configuration carries
+  the state through the kept states. The block a half sweep grows at its
+  last configuration is never read, since the next half sweep resumes there
+  from the untruncated state, so that truncation costs nothing: on four
+  sites, whose one configuration is the last, the state is never truncated
+  and every entry is zero, whatever `states` is.
 - A `Drive` adds `coefficients[n] * op` to `final` during step `n`; pyalps
   samples a function of time at the step midpoints `(n + 1/2) dt`, which
   keeps the scheme second order.
 - The callback observes the preparation's iterations, with the initial
   Hamiltonian's energy as `initial.energies`, and then every iteration of
   the evolution, which carry no energy (NaN) but their truncation error
-  and entropy.
+  and entropy. An iteration's truncation error is the weight its density
+  matrix's truncation discards, whether a later configuration applies that
+  truncation or not.
 
 A product initial state, such as a domain wall prepared as the ground
 state of fields alone, takes `Options::warmup_configuration`. Without it,
@@ -806,7 +820,8 @@ site and pair measurements, the kept states and the Loschmidt amplitude;
 it checks an identity and an eigenstate evolution, the `dt^2` shrinking of
 the Trotter error, energy conservation, imaginary time in real and complex
 arithmetic (against the Trotter product and the ED ground energy), drives,
-the measured-step bookkeeping, the reported truncation, the rejections, and
+the measured-step bookkeeping, the reported truncation (none on four sites,
+where one kept state follows the Trotter product exactly), the rejections, and
 iteration energies when the initial and final Hamiltonians have different
 constant terms.
 Its time-step targeting tests compare every step with `exp(-iHt)` to 1e-9,

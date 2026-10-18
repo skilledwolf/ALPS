@@ -380,7 +380,8 @@ def evolve(initial, final, basis=None, *, evolution=None, options=None, measurem
     Returns an ``EvolutionResult``: ``initial`` (the preparing solve),
     ``steps``, ``times`` and ``energies`` (``<H_final>``) of the measured
     steps, ``measurements`` with one row per measured step,
-    ``truncation_errors`` with the discarded weight of every step and, with
+    ``truncation_errors`` with the squared norm the truncations of every step
+    took from the state (none on four sites, where nothing is truncated) and, with
     ``keep_mps=True``, the state of every measured step in ``mps``.
     """
     catalog = getattr(_models, "CatalogModel", None)
