@@ -31,4 +31,4 @@ The gallery figures come from the examples:
 python python/qdk-chemistry-alps/examples/hubbard_reference.py --output DIRECTORY
 ```
 
-and likewise `custom_spin_export.py` and `fermion_pairing.py`. Each run writes `<script>.png` and `<script>.json`; the JSON records the model, the numerical controls, the dependency versions, the git revision and whether the tree was dirty. Use a directory outside the repository and copy the files into `demos/`: a second run into `demos/` would see the first run's files as untracked and record a dirty tree.
+and likewise the other gallery scripts: `custom_spin_export.py`, `spin_quench.py`, `spin_one_anisotropy.py`, `spin_one_quench.py`, `fermion_pairing.py` and `rdm_observables.py`. Each run writes `<script>.png` and `<script>.json`; the JSON records the model, the numerical controls, the dependency versions, the git revision and whether the tree was dirty. Use a directory outside the repository and copy the files into `demos/`: a second run into `demos/` would see the first run's files as untracked and record a dirty tree.

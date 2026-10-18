@@ -4,15 +4,16 @@
 # Adapted from skilledwolf/alpsx (private repository), branch
 # agent/v3-execution-and-api-audit at d37e51227,
 # python/qdk-chemistry-alps/tests/test_examples.py. Changes: the classic_dmrg
-# marker replaces native_dmrg; the MPS and Q# examples are not carried over.
+# marker replaces native_dmrg.
 """Run every example script.
 
 The examples are the source for the code in the docs, so if one breaks, the
 documentation is wrong. Each asserts its own physics internally; here we
 only require that it exits cleanly and prints something.
 
-They are sized to finish in seconds, so this runs with the rest of the
-suite rather than as a nightly job.
+They are sized to finish in seconds, the Q# spin-1 quench in about half
+a minute, so this runs with the rest of the suite rather than as a nightly
+job.
 """
 
 from __future__ import annotations
@@ -37,6 +38,10 @@ REQUIREMENTS = {
     "hubbard_reference.py": ["classic_dmrg"],
     "custom_spin_export.py": [],
     "fermion_pairing.py": [],
+    "rdm_observables.py": ["classic_dmrg"],
+    "spin_one_anisotropy.py": ["classic_dmrg"],
+    "spin_quench.py": ["classic_dmrg", "qsharp"],
+    "spin_one_quench.py": ["classic_dmrg", "qsharp"],
 }
 
 

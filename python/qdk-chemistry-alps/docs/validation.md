@@ -32,7 +32,7 @@ python -m pytest python/qdk-chemistry-alps --require-solver-stack -ra
 - The qubit export: the Fock-space spectrum for every encoding, and QDK's own mapper term by term.
 - The state placement, through the energy, with a bit-reversed register as a negative control.
 - The native Pauli route, against independently built encodings.
-- Every script in [`examples/`](../examples/), each of which asserts its own physics (`tests/test_examples.py`).
+- Every script in [`examples/`](../examples/), each of which asserts its own physics (`tests/test_examples.py`): among them time-dependent DMRG and executed Q# circuits against exact propagation, and binary and Gray spin-1 encodings against an independent matrix reference.
 
 ## What the numbers establish
 
@@ -55,11 +55,11 @@ python -m pytest python/qdk-chemistry-alps --require-solver-stack -ra
 
 ## Record: 2026-10-18
 
-With the commit that added these pages, on macOS on Apple silicon, Python 3.13, PySCF 2.14:
+With the commit that added the last of these pages, on macOS on Apple silicon, Python 3.13, PySCF 2.14:
 
 | qdk-chemistry | qdk | NumPy | Result |
 | --- | --- | --- | --- |
-| 2.2.1 (PyPI) | 1.33.1 | 2.3.5 | 99 passed, 7 skipped (the `RdmContainer` cases) |
-| 2.1.0 local build with `RdmContainer` | 1.32.3 | 2.5.3 | 104 passed, 2 skipped (the checks that only apply without `RdmContainer`) |
+| 2.2.1 (PyPI) | 1.33.1 | 2.3.5 | 103 passed, 7 skipped (the `RdmContainer` cases) |
+| 2.1.0 local build with `RdmContainer` | 1.32.3 | 2.5.3 | 108 passed, 2 skipped (the checks that only apply without `RdmContainer`) |
 
-Each run takes about 40 s, about 35 s of it in the examples. The slowest example is the convergence scan, at about 7 s; `large_active_space.py` takes about 6 s and 270 MB at 14 orbitals. The documentation's outputs and figures come from this state.
+Each run takes about 90 s, about 80 s of it in the examples. The slowest example is the spin-1 quench, at about 30 s, almost all of it in the Q# simulator; the convergence scan takes about 7 s, and `large_active_space.py` about 6 s and 270 MB at 14 orbitals. Both qdk versions provide the Q# simulator, so the quench examples ran in both. The documentation's outputs and figures come from this state.

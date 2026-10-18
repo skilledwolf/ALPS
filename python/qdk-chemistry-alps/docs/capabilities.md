@@ -6,7 +6,7 @@ Adapted from skilledwolf/alpsx (private repository), branch
 agent/v3-execution-and-api-audit at d37e51227,
 python/qdk-chemistry-alps/docs/capabilities.md. Changes: the capabilities of
 this repository (alps_classic_dmrg, pyalps.models export routes); the
-prototype-scope notes, the MPS and Q# dynamics workflows and the dated
+prototype-scope notes, the MPS dynamics workflows and the dated
 upstream review are replaced by this repository's state.
 -->
 
@@ -35,7 +35,7 @@ These plugins do not accept arbitrary `QubitOperator`s or expose every native AL
 
 On the native route, export observables through `models.compile_observable` and the operator form of `to_pauli_operator`, reusing the Hamiltonian's encoding. Odd fermionic and non-Hermitian observables are supported on the corresponding spaces once `require_even` or `require_hermitian` is switched off. Keep the native layout alongside the QDK container: Pauli terms alone do not identify the physical basis or state map. All export routes have numerical tolerances; coefficient pruning can alter the represented operator.
 
-Try the [custom spin export](examples/custom-spin.md) or the [fermion pairing chain](examples/fermion-pairing.md).
+Try the [custom spin export](examples/custom-spin.md), the [spin-1 encodings](examples/spin-one-anisotropy.md) or the [fermion pairing chain](examples/fermion-pairing.md).
 
 ## Other workflows
 
@@ -43,7 +43,7 @@ Try the [custom spin export](examples/custom-spin.md) or the [fermion pairing ch
 | --- | --- |
 | ALPS lattice ↔ QDK `LatticeGraph` | Weighted adjacency conversion, with the geometry limitations listed below |
 | Driven Hamiltonian | Supported static components can be exported separately; there is no adapter for the complete time-dependent protocol. |
-| Time evolution | `pyalps.classic_dmrg.evolve` runs time-dependent DMRG on pyalps models; this package has no QDK interface for it. |
+| Time evolution | `pyalps.classic_dmrg.evolve` runs time-dependent DMRG on pyalps models; this package has no QDK interface for it. The [quench examples](examples/spin-quench.md) compare it with Q# product-formula circuits written from the exported Pauli terms; that circuit code is in the examples, not in this package. |
 
 Constrained fermionic t–J sites and mixtures of higher-dimensional spins or bosons with fermions need additional encoding validation; general export rejects them. Automatic boson cutoffs, MPS-to-circuit preparation and a general protocol compiler are not supplied. Operator export by itself does not prepare a state or run a circuit, and RDMs do not provide coherent state amplitudes.
 

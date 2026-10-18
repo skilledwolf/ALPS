@@ -62,6 +62,7 @@ markers = [
     "pyscf: needs the pyscf package for a reference value",
     "local_qdk: needs a qdk-chemistry build providing RdmContainer (unreleased as of 2.2.1)",
     "classic_dmrg: needs pyalps built with the classic_dmrg bindings",
+    "qsharp: needs the qdk package's Q# simulator",
 ]
 
 [tool.ruff]

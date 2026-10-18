@@ -4,9 +4,9 @@
 # Adapted from skilledwolf/alpsx (private repository), branch
 # agent/v3-execution-and-api-audit at d37e51227,
 # python/qdk-chemistry-alps/tests/conftest.py. Changes: the stack is pyalps
-# (models, ed) and qdk-chemistry; the native_dmrg, mps_qdk and qsharp gates
-# are replaced by classic_dmrg; the fock_matrix fixture stands in for alpsx's
-# Hamiltonian.to_sparse_matrix().
+# (models, ed) and qdk-chemistry; the native_dmrg and mps_qdk gates are
+# replaced by classic_dmrg, and the qsharp gate is kept; the fock_matrix
+# fixture stands in for alpsx's Hamiltonian.to_sparse_matrix().
 """Shared fixtures and capability gating.
 
 Every test module here imports this package, which imports pyalps at
@@ -17,11 +17,12 @@ resolved below:
 ``pyscf``         needs the pyscf package for a reference value
 ``classic_dmrg``  needs pyalps built with the classic_dmrg bindings
 ``local_qdk``     needs a qdk-chemistry providing RdmContainer
+``qsharp``        needs the qdk package's Q# simulator
 
 There is deliberately no speed tier: every model here is small enough that
-the whole suite runs in under a minute. The slowest tests are the examples
-(test_examples.py) and the plugin import-order checks, which spawn
-subprocesses.
+the whole suite runs in about a minute and a half. The slowest tests are the
+examples (test_examples.py; the Q# spin-1 quench alone takes about 30 s) and
+the plugin import-order checks, which spawn subprocesses.
 """
 
 from __future__ import annotations
@@ -92,6 +93,12 @@ def _pyscf() -> bool:
     return True
 
 
+def _qsharp() -> bool:
+    from qdk import qsharp  # noqa: F401
+
+    return True
+
+
 _CAPABILITIES = {
     "classic_dmrg": (
         _classic_dmrg,
@@ -102,6 +109,7 @@ _CAPABILITIES = {
         "needs a qdk-chemistry providing RdmContainer (unreleased as of 2.2.1)",
     ),
     "pyscf": (_pyscf, "needs pyscf"),
+    "qsharp": (_qsharp, "needs the qdk package's Q# simulator"),
 }
 
 
