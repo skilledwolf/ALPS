@@ -19,8 +19,9 @@ resolved below:
 ``local_qdk``     needs a qdk-chemistry providing RdmContainer
 
 There is deliberately no speed tier: every model here is small enough that
-the whole suite runs in seconds, and the slowest tests are the plugin
-import-order checks, which spawn subprocesses.
+the whole suite runs in under a minute. The slowest tests are the examples
+(test_examples.py) and the plugin import-order checks, which spawn
+subprocesses.
 """
 
 from __future__ import annotations
