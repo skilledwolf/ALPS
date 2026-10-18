@@ -277,12 +277,14 @@ void validate_full_conservation(TermSum const& terms,
             }
             expansion = std::move(next);
         }
-        for (auto const& [word, value] : expansion) {
+        for (auto const& entry : expansion) {
+            // A lambda may capture a structured binding only from C++20 on.
+            auto const& word = entry.first;
             bool const changes = std::any_of(conserved.begin(), conserved.end(), [&](auto const& name) {
                 return changes_charge(word, sites, name);
             });
             if (!changes) continue;
-            residuals[word] += value;
+            residuals[word] += entry.second;
         }
     }
     for (auto const& [word, sum] : residuals) {
