@@ -10,7 +10,7 @@
 >>> result.eigenvalues[0]                                        # doctest: +SKIP
 -5.387390917445...
 >>> spectrum = ed.model_spectrum(model, all_momenta=True, count=2)  # Sz and k resolved
->>> spin = models.spin()
+>>> spin = models.Spin()
 >>> ground = ed.ground_state(model, sector={"Sz": 0.0},
 ...                          observables={"SzSz": spin.Sz(0) * spin.Sz(1), "Sz": "Sz"})
 >>> ground.energy, ground.observables["SzSz"]                    # doctest: +SKIP

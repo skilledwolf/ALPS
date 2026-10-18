@@ -4,12 +4,12 @@
 # Adapted from skilledwolf/alpsx (private repository), branch
 # agent/v3-execution-and-api-audit at d37e51227,
 # python/qdk-chemistry-alps/src/qdk_chemistry_alps/abinitio.py. Changes: the
-# Hamiltonian is a pyalps.models.Hamiltonian on spinful_fermion() sites and
+# Hamiltonian is a pyalps.models.Hamiltonian on SpinfulFermion() sites and
 # zero integrals are always skipped; solve_ground_state returns the
 # pyalps.ed eigenstates (eigenvalues, eigenvectors, problem.states) and has
 # no engine selector, whose names all meant the one native solver. The
 # determinant helpers are unchanged, except that interleaved_to_blocked_parity
-# also takes stacked rows (written here); pyalps's spinful_fermion() has
+# also takes stacked rows (written here); pyalps's SpinfulFermion() has
 # alpsx's local basis and matrices. The term loops now run natively in
 # pyalps.models.ab_initio (same terms, order and coefficients; written here).
 """Ab initio Hamiltonians on the pyalps operator algebra.
@@ -56,7 +56,7 @@ def build_abinitio_hamiltonian(
 ) -> models.Hamiltonian:
     """Return a pyalps Hamiltonian for the given molecular integrals.
 
-    One site per spatial orbital (``spinful_fermion()``, dimension 4) on an
+    One site per spatial orbital (``SpinfulFermion()``, dimension 4) on an
     open chain, under the strict fermion convention with ``N`` and ``Sz``
     conserved. Every integral becomes an explicit operator term, so no
     lattice geometry is implied or used. Integrals that are zero or smaller
@@ -88,7 +88,7 @@ def solve_ground_state(H: models.Hamiltonian, n_alpha: int, n_beta: int, *, k: i
 # ---------------------------------------------------------------------------
 # Determinant bookkeeping: ALPS basis rows <-> (alpha, beta) occupations
 # ---------------------------------------------------------------------------
-# Local basis of spinful_fermion(): 0=|0>, 1=|up>, 2=|dn>, 3=|up,dn>.
+# Local basis of SpinfulFermion(): 0=|0>, 1=|up>, 2=|dn>, 3=|up,dn>.
 # The matrices (c_dag_up[3,2] = -1, c_dag_dn[3,1] = +1) realize
 # |up,dn> = c^+_dn c^+_up |0> — the dn mode comes FIRST within each site.
 # The global Fock ordering is therefore mode-interleaved as

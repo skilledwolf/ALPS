@@ -430,7 +430,7 @@ NB_MODULE(classic_dmrg_c, m) {
         .def_ro("iterations", &classic::MolecularResult::iterations)
         .def_ro("final_truncation_error", &classic::MolecularResult::final_truncation_error)
         .def_ro("mps", &classic::MolecularResult::mps,
-                "With keep_mps: the final state as one MatrixProductState over the orbitals, on spinful_fermion "
+                "With keep_mps: the final state as one MatrixProductState over the orbitals, on SpinfulFermion "
                 "sites (states 0, up, down, up-down); otherwise empty.")
         .def_prop_ro("iteration_energies", [](classic::MolecularResult const& r) {
             std::vector<double> values;

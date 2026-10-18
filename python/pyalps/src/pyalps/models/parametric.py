@@ -10,7 +10,7 @@
 
 >>> from pyalps import models
 >>> J, h = models.symbols("J", "h")
->>> spin = models.spin()
+>>> spin = models.Spin()
 >>> model = models.ParametricHamiltonian(models.lattice.chain(8), spin, conserved_quantum_numbers=["Sz"])
 >>> _ = model.add_bond(J, lambda i, j: spin.Sz(i) * spin.Sz(j) + 0.5 * (spin.Sp(i) * spin.Sm(j)).add_hc())
 >>> _ = model.add_site(-h, lambda i: spin.Sz(i))

@@ -194,13 +194,13 @@ def solve_molecular(one_body, two_body, n_alpha, n_beta, *, core_energy=0.0, int
     storage grows as the fourth power of the orbital count.
 
     ``observables`` maps names to ``pyalps.models`` term sums on
-    ``spinful_fermion()`` sites, site ``p`` being orbital ``p``, with real
+    ``SpinfulFermion()`` sites, site ``p`` being orbital ``p``, with real
     coefficients and at most four sites per product; they are measured on
     the final state with the RDMs and returned in ``result.observables``.
     Nothing can be measured after the call, as the engine keeps no state.
 
     ``keep_mps=True`` returns the final state as a ``MatrixProductState``
-    over the orbitals in ``result.mps[0]``, on ``spinful_fermion()`` sites
+    over the orbitals in ``result.mps[0]``, on ``SpinfulFermion()`` sites
     (local states 0, up, down, up-down) in the same mode order.
 
     ``ci_vector=True`` also returns the final state on every determinant of

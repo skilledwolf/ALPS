@@ -361,8 +361,8 @@ void bind_sites(nb::module_& m) {
 
     nb::class_<mdl::SiteBasis>(m, "SiteBasis",
         "A local Hilbert space: dimension, statistics, named operators, per-state quantum numbers and the "
-        "diagonal parity operator. Built-in sites come from spin(), boson(), hardcore_boson(), "
-        "spinless_fermion() and spinful_fermion().")
+        "diagonal parity operator. Built-in sites come from Spin(), Boson(), HardcoreBoson(), "
+        "SpinlessFermion() and SpinfulFermion().")
         .def("__init__", [](mdl::SiteBasis* self, int dim, nb::dict const& operators,
                             std::map<std::string, std::vector<double>> quantum_numbers, nb::handle statistics,
                             std::optional<std::vector<double>> parity_operator, std::vector<std::string> labels,
@@ -423,12 +423,14 @@ void bind_sites(nb::module_& m) {
             names[nb::str(kit.data(), kit.size())] = nb::str(catalog.data(), catalog.size());
         m.attr("catalog_operator_names") = names;  // kit name -> XML catalog name, accepted either way
     }
-    m.def("spin", &mdl::spin, nb::arg("S") = 0.5, "Spin S: Sz, Sp, Sm, Sx, Sy, S2; charge Sz; m from +S down.");
-    m.def("boson", &mdl::boson, nb::arg("n_max") = 3, "Truncated boson: a, a_dag, n (b aliases); charge N.");
-    m.def("hardcore_boson", &mdl::hardcore_boson, "Hard-core boson: a, a_dag, n; charge N.");
-    m.def("spinless_fermion", &mdl::spinless_fermion, "Spinless fermion: c, c_dag, n, F; charge N.");
-    m.def("spinful_fermion", &mdl::spinful_fermion,
-          "Spinful fermion (empty, up, down, double): c_up, c_dn, n_up, n_dn, Sz, ...; charges N and Sz.");
+    // Python names: CapWords for local spaces, lowercase for the model factories
+    // (as in alpsx's alps.models); the C++ factories are spin(), boson(), ...
+    m.def("Spin", &mdl::spin, nb::arg("S") = 0.5, "A SiteBasis: spin S with Sz, Sp, Sm, Sx, Sy, S2; charge Sz; m from +S down.");
+    m.def("Boson", &mdl::boson, nb::arg("n_max") = 3, "A SiteBasis: truncated boson with a, a_dag, n (b aliases); charge N.");
+    m.def("HardcoreBoson", &mdl::hardcore_boson, "A SiteBasis: hard-core boson with a, a_dag, n; charge N.");
+    m.def("SpinlessFermion", &mdl::spinless_fermion, "A SiteBasis: spinless fermion with c, c_dag, n, F; charge N.");
+    m.def("SpinfulFermion", &mdl::spinful_fermion,
+          "A SiteBasis: spinful fermion (empty, up, down, double) with c_up, c_dn, n_up, n_dn, Sz, ...; charges N and Sz.");
 
     nb::class_<mdl::LocalBasis>(m, "LocalBasis", "The ordered states of one site: labels, statistics, charges, parities.")
         .def(nb::init<>())
@@ -828,7 +830,7 @@ void bind_hamiltonian(nb::module_& m) {
         return mdl::hubbard(l, t, U, mu, bond_type);
     }, nb::arg("lattice"), nb::arg("t") = 1.0, nb::arg("U") = 1.0, nb::arg("mu") = 0.0, nb::arg("bond_type") = nb::none(),
        "-t hopping + U n_up n_dn - mu n; charges N and Sz.");
-    m.def("spinless_fermion_model", [](lat::Lattice const& l, double t, double mu, double V, std::optional<int> bond_type) {
+    m.def("spinless_fermion", [](lat::Lattice const& l, double t, double mu, double V, std::optional<int> bond_type) {
         return mdl::spinless_fermion_model(l, t, mu, V, bond_type);
     }, nb::arg("lattice"), nb::arg("t") = 1.0, nb::arg("mu") = 0.0, nb::arg("V") = 0.0, nb::arg("bond_type") = nb::none());
     m.def("t_j", [](lat::Lattice const& l, double t, double J, std::optional<int> bond_type) {
@@ -838,7 +840,7 @@ void bind_hamiltonian(nb::module_& m) {
           nb::arg("lattice"), nb::arg("t") = 1.0, nb::arg("J") = 1.0, nb::arg("mu") = 0.0,
           "Site type 0 itinerant spinful fermions, site type 1 localized spins; hopping on bond type 0, "
           "Kondo exchange on bond type 1.");
-    m.def("hardcore_boson_model", [](lat::Lattice const& l, double t, double mu, double V, std::optional<int> bond_type) {
+    m.def("hardcore_boson", [](lat::Lattice const& l, double t, double mu, double V, std::optional<int> bond_type) {
         return mdl::hardcore_boson_model(l, t, mu, V, bond_type);
     }, nb::arg("lattice"), nb::arg("t") = 1.0, nb::arg("mu") = 0.0, nb::arg("V") = 0.0, nb::arg("bond_type") = nb::none());
     m.def("bose_hubbard", [](lat::Lattice const& l, double t, double U, double mu, double V, int n_max,
@@ -859,7 +861,7 @@ void bind_hamiltonian(nb::module_& m) {
         return mdl::ab_initio(h, g, static_cast<int>(n), tol);
     }, nb::arg("h1"), nb::arg("eri"), nb::arg("tol") = 1e-12,
        "The molecular Hamiltonian of real one- and two-electron integrals (chemist's notation): one "
-       "spinful_fermion() site per orbital, strict convention, N and Sz conserved; integrals that are zero or "
+       "SpinfulFermion() site per orbital, strict convention, N and Sz conserved; integrals that are zero or "
        "below `tol` in magnitude are dropped.");
 }
 
@@ -951,7 +953,7 @@ void bind_qubits(nb::module_& m) {
         .def("__repr__", [](mdl::PauliOperator const& p) {
             return "PauliOperator(" + std::to_string(p.num_qubits) + " qubits, " + std::to_string(p.terms.size()) + " strings)";
         });
-    m.def("export_pauli", [](mdl::CompiledOperator const& op, mdl::PhysicalBasis const& basis,
+    m.def("to_pauli_operator", [](mdl::CompiledOperator const& op, mdl::PhysicalBasis const& basis,
                              std::optional<mdl::QubitEncoding> const& encoding, double tolerance, std::size_t max_terms,
                              bool require_hermitian, bool require_even, bool require_conservation,
                              std::size_t max_local_matrix_bytes, std::optional<double> validation_tolerance) {
@@ -962,7 +964,7 @@ void bind_qubits(nb::module_& m) {
     }, nb::arg("op"), nb::arg("basis"), nb::arg("encoding") = nb::none(), PYALPS_PAULI_OPTION_ARGS,
        "Pauli strings of a compiled operator on its physical basis (binary encoding unless one is given). "
        "Switch the three requirements off for an arbitrary observable.");
-    m.def("export_pauli", [](mdl::Hamiltonian const& model, std::optional<mdl::QubitEncoding> const& encoding,
+    m.def("to_pauli_operator", [](mdl::Hamiltonian const& model, std::optional<mdl::QubitEncoding> const& encoding,
                              double tolerance, std::size_t max_terms, bool require_hermitian, bool require_even,
                              bool require_conservation, std::size_t max_local_matrix_bytes,
                              std::optional<double> validation_tolerance) {

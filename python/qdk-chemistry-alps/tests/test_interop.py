@@ -174,7 +174,7 @@ def test_integral_extraction_reads_composite_and_derived_operators():
     """n, n_updn, Hermitian-conjugate names and a constant all decompose."""
     from pyalps import models
 
-    site = models.spinful_fermion()
+    site = models.SpinfulFermion()
 
     def op(name, i):
         return models.located(site, name, i)
@@ -203,7 +203,7 @@ def test_integral_extraction_reads_composite_and_derived_operators():
 def test_integral_extraction_rejects_non_chemist_hamiltonians(kind, names):
     from pyalps import models
 
-    site = models.spinful_fermion()
+    site = models.SpinfulFermion()
     H = models.Hamiltonian(models.lattice.chain(2, bc="open"), site, "strict")
     H.add(models.located(site, names[0], 0) * models.located(site, names[1], 1))
     with pytest.raises(ValueError):

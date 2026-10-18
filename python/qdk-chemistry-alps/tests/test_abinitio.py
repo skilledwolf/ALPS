@@ -28,7 +28,7 @@ from qdk_chemistry_alps.abinitio import (
     solve_ground_state,
 )
 
-# spinful_fermion() local basis: 0=|0>, 1=|up>, 2=|dn>, 3=|up,dn>.
+# SpinfulFermion() local basis: 0=|0>, 1=|up>, 2=|dn>, 3=|up,dn>.
 LOCAL_STATES = [
     ([0, 0], ([0, 0], [0, 0])),
     ([1, 0], ([1, 0], [0, 0])),
@@ -50,7 +50,7 @@ def test_local_basis_matches_the_decoding():
     """The decoding tables follow the pyalps site, not a remembered layout."""
     from pyalps import models
 
-    site = models.spinful_fermion()
+    site = models.SpinfulFermion()
     n_up = np.diag(np.asarray(site.op("n_up").matrix).real)
     n_dn = np.diag(np.asarray(site.op("n_dn").matrix).real)
     for local in range(4):
@@ -132,7 +132,7 @@ def _python_builder(h1, eri, tol=1e-12):
     from pyalps import models
 
     n = h1.shape[0]
-    site = models.spinful_fermion()
+    site = models.SpinfulFermion()
     H = models.Hamiltonian(models.lattice.chain(n, bc="open"), site, "strict", ["N", "Sz"])
     create, annihilate = {"u": "c_dag_up", "d": "c_dag_dn"}, {"u": "c_up", "d": "c_dn"}
 

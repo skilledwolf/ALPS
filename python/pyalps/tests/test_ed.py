@@ -39,7 +39,7 @@ def test_product_problem_on_a_charge_sector():
     hamiltonian = models.compile_hamiltonian(model).op
     np.testing.assert_allclose(result.expectation_values(hamiltonian), result.eigenvalues, atol=1e-10)
     np.testing.assert_allclose(ed.expectation_values(result, hamiltonian), result.eigenvalues, atol=1e-10)
-    spin = models.spin()
+    spin = models.Spin()
     correlation = model.operator_decomposition(models.located(spin, "Sz", 0) * models.located(spin, "Sz", 1)).op
     # SU(2) symmetry: <Sz Sz> on a bond is one third of the bond energy E0/N.
     assert result.expectation_values(correlation)[0].real == pytest.approx(CHAIN_8_GROUND_ENERGY / 8 / 3, abs=1e-10)
@@ -143,7 +143,7 @@ def test_explicit_projected_bases_and_operators():
     state = problem.eigenstates(count=1).eigenvectors[:, 0]
     np.testing.assert_allclose(ed.apply_projected_operator(hamiltonian, source, source, state), energies[0] * state, atol=1e-10)
     assert ed.expect_projected_operator(hamiltonian, source, state) == pytest.approx(energies[0], abs=1e-10)
-    spin = models.spin()
+    spin = models.Spin()
     raising = model.operator_decomposition(models.located(spin, "Sp", 0)).op
     cross = ed.projected_operator(raising, source, target)
     assert cross.shape == (target.dimension, source.dimension) and cross.nnz > 0
@@ -247,7 +247,7 @@ def test_catalog_models_take_the_model_entry_points():
 
 
 def test_ground_state_and_located_observables():
-    spin = models.spin()
+    spin = models.Spin()
     model = models.heisenberg(lat.chain(8))
     ground = ed.ground_state(model, sector={"Sz": 0.0},
                              observables={"SzSz": spin.Sz(0) * spin.Sz(1), "flip": spin.Sp(0) * spin.Sm(1), "Sz": "Sz"})
@@ -278,7 +278,7 @@ def test_ground_state_and_located_observables():
         ed.ground_state(catalog, observables={"kit": spin.Sz(0)})  # the catalog orders Sz upwards
 
 def test_sparse_assembly_matches_kronecker_products():
-    spin = models.spin()
+    spin = models.Spin()
     sz, sp, sm = (spin.op(name).matrix for name in ("Sz", "Sp", "Sm"))
     dimer = models.compile_hamiltonian(
         models.located(spin, "Sz", 0) * models.located(spin, "Sz", 1)

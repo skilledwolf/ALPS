@@ -56,9 +56,9 @@ from pyalps import models
 
 L, HALF, VMAX, DT = 10, 5, 10.0, 0.1
 lattice = models.lattice.chain(L, bc="open")
-initial = models.hardcore_boson_model(lattice, t=1.0, V=VMAX)
-free = models.hardcore_boson_model(lattice, t=1.0, V=0.0)
-interaction = models.hardcore_boson_model(lattice, t=0.0, V=1.0)  # sum_i n_i n_{i+1}
+initial = models.hardcore_boson(lattice, t=1.0, V=VMAX)
+free = models.hardcore_boson(lattice, t=1.0, V=0.0)
+interaction = models.hardcore_boson(lattice, t=0.0, V=1.0)  # sum_i n_i n_{i+1}
 
 
 def ramp_linear(tau):

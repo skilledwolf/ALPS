@@ -12,7 +12,7 @@
 
 >>> from pyalps import models
 >>> J, h = models.symbols("J", "h")
->>> spin = models.spin()
+>>> spin = models.Spin()
 >>> bond = J * spin.Sz(0) * spin.Sz(1) - h * spin.Sz(0)    # a SymbolicTermSum
 >>> sorted(s.name for s in bond.free_symbols())
 ['J', 'h']

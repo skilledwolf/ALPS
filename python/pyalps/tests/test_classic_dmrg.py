@@ -22,7 +22,7 @@ def exact(model, count=1, **sector):
 
 def test_open_chain_energy_and_measurements_match_exact_diagonalization():
     model = models.heisenberg(lat.chain(8, bc="open"))
-    spin = models.spin()
+    spin = models.Spin()
     reference = exact(model, Sz=0.0)
     result = dmrg.solve(model, sweeps=dmrg.fixed_sweeps(3, 60), sector={"Sz": 0.0},
                         measurements={"Sz": dmrg.site_terms(model, "Sz"), "SzSz": dmrg.pair_terms(model, "Sz", "Sz")},
@@ -61,7 +61,7 @@ def test_two_targets_in_a_fermionic_sector_with_a_callback():
     density = result.measurements["n"].values
     assert density.shape == (2, 6)
     np.testing.assert_allclose(density.sum(axis=1), 6.0, atol=1e-7)
-    densities = model.operator_decomposition(models.located(models.spinful_fermion(), "n", 0)).op
+    densities = model.operator_decomposition(models.located(models.SpinfulFermion(), "n", 0)).op
     np.testing.assert_allclose(density[:, 0], reference.expectation_values(densities).real, atol=1e-6)
     assert result.options.sweeps == [dmrg.SweepStates(20, 40), dmrg.SweepStates(60, 80), dmrg.SweepStates(100, 120),
                                      dmrg.SweepStates(140, 160)]
@@ -217,7 +217,7 @@ def test_catalog_models_solve_like_exact_diagonalization():
     named = dmrg.solve(ring, sector={"Sz": 0.0}, measurements={"Sz": "Sz"}, **exact_sweeps)
     np.testing.assert_allclose(named.measurements["Sz"].values[0], 0.0, atol=1e-8)
     assert len(named.measurements["Sz"].values[0]) == 8
-    spin = models.spin()
+    spin = models.Spin()
     kit = models.heisenberg(models.lattice.chain(8))
     located = dmrg.solve(kit, sector={"Sz": 0.0}, expectation={"SzSz": spin.Sz(0) * spin.Sz(1)}, **exact_sweeps)
     ground = ed.ground_state(kit, sector={"Sz": 0.0}, observables={"SzSz": spin.Sz(0) * spin.Sz(1)})
@@ -314,7 +314,7 @@ def test_solve_molecular_spin_blocks_observables_and_ci_vector_match_full_ci():
     n, n_alpha, n_beta = 4, 2, 1
     h1, eri = symmetric_integrals(n, seed=11)
     _, psi, expect, _ = fock_ground_state(h1, eri, n_alpha, n_beta)
-    fs = models.spinful_fermion()
+    fs = models.SpinfulFermion()
     def at(op, i):
         return models.located(fs, op, i)
     observables = {"doublon pair": at("n_updn", 0) * at("n_updn", 2), "spin flip": at("Sp", 0) * at("Sm", 3),
@@ -354,7 +354,7 @@ def test_solve_molecular_spin_blocks_observables_and_ci_vector_match_full_ci():
 def test_molecular_correlations_from_rdms_match_measured_observables():
     n = 4
     h1, eri = symmetric_integrals(n, seed=5)
-    fs = models.spinful_fermion()
+    fs = models.SpinfulFermion()
     names = {"n": "n", "n_up": "n_up", "n_dn": "n_dn", "Sz": "Sz"}
     observables = {}
     for i, j in itertools.product(range(n), repeat=2):
@@ -384,12 +384,12 @@ def test_molecular_correlations_from_rdms_match_measured_observables():
 
 def test_solve_molecular_rejects_invalid_observables():
     h1, eri = symmetric_integrals(5, seed=3)
-    fs = models.spinful_fermion()
+    fs = models.SpinfulFermion()
     for observable in (models.located(fs, "n", 5),
                        models.located(fs, "n", 0) * models.located(fs, "n", 1) * models.located(fs, "n", 2)
                        * models.located(fs, "n", 3) * models.located(fs, "n", 4),
                        models.located(fs, "Sy", 0),
-                       models.located(models.spin(0.5), "Sz", 0)):
+                       models.located(models.Spin(0.5), "Sz", 0)):
         with pytest.raises(ValueError):
             dmrg.solve_molecular(h1, eri, 2, 2, sweeps=dmrg.fixed_sweeps(1, 16), observables={"bad": observable})
 
@@ -455,7 +455,7 @@ def test_kept_mps_of_kit_models_are_the_exact_states():
 
 
 def test_kept_mps_in_complex_arithmetic_and_with_stored_products():
-    site = models.spinless_fermion()
+    site = models.SpinlessFermion()
     model = models.Hamiltonian(lat.nnn_chain(8, bc="open"), site, conserved_quantum_numbers=["N"])
     hop = lambda i, j: models.located(site, "c_dag", i) * models.located(site, "c", j)  # noqa: E731
     model.add_bond(-np.exp(0.4j), hop, bond_type=0, add_hc=True)
@@ -681,7 +681,7 @@ def test_iteration_energies_include_the_constant_terms():
     # energy adds it back, as the energies do: in solve, in the evolution's
     # preparation (the initial constant) and its targeting iterations (the
     # final one), and the molecular core energy.
-    spin = models.spin()
+    spin = models.Spin()
 
     def shifted(model, constant):
         if constant:

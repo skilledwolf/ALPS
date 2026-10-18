@@ -5,9 +5,9 @@
 # agent/v3-execution-and-api-audit at d37e51227,
 # python/qdk-chemistry-alps/src/qdk_chemistry_alps/interop.py. Changes:
 # pyalps names throughout (models.lattice.UnitCell and Lattice.build for the
-# graph lattice, models.spin() and models.located for spin operators,
+# graph lattice, models.Spin() and models.located for spin operators,
 # Factor.site/op/basis and models.Statistics for expanded terms,
-# models.PauliOperator from models.export_pauli); hamiltonian_to_integrals
+# models.PauliOperator from models.to_pauli_operator); hamiltonian_to_integrals
 # decomposes each local factor matrix into the site's own ladder operators
 # instead of looking its decomposition up by operator name, so derived names
 # (c_up_dag, ...) and other spinful sites with c_dag_up and c_dag_dn need no
@@ -29,7 +29,7 @@ so that neither package's model factories need duplicating:
 - :func:`qubit_operator_to_hamiltonian` / :func:`hamiltonian_to_qubit_operator`
   (spin-1/2 / dim-2 bosonic sites)
 - :func:`pauli_operator_to_qubit_operator` — wrap a native
-  :func:`pyalps.models.export_pauli` expansion (finite spins and bosons,
+  :func:`pyalps.models.to_pauli_operator` expansion (finite spins and bosons,
   strict fermions) as a QubitOperator
 - :func:`hamiltonian_to_integrals` — extract (h1, eri, ecore) from a
   particle-conserving strict-fermion pyalps Hamiltonian, with a
@@ -157,7 +157,7 @@ def qubit_operator_to_hamiltonian(
 
     qdk Pauli strings are little-endian (rightmost character = qubit 0);
     qubit ``i`` maps to site ``i``. Pauli matrices are ``2*S`` on the
-    ``models.spin()`` site, whose local state 0 is spin up (Pauli ``|0>``).
+    ``models.Spin()`` site, whose local state 0 is spin up (Pauli ``|0>``).
     An all-identity string becomes an explicit ``c * I(0)`` term so constant
     offsets survive the round trip.
 
@@ -184,7 +184,7 @@ def qubit_operator_to_hamiltonian(
             f"lattice has {lat.num_sites} sites but the operator acts on "
             f"{n} qubits"
         )
-    s = models.spin()
+    s = models.Spin()
     H = models.Hamiltonian(lat, s, conserved_quantum_numbers=list(conserved_qns))
 
     def pauli(name: str):
@@ -227,7 +227,7 @@ _PAULI_MATS = {
 def pauli_operator_to_qubit_operator(operator: PauliOperator) -> QubitOperator:
     """Convert a native pyalps Pauli expansion into a QDK container.
 
-    Build ``operator`` with :func:`pyalps.models.export_pauli`. This direct
+    Build ``operator`` with :func:`pyalps.models.to_pauli_operator`. This direct
     route supports binary/Gray finite spin and boson spaces, spinless pairing
     and complex/spin-mixing spinful models without chemistry integrals. Keep
     the pyalps result alongside the QDK operator: its ``encoding``,
@@ -344,7 +344,7 @@ def _ladder_decomposer(site_idx, basis):
     ):
         raise ValueError(
             "hamiltonian_to_integrals expects spinful-fermion sites with "
-            "c_dag_up and c_dag_dn (pyalps.models.spinful_fermion()); "
+            "c_dag_up and c_dag_dn (pyalps.models.SpinfulFermion()); "
             f"site {site_idx} has dimension {basis.dim} and "
             f"{basis.statistics} statistics"
         )

@@ -138,7 +138,7 @@ def test_xml_bridge_catalog_and_custom_routes(tmp_path):
 
 
 def test_built_in_sites_and_custom_sites():
-    spin = models.spin()
+    spin = models.Spin()
     assert (spin.dim, spin.statistics) == (2, models.Statistics.bosonic)
     assert {"Sz", "Sp", "Sm", "Sx", "Sy", "S2", "I"} <= set(spin.operator_names)
     np.testing.assert_allclose(spin.op("Sz").matrix, np.diag([0.5, -0.5]))
@@ -146,12 +146,12 @@ def test_built_in_sites_and_custom_sites():
     assert spin.op("Sp").qn_deltas == {"Sz": 1.0}
     assert spin.op("Sp").dag().name == "Sp_dag"
     assert spin.quantum_numbers == {"Sz": [0.5, -0.5]} and spin.parity_operator == [1.0, 1.0]
-    assert models.spin(1.0).dim == 3 and models.boson(2).dim == 3
-    fermion = models.spinful_fermion()
+    assert models.Spin(1.0).dim == 3 and models.Boson(2).dim == 3
+    fermion = models.SpinfulFermion()
     assert (fermion.dim, fermion.statistics) == (4, models.Statistics.fermionic)
     assert fermion.parity_operator == [1.0, -1.0, -1.0, 1.0]
     assert fermion.op("c_up").parity == models.Parity.odd and fermion.op("n_up").parity == models.Parity.even
-    assert models.spinless_fermion().op("c")(0, 1) == 1.0
+    assert models.SpinlessFermion().op("c")(0, 1) == 1.0
 
     custom = models.SiteBasis(
         2, {"X": [[0, 1], [1, 0]], "Z": [[1, 0], [0, -1]], "N": np.diag([0.0, 1.0])},
@@ -169,7 +169,7 @@ def test_built_in_sites_and_custom_sites():
 
 
 def test_catalog_spellings_and_named_adjoints():
-    spin, fermion = models.spin(), models.spinful_fermion()
+    spin, fermion = models.Spin(), models.SpinfulFermion()
     assert models.catalog_operator_names["Sp"] == "Splus" and models.catalog_operator_names["n_dn"] == "n_down"
     assert spin.op("Splus").name == "Sp" and spin.has_op("Sminus") and not spin.has_op("cdag_up")
     assert fermion.op("cdag_up").name == "c_dag_up" and fermion.op("double_occupancy").name == "n_updn"
@@ -193,7 +193,7 @@ def test_catalog_spellings_and_named_adjoints():
 
 
 def test_site_operator_sugar_observables_and_matrices():
-    spin, fermion = models.spin(), models.spinful_fermion()
+    spin, fermion = models.Spin(), models.SpinfulFermion()
     assert isinstance(spin.Sz, models.LocatedOperator) and spin.Sz.name == "Sz"
     for built in (spin.Sp(2), spin["Sp"](2), spin.Splus(2)):
         factor = built.terms[0].factors[0]
@@ -216,7 +216,7 @@ def test_site_operator_sugar_observables_and_matrices():
     with pytest.raises(ValueError):
         models.compile_observable(model, "c_up")
     with pytest.raises(ValueError):
-        models.compile_observable(model, models.spin(1.0).Sz(0))  # another local space
+        models.compile_observable(model, models.Spin(1.0).Sz(0))  # another local space
     with pytest.raises(TypeError):
         models.compile_observable(models.physical_basis(model), "Sz")
 
@@ -243,7 +243,7 @@ def test_sign_problem_check():
 
 def test_symbolic_coefficients_and_parametric_models():
     J, h = models.symbols("J", "h")
-    spin = models.spin()
+    spin = models.Spin()
     bond = spin.Sz(0) * spin.Sz(1)
     for symbolic in (J * bond, bond * J, 2 * J * bond, J * h * bond, bond * np.float64(0.5) * J):
         assert isinstance(symbolic, models.SymbolicTermSum)
@@ -281,7 +281,7 @@ def test_symbolic_coefficients_and_parametric_models():
 
 
 def test_validation_reports_every_diagnostic():
-    spin = models.spin()
+    spin = models.Spin()
     codes = lambda model, target=None: [d.code for d in models.validate(model, target)]
     clean = models.heisenberg(lat.chain(8, bc="open"))
     report = models.validate(clean, "ed")
@@ -319,7 +319,7 @@ def test_validation_reports_every_diagnostic():
         models.validate(models.CatalogModel({"MODEL": "spin", "LATTICE": "chain lattice", "L": 4}))
 
 def test_term_algebra_and_compilation():
-    spin = models.spin()
+    spin = models.Spin()
     sites = [spin, spin]
     hopping = models.located(spin, "Sp", 0) * models.located(spin, "Sm", 1)
     exchange = 0.5 * hopping.add_hc() + models.located(spin, "Sz", 0) * models.located(spin, "Sz", 1)
@@ -352,7 +352,7 @@ def test_term_algebra_and_compilation():
 
 
 def test_in_place_sums_append_in_order_and_change_the_object():
-    spin = models.spin()
+    spin = models.Spin()
     a = 0.5 * models.located(spin, "Sp", 0) * models.located(spin, "Sm", 1)
     b = models.located(spin, "Sz", 0) - 2j * models.located(spin, "Sz", 1)
     reference = a + b
@@ -369,7 +369,7 @@ def test_in_place_sums_append_in_order_and_change_the_object():
 
 
 def test_hamiltonian_templates_reproduce_the_built_in_model():
-    spin = models.spin()
+    spin = models.Spin()
     chain = lat.chain(4)
     model = models.Hamiltonian(chain, spin, conserved_quantum_numbers=["Sz"])
     sz_sz = lambda i, j: models.located(spin, "Sz", i) * models.located(spin, "Sz", j)  # noqa: E731
@@ -391,7 +391,7 @@ def test_hamiltonian_templates_reproduce_the_built_in_model():
     assert ground_energy(field) == pytest.approx(-2.0, abs=1e-12)
     assert field.physical_basis().conserved_quantum_numbers == []
 
-    mixed = models.Hamiltonian(lat.honeycomb(1, 2), {0: models.spin(0.5), 1: models.spin(1.0)})
+    mixed = models.Hamiltonian(lat.honeycomb(1, 2), {0: models.Spin(0.5), 1: models.Spin(1.0)})
     assert mixed.site_dims == [2, 3, 2, 3]
     hubbard = models.hubbard(lat.chain(2, bc="open"), t=1.0, U=4.0)
     assert hubbard.site_dims == [4, 4] and hubbard.conserved_quantum_numbers == ["N", "Sz"]
@@ -400,8 +400,8 @@ def test_hamiltonian_templates_reproduce_the_built_in_model():
     assert basis.sites[1].quantum_numbers["N"] == [0.0, 1.0, 1.0, 2.0]
     assert basis == hubbard.physical_basis() and basis != models.physical_basis(model)
     for factory in (models.ising, models.xxz, models.xy, models.transverse_field_ising, models.heisenberg_d,
-                    models.biquadratic, models.j1j2, models.t_j, models.hardcore_boson_model, models.bose_hubbard,
-                    models.spinless_fermion_model):
+                    models.biquadratic, models.j1j2, models.t_j, models.hardcore_boson, models.bose_hubbard,
+                    models.spinless_fermion):
         assert factory(chain).num_sites == 4
     assert models.kondo_lattice(lat.honeycomb(1, 2)).site_dims == [4, 2, 4, 2]  # two vertex types
     assert models.j1j2(lat.nnn_chain(4)).lattice.num_bonds == 8
@@ -413,7 +413,7 @@ def test_python_specifications_are_evaluated_when_added():
     import gc
     import weakref
 
-    spin = models.spin()
+    spin = models.Spin()
     model = models.Hamiltonian(lat.chain(4), spin)
     spec = lambda i, j: models.located(spin, "Sz", i) * models.located(spin, "Sz", j)  # noqa: E731
     alive = weakref.ref(spec)
@@ -436,7 +436,7 @@ def test_python_specifications_are_evaluated_when_added():
 
 
 def test_physical_basis_values():
-    basis = models.physical_basis([models.spin(), models.spinless_fermion()], conserved_quantum_numbers=["N"])
+    basis = models.physical_basis([models.Spin(), models.SpinlessFermion()], conserved_quantum_numbers=["N"])
     assert basis.num_sites == 2 and basis.conserved_quantum_numbers == ["N"]
     assert basis.sites[0].labels == ["0", "1"] and basis.sites[0].quantum_numbers["N"] == [0.0, 0.0]
     assert basis.sites[1].parity == [1.0, -1.0] and basis.sites[1].statistics == models.Statistics.fermionic
@@ -448,12 +448,12 @@ def test_physical_basis_values():
     with pytest.raises(ValueError):
         models.validate_basis(models.PhysicalBasis([models.LocalBasis(["a"], "bosonic", {}, [2.0])]))
     with pytest.raises(ValueError):
-        models.physical_basis([models.spin()], conserved_quantum_numbers=["N"])
+        models.physical_basis([models.Spin()], conserved_quantum_numbers=["N"])
 
 
 def test_pauli_export_and_qubit_encoding():
     model = models.heisenberg(lat.chain(4, bc="open"))
-    pauli = models.export_pauli(model)
+    pauli = models.to_pauli_operator(model)
     assert pauli.num_qubits == 4 and pauli.site_qubits == [1, 1, 1, 1]
     assert len(pauli) == 9 and all(abs(c - 0.25) < 1e-15 for c in pauli.terms.values())
     assert {s[-2:] for s in pauli.terms if s.startswith("II")} == {"XX", "YY", "ZZ"}
@@ -476,21 +476,21 @@ def test_pauli_export_and_qubit_encoding():
     decoded, discarded = gray.decode_statevector(encoded)
     np.testing.assert_array_equal(decoded, physical)
     assert discarded == 0 and gray.physical_weight(encoded) == pytest.approx(1.0)
-    same = models.export_pauli(models.compile_hamiltonian(model).op, basis, encoding=gray)
+    same = models.to_pauli_operator(models.compile_hamiltonian(model).op, basis, encoding=gray)
     assert same.terms == pauli.terms
     with pytest.raises(ValueError):
-        models.export_pauli(models.compile_hamiltonian(model).op, models.physical_basis([models.spin()] * 3))
+        models.to_pauli_operator(models.compile_hamiltonian(model).op, models.physical_basis([models.Spin()] * 3))
 
-    spin = models.spin()
+    spin = models.Spin()
     raising = model.operator_decomposition(models.located(spin, "Sp", 2)).op
     with pytest.raises(ValueError):
-        models.export_pauli(raising, basis)
-    exported = models.export_pauli(raising, basis, require_hermitian=False, require_even=False,
+        models.to_pauli_operator(raising, basis)
+    exported = models.to_pauli_operator(raising, basis, require_hermitian=False, require_even=False,
                                    require_conservation=False)
     assert set(exported.terms) == {"IXII", "IYII"}
 
     hubbard = models.hubbard(lat.chain(2, bc="open"), t=1.0, U=4.0)
-    fermions = models.export_pauli(hubbard)
+    fermions = models.to_pauli_operator(hubbard)
     assert fermions.num_qubits == 4 and fermions.fermion_mode_qubits == [1, 0, 3, 2]
     hubbard_reference = ed.prepare_product(hubbard).hamiltonian.toarray()
     np.testing.assert_allclose(np.linalg.eigvalsh(pauli_matrix(fermions)), np.linalg.eigvalsh(hubbard_reference), atol=1e-12)
@@ -539,7 +539,7 @@ def test_catalog_model_matches_the_kit():
     on_ladder = models.CatalogModel(ladder, {"MODEL": "spin", "J0": 1.0, "J1": 0.4, "local_S": 0.5,
                                              "CONSERVED_QUANTUMNUMBERS": "Sz"})
     assert on_ladder.num_sites == 6 and on_ladder.num_bonds == 7
-    spin = models.spin()
+    spin = models.Spin()
     kit = models.heisenberg(ladder, J=1.0, bond_type=0)
     kit.add_bond(0.4, lambda i, j: (models.located(spin, "Sz", i) * models.located(spin, "Sz", j)
                                     + 0.5 * (models.located(spin, "Sp", i) * models.located(spin, "Sm", j)).add_hc()),

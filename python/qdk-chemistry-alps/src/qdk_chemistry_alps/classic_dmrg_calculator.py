@@ -78,7 +78,7 @@ class AlpsClassicDmrgCalculator(MultiConfigurationCalculator):
     :meth:`make_rdms`, :meth:`measure_local`, :meth:`measure_correlations`
     and :meth:`spin_spin_correlations` read the last run. Other operators are
     measured in the final sweep: set :attr:`observables` to a dict of
-    ``pyalps.models`` term sums on ``spinful_fermion()`` sites (site ``p`` is
+    ``pyalps.models`` term sums on ``SpinfulFermion()`` sites (site ``p`` is
     orbital ``p``) before :meth:`run`, and read the values from
     ``last_result.observables``.
     """

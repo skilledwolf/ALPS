@@ -222,7 +222,7 @@ def test_measurements_match_exact_diagonalization(integrals):
 
     h1, eri = integrals(4, seed=6)
     calculator = _classic(**CONVERGED)
-    fs = models.spinful_fermion()
+    fs = models.SpinfulFermion()
     at = lambda op, i: models.located(fs, op, i)  # noqa: E731
     calculator.observables = {"pair hop": at("c_dag_up", 0) * at("c_dag_dn", 0) * at("c_dn", 3) * at("c_up", 3)
                               + at("c_dag_up", 3) * at("c_dag_dn", 3) * at("c_dn", 0) * at("c_up", 0)}

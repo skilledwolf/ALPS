@@ -41,8 +41,8 @@ from pyalps import models
 
 L, HALF = 10, 5
 lattice = models.lattice.chain(L, bc="open")
-cdw = models.hardcore_boson_model(lattice, t=1.0, V=10.0)
-free = models.hardcore_boson_model(lattice, t=1.0, V=0.0)
+cdw = models.hardcore_boson(lattice, t=1.0, V=10.0)
+free = models.hardcore_boson(lattice, t=1.0, V=0.0)
 SECTOR = {"N": HALF}
 
 # %% [markdown]
@@ -75,7 +75,7 @@ print("final density  ", np.round(density[-1], 3))
 # longer, so the echo stays high until $V$ has dropped.
 
 # %%
-interaction = models.hardcore_boson_model(lattice, t=0.0, V=1.0)  # sum_i n_i n_{i+1}
+interaction = models.hardcore_boson(lattice, t=0.0, V=1.0)  # sum_i n_i n_{i+1}
 
 
 def ramp_down(tau):
