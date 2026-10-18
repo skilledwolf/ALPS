@@ -1,0 +1,158 @@
+{
+  "anisotropy": [
+    -1.0,
+    0.0,
+    1.0,
+    2.0,
+    4.0
+  ],
+  "reference_energy": [
+    -6.443660028811393,
+    -2.986086349501625,
+    -0.8475881269990635,
+    0.1810658111972228,
+    0.8555992459053586
+  ],
+  "dmrg_energy": [
+    -6.443660028811392,
+    -2.9860863495016283,
+    -0.8475881269990645,
+    0.18106581119721896,
+    0.8555992459053572
+  ],
+  "binary_energy": [
+    -6.443660028811388,
+    -2.9860863495016257,
+    -0.8475881269990629,
+    0.18106581119721987,
+    0.855599245905367
+  ],
+  "gray_energy": [
+    -6.443660028811394,
+    -2.9860863495016274,
+    -0.8475881269990668,
+    0.18106581119721946,
+    0.8555992459053859
+  ],
+  "mean_sz_squared": [
+    0.9338809823392733,
+    0.7379123761274227,
+    0.3703002803898139,
+    0.1646327459094509,
+    0.04105829251452689
+  ],
+  "bond_sz_correlation": [
+    -0.9283409345550211,
+    -0.678223527188104,
+    -0.2324813745453867,
+    -0.09724250874993175,
+    -0.02527456737850586
+  ],
+  "encoding_diagnostics": {
+    "binary": {
+      "layout": {
+        "scheme": "binary",
+        "num_qubits": 8,
+        "site_dimensions": [
+          3,
+          3,
+          3,
+          3
+        ],
+        "site_qubits": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "site_offsets": [
+          0,
+          2,
+          4,
+          6
+        ]
+      },
+      "qubits": 8,
+      "pauli_terms": 160,
+      "local_decompositions": 12,
+      "local_cache_hits": 72,
+      "discarded_l1": 0.0
+    },
+    "gray": {
+      "layout": {
+        "scheme": "gray",
+        "num_qubits": 8,
+        "site_dimensions": [
+          3,
+          3,
+          3,
+          3
+        ],
+        "site_qubits": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "site_offsets": [
+          0,
+          2,
+          4,
+          6
+        ]
+      },
+      "qubits": 8,
+      "pauli_terms": 160,
+      "local_decompositions": 12,
+      "local_cache_hits": 72,
+      "discarded_l1": 0.0
+    }
+  },
+  "maximum_operator_error": 7.993605777301127e-15,
+  "model": {
+    "sites": 4,
+    "spin": 1,
+    "boundary": "open",
+    "J": [
+      1.0,
+      0.8,
+      1.2
+    ],
+    "K": 0.18,
+    "h": [
+      0.07,
+      -0.11,
+      0.16,
+      -0.03
+    ],
+    "constant": 0.37,
+    "units": "hbar=1, J0=1"
+  },
+  "dmrg_controls": {
+    "sector": {
+      "Sz": 0
+    },
+    "sweeps": 6,
+    "states": 32
+  },
+  "provenance": {
+    "revision": "d558b4c28ac59df694524a3cc38e59d5a2610124",
+    "generated_utc": "2026-10-18T21:14:44.681755+00:00",
+    "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+    "working_tree_dirty": false,
+    "tracked_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "script": "spin_one_anisotropy.py",
+    "script_sha256": "49505056e6bb68d2757f46c5bc9669fedfb80eb806b0c6497a59dbc6a1821c67",
+    "versions": {
+      "pyalps": "3.0.0",
+      "qdk": "1.33.1",
+      "qdk-chemistry": "2.2.1",
+      "qdk-chemistry-alps": "0.2.0.dev0",
+      "numpy": "2.3.5",
+      "scipy": "1.18.1"
+    },
+    "python": "3.13.16 (main, Sep 30 2026, 18:57:20) [Clang 21.0.0 (clang-2100.3.34.2)]",
+    "runtime_seconds": 0.6570789170000353,
+    "saved_results": true
+  }
+}
