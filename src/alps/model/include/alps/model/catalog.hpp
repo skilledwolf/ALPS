@@ -12,9 +12,9 @@
 // <alps/models/compiled.hpp> operators; conserved_quantum_numbers, sector
 // and local_charge follow the charge derivation of alpsx's
 // src/solvers/diag/src/runtime/catalog_problem.cpp. Added here: kit operator
-// names resolve through <alps/models/operator_names.hpp>, global
-// operators with n-site terms (ALPSim/ALPS PR 223) are refused, and
-// translations() takes the momentum generators from the legacy lattice the
+// names resolve through <alps/models/operator_names.hpp>, n-site terms
+// (ALPSim/ALPS PR 223) compile from hamiltonian_matrix's local tables (see
+// the n-site append_operator), and translations() takes the momentum generators from the legacy lattice the
 // way the diag applications do (see its definition).
 #ifndef ALPS_MODEL_CATALOG_HPP
 #define ALPS_MODEL_CATALOG_HPP
@@ -76,7 +76,7 @@ public:
 
   explicit CatalogModel(Parameters const& parameters)
     : parms(parameters), graph_(parameters),
-      model_(graph_, parameters, is_symbolic<Scalar>::type::value) {}
+      model_(graph_, parameters, is_symbolic<Scalar>::type::value, true) {}
   /// A kit lattice in place of the catalog's: its own sites, types, bonds and
   /// coordinates, parsed from memory as the custom <LATTICEGRAPH> document of
   /// <alps/models/lattice_xml.hpp> (LATTICE is set to its content-addressed
@@ -162,7 +162,7 @@ public:
 private:
   CatalogModel(Parameters const& parameters, std::istringstream&& library)
     : parms(parameters), graph_(library, parameters),
-      model_(graph_, parameters, is_symbolic<Scalar>::type::value) {}
+      model_(graph_, parameters, is_symbolic<Scalar>::type::value, true) {}
   static Parameters kit_parameters(lattice::Lattice const& lattice, Parameters p) {
     p["LATTICE"] = lattice::custom_lattice_name(lattice);
     return p;
@@ -174,6 +174,8 @@ private:
   void append_operator(CompiledOperator&, SiteOperator const&) const;
   void append_operator(CompiledOperator&, BondOperator const&) const;
   void append_operator(CompiledOperator&, GlobalOperator const&) const;
+  void append_operator(CompiledOperator&, nsite_matrix<value_type> const&, nsite_group const&,
+                       std::vector<std::vector<double>> const& parity) const;
   // A kit spelling (Sp, c_dag_up, n_dn, ...) of an operator the site bases
   // spell differently; any name the catalog defines is kept.
   std::string catalog_operator_name(std::string const&) const;
@@ -327,17 +329,105 @@ void CatalogModel<Scalar,G>::append_operator(CompiledOperator& result, const Bon
 template <class Scalar, class G>
 void CatalogModel<Scalar,G>::append_operator(CompiledOperator& result, const GlobalOperator& op) const
 {
-  // Only hamiltonian_matrix applies <NSITETERM>s (ALPSim/ALPS PR 223).
-  // model_helper refuses them in the Hamiltonian; a global operator with
-  // them is refused here instead of being compiled without them.
-  if (op.has_nsite_terms() && graph_.num_nsite_groups())
-    throw std::invalid_argument("catalog model: global operator " + op.name()
-      + " has <NSITETERM>s (n-site terms) and the lattice has <NSITE>s; only site and bond terms compile");
   // Preserve expression evaluation order, including random calls.
   for (auto it = graph_.sites().first; it != graph_.sites().second; ++it)
     append_operator(result, op.site_term(graph_.site_type(*it)), *it);
   for (auto it = graph_.bonds().first; it != graph_.bonds().second; ++it)
     append_operator(result, op.bond_term(graph_.bond_type(*it)), *it);
+  // n-site terms on the n-site groups, as hamiltonian_matrix::apply_operator
+  // builds them: the local table depends only on the group type and the site
+  // types, so it is built once per combination.
+  if (!op.has_nsite_terms() || !graph_.num_nsite_groups()) return;
+  auto const parity = local_parity();
+  std::map<std::pair<unsigned int, std::vector<unsigned int>>, nsite_matrix<value_type>> tables;
+  for (auto const& group : graph_.nsite_groups()) {
+    std::pair<unsigned int, std::vector<unsigned int>> key(group.type, {});
+    for (auto site : group.sites) key.second.push_back(graph_.site_type(site));
+    auto table = tables.find(key);
+    if (table == tables.end()) {
+      NSiteOperator const term = op.nsite_term(group.type);
+      nsite_matrix<value_type> local;
+      if (!term.term().empty()) {
+        std::vector<SiteBasisDescriptor<short>> bases;
+        for (auto site : group.sites) bases.push_back(model_.model().basis().site_basis(graph_.site_type(site)));
+        local = term.template matrix<value_type>(bases, parms);
+      }
+      table = tables.emplace(key, std::move(local)).first;
+    }
+    append_operator(result, table->second, group, parity);
+  }
+}
+
+// One n-site table on one group. hamiltonian_matrix applies a product
+// O_0 O_1 ... O_{n-1} (role order) as a product of fermion operators: an odd
+// O_r carries the parity of the sites before its own, counted after the
+// operators to its right have acted. On distinct sites those operators
+// anticommute when both are odd and commute otherwise, so the product is the
+// same operators in ascending site order times (-1) per pair of odd ones the
+// reordering exchanges; that ordered product is the local factors times the
+// parity of every site with an odd number of odd factors above it, the
+// strict convention's Jordan-Wigner string, read from the input state (as
+// ALPS::models emits it). A local operator with elements of both parities
+// is split into its even and odd parts, as hamiltonian_matrix decides the
+// parity element by element. A product of identities is a scalar term.
+template <class Scalar, class G>
+void CatalogModel<Scalar,G>::append_operator(CompiledOperator& result, nsite_matrix<value_type> const& table,
+                                         nsite_group const& group,
+                                         std::vector<std::vector<double>> const& parity) const
+{
+  struct Part { int site; std::vector<std::complex<double>> matrix; bool odd; };
+  for (auto const& product : table.products) {
+    // Per non-identity role (role order), its parts of definite parity.
+    std::vector<std::vector<Part>> roles;
+    for (std::size_t r = 0; r < product.ops.size(); ++r) {
+      if (product.ops[r] < 0) continue;
+      auto const site = group.sites[r];
+      auto const& local = table.locals[static_cast<std::size_t>(product.ops[r])];
+      std::size_t const dim = local.size();
+      Part even{static_cast<int>(site), std::vector<std::complex<double>>(dim * dim), false}, odd = even;
+      odd.odd = true;
+      bool has_even = false, has_odd = false;
+      for (std::size_t input = 0; input < dim; ++input)
+        for (auto const& [output, value] : local[input]) {
+          bool const flips = parity[site][input] != parity[site][output];
+          (flips ? odd : even).matrix[output * dim + input] = value;
+          (flips ? has_odd : has_even) = true;
+        }
+      roles.emplace_back();
+      if (has_even) roles.back().push_back(std::move(even));
+      if (has_odd) roles.back().push_back(std::move(odd));
+      if (roles.back().empty()) break; // a vanishing factor
+    }
+    if (!roles.empty() && roles.back().empty()) continue;
+    std::vector<std::size_t> choice(roles.size(), 0);
+    while (true) {
+      std::vector<Part const*> parts;
+      for (std::size_t r = 0; r < roles.size(); ++r) parts.push_back(&roles[r][choice[r]]);
+      // Insertion sort into ascending site order, counting exchanged odd pairs.
+      double sign = 1.;
+      for (std::size_t i = 1; i < parts.size(); ++i)
+        for (std::size_t j = i; j > 0 && parts[j - 1]->site > parts[j]->site; --j) {
+          if (parts[j - 1]->odd && parts[j]->odd) sign = -sign;
+          std::swap(parts[j - 1], parts[j]);
+        }
+      LocalTerm term{sign * std::complex<double>(product.coef), {}, {}};
+      std::size_t odd_above = 0;
+      for (auto const* part : parts) odd_above += part->odd;
+      int site = 0;
+      for (auto const* part : parts) {
+        for (; site < part->site; ++site)
+          if (odd_above % 2) term.jordan_wigner.push_back(site);
+        if (part->odd) --odd_above;
+        if (odd_above % 2) term.jordan_wigner.push_back(site);
+        ++site;
+        term.factors.push_back({part->site, part->matrix});
+      }
+      result.terms.push_back(std::move(term));
+      std::size_t r = 0;
+      while (r < roles.size() && ++choice[r] == roles[r].size()) choice[r++] = 0;
+      if (r == roles.size()) break;
+    }
+  }
 }
 
 template <class Scalar, class G>
