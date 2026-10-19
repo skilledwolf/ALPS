@@ -179,8 +179,6 @@ struct Problem {
     std::optional<std::size_t> energy_plan;
 };
 
-bool is_odd_integer(double value) { return std::llround(value) % 2 != 0; }
-
 std::vector<Charge> select_charges(models::PhysicalBasis const& basis, Options const& options) {
     std::vector<Charge> charges;
     auto const& declared = basis.conserved_quantum_numbers;

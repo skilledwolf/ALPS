@@ -8,7 +8,9 @@
 // rework of src/apps/dmrg/dmrg/dmtk in this tree (Adrian Feiguin's dmtk).
 // Adaptation: "dmtk/" include paths; dmtk::half_integer and dmtk/support.hpp
 // replace the ALPS model and utility headers; the header includes <map>,
-// which it uses (the engine tests include it without a prior <map>).
+// which it uses (the engine tests include it without a prior <map>); the
+// scratch-file name buffers are sized from _name, so GCC's
+// -Wformat-truncation has nothing to report.
 
 #ifndef DMTK_SYSTEM_H_
 #define DMTK_SYSTEM_H_
@@ -770,7 +772,7 @@ class System
 
     void write_gs(const VectorState<T> &gs, int n, int position = RIGHT) const
     {
-      char file[255];
+      char file[sizeof(_name) + 32];
       if(position == LEFT)
         snprintf(file, sizeof(file), "gs_%s_%i_l.dat",_name,n);
       else
@@ -804,7 +806,7 @@ class System
 
     void read_gs(VectorState<T> &gs, int n, int position = RIGHT)
     {
-      char file[255];
+      char file[sizeof(_name) + 32];
       if(position == LEFT)
         snprintf(file, sizeof(file), "gs_%s_%i_l.dat",_name,n);
       else
@@ -840,7 +842,7 @@ class System
 
     void write_rho(const BMatrix<T> &m, const Basis& basis, int n, int position) const
     {
-      char file[255];
+      char file[sizeof(_name) + 32];
       if(position == LEFT)
         snprintf(file, sizeof(file), "rho_%s_%i_l.dat",_name,n);
       else
@@ -861,7 +863,7 @@ class System
 
     void read_rho(BMatrix<T> &m, Basis &basis, int n, int position)
     {
-      char file[255];
+      char file[sizeof(_name) + 32];
       if(position == LEFT)
         snprintf(file, sizeof(file), "rho_%s_%i_l.dat",_name,n);
       else
@@ -882,7 +884,7 @@ class System
 
     void write_block(const Block<T> &b, int n, int position) const
     {
-      char file[255];
+      char file[sizeof(_name) + 32];
       if(position == LEFT)
         snprintf(file, sizeof(file), "block_%s_%i_l.dat",_name,n);
       else
@@ -911,7 +913,7 @@ class System
         return; 
       }
 
-      char file[255];
+      char file[sizeof(_name) + 32];
       if(position == LEFT)
         snprintf(file, sizeof(file), "block_%s_%i_l.dat",_name,n);
       else
@@ -938,7 +940,7 @@ class System
     // block is written again.
     void discard_block(int n, int position)
     {
-      char file[255];
+      char file[sizeof(_name) + 32];
       if(position == LEFT)
         snprintf(file, sizeof(file), "block_%s_%i_l.dat",_name,n);
       else
@@ -1043,7 +1045,7 @@ System<T>::warmup_loop(size_t t, const Vector<QN> &qns)
   bool save_use_seed = _use_seed;
   _use_seed = false;
 
-  char file[255];
+  char file[sizeof(_name) + 32];
   snprintf(file, sizeof(file), "iter_%s.dat",_name);
   ofstream outputfile(tmp_files.get_filename(file),std::ios::out|std::ios::app);
   if(!outputfile) dmtk::err() << "*** ERROR: could not open " << file << endl;
@@ -1282,7 +1284,7 @@ System<T>::sweep(size_t t1, size_t t2, size_t _dir, int start)
   int sweep_max = full_sweep() ? ls-2 : ls-3;
   qn = qnt;
 
-  char file[255];
+  char file[sizeof(_name) + 32];
   snprintf(file, sizeof(file), "iter_%s.dat",_name);
   ofstream outputfile(tmp_files.get_filename(file),std::ios::out|std::ios::app);
   if(!outputfile) dmtk::err() << "*** ERROR: could not open " << file << endl;
@@ -1424,7 +1426,7 @@ System<T>::final_sweep(size_t t, size_t _dir, int _start, bool _rotate )
   const bool save_certify = _lanczos_certify;
   _lanczos_certify = true;
 
-  char file[255];
+  char file[sizeof(_name) + 32];
   snprintf(file, sizeof(file), "iter_%s.dat",_name);
   ofstream outputfile(tmp_files.get_filename(file),std::ios::out|std::ios::app);
   if(!outputfile) dmtk::err() << "*** ERROR: could not open " << file << endl;
@@ -1661,7 +1663,7 @@ System<T>::init_iteration(const B&b1, const B&b2, const B&b3, const B&b4, bool u
        for(int i = 0; i < QN::max_index(); i++)
          if(_grand_canonical & (1 << i)) dmtk::out() << QN::qn_name(i) << " = " << qnt[i] << endl;
     }
-  char file[255];
+  char file[sizeof(_name) + 32];
   snprintf(file, sizeof(file), "iter_%s.dat",_name);
   ofstream outputfile(tmp_files.get_filename(file),std::ios::out|std::ios::app);
   if(!outputfile) dmtk::err() << "*** ERROR: could not open " << file << endl;
@@ -1863,7 +1865,7 @@ System<T>::diagonalize(bool use_seed)
   int n = _lanczos_maxiter;
   if(_target_subspaces && _in_warmup && lattice().size() != size()) n = 0;
 
-  char file[255];
+  char file[sizeof(_name) + 32];
   snprintf(file, sizeof(file), "vectors_%s.dat",_name);
 
   if(verbose() > 0) dmtk::out() << ">>>>>>> LANCZOS <<<<<<<" << endl;
@@ -2000,7 +2002,7 @@ System<T>::build_target_states(int /*pos*/)
     Vector<double> a(100);
     Vector<double> b(100);
     Vector<double> e(1);
-    char file[255];
+    char file[sizeof(_name) + 32];
     snprintf(file, sizeof(file), "vectors_%s.dat",_name);
     int n = _lanczos_maxiter;
 
@@ -2319,7 +2321,7 @@ System<T>::truncate(int position, int new_size)
     dmtk::out() << "Truncation time: " << dmtk::format_elapsed(clock.elapsed()) << endl;
   dmtk::out() << "-------------------------------------------\n";
 
-  char file[255];
+  char file[sizeof(_name) + 32];
   snprintf(file, sizeof(file), "iter_%s.dat",_name);
   ofstream outputfile(tmp_files.get_filename(file),std::ios::out|std::ios::app);
   if(!outputfile) dmtk::err() << "*** ERROR: could not open " << file << endl;
@@ -2757,7 +2759,7 @@ System<T>::rotate(int position, Block<T>& b)
     dmtk::out() << "Rotation time: " << dmtk::format_elapsed(clock.elapsed()) << endl;
     dmtk::out() << "-------------------------------------------\n";
   }
-  char file[255];
+  char file[sizeof(_name) + 32];
   snprintf(file, sizeof(file), "iter_%s.dat",_name);
   ofstream outputfile(tmp_files.get_filename(file),std::ios::out|std::ios::app);
   if(!outputfile) dmtk::err() << "*** ERROR: could not open " << file << endl;

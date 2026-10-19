@@ -582,7 +582,8 @@ CompiledModel compile_hamiltonian(Hamiltonian const& model) {
     std::vector<SiteBasisPtr> sites;
     sites.reserve(std::size_t(model.num_sites()));
     for (int i = 0; i < model.num_sites(); ++i) sites.push_back(model.site_for(i));
-    CompiledModel out{compile_hamiltonian(model.expand(), sites, model.conserved_qns(), model.fermion_convention())};
+    CompiledModel out;
+    out.op = compile_hamiltonian(model.expand(), sites, model.conserved_qns(), model.fermion_convention());
     add_model_metadata(out, model);
     return out;
 }
@@ -605,7 +606,8 @@ CompiledModel Hamiltonian::operator_decomposition(TermSum const& op) const {
 }
 
 CompiledModel Hamiltonian::lower_operator(TermSum const& full, bool jordan_wigner) const {
-    CompiledModel out{emit_operator(full, num_sites(), jordan_wigner)};
+    CompiledModel out;
+    out.op = emit_operator(full, num_sites(), jordan_wigner);
     add_model_metadata(out, *this);
     return out;
 }

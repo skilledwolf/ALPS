@@ -312,7 +312,7 @@ struct CiWalk {
             for (auto const& block : rotation.rho) {
                 auto& by_charge = rotation.rows[key_of(block.qn())];
                 auto const rows = block.row_range();
-                for (int row = rows.begin(); row <= rows.end(); ++row) {
+                for (int row = rows.begin(); row <= static_cast<int>(rows.end()); ++row) {
                     auto const& state = rotation.basis(row);
                     auto const old = key_of(state.qn1());
                     by_charge[{old, key_of(state.qn2())}].entries.emplace_back(
