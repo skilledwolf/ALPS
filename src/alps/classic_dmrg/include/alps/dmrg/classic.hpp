@@ -150,7 +150,8 @@ struct MpsTensor {
 // A targeted state as the engine holds it after the final sweep, which is
 // no approximation of it: the block rotations of that sweep are the tensors
 // up to its closing configuration, and the closing two-site wave function is
-// split by an SVD, which drops singular values below 1e-14 of the largest.
+// split by a column-pivoted QR, which drops the rows of R from the first
+// pivot below 1e-14 of the largest on.
 // Mixed canonical with the norm, one, at `center`: the tensors before it are
 // left-orthonormal, those after it right-orthonormal. The centre is where the
 // final sweep ends, at site L/2, or at site L-2 when the engine stores

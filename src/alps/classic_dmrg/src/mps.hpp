@@ -10,8 +10,9 @@
 // closing configuration is read from the System in memory after
 // final_sweep (block sizes from its left and right blocks, every targeted
 // state, the wave functions the measurements were taken on) instead of the
-// ground-state file of the step at L/2; the SVD is Eigen's BDCSVD instead
-// of LAPACK gesvd; the tensors are returned as classic::MatrixProductState.
+// ground-state file of the step at L/2; the closing wave function is split
+// by a column-pivoted Householder QR instead of #216's LAPACK gesvd SVD; the
+// tensors are returned as classic::MatrixProductState.
 // The row labels of the rotations (left: old block state i1, site state i2;
 // right: site state i1, old block state i2) and the subspace walk of the
 // wave function are #216's; the charge-sorted site bases map to
@@ -25,7 +26,7 @@
 
 #include <alps/dmrg/classic.hpp>
 
-#include <Eigen/SVD>
+#include <Eigen/QR>
 
 #include <algorithm>
 #include <array>
@@ -143,40 +144,38 @@ private:
         }
     }
 
-    // psi[a][s][t][b] = sum_x left[a][s][x] right[x][t][b], left orthonormal
-    // and right = S V^H.
+    // psi[a][s][t][b] = sum_x left[a][s][x] right[x][t][b], left orthonormal:
+    // the column-pivoted QR psi P = Q R gives left = Q and right = R P^T.
+    // Rows of R from the first pivot below 1e-14 of the largest on are
+    // dropped; the pivoting bounds the norm of every dropped column by that
+    // pivot. The reflections never mix charge sectors. (Eigen 3.4.0's BDCSVD,
+    // the split before, returned states that left the sector on these
+    // block-structured matrices.)
     static void split(std::vector<T> const& psi, std::size_t da, std::size_t ds, std::size_t dt, std::size_t db,
                       std::vector<T>& left, Shape& left_shape, std::vector<T>& right, Shape& right_shape) {
-        using Matrix = Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
+        using Matrix = Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>;
+        using RowMajor = Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
         Eigen::Index const rows = static_cast<Eigen::Index>(da * ds), cols = static_cast<Eigen::Index>(dt * db);
-        Matrix const m = Eigen::Map<Matrix const>(psi.data(), rows, cols);
-#if EIGEN_VERSION_AT_LEAST(3, 4, 90)
-        Eigen::BDCSVD<Matrix, Eigen::ComputeThinU | Eigen::ComputeThinV> svd(m);
-#else
-        Eigen::BDCSVD<Matrix> svd(m, Eigen::ComputeThinU | Eigen::ComputeThinV);
-#endif
-        auto const& values = svd.singularValues();
-        if (values.size() == 0 || !(values[0] > 0.))
-            throw std::runtime_error("classic DMRG MPS export: the wave function vanishes");
-        std::size_t keep = 0;
-        while (keep < static_cast<std::size_t>(values.size()) && values[static_cast<Eigen::Index>(keep)] > 1e-14 * values[0])
-            ++keep;
-        auto const& u = svd.matrixU();
-        auto const& v = svd.matrixV();
+        Matrix const m = Eigen::Map<RowMajor const>(psi.data(), rows, cols);
+        Eigen::ColPivHouseholderQR<Matrix> qr(rows, cols);
+        qr.setThreshold(1e-14);
+        qr.compute(m);
+        auto const keep = static_cast<std::size_t>(qr.rank());
+        if (keep == 0) throw std::runtime_error("classic DMRG MPS export: the wave function vanishes");
+        auto const k = static_cast<Eigen::Index>(keep);
+        Matrix const q = qr.householderQ() * Matrix::Identity(rows, k);
+        Matrix const r = Matrix(qr.matrixR().topRows(k).template triangularView<Eigen::Upper>())
+                         * qr.colsPermutation().transpose();
         left_shape = {da, ds, keep};
         left.assign(da * ds * keep, T(0));
         for (Eigen::Index row = 0; row < rows; ++row)
-            for (std::size_t x = 0; x < keep; ++x)
-                left[static_cast<std::size_t>(row) * keep + x] = u(row, static_cast<Eigen::Index>(x));
+            for (Eigen::Index x = 0; x < k; ++x)
+                left[static_cast<std::size_t>(row * k + x)] = q(row, x);
         right_shape = {keep, dt, db};
         right.assign(keep * dt * db, T(0));
-        for (std::size_t x = 0; x < keep; ++x)
-            for (Eigen::Index col = 0; col < cols; ++col) {
-                T value = v(col, static_cast<Eigen::Index>(x));
-                if constexpr (!std::is_same_v<T, double>) value = std::conj(value);
-                right[x * static_cast<std::size_t>(cols) + static_cast<std::size_t>(col)] =
-                    values[static_cast<Eigen::Index>(x)] * value;
-            }
+        for (Eigen::Index x = 0; x < k; ++x)
+            for (Eigen::Index col = 0; col < cols; ++col)
+                right[static_cast<std::size_t>(x * cols + col)] = r(x, col);
     }
 
     dmtk::System<T>& system_;

@@ -266,9 +266,9 @@ With `Options::keep_mps`, `Result::mps` holds every targeted state as a
 `MatrixProductState`, in energy order. Nothing is approximated beyond the
 DMRG itself: finite-system DMRG builds each block from the previous one and
 a site through a stored rotation, so the rotations of the final sweep are the
-tensors up to its closing configuration, whose two-site wave function an SVD
-splits into the remaining two (singular values below 1e-14 of the largest are
-dropped). They are read from the scratch files and the engine's wave
+tensors up to its closing configuration, whose two-site wave function a
+column-pivoted QR splits into the remaining two (from the first pivot below
+1e-14 of the largest on, the rows of R are dropped). They are read from the scratch files and the engine's wave
 functions before the solve returns. The state is mixed canonical with its
 norm, one, at `center`: the middle (`L/2`) when the final sweep ends there,
 and `L-2` when the engine stores products and sweeps the whole chain
@@ -893,7 +893,9 @@ Rosales, commits 46c76b1d2 and 35cea33e7): `DMRGTask::extract_mps` and
 `split_two_site` of the legacy application, which assembled its ground state
 from the same rotations. Here it reads the closing configuration and every
 target from the engine in memory instead of the ground-state file at `L/2`,
-splits with Eigen's SVD instead of LAPACK, and maps local states through the
+splits the closing wave function with a column-pivoted QR instead of an SVD
+(LAPACK's there; Eigen 3.4.0's BDCSVD returned states that left the sector),
+and maps local states through the
 engine's sorted bases as the molecular CI walk does. The application's
 `/mps` output keeps #216's layout, and `pyalps.loadMPS` is #216's. `rotate_corr` and `measure` also find
 block operators through the per-call index, and `rotate_corr` answers
