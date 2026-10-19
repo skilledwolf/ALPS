@@ -5,7 +5,8 @@
 // Ported from skilledwolf/alpsx (private repository), branch
 // agent/v3-execution-and-api-audit at f8ee6e98b, file src/model/src/construction/lattice.cpp.
 // Adaptation: C++17 (no std::span, defaulted comparisons or std::erase_if), <alps/models/...> include names, ALPS_MODELS_DECL exports;
-// legacy Parameters bridge, TOML emitter and lattice registry removed.
+// legacy Parameters bridge, TOML emitter and lattice registry removed;
+// hexagonal() gains the third in-plane edge, (-1, 1, 0), which alpsx's lacked.
 //
 // Implementation of alps::lattice (see lattice.hpp). Semantics mirror the
 // Python alps.lattice module line-for-line where behavior is observable;
@@ -519,6 +520,7 @@ Lattice hexagonal(int L, int W, int H, double a, double c, Boundary bc) {
     uc.add_vertex({0.0, 0.0, 0.0});
     uc.add_edge(0, 0, 0, {}, {1, 0, 0});
     uc.add_edge(0, 0, 0, {}, {0, 1, 0});
+    uc.add_edge(0, 0, 0, {}, {-1, 1, 0});  // the third in-plane neighbour, as in triangular()
     uc.add_edge(0, 0, 0, {}, {0, 0, 1});
     return Lattice::build(uc,
                           {{a, 0, 0}, {a / 2, a * std::sqrt(3.0) / 2, 0}, {0, 0, c}},

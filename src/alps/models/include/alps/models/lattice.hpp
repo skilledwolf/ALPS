@@ -214,7 +214,8 @@ ALPS_MODELS_DECL Lattice tetragonal(int L, int W = 0, int H = 0, double a = 1.0,
                    Boundary bc = Boundary::periodic);
 ALPS_MODELS_DECL Lattice orthorhombic(int L, int W = 0, int H = 0, double a = 1.0, double b = 1.0,
                      double c = 1.0, Boundary bc = Boundary::periodic);
-// 3-D hexagonal (Python: hexagonal_lattice).
+// 3-D hexagonal: triangular layers stacked along c, eight neighbours
+// (Python: hexagonal_lattice, which lacked the third in-plane neighbour).
 ALPS_MODELS_DECL Lattice hexagonal(int L, int W = 0, int H = 0, double a = 1.0, double c = 1.0,
                   Boundary bc = Boundary::periodic);
 
