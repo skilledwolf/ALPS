@@ -1001,6 +1001,17 @@ void bind_qubits(nb::module_& m) {
 using Catalog = mdl::CatalogModel<>;
 
 void bind_catalog(nb::module_& m) {
+    nb::class_<mdl::CatalogTranslation>(m, "CatalogTranslation",
+        "One primitive translation of a periodic catalog lattice direction: `sites` maps source site -> "
+        "translated site one cell along lattice axis `direction`, `period` is the extent along it. "
+        "pyalps.ed takes it where it takes a SpectrumTranslation.")
+        .def_ro("direction", &mdl::CatalogTranslation::direction)
+        .def_ro("sites", &mdl::CatalogTranslation::sites)
+        .def_ro("period", &mdl::CatalogTranslation::period)
+        .def("__repr__", [](mdl::CatalogTranslation const& t) {
+            return "CatalogTranslation(direction=" + std::to_string(t.direction) + ", period="
+                 + std::to_string(t.period) + ")";
+        });
     nb::class_<Catalog>(m, "CatalogModel",
         "An XML catalog model (MODEL, LATTICE and their parameters) resolved through the legacy lattice and "
         "model libraries and compiled to CompiledOperator values; the catalogs come from ALPS_XML_PATH or "
@@ -1079,6 +1090,12 @@ void bind_catalog(nb::module_& m) {
         }, nb::arg("conserved_quantum_numbers") = nb::none(),
            "The catalog's local spaces, parities and charges as a PhysicalBasis (strict convention); the "
            "conserved charges default to conserved_quantum_numbers().")
+        .def("translations", [](Catalog const& model) {
+            nb::gil_scoped_release release;
+            return model.translations();
+        }, "The lattice translations sparsediag resolves TOTAL_MOMENTUM by, as CatalogTranslation values: one "
+           "per periodic direction in axis order; empty for an open lattice, a plain GRAPH, or a disordered "
+           "or depleted lattice. pyalps.ed uses them when a momentum is requested without translations=.")
         .def_prop_ro("parameters", [](Catalog const& model) { return dict_from_parameters(model.parameters()); })
         .def("set_parameters", [](Catalog& model, nb::dict const& parameters) {
             model.set_parameters(parameters_from_dict(parameters));

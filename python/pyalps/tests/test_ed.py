@@ -209,16 +209,44 @@ def test_catalog_models_take_the_model_entry_points():
     whole = ed.model_spectrum(ring, sector={})
     assert whole.charges == ["Sz"] and sum(block.block_dimension for block in whole.blocks) == 64
     np.testing.assert_allclose(whole.eigenvalues, ed.model_spectrum(kit).eigenvalues, atol=1e-10)
-    translation = ed.SpectrumTranslation([(i + 1) % n for i in range(n)], n)
-    momenta = ed.model_spectrum(ring, all_momenta=True, translations=[translation])
+    # Momenta by the ring's own translation, the unit shift sparsediag uses.
+    (shift,) = ring.translations()
+    assert (shift.direction, shift.period, list(shift.sites)) == (0, n, [(i + 1) % n for i in range(n)])
+    momenta = ed.model_spectrum(ring, all_momenta=True)
+    assert momenta.directions == [0] and len(momenta.blocks) == n
     np.testing.assert_allclose(momenta.eigenvalues, sector_levels, atol=1e-10)
-    at_pi = ed.prepare_projected(ring, momentum=[np.pi], translations=[translation])
+    kit_momenta = ed.model_spectrum(kit, sector={"Sz": 0.0}, all_momenta=True)
+    by_momentum = {tuple(block.momentum): block.eigenvalues for block in kit_momenta.blocks}
+    for block in momenta.blocks:
+        np.testing.assert_allclose(block.eigenvalues, by_momentum[tuple(block.momentum)], atol=1e-10)
+    at_pi = ed.prepare_projected(ring, momentum=[np.pi])
     kit_pi = ed.prepare_projected(kit, sector={"Sz": 0.0}, momentum=[np.pi])
     np.testing.assert_allclose(at_pi.eigenstates(count=2).eigenvalues, kit_pi.eigenstates(count=2).eigenvalues, atol=1e-10)
+    assert ed.ground_state(ring, momentum=[np.pi]).energy == pytest.approx(sector_levels[0], abs=1e-10)
+    # Explicit translations still take precedence, as SpectrumTranslation or CatalogTranslation values.
+    translation = ed.SpectrumTranslation([(i + 1) % n for i in range(n)], n)
+    explicit = ed.model_spectrum(ring, all_momenta=True, translations=[translation])
+    assert explicit.directions == [0]  # positional: a SpectrumTranslation carries no axis
+    np.testing.assert_allclose(explicit.eigenvalues, momenta.eigenvalues, atol=1e-12)
+    np.testing.assert_allclose(ed.model_spectrum(ring, all_momenta=True, translations=ring.translations()).eigenvalues,
+                               momenta.eigenvalues, atol=1e-12)
+    np.testing.assert_allclose(
+        ed.prepare_projected(ring, momentum=[np.pi], translations=[translation]).eigenstates(count=2).eigenvalues,
+        at_pi.eigenstates(count=2).eigenvalues, atol=1e-12)
+    with pytest.raises(ValueError, match="translations= is empty"):
+        ed.prepare_projected(ring, momentum=[np.pi], translations=[])
+    # An open chain has no translations: momentum requests are refused, charge-only ones are not.
+    open_chain = models.CatalogModel({"MODEL": "spin", "LATTICE": "open chain lattice", "L": n, "J": 1.0,
+                                      "CONSERVED_QUANTUMNUMBERS": "Sz", "Sz_total": 0})
+    assert open_chain.translations() == []
+    with pytest.raises(ValueError, match="no periodic direction"):
+        ed.prepare_projected(open_chain, momentum=[np.pi])
     with pytest.raises(ValueError, match="translations"):
-        ed.prepare_projected(ring, momentum=[np.pi])
+        ed.model_spectrum(open_chain, all_momenta=True)
     with pytest.raises(ValueError, match="translations"):
-        ed.model_spectrum(ring, all_momenta=True)
+        ed.ground_state(open_chain, momentum=[0.0])
+    assert ed.prepare_projected(open_chain).dimension == 20
+    assert ed.model_spectrum(open_chain).directions == []
 
     family = [ed.dihedral_irrep(n, 0, reflection=1), ed.dihedral_irrep(n, 0, reflection=-1),
               ed.dihedral_irrep(n, 3, reflection=1), ed.dihedral_irrep(n, 3, reflection=-1),
@@ -244,6 +272,36 @@ def test_catalog_models_take_the_model_entry_points():
     compiled = models.compile_hamiltonian(ring)
     assert isinstance(compiled, models.CompiledModel) and len(compiled.op) == len(ring.compile_hamiltonian())
     assert compiled.site_types == ring.site_types and len(compiled.edges) == ring.num_bonds
+
+
+def test_catalog_momenta_come_from_the_catalog_lattice():
+    # A 4x4 square in Sz=0 at every momentum, block by block against the kit Hamiltonian.
+    square = models.CatalogModel({"MODEL": "spin", "LATTICE": "square lattice", "L": 4, "W": 4, "J": 1.0,
+                                  "CONSERVED_QUANTUMNUMBERS": "Sz", "Sz_total": 0})
+    kit = models.heisenberg(lat.square(4))
+    generators = square.translations()
+    assert [(t.direction, t.period) for t in generators] == [(0, 4), (1, 4)]
+    assert [list(t.sites) for t in generators] == [list(g) for g in kit.lattice.translation_generators()]
+    catalog = ed.model_spectrum(square, all_momenta=True, count=3)
+    reference = ed.model_spectrum(kit, sector={"Sz": 0.0}, all_momenta=True, count=3)
+    assert catalog.directions == reference.directions == [0, 1]
+    by_momentum = {tuple(block.momentum): block.eigenvalues for block in catalog.blocks}
+    assert len(by_momentum) == 16
+    for block in reference.blocks:
+        np.testing.assert_allclose(by_momentum[tuple(block.momentum)], block.eigenvalues, atol=1e-10)
+    assert by_momentum[(0.0, 0.0)][0] == pytest.approx(-11.228483208428861, abs=1e-9)  # sparsediag, k = (0, 0)
+
+    # A kit cylinder through the catalog model library: periodic along the second axis only.
+    cylinder = lat.square(3, 4).unit_cell.tile([3, 4], bc=["open", "periodic"])
+    on_cylinder = models.CatalogModel(cylinder, {"MODEL": "spin", "J": 1.0, "CONSERVED_QUANTUMNUMBERS": "Sz",
+                                                 "Sz_total": 0})
+    (around,) = on_cylinder.translations()
+    assert (around.direction, around.period) == (1, 4)
+    assert list(around.sites) == list(cylinder.translation_generators()[0])
+    rings = ed.model_spectrum(on_cylinder, all_momenta=True, count=2)
+    kit_rings = ed.model_spectrum(models.heisenberg(cylinder), sector={"Sz": 0.0}, all_momenta=True, count=2)
+    assert rings.directions == kit_rings.directions == [1]
+    np.testing.assert_allclose(rings.eigenvalues, kit_rings.eigenvalues, atol=1e-10)
 
 
 def test_ground_state_and_located_observables():
