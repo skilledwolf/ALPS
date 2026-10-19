@@ -12,8 +12,10 @@
 // <alps/models/compiled.hpp> operators; conserved_quantum_numbers, sector
 // and local_charge follow the charge derivation of alpsx's
 // src/solvers/diag/src/runtime/catalog_problem.cpp. Added here: kit operator
-// names resolve through <alps/models/operator_names.hpp>, and global
-// operators with n-site terms (ALPSim/ALPS PR 223) are refused.
+// names resolve through <alps/models/operator_names.hpp>, global
+// operators with n-site terms (ALPSim/ALPS PR 223) are refused, and
+// translations() takes the momentum generators from the legacy lattice the
+// way the diag applications do (see its definition).
 #ifndef ALPS_MODEL_CATALOG_HPP
 #define ALPS_MODEL_CATALOG_HPP
 
@@ -42,6 +44,17 @@
 #include <vector>
 
 namespace alps::models {
+
+/// One primitive translation of a periodic catalog lattice direction: `sites`
+/// maps every source site to its image one cell further along lattice axis
+/// `direction`, and `period` is the extent along that axis. These are the
+/// fields of alps::ed::SpectrumTranslation, which converts as
+/// {t.sites, t.period}; this header does not depend on ALPS::ed.
+struct CatalogTranslation {
+  int direction = 0;
+  std::vector<std::size_t> sites;
+  std::size_t period = 0;
+};
 
 /// Catalog expression adapter: the XML model and lattice libraries resolved
 /// through the legacy graph_helper/model_helper pair and compiled to detached
@@ -133,6 +146,14 @@ public:
   PhysicalBasis physical_basis(std::vector<std::string> conserved) const;
   /// physical_basis(conserved_quantum_numbers()).
   PhysicalBasis physical_basis() const { return physical_basis(conserved_quantum_numbers()); }
+
+  /// The generators of the lattice translations that sparsediag and fulldiag
+  /// resolve TOTAL_MOMENTUM by: one per periodic direction, in ascending axis
+  /// order, so momenta follow the legacy translation_momenta() components.
+  /// Empty for a graph without a lattice, a lattice without a periodic
+  /// direction, and a disordered or depleted lattice. Translation invariance
+  /// of the model is not checked here; ALPS::ed validates it on the sector.
+  std::vector<CatalogTranslation> translations() const;
 
   multi_array<value_type,2> local_matrix(SiteOperator const&, site_descriptor) const;
   multi_array<std::pair<value_type,bool>,4> local_matrix(BondOperator const&, bond_descriptor const&) const;
@@ -416,6 +437,55 @@ std::vector<std::vector<double>> CatalogModel<Scalar,G>::local_charge(std::strin
     for (auto const& state : local_basis[site]) rows[site].push_back(to_double(get_quantumnumber(state, index)));
   }
   return rows;
+}
+
+template <class Scalar, class G>
+std::vector<CatalogTranslation> CatalogModel<Scalar,G>::translations() const
+{
+  // The diag applications' momentum source: DiagMatrix::dostep
+  // (src/apps/diag/diag.h) loops TOTAL_MOMENTUM over translation_momenta(),
+  // and hamiltonian_matrix::build_basis projects onto graph_helper::
+  // translations(k), the whole translation group of the periodic directions
+  // (hypercubic_lattice::translations in <alps/lattice/hypercubic.h>, spread
+  // over the unit-cell vertices by lattice_graph::translations in
+  // <alps/lattice/latticegraph.h>). The group is enumerated as an odometer
+  // over the periodic directions, the first fastest, so the unit shift along
+  // the d-th of them is element (1 mod L_d) prod_{j<d} L_j. graph_helper
+  // reports no periodic direction without a lattice or for a disordered one.
+  auto const directions = graph_.translation_directions();
+  if (directions.empty()) return {};
+  typename graph_helper<G>::vector_type zero;
+  for (std::size_t d = 0; d < directions.size(); ++d) zero.push_back(0.);
+  auto const group = graph_.translations(zero);
+  std::size_t const num_sites = graph_.num_sites();
+  std::vector<CatalogTranslation> result;
+  std::size_t stride = 1;
+  for (int direction : directions) {
+    std::size_t const period = graph_.lattice().extent(static_cast<unsigned int>(direction));
+    if (period == 0 || (1 % period) * stride >= group.size())
+      throw std::logic_error("catalog model: the legacy translation group has an unexpected size");
+    auto const& sites = group[(1 % period) * stride].second;
+    // lattice_graph::translations numbers vertices cell * vertices_per_cell
+    // + vertex, which a depletion renumbers: such a lattice has no translations.
+    if (sites.size() != num_sites) return {};
+    std::vector<bool> seen(num_sites, false);
+    for (auto const site : sites) {
+      if (site >= num_sites || seen[site]) return {};
+      seen[site] = true;
+    }
+    std::vector<std::size_t> image(num_sites);
+    for (std::size_t site = 0; site < num_sites; ++site) image[site] = site;
+    for (std::size_t step = 0; step < period; ++step)
+      for (auto& site : image) site = sites[site];
+    for (std::size_t site = 0; site < num_sites; ++site)
+      if (image[site] != site)
+        throw std::logic_error("catalog model: a legacy lattice translation does not have the lattice period");
+    result.push_back({direction, sites, period});
+    stride *= period;
+  }
+  if (stride != group.size())
+    throw std::logic_error("catalog model: the legacy translation group has an unexpected size");
+  return result;
 }
 
 template <class Scalar, class G>

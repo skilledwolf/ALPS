@@ -58,6 +58,13 @@ foreach(name catalog_model_parity ed_vs_hamiltonian_matrix lattice_xml_bridge)
   alps_add_gtest(model_${name} COMPONENT model LABELS "catalog;numeric" TIMEOUT 300)
 endforeach()
 
+# The lattice translations of catalog models (CatalogModel::translations)
+# against the kit generators, and the momentum-resolved ALPS::ed spectra they
+# give against the kit Hamiltonians and the sparsediag Bloch matrices.
+add_executable(model_catalog_translations catalog_translations.cpp)
+target_link_libraries(model_catalog_translations PRIVATE ALPS::alps ALPS::ed ALPS::models)
+alps_add_gtest(model_catalog_translations COMPONENT model LABELS "catalog;ed;numeric" TIMEOUT 300)
+
 # Catalog operators through the classic DMRG component against ALPS::ed: the
 # operators the dmrg application solves.
 if(ALPS_ENABLE_CLASSIC_DMRG)

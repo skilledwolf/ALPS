@@ -71,7 +71,8 @@ auto const thermal = alps::ed::thermal_surface(levels, charges, temperatures, fi
   momentum is a row of the Cartesian grid `k_d = 2π j_d / L_d` (last
   direction fastest), the translation eigenvalue is `exp(+i k)`, and
   `select_momentum` snaps a wavevector in radians onto that grid. A
-  `Hamiltonian` supplies the generators of its periodic lattice directions.
+  `Hamiltonian` supplies the generators of its periodic lattice directions,
+  a `CatalogModel` those of its catalog lattice (`translations()`).
 - Operators on a projected basis are validated before assembly: Hermiticity,
   conservation of every declared charge (forbidden amplitudes are summed
   exactly in rational arithmetic, so cancellations between huge terms are
@@ -144,12 +145,36 @@ auto const plain = alps::ed::prepare_product(op, physical, product);
 alps::ed::ProjectedOptions options;
 options.sector = model.sector();
 auto const problem = alps::ed::prepare_projected(op, alps::ed::projected_spaces(physical), {}, options);
+
+// Momenta by the catalog lattice's own translations, one per periodic axis.
+std::vector<alps::ed::SpectrumTranslation> translations;
+for (auto const& t : model.translations()) translations.push_back({t.sites, t.period});
+alps::ed::ModelSpectrumOptions by_k;
+by_k.sector = model.sector();
+by_k.all_momenta = true;
+auto const spectrum = alps::ed::model_spectrum(op, alps::ed::projected_spaces(physical), translations, by_k);
 ```
+
+`translations()` returns the generators sparsediag and fulldiag resolve
+`TOTAL_MOMENTUM` by: the legacy `graph_helper` translation group of the
+catalog lattice (`hypercubic_lattice::translations`, as
+`hamiltonian_matrix` builds its Bloch basis from it), reduced to one unit
+shift per periodic direction in axis order, so momentum components and grid
+match the legacy `TOTAL_MOMENTUM` values. Each `CatalogTranslation` carries
+the lattice axis (`direction`), the source-to-image site map (`sites`) and
+the extent along the axis (`period`); `<alps/model/catalog.hpp>` does not
+depend on `ALPS::ed`, so the call site converts to `SpectrumTranslation` as
+above. A catalog `GRAPH`, a lattice without a periodic direction and a
+disordered or depleted lattice have none. The legacy apps' switch
+`TRANSLATION_SYMMETRY` is not consulted: a momentum request is the switch.
+Translation invariance of the model is still checked on the selected sector.
 
 The sector names must be charges of the physical basis (the `t-J` basis has
 `N` and `Sz`, the `fermion` basis `Nup` and `Ndown`). In Python the
 `pyalps.ed` entry points and `classic_dmrg.solve` take the `CatalogModel`
-itself and default to its sector.
+itself and default to its sector; the `pyalps.ed` momentum requests
+(`momentum=`, `all_momenta=True`) default to its `translations()` unless
+`translations=` gives others, and are refused on a catalog without any.
 
 The same compiled operators and physical bases drive the classic DMRG
 solver ([`ALPS::classic_dmrg`](../classic_dmrg/README.md)) for chains and
@@ -164,6 +189,14 @@ paths against each other on catalog Hubbard and t-J sectors), against
 `hamiltonian_matrix` element by element on
 the same catalog basis (`ed_vs_hamiltonian_matrix`), and the kit lattices
 against the catalog graphs (`lattice_catalog_structure`).
+`catalog_translations` (labels `catalog` and `ed`) checks `translations()`
+permutation by permutation against the kit lattices' generators (catalog
+rectangles and ladders, kit honeycomb, kagome, cubic and cylinder lattices
+through the legacy reader, open lattices and plain graphs without any), and
+the Sz=0 momentum spectra of the catalog Heisenberg chain (L=10) and 4x4
+square against the kit Hamiltonian's `model_spectrum`, against
+`hamiltonian_matrix` looped over `TOTAL_MOMENTUM` as sparsediag does, and
+against levels recorded from sparsediag runs.
 
 ## Tests
 

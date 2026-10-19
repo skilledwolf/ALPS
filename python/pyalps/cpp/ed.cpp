@@ -836,7 +836,9 @@ void bind_projected(nb::module_& m) {
         .def_ro("momentum", &ed::ModelSpectrum::momentum)
         .def_ro("blocks", &ed::ModelSpectrum::blocks)
         .def_ro("sector", &ed::ModelSpectrum::sector)
-        .def_ro("directions", &ed::ModelSpectrum::directions)
+        .def_rw("directions", &ed::ModelSpectrum::directions,
+                "The lattice axes of the momentum components; positional (0, 1, ...) for raw translations, "
+                "which carry no axes.")
         .def_prop_ro("eigenvalues", [](ed::ModelSpectrum const& s) { return vector_to_numpy(all_levels(s)); },
                      "Every block's eigenvalues merged in ascending order.")
         .def("__len__", [](ed::ModelSpectrum const& s) { return s.blocks.size(); })
