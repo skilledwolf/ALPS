@@ -204,8 +204,8 @@ against levels recorded from sparsediag runs.
 streamed operators, canonical CSR, term accumulation, thermodynamics), the
 sparse-assembly lock against the dense Kronecker reference, dense and Lanczos
 solver locks (analytic chains, degenerate multiplets, selection and
-validation), product problems with observables, the end-to-end lock
-reproducing the ground state energies of the 14 frozen model fixtures, and
+validation), product problems with observables, ground states (sector
+partitions, Lanczos against dense, the Majumdar–Ghosh point), and
 the projected-basis suite: fermionic rings against analytic dispersions,
 reflection and two-direction translation groups, conserved-sector escape
 detection (exact cancellation versus hidden residues), momentum-resolved

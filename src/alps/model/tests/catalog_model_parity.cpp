@@ -11,12 +11,15 @@
 // Eigen-based CatalogMatrix; the lattice half of each catalog input comes
 // from the kit lattice's catalog name and extent (alpsx used the removed
 // to_alps_params export); the shipped models.xml/lattices.xml replace the
-// TOML catalogs.
+// TOML catalogs. Added here: the fermionic, bosonic, Kondo and biquadratic
+// factories and the chain cases of alpsx's frozen model fixtures, which this
+// test replaces, and the comparison of full spectra instead of ground states.
 //
-// Numerical lock for the C++ operator models against independent, frozen
-// catalog descriptions. Covers boundary conditions, parallel periodic bonds,
-// restricted bond types and distinct leg/rung interactions. The catalog and
-// explicit local-operator assembly must produce the same ground-state energy.
+// Numerical lock for the C++ operator models against independent catalog
+// descriptions. Covers boundary conditions, parallel periodic bonds,
+// restricted bond types, distinct leg/rung interactions, fermionic signs on
+// periodic bonds and mixed site types. The catalog and explicit
+// local-operator assembly must produce the same spectrum.
 #include <alps/ed/eigensolver.hpp>
 #include <alps/ed/product_basis.hpp>
 #include <alps/ed/product_problem.hpp>
@@ -28,6 +31,7 @@
 #include <alps/models/sign.hpp>
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cmath>
 #include <complex>
 #include <cstdint>
@@ -46,8 +50,19 @@ using Params = std::vector<std::pair<std::string, std::string>>;
 struct Case {
     std::string name;
     std::function<mdl::Hamiltonian()> factory;
-    Params catalog; // the frozen params_<name>.fixture, verbatim
+    Params catalog; // the model half of the catalog input
 };
+
+// A fermion and a localized spin per cell: hopping between the fermions
+// (bond type 0), Kondo exchange within the cell (bond type 1).
+lat::Lattice kondo_chain(int L) {
+    lat::UnitCell uc(1);
+    uc.add_vertex({0.0}, 0);
+    uc.add_vertex({0.5}, 1);
+    uc.add_edge(0, 0, 0, {}, {1});
+    uc.add_edge(0, 1, 1);
+    return uc.tile({L});
+}
 
 std::vector<Case> const& cases() {
     using B = lat::Boundary;
@@ -86,6 +101,28 @@ std::vector<Case> const& cases() {
           {"local_S", "1"}}},
         {"j1j2_nnn_L6", [] { return mdl::j1j2(lat::nnn_chain(6), 1.0, 0.5); },
          {{"CONSERVED_QUANTUMNUMBERS", "Sz"}, {"J", "1"}, {"J'", "0.5"}, {"MODEL", "spin"}, {"local_S", "0.5"}}},
+        // An odd periodic chain: no bipartition hides a wrong wrap bond.
+        {"ising_chain_L5_h", [] { return mdl::ising(lat::chain(5), 1.0, 0.3); },
+         {{"Jxy0", "0"}, {"Jz0", "1"}, {"MODEL", "spin"}, {"h", "0.3"}, {"local_S", "0.5"}}},
+        {"xxz_chain_L6", [] { return mdl::xxz(lat::chain(6), 1.0, 0.5); },
+         {{"Jxy0", "1"}, {"Jz0", "0.5"}, {"MODEL", "spin"}, {"local_S", "0.5"}}},
+        {"tfi_chain_L6", [] { return mdl::transverse_field_ising(lat::chain(6), 1.0, 0.7); },
+         {{"Gamma", "0.7"}, {"Jxy0", "0"}, {"Jz0", "1"}, {"MODEL", "spin"}, {"local_S", "0.5"}}},
+        // The catalog's biquadratic(i,j) is (S_i.S_j)^2; K0 has no global default.
+        {"biquadratic_chain_L4_S1", [] { return mdl::biquadratic(lat::chain(4), 1.0, 0.3, 1.0); },
+         {{"J", "1"}, {"K0", "0.3"}, {"MODEL", "spin"}, {"local_S", "1"}}},
+        {"hubbard_chain_L4", [] { return mdl::hubbard(lat::chain(4), 1.0, 2.0, 0.3); },
+         {{"MODEL", "fermion Hubbard"}, {"U", "2"}, {"mu", "0.3"}, {"t", "1"}}},
+        {"spinless_chain_L6", [] { return mdl::spinless_fermion_model(lat::chain(6), 1.0, 0.2, 0.5); },
+         {{"MODEL", "spinless fermions"}, {"V", "0.5"}, {"mu", "0.2"}, {"t", "1"}}},
+        {"tj_chain_L4", [] { return mdl::t_j(lat::chain(4), 1.0, 0.4); },
+         {{"J", "0.4"}, {"MODEL", "t-J"}, {"t", "1"}}},
+        {"kondo_L3", [] { return mdl::kondo_lattice(kondo_chain(3), 1.0, 1.0, 0.1); },
+         {{"J", "1"}, {"MODEL", "Kondo lattice"}, {"local_S", "0.5"}, {"mu", "0.1"}, {"t", "1"}}},
+        {"hardcore_boson_chain_L6", [] { return mdl::hardcore_boson_model(lat::chain(6), 1.0, 0.1, 0.4); },
+         {{"MODEL", "hardcore boson"}, {"V", "0.4"}, {"mu", "0.1"}, {"t", "1"}}},
+        {"bose_hubbard_chain_L4", [] { return mdl::bose_hubbard(lat::chain(4), 1.0, 1.5, 0.7, 0.0, 2); },
+         {{"MODEL", "boson Hubbard"}, {"Nmax", "2"}, {"U", "1.5"}, {"mu", "0.7"}, {"t", "1"}}},
     };
     return r;
 }
@@ -113,9 +150,16 @@ double kit_e0(mdl::Hamiltonian const& model) {
     return alps::ed::prepare_product(model).eigenstates(options).eigenvalues.at(0);
 }
 
-// Lowest eigenvalue of the catalog operator on the full product space.
-double catalog_e0(alps::Parameters const& p) {
-    mdl::CatalogModel<> model(p);
+std::vector<double> kit_spectrum(mdl::Hamiltonian const& model) {
+    auto const problem = alps::ed::prepare_product(model);
+    alps::ed::EigenstateOptions options;
+    options.count = static_cast<int>(problem.dimension());
+    options.method = alps::ed::EigenstateMethod::dense;
+    return problem.eigenstates(options).eigenvalues;
+}
+
+// Every eigenvalue of the catalog operator on the full product space, ascending.
+std::vector<double> catalog_spectrum(mdl::CatalogModel<> const& model) {
     auto const op = model.compile_hamiltonian();
     auto const basis = alps::ed::enumerate_product_basis(op.site_dims);
     std::vector<std::int64_t> const states(basis.states.begin(), basis.states.end());
@@ -126,19 +170,29 @@ double catalog_e0(alps::Parameters const& p) {
         for (auto i = matrix.offsets[row]; i < matrix.offsets[row + 1]; ++i)
             dense[static_cast<std::size_t>(matrix.indices[static_cast<std::size_t>(i)]) * basis.dimension + row] =
                 matrix.values[static_cast<std::size_t>(i)];
-    return alps::ed::dense_eigensystem(std::move(dense), basis.dimension, false, 1, "SA").eigenvalues.at(0);
+    return alps::ed::dense_eigensystem(std::move(dense), basis.dimension, false).eigenvalues;
 }
+
+double catalog_e0(alps::Parameters const& p) { return catalog_spectrum(mdl::CatalogModel<>(p)).at(0); }
 } // namespace
 
-TEST(CatalogModelParity, FrozenCatalogInputsReproduceTheKitGroundStates) {
+TEST(CatalogModelParity, CatalogSpectraMatchTheKitFactories) {
     for (auto const& item : cases()) {
         SCOPED_TRACE(item.name);
         mdl::Hamiltonian const model = item.factory();
-        auto p = lattice_parameters(model.lat());
+        alps::Parameters p;
         for (auto const& [key, value] : item.catalog) p[key] = value;
-        // Regression hints: catalog above kit = dropped couplings, below =
-        // phantom periodic bonds.
-        EXPECT_NEAR(catalog_e0(p), kit_e0(model), 1e-9);
+        // The catalog graph where it expands to the kit lattice, otherwise
+        // the kit lattice's own document (the Kondo chain's typed cell).
+        auto const catalog = catalog_spectrum(mdl::CatalogModel<>(model.lat(), p));
+        auto const kit = kit_spectrum(model);
+        ASSERT_EQ(catalog.size(), kit.size());
+        double deviation = 0;
+        for (std::size_t i = 0; i < kit.size(); ++i) deviation = std::max(deviation, std::abs(catalog[i] - kit[i]));
+        // Regression hints: a shifted ground state with an intact spectrum
+        // width points at a site term; catalog above kit at dropped
+        // couplings, below at phantom periodic bonds.
+        EXPECT_LT(deviation, 1e-9) << "ground states " << catalog.at(0) << " (catalog) and " << kit.at(0) << " (kit)";
     }
 }
 

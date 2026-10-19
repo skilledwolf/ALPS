@@ -6,8 +6,9 @@
 // agent/v3-execution-and-api-audit at f8ee6e98b, file src/model/src/operators/terms.cpp.
 // Adaptation: C++17 (no std::span, defaulted comparisons or std::erase_if), <alps/models/...> include names, ALPS_MODELS_DECL exports.
 //
-// Shared native operator algebra. Ordinary-model conventions are pinned by
-// models_kit_parity.cpp; term_accumulation.cpp locks numerical preparation.
+// Shared native operator algebra. Ordinary-model conventions are checked
+// against the XML catalog by src/alps/model/tests/catalog_model_parity.cpp;
+// term_accumulation.cpp locks numerical preparation.
 
 #include <alps/models/terms.hpp>
 #include "exact_arithmetic.hpp"

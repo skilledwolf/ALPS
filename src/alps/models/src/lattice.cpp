@@ -10,8 +10,7 @@
 //
 // Implementation of alps::lattice (see lattice.hpp). Semantics mirror the
 // Python alps.lattice module line-for-line where behavior is observable;
-// the golden-fixture parity suite (tests/lattice_kit_parity.cpp)
-// pins the equivalence.
+// tests/lattice_tiling.cpp checks the tiling contract.
 
 #include <alps/models/lattice.hpp>
 

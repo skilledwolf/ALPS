@@ -7,8 +7,9 @@
 // Adaptation: C++17 (no std::span, defaulted comparisons or std::erase_if), <alps/models/...> include names, ALPS_MODELS_DECL exports.
 //
 // Implementation of alps::models::Hamiltonian. Mirrors hamiltonian.py
-// (template expansion) and compile.py (to_local_decomposition); parity
-// pinned by tests/models_kit_parity.cpp.
+// (template expansion) and compile.py (to_local_decomposition); the
+// factories' spectra are checked against the XML catalog in
+// src/alps/model/tests/catalog_model_parity.cpp.
 
 #include <alps/models/hamiltonian.hpp>
 #include "exact_arithmetic.hpp"

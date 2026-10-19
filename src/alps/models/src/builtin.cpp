@@ -9,8 +9,8 @@
 // The 14 built-in model factories, mirroring builtin.py term-for-term
 // (including the Sz-eigenoperator bond forms — Sz⊗Sz + (S+⊗S- + S-⊗S+)/2
 // rather than Sx/Sy tensor products — which the QMC matrix-model adapter's
-// raising/lowering classifier requires). Parity pinned by
-// src/model/tests/models/models_kit_parity.cpp.
+// raising/lowering classifier requires). Their spectra are checked against
+// the XML catalog's models in src/alps/model/tests/catalog_model_parity.cpp.
 
 #include <alps/models/builtin.hpp>
 

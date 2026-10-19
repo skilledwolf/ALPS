@@ -8,7 +8,7 @@
 // dense reference uses LAPACK zheev instead of Eigen.
 //
 // Shared test helper: dense assembly of a CompiledModel emitted by
-// alps::models::compile_hamiltonian(), and its ground-state energy. Per term
+// alps::models::compile_hamiltonian(), and its eigenvalues. Per term
 // the full-space operator is the Kronecker product over all sites of (factor
 // op [right-multiplied by F when the site is on the term's JW string] | bare F
 // on factor-less JW sites | identity); F = diag(parity_operator) of the
@@ -123,11 +123,6 @@ inline std::vector<double> hermitian_eigenvalues(DenseMatrix matrix) {
     zheev_("N", "L", &n, matrix.data.data(), &n, values.data(), work.data(), &lwork, rwork.data(), &info);
     if (info != 0) throw std::runtime_error("zheev failed with info " + std::to_string(info));
     return values;
-}
-
-inline double ground_state_energy(alps::models::Hamiltonian const& H,
-                                  alps::models::CompiledModel const& d) {
-    return hermitian_eigenvalues(dense_hamiltonian(H, d)).front();
 }
 
 } // namespace alps_test

@@ -8,8 +8,9 @@
 // bonds; resolution selects a catalog graph only where the catalog's own
 // expansion is identical; a written library drives graph_helper from
 // parameters; the catalog importer runs on a kit lattice and reproduces the
-// kit's ground state. The custom cells are those of alpsx's lattice fixtures
-// (custom_bilayer_3x3_p, custom_cylinder_4x3).
+// kit's ground state. The custom cells are those of
+// src/alps/models/tests/lattice_tiling.cpp (custom_bilayer_3x3_p,
+// custom_cylinder_4x3).
 #include <alps/ed/eigensolver.hpp>
 #include <alps/ed/product_basis.hpp>
 #include <alps/ed/product_problem.hpp>

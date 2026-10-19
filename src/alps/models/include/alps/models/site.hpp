@@ -7,7 +7,8 @@
 // Adaptation: C++17 (no std::span, defaulted comparisons or std::erase_if), <alps/models/...> include names, ALPS_MODELS_DECL exports.
 //
 // Local Hilbert spaces shared by the scientific solver interfaces.
-// Independent matrix references are in tests/models_kit_parity.cpp.
+// The model factories' spectra check these matrices against the XML catalog
+// (src/alps/model/tests/catalog_model_parity.cpp).
 //
 // A SiteBasis declares the local dimension, exchange statistics, the named
 // LocalOp registry (dense matrices + fermionic parity tags + per-QN deltas),

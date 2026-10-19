@@ -7,8 +7,8 @@
 // Adaptation: C++17 (no std::span, defaulted comparisons or std::erase_if), <alps/models/...> include names, ALPS_MODELS_DECL exports.
 //
 // Shared implementation of alps::models site bases, consumed by Python;
-// parity pinned by
-// src/model/tests/models/models_kit_parity.cpp.
+// checked through the factories' spectra against the XML catalog in
+// src/alps/model/tests/catalog_model_parity.cpp.
 
 #include <alps/models/site.hpp>
 #include <alps/models/operator_names.hpp>
