@@ -7,7 +7,7 @@
 // src/model/tests/models/catalog_compiler.cpp. Adaptation: the shipped XML
 // catalogs replace alpsx's TOML fixtures ("boson Hubbard" with Nmax=1 and
 // "spinless fermions" stand in for its "boson" and "complex fermion" models);
-// the charge accessors and the n-site test are new.
+// the charge accessors and the n-site tests are new.
 // This translation unit deliberately includes no ED or matrix-storage header.
 #include <alps/model/catalog.hpp>
 #include <gtest/gtest.h>
@@ -158,5 +158,49 @@ TEST(CatalogCompiler, NSiteTermsCompileOnTheNSiteGroups) {
     p["MODEL"] = "three-spin";
     alps::models::CatalogModel<> without_groups(p);
     EXPECT_TRUE(without_groups.compile_hamiltonian().terms.empty());
+    std::filesystem::remove_all(dir);
+}
+
+// A term that changes a boson N cut off at Nmax prints hamiltonian_matrix's
+// warning, once per model; a conserving one does not.
+TEST(CatalogCompiler, NSiteCutoffWarningIsPrintedOnce) {
+    auto const dir = std::filesystem::temp_directory_path()
+        / ("alps_catalog_nsite_cutoff_" + std::to_string(::getpid()));
+    std::filesystem::create_directories(dir);
+    std::ofstream(dir / "lattices.xml") << R"(<LATTICES>
+<GRAPH name="triangle" vertices="3"><EDGE source="1" target="2"/><EDGE source="2" target="3"/>
+<NSITE><SITE id="1"/><SITE id="2"/><SITE id="3"/></NSITE></GRAPH>
+</LATTICES>)";
+    std::ofstream(dir / "models.xml") << R"xml(<MODELS>
+<SITEBASIS name="boson"><PARAMETER name="Nmax" default="infinity"/>
+<QUANTUMNUMBER name="N" min="0" max="Nmax"/>
+<OPERATOR name="bdag" matrixelement="sqrt(N+1)"><CHANGE quantumnumber="N" change="1"/></OPERATOR>
+<OPERATOR name="b" matrixelement="sqrt(N)"><CHANGE quantumnumber="N" change="-1"/></OPERATOR>
+<OPERATOR name="n" matrixelement="N"/></SITEBASIS>
+<BASIS name="boson"><SITEBASIS ref="boson"/></BASIS>
+<HAMILTONIAN name="pairs"><BASIS ref="boson"/>
+<NSITETERM sites="i j k">n(j)*(bdag(i)*bdag(k) + b(k)*b(i))</NSITETERM></HAMILTONIAN>
+<HAMILTONIAN name="hop"><BASIS ref="boson"/>
+<NSITETERM sites="i j k">n(j)*(bdag(i)*b(k) + bdag(k)*b(i))</NSITETERM></HAMILTONIAN>
+</MODELS>)xml";
+    alps::Parameters p;
+    p["LATTICE_LIBRARY"] = (dir / "lattices.xml").string();
+    p["MODEL_LIBRARY"] = (dir / "models.xml").string();
+    p["GRAPH"] = "triangle";
+    p["Nmax"] = 2;
+    p["MODEL"] = "pairs";
+    alps::models::CatalogModel<> pairs(p);
+    testing::internal::CaptureStderr();
+    pairs.compile_hamiltonian();
+    pairs.compile_hamiltonian();
+    std::string const warning = testing::internal::GetCapturedStderr();
+    EXPECT_EQ(warning.find("Warning: an <NSITETERM> changes the total N"), 0u) << warning;
+    EXPECT_NE(warning.find("N <= Nmax = 2"), std::string::npos) << warning;
+    EXPECT_EQ(warning.find("Warning", 1), std::string::npos) << warning;
+    p["MODEL"] = "hop";
+    alps::models::CatalogModel<> hop(p);
+    testing::internal::CaptureStderr();
+    hop.compile_hamiltonian();
+    EXPECT_EQ(testing::internal::GetCapturedStderr(), "");
     std::filesystem::remove_all(dir);
 }

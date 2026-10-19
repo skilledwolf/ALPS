@@ -45,6 +45,7 @@
 #include <limits>
 #include <map>
 #include <set>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
@@ -405,6 +406,42 @@ nsite_matrix<T> NSiteOperator::matrix(const std::vector<SiteBasisDescriptor<I> >
     mat.products.push_back(prod);
   }
   return mat;
+}
+
+// A table that changes a quantum number whose local range is capped by a
+// parameter (e.g. a boson N with max="Nmax") gives results that depend on that
+// cutoff: entries that would leave the range are dropped. Returns the warning
+// to print once, or an empty string. Fixed ranges (fermion 0..1) and ranges set
+// by another quantum number (Sz in -S..S) are physical, not a cutoff. `bases`
+// holds the site basis of every role.
+template <class T>
+std::string nsite_cutoff_warning(const nsite_matrix<T>& mat, std::vector<SiteBasisDescriptor<short> > bases,
+                                 const Parameters& parms)
+{
+  if (mat.nonconserved.empty())
+    return std::string();
+  for (std::size_t r = 0; r < bases.size(); ++r) {
+    SiteBasisDescriptor<short>& b = bases[r];
+    b.set_parameters(parms);
+    for (std::size_t q = 0; q < b.size(); ++q) {
+      if (!mat.nonconserved.count(b[q].name()) || can_evaluate(b[q].max_expression()))
+        continue;
+      bool set_by_quantumnumber = false;
+      for (std::size_t o = 0; o < b.size(); ++o)
+        if (o != q && b[q].depends_on(b[o].name()))
+          set_by_quantumnumber = true;
+      if (set_by_quantumnumber)
+        continue;
+      std::ostringstream out;
+      out << "Warning: an <NSITETERM> changes the total " << b[q].name()
+          << ", whose local range is cut off at " << b[q].name() << " <= "
+          << b[q].max_expression() << " = " << b[q].max() << ". Matrix elements "
+          << "that would exceed the cutoff are dropped, so results depend on it; "
+          << "check convergence in " << b[q].max_expression() << ".\n";
+      return out.str();
+    }
+  }
+  return std::string();
 }
 
 } // namespace alps

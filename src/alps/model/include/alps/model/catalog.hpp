@@ -34,6 +34,7 @@
 #include <complex>
 #include <cstddef>
 #include <cstdio>
+#include <iostream>
 #include <map>
 #include <set>
 #include <sstream>
@@ -187,6 +188,7 @@ private:
   graph_helper<G> graph_;
   model_helper<> model_;
   mutable bool built_basis_ = false;
+  mutable bool warned_cutoff_ = false; // nsite_cutoff_warning is printed once
   mutable basis_states_descriptor<short> basis_;
 };
 
@@ -351,6 +353,11 @@ void CatalogModel<Scalar,G>::append_operator(CompiledOperator& result, const Glo
         std::vector<SiteBasisDescriptor<short>> bases;
         for (auto site : group.sites) bases.push_back(model_.model().basis().site_basis(graph_.site_type(site)));
         local = term.template matrix<value_type>(bases, parms);
+        if (!warned_cutoff_) {
+          std::string const warning = nsite_cutoff_warning(local, bases, parms);
+          warned_cutoff_ = !warning.empty();
+          std::cerr << warning;
+        }
       }
       table = tables.emplace(key, std::move(local)).first;
     }

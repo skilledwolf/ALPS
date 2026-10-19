@@ -1,8 +1,11 @@
 # n-site terms
 
 Terms acting on more than two sites. Supported by exact diagonalization
-(`fulldiag`, `sparsediag`). Other applications refuse a model that has
-n-site terms on a lattice that has n-site groups.
+(`fulldiag`, `sparsediag`), by `dmrg`, and by `alps::models::CatalogModel`
+(`ALPS::ed` and classic DMRG through it, from C++ and pyalps). Other
+applications refuse a model that has n-site terms on a lattice that has n-site
+groups. Classic DMRG evolves them in time by time-step targeting; its Trotter
+gates refuse terms on more than two sites.
 
 ## Lattice
 

@@ -116,7 +116,7 @@ template<class value_type>
 DMRGTask<value_type>::DMRGTask(const alps::ProcessList& w,const boost::filesystem::path& fn)
   : alps::scheduler::Task(w,fn)
   , alps::graph_helper<>(parms)
-  , alps::model_helper<>(*this,parms)
+  , alps::model_helper<>(*this,parms,false,true) // the catalog model compiles n-site terms
   , alps::EigenvectorMeasurements<value_type >(*this)
 {
   init();
@@ -126,7 +126,7 @@ template<class value_type>
 DMRGTask<value_type>::DMRGTask(const alps::ProcessList& w,const alps::Parameters& p)
   : alps::scheduler::Task(w,p)
   , alps::graph_helper<>(parms)
-  , alps::model_helper<>(*this,parms)
+  , alps::model_helper<>(*this,parms,false,true) // the catalog model compiles n-site terms
   , alps::EigenvectorMeasurements<value_type >(*this)
 {
   init();
