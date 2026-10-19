@@ -169,8 +169,8 @@ struct MatrixProductState {
 // Operators measured on every targeted state. `expectation` reports one value
 // per operator, <psi|O|psi>; `terms` reports the expectation value of every
 // term of the operator separately (one column per term, in term order), for
-// example one column per site or per site pair. Every term must act on at
-// most two sites and have even fermion parity. Values are real parts, so a
+// example one column per site or per site pair. Every term must have even
+// fermion parity, on any number of sites. Values are real parts, so a
 // non-Hermitian operator such as c+_i c_j reports Re <psi|O|psi>.
 struct Measurements {
     std::map<std::string, models::CompiledOperator> expectation;
@@ -268,11 +268,13 @@ using IterationCallback = std::function<void(Iteration const&)>;
 // charges whose summed parity is the fermion parity on every site: the
 // particle number N, or else the smallest such set (the XML catalog's Nup and
 // Ndown), which become the engine's fermionic quantum numbers. Terms are
-// products of at most two local factors on distinct sites, in either site
-// order, with the Jordan-Wigner strings ALPS::models emits; like terms are
-// combined (also terms that differ only by a scale moved between coefficient
-// and factor matrices) and the sum must be Hermitian, which is checked on the
-// dense site-pair matrices. At most four quantum numbers (the sector's charges
+// products of local factors on distinct sites, any number of them (the
+// n-site terms of ALPSim/ALPS PR 223), with the Jordan-Wigner strings
+// ALPS::models emits: those of the strict convention, the sites below an odd
+// number of odd factors. Like terms are combined (also terms that differ only
+// by a scale moved between coefficient and factor matrices) and the sum must
+// be Hermitian, which is checked entry by entry on the sites every group of
+// terms acts on. At most four quantum numbers (the sector's charges
 // plus the fermionic ones) can be tracked. At least four sites are needed.
 // Real arithmetic requires real coefficients and factors.
 ALPS_CLASSIC_DMRG_DECL Result solve(models::CompiledOperator const& hamiltonian,
@@ -311,7 +313,7 @@ ALPS_CLASSIC_DMRG_DECL Result solve(models::Hamiltonian const& model, Options co
 // the state by a Krylov exponential of the final Hamiltonian there. Two
 // half sweeps first build the final Hamiltonian's block operators. With
 // enough states there is no time-step error, and the final Hamiltonian may
-// couple any two sites, as the initial one may; drives are not supported.
+// couple any sites, as the initial one may; drives are not supported.
 
 enum class EvolutionMethod {
     trotter,   // second-order Trotter bond gates

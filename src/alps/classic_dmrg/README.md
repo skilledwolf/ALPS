@@ -62,8 +62,10 @@ auto const& density = result.measurements.at("n").values[0];  // row = target st
   their density matrices' truncations discard, of blocks no configuration
   reads; `final_truncation_error` is that of the closing configuration,
   whose truncation the returned state never undergoes on any length.
-- Every term acts on at most two distinct sites, its
-  factors in either site order. A local factor is split into components of
+- Every term is a product of local factors on distinct sites, any number
+  of them (the n-site terms of ALPSim/ALPS PR 223), its factors in any site
+  order, with the strict convention's Jordan-Wigner string (the sites below
+  an odd number of odd factors), as `ALPS::models` emits it. A local factor is split into components of
   definite charge change (for the sector's charges and the fermionic
   charges) and definite parity change, so `Sx Sx` is fine; the components
   that leave the sector are dropped from measurements and must cancel in the
@@ -71,9 +73,9 @@ auto const& density = result.measurements.at("n").values[0];  // row = target st
 - Like terms are combined before the engine sees them, also terms that
   differ only by a scale moved between coefficient and factor matrices and
   a product written as one term per matrix element of its first factor (the
-  XML catalog's bond terms). The sum must be Hermitian, which is checked on
-  the dense matrix of every site and site pair, and must conserve every
-  charge of the sector.
+  XML catalog's bond terms). The sum must be Hermitian, which is checked
+  entry by entry on the sites every group of terms acts on, and must
+  conserve every charge of the sector.
 - Terms without factors, the identity part of the Hamiltonian, never reach
   the engine. Every reported energy adds them back: `Result::energies` and
   the `energy` of every `Iteration`, so the iterations converge to
@@ -168,7 +170,8 @@ searches the diagonal of the Hamiltonian for a low product state of the
 sector. The search
 places the sites in chain order, each in its lowest state next to those
 already placed, among the states that leave the remaining sites a
-reachable sector. Passes over the sites then change one site's state at
+reachable sector (a diagonal term on three or more sites counts once its
+last site is placed). Passes over the sites then change one site's state at
 fixed charges, or move charge between two sites, whenever that lowers the
 energy, until a pass changes nothing. If the product state lies below the
 ground-state energy by more than the Lanczos tolerance (relative to the
@@ -392,7 +395,8 @@ two half sweeps, a measured one four.
   exactly. `final` and every drive must be Hermitian, conserve the
   sector's charges and, for the Trotter method, couple only sites `i` and
   `i + 1`; a coupling of other sites (a periodic chain's closing bond,
-  next-nearest neighbours) is rejected with a message naming the sites.
+  next-nearest neighbours, a term on three or more sites) is rejected with
+  a message naming the sites.
   Time-step targeting takes them.
 - Real time runs in complex arithmetic; imaginary time (`imaginary`) runs in
   `options.arithmetic`, applies `exp(-tau H)` and renormalizes after every
@@ -503,9 +507,9 @@ applies `final` itself to the superblock state:
 - `final` replaces the system's Hamiltonian under its own name, and the
   hooks that build the ground state's block operators build its block
   operators. Two half sweeps do this, one side each, before the first step;
-  the first of them targets the state alone. `final` may couple any two
+  the first of them targets the state alone. `final` may couple any
   sites, as the initial Hamiltonian may (next-nearest neighbours, a
-  periodic chain).
+  periodic chain, terms on three or more sites).
 - At every configuration four Runge-Kutta vectors of `c (H - E)`, with
   `c = -i dt` (or `-dt` in imaginary time) and `E = <psi|H|psi>`, give the
   states at `t + dt/3`, `t + 2dt/3` and `t + dt` (the paper's formulas, in

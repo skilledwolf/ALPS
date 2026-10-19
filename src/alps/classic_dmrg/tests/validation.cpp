@@ -87,12 +87,6 @@ TEST(ClassicDmrgValidation, WarmupConfigurationsMustFitTheChainAndTheSector) {
 }
 
 TEST(ClassicDmrgValidation, TermShapesTheEngineCannotRepresentAreRejected) {
-    auto const site = mdl::spin(0.5);
-    auto three = chain();
-    three.add(mdl::TermSum::located(site, "Sz", 0) * mdl::TermSum::located(site, "Sz", 1)
-              * mdl::TermSum::located(site, "Sz", 2) * std::complex<double>(0.1));
-    EXPECT_THROW(cd::solve(three, exact_options(8, {{"Sz", 0.}})), std::invalid_argument);
-
     auto const fermions = mdl::spinless_fermion_model(lat::chain(6, 1.0, lat::Boundary::open), 1.0);
     auto const basis = mdl::physical_basis(fermions);
     auto const c = mdl::spinless_fermion();

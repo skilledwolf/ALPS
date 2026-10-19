@@ -980,6 +980,21 @@ TEST(ClassicDmrgTargeting, HubbardQuenchKeepsTheFermionSigns) {
                            targeting(0.1, 6, 64), options_for(64, sector), 1e-9);
 }
 
+TEST(ClassicDmrgTargeting, FinalTermsOnThreeAndFourSites) {
+    auto const lattice = lat::chain(6, 1.0, lat::Boundary::open);
+    auto const free = mdl::hubbard(lattice, 1.0, 0.0);
+    auto final_model = mdl::hubbard(lattice, 1.0, 3.0);
+    auto const c = mdl::spinful_fermion();
+    auto const on = [&](char const* name, int i) { return mdl::TermSum::located(c, name, i); };
+    final_model.add(on("c_dag_up", 0) * on("c_dag_dn", 2) * on("c_dn", 5) * on("c_up", 3) * Complex(0.7), true);
+    final_model.add(on("n_dn", 4) * on("c_dag_up", 1) * on("c_up", 5) * Complex(-0.45), true);
+    cd::Measurements requests;
+    requests.terms["n"] = cd::site_terms(free, "n");
+    Sector const sector{{"N", 6.}, {"Sz", 0.}};
+    expect_exact_targeting(Model(free), Model(final_model), sector, requests, targeting(0.1, 6, 64),
+                           options_for(64, sector), 1e-9);
+}
+
 TEST(ClassicDmrgTargeting, ComplexHoppingAndFourSites) {
     auto const lattice = lat::chain(8, 1.0, lat::Boundary::open);
     auto const free = mdl::spinless_fermion_model(lattice, 1.0, 0.0, 0.0);

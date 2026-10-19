@@ -8,12 +8,14 @@
 // engine: wrap bonds whose factors arrive in descending site order, fermion
 // rings with an even particle number, the catalog's two fermionic charges
 // (Nup and Ndown, no N), ladders whose bonds skip sites of the engine's chain,
-// projector-form bond terms of spin 1, and correlations with i > j.
+// projector-form bond terms of spin 1, correlations with i > j, and n-site
+// terms (<NSITETERM>) whose groups list their sites out of order.
 #include <alps/dmrg/classic.hpp>
 #include <alps/ed/projected_basis.hpp>
 #include <alps/ed/projected_problem.hpp>
 #include <alps/model/catalog.hpp>
 #include <gtest/gtest.h>
+#include "nsite_libraries.hpp"
 
 #include <complex>
 #include <map>
@@ -123,6 +125,28 @@ TEST(CatalogClassicDmrg, HubbardLadderStringsSpanSkippedSites) {
 TEST(CatalogClassicDmrg, TJChainConservesNAndSz) {
     expect_energies({{"MODEL", "t-J"}, {"LATTICE", "open chain lattice"}, {"L", "8"}, {"t", "1"}, {"J", "0.5"}},
                     {"N", "Sz"}, {{"N", 6.}, {"Sz", 0.}}, 200);
+}
+
+TEST(CatalogClassicDmrg, NSiteTermsOnLaddersAndScrambledGroups) {
+    nsite_test::Libraries const libraries;
+    Entries const files{{"LATTICE_LIBRARY", (libraries.dir / "lattices.xml").string()},
+                        {"MODEL_LIBRARY", (libraries.dir / "models.xml").string()}};
+    auto with = [&](Entries entries) {
+        entries.insert(entries.begin(), files.begin(), files.end());
+        return entries;
+    };
+    // Four-site pair hops, a correlated hop and a constant; the periodic
+    // ladder's wrap groups arrive in descending site order.
+    expect_energies(with({{"MODEL", "pair hopping"}, {"LATTICE", "open ladder"}, {"L", "4"}}),
+                    {"Ndown", "Nup"}, {{"Nup", 3.}, {"Ndown", 3.}}, 256, 2);
+    expect_energies(with({{"MODEL", "pair hopping"}, {"LATTICE", "periodic ladder"}, {"L", "3"}}),
+                    {"Ndown", "Nup"}, {{"Nup", 3.}, {"Ndown", 2.}}, 256);
+    expect_energies(with({{"MODEL", "three-site fermions"}, {"GRAPH", "scrambled"}}),
+                    {"Ndown", "Nup"}, {{"Nup", 2.}, {"Ndown", 3.}}, 256);
+    expect_energies(with({{"MODEL", "ring exchange"}, {"LATTICE", "periodic ladder"}, {"L", "4"}}),
+                    {"Sz"}, {{"Sz", 0.}}, 128, 2);
+    expect_energies(with({{"MODEL", "boson ring hop"}, {"LATTICE", "open ladder"}, {"L", "3"}}),
+                    {"N"}, {{"N", 4.}}, 256);
 }
 
 TEST(CatalogClassicDmrg, CorrelationsInBothSiteOrders) {

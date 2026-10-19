@@ -306,9 +306,6 @@ void expand(models::LocalTerm const& term, Problem const& problem, std::vector<R
         scalar += term.coefficient;
         return;
     }
-    if (term.factors.size() > 2)
-        throw std::invalid_argument(std::string("classic DMRG ") + what
-                                    + " terms may act on at most two sites; got " + std::to_string(term.factors.size()));
     // Local factors on distinct sites form a tensor product: their order in the
     // term carries no sign (the parity string is read from the input state),
     // so take them in ascending site order, as the engine needs them.
@@ -319,13 +316,17 @@ void expand(models::LocalTerm const& term, Problem const& problem, std::vector<R
         ordered.push_back(&factor);
     }
     std::sort(ordered.begin(), ordered.end(), [](auto const* a, auto const* b) { return a->site < b->site; });
-    if (ordered.size() == 2 && ordered[0]->site == ordered[1]->site)
-        throw std::invalid_argument(std::string("classic DMRG ") + what + " factors must be on distinct sites");
+    for (std::size_t k = 1; k < ordered.size(); ++k)
+        if (ordered[k - 1]->site == ordered[k]->site)
+            throw std::invalid_argument(std::string("classic DMRG ") + what + " factors must be on distinct sites");
     std::vector<std::vector<Factor>> components;
     for (auto const* factor : ordered) {
         components.push_back(split(*factor, problem.sites[problem.site_index[factor->site]], problem.charges.size()));
         if (components.back().empty()) return; // an exactly zero factor
     }
+    // The engine applies the odd factors as fermion operators in ascending
+    // site order, which is the strict convention's product: the factors times
+    // the parity of every site with an odd number of odd factors above it.
     auto emit = [&](std::vector<Factor> factors) {
         std::size_t odd = 0;
         for (auto const& f : factors) odd += f.odd ? 1 : 0;
@@ -333,12 +334,19 @@ void expand(models::LocalTerm const& term, Problem const& problem, std::vector<R
             throw std::invalid_argument(std::string("classic DMRG ") + what
                                         + " contains an odd-parity term, which the engine cannot represent");
         std::vector<int> expected;
-        if (odd == 2)
-            for (int s = factors[0].site; s < factors[1].site; ++s) expected.push_back(s);
+        std::size_t above = odd;
+        int site = 0;
+        for (auto const& f : factors) {
+            for (; site < f.site; ++site)
+                if (above % 2) expected.push_back(site);
+            if (f.odd) --above;
+            if (above % 2) expected.push_back(site);
+            ++site;
+        }
         if (term.jordan_wigner != expected)
             throw std::invalid_argument(std::string("classic DMRG ") + what
-                                        + " term carries a Jordan-Wigner string other than the strict convention's [i, j) "
-                                          "between two odd factors");
+                                        + " term carries a Jordan-Wigner string other than the strict convention's "
+                                          "(the sites below an odd number of odd factors)");
         Complex coefficient = term.coefficient;
         for (auto& f : factors) {
             coefficient *= f.scale;
@@ -346,10 +354,15 @@ void expand(models::LocalTerm const& term, Problem const& problem, std::vector<R
         }
         out.push_back(ReadyTerm{coefficient, std::move(factors)});
     };
-    for (auto const& first : components[0]) {
-        if (components.size() == 1) emit({first});
-        else
-            for (auto const& second : components[1]) emit({first, second});
+    // Every combination of the factors' components, the first factor's slowest.
+    std::vector<std::size_t> choice(components.size(), 0);
+    while (true) {
+        std::vector<Factor> factors;
+        for (std::size_t k = 0; k < components.size(); ++k) factors.push_back(components[k][choice[k]]);
+        emit(std::move(factors));
+        std::size_t k = components.size();
+        while (k > 0 && ++choice[k - 1] == components[k - 1].size()) choice[--k] = 0;
+        if (k == 0) break;
     }
 }
 
@@ -361,9 +374,9 @@ TermKey term_key(ReadyTerm const& term) {
     return key;
 }
 
-// Sum like terms, then combine terms that share one factor (or, on one site,
-// a charge change): c1 A1 x B + c2 A2 x B = (c1 A1 + c2 A2) x B when A1 and A2
-// change the charges and the parity alike. Catalog operators arrive as one
+// Sum like terms, then combine terms that share all factors but one (or, on
+// one site, a charge change): c1 A1 x B + c2 A2 x B = (c1 A1 + c2 A2) x B when
+// A1 and A2 change the charges and the parity alike. Catalog operators arrive as one
 // term per local matrix element of the first site (projector times matrix);
 // this restores their compact form, so the engine applies as many terms as
 // the operator's natural decomposition has.
@@ -377,13 +390,17 @@ std::vector<ReadyTerm> simplify(std::vector<ReadyTerm> const& terms) {
             else current[pos->second].coefficient += term.coefficient;
         }
     }
-    using Bucket = std::tuple<std::vector<int>, Key, std::vector<long>, bool>;
+    using Bucket = std::tuple<std::vector<int>, std::vector<Key>, std::vector<long>, bool>;
     // Combine within buckets that share everything but the summed factor.
     auto combine = [](std::vector<ReadyTerm> const& input, auto bucket_of, std::size_t summed) {
         std::vector<ReadyTerm> output;
         std::map<Bucket, std::size_t> index;
         std::vector<std::vector<std::size_t>> members;
         for (std::size_t t = 0; t < input.size(); ++t) {
+            if (summed >= input[t].factors.size()) { // no such factor: kept as it is
+                members.push_back({t});
+                continue;
+            }
             auto [pos, inserted] = index.emplace(bucket_of(input[t]), members.size());
             if (inserted) members.emplace_back();
             members[pos->second].push_back(t);
@@ -416,21 +433,24 @@ std::vector<ReadyTerm> simplify(std::vector<ReadyTerm> const& terms) {
             for (auto const& f : t.factors) sites.push_back(f.site);
             return sites;
         };
-        std::vector<ReadyTerm> singles, pairs;
-        for (auto& t : current) (t.factors.size() == 2 ? pairs : singles).push_back(std::move(t));
+        std::vector<ReadyTerm> singles, products;
+        for (auto& t : current) (t.factors.size() == 1 ? singles : products).push_back(std::move(t));
         // On one site: sum every component with the same charge change.
         singles = combine(singles, [&](ReadyTerm const& t) {
-            return Bucket{sites_of(t), Key{}, t.factors[0].delta, t.factors[0].odd};
+            return Bucket{sites_of(t), {}, t.factors[0].delta, t.factors[0].odd};
         }, 0);
-        // On two sites: sum the factors that multiply one shared factor.
-        for (std::size_t shared : {std::size_t{1}, std::size_t{0}}) {
-            std::size_t const summed = 1 - shared;
-            pairs = combine(pairs, [&](ReadyTerm const& t) {
-                return Bucket{sites_of(t), key_of(t.factors[shared].matrix), t.factors[summed].delta, t.factors[summed].odd};
+        // On several sites: sum the factors that multiply the same other factors.
+        std::size_t most = 0;
+        for (auto const& t : products) most = std::max(most, t.factors.size());
+        for (std::size_t summed = 0; summed < most; ++summed)
+            products = combine(products, [&](ReadyTerm const& t) {
+                std::vector<Key> shared;
+                for (std::size_t k = 0; k < t.factors.size(); ++k)
+                    if (k != summed) shared.push_back(key_of(t.factors[k].matrix));
+                return Bucket{sites_of(t), std::move(shared), t.factors[summed].delta, t.factors[summed].odd};
             }, summed);
-        }
         current = std::move(singles);
-        current.insert(current.end(), std::make_move_iterator(pairs.begin()), std::make_move_iterator(pairs.end()));
+        current.insert(current.end(), std::make_move_iterator(products.begin()), std::make_move_iterator(products.end()));
         if (current.size() == before) break;
     }
     std::vector<ReadyTerm> kept;
@@ -439,46 +459,59 @@ std::vector<ReadyTerm> simplify(std::vector<ReadyTerm> const& terms) {
     return kept;
 }
 
-// Hermiticity, checked numerically on every site and site pair: the even part
-// of the operator must equal its adjoint and the odd-odd part its negated
-// adjoint (the adjoint of c F_i F_j with a string over [i, j) is
-// -conj(c) F_i^+ F_j^+ with the same string).
+// Hermiticity, checked numerically on every set of sites the terms act on:
+// with the same odd factors, the terms' sum must equal its adjoint up to the
+// sign of reversing those factors. The adjoint of c F_1 ... F_n with m odd
+// factors and their string is conj(c) F_1^+ ... F_n^+ with the same string,
+// times (-1)^(m(m-1)/2): +1 for even terms, -1 for two odd factors.
 void check_hermitian(std::vector<ReadyTerm> const& terms, Problem const& problem, double scale,
                      std::string const& what) {
-    std::map<std::vector<int>, std::vector<ReadyTerm const*>> groups;
+    std::map<std::pair<std::vector<int>, std::vector<bool>>, std::vector<ReadyTerm const*>> groups;
     for (auto const& term : terms) {
         std::vector<int> sites;
-        for (auto const& f : term.factors) sites.push_back(f.site);
-        groups[sites].push_back(&term);
+        std::vector<bool> odd;
+        for (auto const& f : term.factors) {
+            sites.push_back(f.site);
+            odd.push_back(f.odd);
+        }
+        groups[{sites, odd}].push_back(&term);
     }
-    for (auto const& [sites, members] : groups) {
+    for (auto const& [group, members] : groups) {
+        auto const& [sites, odd] = group;
         std::vector<std::size_t> dims;
         for (int s : sites) dims.push_back(static_cast<std::size_t>(problem.sites[problem.site_index[s]].dim));
-        std::size_t const second = dims.size() == 2 ? dims[1] : 1;
-        std::size_t const dim = dims[0] * second;
-        std::vector<Complex> even(dim * dim), odd(dim * dim);
+        std::size_t const m = static_cast<std::size_t>(std::count(odd.begin(), odd.end(), true));
+        double const sign = (m * (m - 1) / 2) % 2 ? -1. : 1.;
+        // Sparse entries keyed by (output, input) local-state tuples.
+        std::map<std::pair<std::vector<std::size_t>, std::vector<std::size_t>>, Complex> sum;
         for (auto const* term : members) {
-            auto& target = term->factors.size() == 2 && term->factors[0].odd ? odd : even;
-            auto const& a = term->factors[0].matrix;
-            for (std::size_t o1 = 0; o1 < dims[0]; ++o1)
-                for (std::size_t i1 = 0; i1 < dims[0]; ++i1) {
-                    Complex const x = term->coefficient * a[o1 * dims[0] + i1];
-                    if (x == Complex{}) continue;
-                    if (dims.size() == 1) { target[o1 * dim + i1] += x; continue; }
-                    auto const& b = term->factors[1].matrix;
-                    for (std::size_t o2 = 0; o2 < second; ++o2)
-                        for (std::size_t i2 = 0; i2 < second; ++i2)
-                            target[(o1 * second + o2) * dim + (i1 * second + i2)] += x * b[o2 * second + i2];
+            std::vector<std::size_t> out(sites.size()), in(sites.size());
+            std::function<void(std::size_t, Complex)> expand_entries = [&](std::size_t k, Complex x) {
+                if (k == sites.size()) {
+                    sum[{out, in}] += x;
+                    return;
                 }
+                auto const& a = term->factors[k].matrix;
+                for (std::size_t o = 0; o < dims[k]; ++o)
+                    for (std::size_t i = 0; i < dims[k]; ++i) {
+                        Complex const v = a[o * dims[k] + i];
+                        if (v == Complex{}) continue;
+                        out[k] = o;
+                        in[k] = i;
+                        expand_entries(k + 1, x * v);
+                    }
+            };
+            expand_entries(0, term->coefficient);
         }
-        for (std::size_t r = 0; r < dim; ++r)
-            for (std::size_t c = 0; c < dim; ++c)
-                if (std::abs(even[r * dim + c] - std::conj(even[c * dim + r])) > 1e-10 * scale
-                    || std::abs(odd[r * dim + c] + std::conj(odd[c * dim + r])) > 1e-10 * scale) {
-                    std::string where;
-                    for (int s : sites) where += (where.empty() ? "" : ", ") + std::to_string(s);
-                    throw std::invalid_argument("classic DMRG " + what + " is not Hermitian (term on sites " + where + ")");
-                }
+        for (auto const& [entry, value] : sum) {
+            auto const found = sum.find({entry.second, entry.first});
+            Complex const mirror = found == sum.end() ? Complex{} : found->second;
+            if (std::abs(value - sign * std::conj(mirror)) > 1e-10 * scale) {
+                std::string where;
+                for (int s : sites) where += (where.empty() ? "" : ", ") + std::to_string(s);
+                throw std::invalid_argument("classic DMRG " + what + " is not Hermitian (term on sites " + where + ")");
+            }
+        }
     }
 }
 
@@ -808,14 +841,26 @@ void check_sector(Problem const& problem, std::size_t targets) {
 // energy proves it, as the DMRG energy is variational.
 
 // The Hamiltonian's diagonal on product states: its identity part, an
-// energy per site and state, and a table per coupled site pair. Only terms
-// whose factors keep every charge and the parity have diagonal entries.
+// energy per site and state, a table per coupled site pair, and the terms on
+// three or more sites as products of per-site diagonals. Only terms whose
+// factors keep every charge and the parity have diagonal entries.
 struct ProductEnergies {
     double constant = 0.;
     std::vector<std::vector<double>> site;                    // [site][state]
     std::map<std::pair<int, int>, std::vector<double>> pairs; // (i, j), i < j -> [s * dim(j) + t]
     // Per site: the coupled site, the pair's table and whether this site is i.
     std::vector<std::vector<std::tuple<int, std::vector<double> const*, bool>>> adjacent;
+    struct Cluster {
+        Complex coefficient;
+        std::vector<std::pair<int, std::vector<Complex>>> diagonals; // (site, [state])
+        double value(std::vector<int> const& state) const {
+            Complex x = coefficient;
+            for (auto const& [site, diagonal] : diagonals) x *= diagonal[static_cast<std::size_t>(state[static_cast<std::size_t>(site)])];
+            return x.real();
+        }
+    };
+    std::vector<Cluster> clusters;
+    std::vector<std::vector<std::size_t>> in_clusters; // per site, the clusters on it
 };
 
 ProductEnergies product_energies(Problem const& problem) {
@@ -841,6 +886,16 @@ ProductEnergies product_energies(Problem const& problem) {
                 out.site[static_cast<std::size_t>(f.site)][static_cast<std::size_t>(s)] += (term.coefficient * diagonal(f, s)).real();
             continue;
         }
+        if (term.factors.size() > 2) {
+            ProductEnergies::Cluster cluster{term.coefficient, {}};
+            for (auto const& f : term.factors) {
+                std::vector<Complex> d;
+                for (int s = 0; s < dim(f.site); ++s) d.push_back(diagonal(f, s));
+                cluster.diagonals.emplace_back(f.site, std::move(d));
+            }
+            out.clusters.push_back(std::move(cluster));
+            continue;
+        }
         Factor const* first = &term.factors[0];
         Factor const* second = &term.factors[1];
         if (first->site > second->site) std::swap(first, second);
@@ -851,6 +906,9 @@ ProductEnergies product_energies(Problem const& problem) {
             for (int t = 0; t < d2; ++t)
                 table[static_cast<std::size_t>(s * d2 + t)] += (term.coefficient * diagonal(*first, s) * diagonal(*second, t)).real();
     }
+    out.in_clusters.resize(n);
+    for (std::size_t c = 0; c < out.clusters.size(); ++c)
+        for (auto const& entry : out.clusters[c].diagonals) out.in_clusters[static_cast<std::size_t>(entry.first)].push_back(c);
     out.adjacent.resize(n);
     for (auto const& [sites, table] : out.pairs) {
         out.adjacent[static_cast<std::size_t>(sites.first)].emplace_back(sites.second, &table, true);
@@ -896,6 +954,13 @@ std::optional<ProductState> lowest_product_state(Problem const& problem) {
     auto const energies = product_energies(problem);
     std::vector<int> state(static_cast<std::size_t>(n), 0);
     // Site i's energy in state a next to the current states, site `other` in state b.
+    // A cluster's energy with site i in state a and site `other` in state b.
+    auto cluster_energy = [&](ProductEnergies::Cluster const& c, int i, int a, int other, int b) {
+        Complex x = c.coefficient;
+        for (auto const& [j, diagonal] : c.diagonals)
+            x *= diagonal[static_cast<std::size_t>(j == i ? a : j == other ? b : at(state, j))];
+        return x.real();
+    };
     auto local = [&](int i, int a, int other, int b) {
         double e = at(energies.site, i)[static_cast<std::size_t>(a)];
         for (auto const& [j, table, first] : at(energies.adjacent, i)) {
@@ -903,6 +968,7 @@ std::optional<ProductState> lowest_product_state(Problem const& problem) {
             e += first ? (*table)[static_cast<std::size_t>(a * site(j).dim + t)]
                        : (*table)[static_cast<std::size_t>(t * site(i).dim + a)];
         }
+        for (auto c : at(energies.in_clusters, i)) e += cluster_energy(energies.clusters[c], i, a, other, b);
         return e;
     };
 
@@ -924,6 +990,12 @@ std::optional<ProductState> lowest_product_state(Problem const& problem) {
             double e = at(energies.site, i)[static_cast<std::size_t>(a)];
             for (auto const& [j, table, first] : at(energies.adjacent, i))
                 if (j < i) e += (*table)[static_cast<std::size_t>(at(state, j) * site(i).dim + a)];
+            for (auto c : at(energies.in_clusters, i)) {
+                auto const& cluster = energies.clusters[c];
+                bool placed = true;
+                for (auto const& entry : cluster.diagonals) placed = placed && entry.first <= i;
+                if (placed) e += cluster_energy(cluster, i, a, -1, 0);
+            }
             ranked.emplace_back(e, a);
         }
         std::stable_sort(ranked.begin(), ranked.end(),
@@ -962,6 +1034,15 @@ std::optional<ProductState> lowest_product_state(Problem const& problem) {
         for (double e : row) magnitude = std::max(magnitude, std::abs(e));
     for (auto const& entry : energies.pairs)
         for (double e : entry.second) magnitude = std::max(magnitude, std::abs(e));
+    for (auto const& cluster : energies.clusters) {
+        double bound = std::abs(cluster.coefficient);
+        for (auto const& entry : cluster.diagonals) {
+            double largest = 0.;
+            for (auto const& v : entry.second) largest = std::max(largest, std::abs(v));
+            bound *= largest;
+        }
+        magnitude = std::max(magnitude, bound);
+    }
     double const gain = 1e-12 * (1. + magnitude); // a smaller change is rounding
     bool improved = true;
     for (int pass = 0; improved && pass < 64; ++pass) {
@@ -1013,6 +1094,7 @@ std::optional<ProductState> lowest_product_state(Problem const& problem) {
     }
     for (auto const& [sites, table] : energies.pairs)
         out.energy += table[static_cast<std::size_t>(at(state, sites.first) * site(sites.second).dim + at(state, sites.second))];
+    for (auto const& cluster : energies.clusters) out.energy += cluster.value(state);
     return out;
 }
 
@@ -1072,11 +1154,16 @@ void validate_evolution(Evolution const& evolution, Options const& options) {
 
 // Trotter gates act on neighbouring sites in chain order only.
 void require_bonds(std::vector<ReadyTerm> const& terms, std::string const& what) {
-    for (auto const& term : terms)
+    for (auto const& term : terms) {
+        if (term.factors.size() > 2)
+            throw std::invalid_argument("classic DMRG time evolution applies nearest-neighbour bond gates in chain "
+                                        "order; the " + what + " has a term on " + std::to_string(term.factors.size())
+                                        + " sites");
         if (term.factors.size() == 2 && term.factors[1].site != term.factors[0].site + 1)
             throw std::invalid_argument("classic DMRG time evolution applies nearest-neighbour bond gates in chain "
                                         "order; the " + what + " couples sites " + std::to_string(term.factors[0].site)
                                         + " and " + std::to_string(term.factors[1].site));
+    }
 }
 
 // Merge the final Hamiltonian and the drives on the initial problem's
@@ -1319,13 +1406,13 @@ struct Engine {
     dmtk::Term<T> make_term(ReadyTerm const& term) {
         dmtk::BasicOp<T> first = local_operator(term.factors[0]);
         first.set_site(term.factors[0].site);
-        dmtk::Term<T> product;
-        if (term.factors.size() == 1) {
-            product = dmtk::Term<T>(first);
-        } else {
-            dmtk::BasicOp<T> second = local_operator(term.factors[1]);
-            second.set_site(term.factors[1].site);
-            product = first * second;
+        // The operator product factors[0] * factors[1] * ... (dmtk stores it
+        // rightmost first; Term::operator*= would append on the other side).
+        dmtk::Term<T> product(first);
+        for (std::size_t k = 1; k < term.factors.size(); ++k) {
+            dmtk::BasicOp<T> next = local_operator(term.factors[k]);
+            next.set_site(term.factors[k].site);
+            product = product * next;
         }
         product.coef() = scalar(term.coefficient, "term coefficient");
         return product;
