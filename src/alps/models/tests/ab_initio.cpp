@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: MIT
 //
 // The molecular Hamiltonian factory: term layout, cutoff and input checks.
-// Its physics (FCI energies, sign-exact CI vectors) is locked by the
-// qdk-chemistry-alps tests against PySCF, through the Python wrapper.
+// Its physics is locked by ClassicMolecular.AgreesWithTheModelsHamiltonianSolvedByEd,
+// which solves it with ALPS::ed against the exactly checked molecular DMRG.
 #include <alps/models/builtin.hpp>
 #include <gtest/gtest.h>
 

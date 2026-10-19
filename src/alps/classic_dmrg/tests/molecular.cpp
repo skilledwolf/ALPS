@@ -7,13 +7,14 @@
 // adapted from skilledwolf/alpsx (private repository), branch
 // WIP/classic-dmrg-chemistry at d4384a7f8, tests/dmrg/classic_molecular.cpp
 // (a command-line program there, one ctest per case; GoogleTest cases here).
-// Added here: the same Hamiltonian built from ALPS::models four-operator
-// terms and solved by ALPS::ed, the validation cases, and the callback and
+// Added here: the same Hamiltonian built by ALPS::models' ab_initio and
+// solved by ALPS::ed, the validation cases, and the callback and
 // scratch checks.
 #include "support.hpp"
 #include <gtest/gtest.h>
 
 #include <alps/dmrg/molecular.hpp>
+#include <alps/models/builtin.hpp>
 #include <alps/models/site.hpp>
 #include <alps/models/terms.hpp>
 
@@ -424,26 +425,12 @@ TEST(ClassicMolecular, TruncatedRunStaysVariationalAndConsistent) {
 }
 
 TEST(ClassicMolecular, AgreesWithTheModelsHamiltonianSolvedByEd) {
-    // The same operator from ALPS::models four-operator terms and ALPS::ed.
+    // The same integrals through ALPS::models' ab_initio factory and ALPS::ed:
+    // the engine is checked against exact diagonalization above, so this
+    // locks the factory's terms and signs.
     int const n = 4;
     auto const input = input_for(n, 2, 2);
-    auto const fs = mdl::spinful_fermion();
-    mdl::Hamiltonian model(lat::chain(n, 1.0, lat::Boundary::open), fs, mdl::FermionConvention::strict, {"N", "Sz"});
-    char const* create[2] = {"c_dag_up", "c_dag_dn"};
-    char const* destroy[2] = {"c_up", "c_dn"};
-    auto L = [&](char const* name, int site) { return mdl::TermSum::located(fs, name, site); };
-    for (int p = 0; p < n; ++p)
-        for (int q = 0; q < n; ++q) {
-            for (int a = 0; a < 2; ++a)
-                model.add(L(create[a], p) * L(destroy[a], q) * input.one_body[static_cast<std::size_t>(p * n + q)]);
-            for (int r = 0; r < n; ++r)
-                for (int s = 0; s < n; ++s) {
-                    double const v = input.two_body[static_cast<std::size_t>(((p * n + q) * n + r) * n + s)];
-                    for (int a = 0; a < 2; ++a)
-                        for (int b = 0; b < 2; ++b)
-                            model.add(L(create[a], p) * L(create[b], r) * L(destroy[b], s) * L(destroy[a], q) * (.5 * v));
-                }
-        }
+    auto const model = mdl::ab_initio(input.one_body, input.two_body, n);
     auto const ed = ed_energies(model, {{"N", 4.}, {"Sz", 0.}});
     auto const result = cd::solve_molecular(input, exact(128));
     EXPECT_NEAR(result.energy - input.core_energy, ed.at(0), 1e-9);
