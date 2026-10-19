@@ -428,6 +428,61 @@ def assert_is_eigenvector(mps, reference, column):
     assert mps.norm() == pytest.approx(1.0, abs=1e-10)
 
 
+_PAIR_HOPPING_LATTICES = """<LATTICES>
+<LATTICE name="chain lattice" dimension="1"><BASIS><VECTOR>1</VECTOR></BASIS></LATTICE>
+<UNITCELL name="ladder cell" dimension="1" vertices="2">
+  <VERTEX id="1"><COORDINATE>0</COORDINATE></VERTEX><VERTEX id="2"><COORDINATE>0.5</COORDINATE></VERTEX>
+  <EDGE type="1"><SOURCE vertex="1" offset="0"/><TARGET vertex="2" offset="0"/></EDGE>
+  <EDGE type="0"><SOURCE vertex="1" offset="0"/><TARGET vertex="1" offset="1"/></EDGE>
+  <EDGE type="0"><SOURCE vertex="2" offset="0"/><TARGET vertex="2" offset="1"/></EDGE>
+  <NSITE type="0"><SITE vertex="1" offset="0"/><SITE vertex="2" offset="0"/>
+    <SITE vertex="2" offset="1"/><SITE vertex="1" offset="1"/></NSITE>
+</UNITCELL>
+<LATTICEGRAPH name="ladder"><FINITELATTICE><LATTICE ref="chain lattice"/><EXTENT dimension="1" size="L"/>
+  <BOUNDARY type="open"/></FINITELATTICE><UNITCELL ref="ladder cell"/></LATTICEGRAPH>
+</LATTICES>"""
+
+_PAIR_HOPPING_MODELS = """<MODELS>
+<SITEBASIS name="fermion">
+  <QUANTUMNUMBER name="Nup" min="0" max="1" type="fermionic"/>
+  <QUANTUMNUMBER name="Ndown" min="0" max="1" type="fermionic"/>
+  <OPERATOR name="c_up" matrixelement="1"><CHANGE quantumnumber="Nup" change="-1"/></OPERATOR>
+  <OPERATOR name="cdag_up" matrixelement="1"><CHANGE quantumnumber="Nup" change="1"/></OPERATOR>
+  <OPERATOR name="c_down" matrixelement="1"><CHANGE quantumnumber="Ndown" change="-1"/></OPERATOR>
+  <OPERATOR name="cdag_down" matrixelement="1"><CHANGE quantumnumber="Ndown" change="1"/></OPERATOR>
+  <OPERATOR name="n_up" matrixelement="Nup"/><OPERATOR name="n_down" matrixelement="Ndown"/>
+</SITEBASIS>
+<BASIS name="fermion"><SITEBASIS ref="fermion"/>
+  <CONSTRAINT quantumnumber="Nup" value="Nup_total"/><CONSTRAINT quantumnumber="Ndown" value="Ndown_total"/></BASIS>
+<HAMILTONIAN name="pair hopping ladder"><BASIS ref="fermion"/>
+  <SITETERM site="i">U*n_up(i)*n_down(i)</SITETERM>
+  <BONDTERM source="i" target="j">
+    -t*(cdag_up(i)*c_up(j) + cdag_up(j)*c_up(i) + cdag_down(i)*c_down(j) + cdag_down(j)*c_down(i))
+  </BONDTERM>
+  <NSITETERM sites="i j k l">
+    -K*( (cdag_up(l)*cdag_down(k) - cdag_down(l)*cdag_up(k)) * (c_down(j)*c_up(i) - c_up(j)*c_down(i))
+       + (cdag_up(i)*cdag_down(j) - cdag_down(i)*cdag_up(j)) * (c_down(k)*c_up(l) - c_up(k)*c_down(l)) )
+  </NSITETERM>
+</HAMILTONIAN>
+</MODELS>"""
+
+
+def test_catalog_n_site_terms_solve_like_fulldiag(tmp_path):
+    # The four-site pair hopping of the dmrg application's dmrg_nsite_terms
+    # test (Marcus Rosales's, marcusr2ML/ALPS 2657cc571), whose fulldiag
+    # ground-state energy is -5.366960604357.
+    (tmp_path / "lattices.xml").write_text(_PAIR_HOPPING_LATTICES)
+    (tmp_path / "models.xml").write_text(_PAIR_HOPPING_MODELS)
+    catalog = models.CatalogModel({
+        "LATTICE_LIBRARY": str(tmp_path / "lattices.xml"), "MODEL_LIBRARY": str(tmp_path / "models.xml"),
+        "LATTICE": "ladder", "MODEL": "pair hopping ladder", "L": 3, "t": 1.0, "U": 8.0, "K": 0.7,
+        "CONSERVED_QUANTUMNUMBERS": "Nup,Ndown", "Nup_total": 2, "Ndown_total": 2})
+    assert max(len(term.factors) for term in catalog.compile_hamiltonian().terms) == 4
+    assert ed.ground_state(catalog).energy == pytest.approx(-5.366960604357, abs=1e-11)
+    result = dmrg.solve(catalog, sweeps=dmrg.fixed_sweeps(4, 200), warmup_states=200, lanczos_tolerance=1e-13)
+    assert result.energy == pytest.approx(-5.366960604357, abs=1e-10)
+
+
 def test_kept_mps_of_kit_models_are_the_exact_states():
     model = models.hubbard(lat.chain(8, bc="open"), t=1.0, U=4.0, mu=0.3)
     sector = {"N": 7.0, "Sz": 0.5}
