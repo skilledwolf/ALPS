@@ -254,10 +254,11 @@ void expect_parity(int n, int na, int nb) {
                 reference.expectation({1., {{1, true}, {2 * last + 1, false}}}) +
                     reference.expectation({1., {{2 * last + 1, true}, {1, false}}}), 1e-8);
     EXPECT_EQ(result.observables.at("charge_changing"), 0.);
-    if (n >= 4)
+    if (n >= 4) {
         EXPECT_NEAR(result.observables.at("four_sites"),
                     reference.expectation(product({number(1), number(2), {{5, true}, {4, false}}, {{6, true}, {7, false}}}, 1.)),
                     1e-8);
+    }
     // The CI vector, sign by sign, up to the reference's global sign.
     ASSERT_EQ(result.ci_coefficients.size(), reference.states.size());
     int largest = 0;
@@ -270,8 +271,10 @@ void expect_parity(int n, int na, int nb) {
         for (int p = 0; p < n; ++p)
             bits |= static_cast<unsigned>(((result.ci_alpha[k] >> p) & 1u) << (2 * p + 1)) |
                     static_cast<unsigned>(((result.ci_beta[k] >> p) & 1u) << (2 * p));
-        if (k) EXPECT_TRUE(result.ci_alpha[k - 1] < result.ci_alpha[k] ||
-                           (result.ci_alpha[k - 1] == result.ci_alpha[k] && result.ci_beta[k - 1] < result.ci_beta[k]));
+        if (k) {
+            EXPECT_TRUE(result.ci_alpha[k - 1] < result.ci_alpha[k] ||
+                        (result.ci_alpha[k - 1] == result.ci_alpha[k] && result.ci_beta[k - 1] < result.ci_beta[k]));
+        }
         ci = std::max(ci, std::abs(result.ci_coefficients[k] - sign * reference.psi[reference.indices.at(bits)]));
     }
     EXPECT_LT(ci, 1e-8) << n << " orbitals (" << na << "," << nb << ")";

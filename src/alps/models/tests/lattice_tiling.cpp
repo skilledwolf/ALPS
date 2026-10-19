@@ -210,11 +210,13 @@ void check(std::string const& name, Case const& item) {
     std::sort(actual.begin(), actual.end());
     EXPECT_EQ(actual, expected);
 
-    if (item.coordination >= 0)
+    if (item.coordination >= 0) {
         for (std::size_t i = 0; i < degree.size(); ++i) EXPECT_EQ(degree[i], item.coordination) << "site " << i;
-    if (item.isotropic)
+    }
+    if (item.isotropic) {
         for (auto const& [type, values] : lengths)
             for (double length : values) EXPECT_NEAR(length, values.front(), kTol) << "bond type " << type;
+    }
 
     auto const directions = lattice.periodic_directions();
     auto const momenta = lattice.momenta();
