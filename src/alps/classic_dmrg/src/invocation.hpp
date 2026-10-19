@@ -49,6 +49,11 @@ inline std::mutex& mutex() {
 
 class ScratchDirectory {
 public:
+    // A checkpoint directory (written here, not taken from alpsx): the
+    // caller's directory, used as it is and never removed.
+    struct Kept { std::filesystem::path path; };
+    explicit ScratchDirectory(Kept kept) : path_(std::move(kept.path)), owned_(false) {}
+
     explicit ScratchDirectory(std::filesystem::path parent) {
         if (parent.empty()) parent = std::filesystem::temp_directory_path();
         parent = std::filesystem::absolute(parent);
@@ -71,6 +76,7 @@ public:
         throw std::runtime_error("cannot create unique classic DMRG scratch directory");
     }
     ~ScratchDirectory() noexcept {
+        if (!owned_) return;
         try {
             std::error_code ignored;
             std::filesystem::remove_all(path_, ignored);
@@ -85,6 +91,7 @@ public:
 
 private:
     std::filesystem::path path_;
+    bool owned_ = true;
 };
 
 class NullBuffer : public std::streambuf {
@@ -126,14 +133,17 @@ public:
           files_(scratch_.path().string().c_str()),
           real_random_(Vector<double>::random_state()),
           complex_random_(Vector<std::complex<double>>::random_state()) {
-        // All potentially throwing setup is complete. These swaps install a
-        // fresh-process state and retain the previous state for restoration.
-        QN::swap_registry(registry_);
-        tmp_files.swap(files_);
-        globals_double.swap(real_buffers_);
-        globals_complex.swap(complex_buffers_);
-        Vector<double>::random_state() = 42;
-        Vector<std::complex<double>>::random_state() = 42;
+        install();
+    }
+    // The scratch files of a checkpoint (written here): fixed names in the
+    // caller's `directory`, listed in `registry`; nothing is removed.
+    InvocationGuard(std::filesystem::path const& directory, std::filesystem::path const& registry, std::ostream* log)
+        : lock_(invocation_detail::mutex()),
+          scratch_(invocation_detail::ScratchDirectory::Kept{directory}), output_(log),
+          files_(scratch_.path().string().c_str(), registry),
+          real_random_(Vector<double>::random_state()),
+          complex_random_(Vector<std::complex<double>>::random_state()) {
+        install();
     }
     ~InvocationGuard() noexcept {
         // The caller must have destroyed every engine object before this point.
@@ -149,6 +159,17 @@ public:
     InvocationGuard& operator=(InvocationGuard const&) = delete;
 
 private:
+    void install() noexcept {
+        // All potentially throwing setup is complete. These swaps install a
+        // fresh-process state and retain the previous state for restoration.
+        QN::swap_registry(registry_);
+        tmp_files.swap(files_);
+        globals_double.swap(real_buffers_);
+        globals_complex.swap(complex_buffers_);
+        Vector<double>::random_state() = 42;
+        Vector<std::complex<double>>::random_state() = 42;
+    }
+
     // Reverse destruction restores streams, removes scratch, then unlocks.
     // Claim is first so recursive calls fail before acquiring the mutex.
     invocation_detail::Claim claim_;

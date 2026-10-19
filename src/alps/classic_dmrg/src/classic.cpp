@@ -22,6 +22,7 @@
 // (simplify), the dense Hermiticity check, and measuring every component of
 // a column on its own instead of applying the summed operator.
 #include <alps/dmrg/classic.hpp>
+#include "checkpoint.hpp"
 #include "invocation.hpp"
 #include "mps.hpp"
 #include "tdmrg.hpp"
@@ -32,6 +33,7 @@
 #include <array>
 #include <cmath>
 #include <complex>
+#include <cstdint>
 #include <functional>
 #include <limits>
 #include <map>
@@ -105,6 +107,17 @@ void validate_options(Options const& options) {
         twice(value, "sector target " + name);
     }
     if (options.verbose < 0) throw std::invalid_argument("classic DMRG verbose must not be negative");
+    if (options.resume && options.checkpoint_directory.empty())
+        throw std::invalid_argument("classic DMRG resume needs the checkpoint_directory of the interrupted solve");
+    if (options.resume_point && !options.resume)
+        throw std::invalid_argument("classic DMRG resume_point requires resume");
+}
+
+// Checkpoints belong to solve(); the others reject them.
+void reject_checkpoint(Options const& options, char const* what) {
+    if (!options.checkpoint_directory.empty() || options.resume || options.resume_point)
+        throw std::invalid_argument(std::string("classic DMRG ") + what
+                                    + " takes no checkpoint_directory, resume or resume_point");
 }
 
 // ------------------------------------------------------------------ problem
@@ -603,6 +616,84 @@ Problem prepare(models::CompiledOperator const& hamiltonian, models::PhysicalBas
     return problem;
 }
 
+// Everything a solve's numbers depend on: the problem as the engine receives
+// it and the scientific options (the sector is in the charges). A checkpoint
+// is resumed only under the same fingerprint.
+std::uint64_t fingerprint(Problem const& problem, Options const& options) {
+    detail::Fingerprint f;
+    auto count = [&](std::size_t n) { f.add(static_cast<std::uint64_t>(n)); };
+    auto integer = [&](long long v) { f.add(static_cast<std::uint64_t>(v)); };
+    auto complex = [&](Complex v) {
+        f.add(v.real());
+        f.add(v.imag());
+    };
+    auto terms = [&](std::vector<ReadyTerm> const& list) {
+        count(list.size());
+        for (auto const& term : list) {
+            complex(term.coefficient);
+            count(term.factors.size());
+            for (auto const& factor : term.factors) {
+                integer(factor.site);
+                count(factor.matrix.size());
+                for (auto v : factor.matrix) complex(v);
+                count(factor.delta.size());
+                for (auto d : factor.delta) integer(d);
+                integer(factor.odd);
+                complex(factor.scale);
+            }
+        }
+    };
+    integer(problem.num_sites);
+    count(problem.sites.size());
+    for (auto const& site : problem.sites) {
+        integer(site.dim);
+        for (auto p : site.parity) f.add(p);
+        count(site.twice.size());
+        for (auto const& row : site.twice)
+            for (auto t : row) integer(t);
+    }
+    for (auto i : problem.site_index) integer(i);
+    count(problem.charges.size());
+    for (auto const& charge : problem.charges) {
+        f.add(charge.name);
+        integer(charge.fermionic);
+        integer(charge.conserved);
+        integer(charge.target);
+    }
+    terms(problem.hamiltonian);
+    complex(problem.scalar);
+    count(problem.measurements.size());
+    for (auto const& plan : problem.measurements) {
+        f.add(plan.name);
+        integer(static_cast<int>(plan.kind));
+        count(plan.columns.size());
+        for (auto const& column : plan.columns) {
+            count(column.sites.size());
+            for (auto s : column.sites) integer(s);
+            terms(column.components);
+            complex(column.scalar);
+        }
+    }
+    count(options.sweeps.size());
+    for (auto const& sweep : options.sweeps) {
+        count(sweep.right_to_left);
+        count(sweep.left_to_right);
+    }
+    count(options.warmup_states);
+    count(options.warmup_configuration.size());
+    for (auto s : options.warmup_configuration) count(s);
+    count(options.num_eigenvalues);
+    integer(options.truncation_error.has_value());
+    f.add(options.truncation_error.value_or(0.));
+    integer(options.truncation_max_states.has_value());
+    count(options.truncation_max_states.value_or(0));
+    integer(options.lanczos_tolerance.has_value());
+    f.add(options.lanczos_tolerance.value_or(0.));
+    integer(static_cast<int>(options.arithmetic));
+    integer(options.keep_mps);
+    return f.value();
+}
+
 // A product configuration (a warm-up configuration or an initial state,
 // named `what` in errors) names a state of every site, and its conserved
 // charges add up to the sector.
@@ -1084,6 +1175,12 @@ bool end_iteration(dmtk::System<T>& system, std::size_t signal, void* data) {
 }
 
 template<class T>
+bool start_iteration(dmtk::System<T>& system, std::size_t signal, void* data) {
+    if (signal == dmtk::SYSTEM_SIGNAL_START_ITER) static_cast<Engine<T>*>(data)->starting(system);
+    return false;
+}
+
+template<class T>
 struct Engine {
     Problem const& problem;
     Options const& options;
@@ -1102,6 +1199,9 @@ struct Engine {
     bool evolving = false; // the time evolution's iterations solve nothing
     // evolve() from this product configuration instead of a ground state.
     std::vector<std::size_t> const* initial_configuration = nullptr;
+    // solve() with Options::checkpoint_directory: records where it continues.
+    detail::Checkpoint* checkpoint = nullptr;
+    std::size_t regular_sweep = 0; // the regular sweep running (from one), else zero
 
     Engine(Problem const& p, Options const& o, IterationCallback cb)
         : problem(p), options(o), callback(std::move(cb)), lattice(p.num_sites, dmtk::OBC), hami(lattice) {}
@@ -1115,7 +1215,20 @@ struct Engine {
         Iteration row{s.get_dir() == dmtk::RIGHT2LEFT ? Direction::right_to_left : Direction::left_to_right,
                       static_cast<std::size_t>(s.get_iter()), energy, s.truncation_error(), s.entropy()};
         rows.push_back(row);
+        // The iteration's files are written; record before the callback,
+        // which may end the solve.
+        if (checkpoint && regular_sweep)
+            checkpoint->after(regular_sweep, row.direction, row.index, rows, dmtk::Vector<double>::random_state(),
+                              dmtk::Vector<Complex>::random_state());
         if (callback) callback(row);
+    }
+
+    // Before an iteration reads anything (connected with a checkpoint only).
+    void starting(dmtk::System<T> const& s) {
+        if (checkpoint && regular_sweep && s.get_iter() == 1)
+            checkpoint->before_first_iteration(regular_sweep, s.get_dir() == dmtk::RIGHT2LEFT
+                                                                  ? Direction::right_to_left
+                                                                  : Direction::left_to_right);
     }
 
     static T scalar(Complex v, char const* what) {
@@ -1257,6 +1370,7 @@ struct Engine {
     void configure(dmtk::System<T>& S, bool store_products) {
         S.set_store_products(store_products);
         S.signal_connect(&end_iteration<T>, dmtk::SYSTEM_SIGNAL_END_ITER, this);
+        if (checkpoint) S.signal_connect(&start_iteration<T>, dmtk::SYSTEM_SIGNAL_START_ITER, this);
         if (options.truncation_error)
             S.set_error(*options.truncation_error,
                         options.truncation_max_states ? static_cast<int>(*options.truncation_max_states) : -1);
@@ -1297,6 +1411,23 @@ struct Engine {
         return sectors;
     }
 
+    // System::resume from `start` on: dmtk's resume hands its direction and
+    // iteration to every remaining sweep, which only a start at the
+    // beginning of a sweep tolerates. Sweep sweeps.size() + 1 is the final
+    // sweep, which the caller runs.
+    void sweep_from(dmtk::System<T>& S, SweepPoint const& start) {
+        for (std::size_t sweep = start.sweep; sweep <= options.sweeps.size(); ++sweep) {
+            auto const& states = options.sweeps[sweep - 1];
+            bool const first = sweep == start.sweep;
+            dmtk::out() << "NEW SWEEP " << sweep << " " << states.right_to_left << " " << states.left_to_right << '\n';
+            regular_sweep = sweep;
+            S.sweep(states.right_to_left, states.left_to_right,
+                    first && start.direction == Direction::left_to_right ? dmtk::LEFT2RIGHT : dmtk::RIGHT2LEFT,
+                    first ? static_cast<int>(start.iteration) : 1);
+        }
+        regular_sweep = 0;
+    }
+
     ResolvedOptions resolved(dmtk::System<T> const& S) const {
         ResolvedOptions out;
         out.sweeps = options.sweeps;
@@ -1330,14 +1461,26 @@ struct Engine {
         // the one taken when the pair was central, during the ground-state
         // sweep. Keep the lighter unstored path when it is correct.
         configure(S, options.num_eigenvalues > 1 && two_site_measurements);
-        if (options.warmup_configuration.empty()) {
-            S.run(static_cast<int>(options.warmup_states));
+        SweepPoint start;
+        if (checkpoint && checkpoint->resuming()) {
+            // The interrupted solve's blocks, density matrices and wave
+            // functions are on disk; its iterations and Lanczos start-vector
+            // streams continue.
+            rows = checkpoint->rows();
+            dmtk::Vector<double>::random_state() = checkpoint->real_random();
+            dmtk::Vector<Complex>::random_state() = checkpoint->complex_random();
+            start = checkpoint->next();
         } else {
-            // System::run on the configuration's prefix charges: a new System
-            // reads custom warm-up targets.
-            S.warmup_loop(options.warmup_states, warmup_sectors(options.warmup_configuration));
-            S.resume(1, dmtk::RIGHT2LEFT, 1);
+            // System::run, here or on the configuration's prefix charges (a
+            // new System reads custom warm-up targets).
+            if (options.warmup_configuration.empty()) S.warmup_loop(options.warmup_states);
+            else S.warmup_loop(options.warmup_states, warmup_sectors(options.warmup_configuration));
+            if (checkpoint)
+                checkpoint->after_warmup(rows, dmtk::Vector<double>::random_state(),
+                                         dmtk::Vector<Complex>::random_state());
         }
+        sweep_from(S, start);
+        if (checkpoint) checkpoint->before_final_sweep();
         if (S.store_products()) S.set_full_sweep(true);
         S.corr += measured;
         S.final_sweep(options.sweeps.back().left_to_right, dmtk::RIGHT2LEFT, 1, true);
@@ -1691,23 +1834,52 @@ Result solve(models::CompiledOperator const& hamiltonian, models::PhysicalBasis 
     auto const product = options.warmup_configuration.empty() ? lowest_product_state(problem) : std::nullopt;
     // A repeated solve reports to the same callback object.
     IterationCallback const observer = callback ? IterationCallback(std::ref(callback)) : IterationCallback{};
-    auto solve_once = [&](Options const& run_options) {
-        dmtk::InvocationGuard invocation(run_options.scratch_parent, run_options.log);
+    auto engine_run = [&](Options const& run_options, detail::Checkpoint* checkpoint) {
         // Every engine object is destroyed before the guard restores the engine state.
         if (run_options.arithmetic == Arithmetic::complex) {
             Engine<Complex> engine(problem, run_options, observer);
+            engine.checkpoint = checkpoint;
             return engine.run();
         }
         Engine<double> engine(problem, run_options, observer);
+        engine.checkpoint = checkpoint;
         return engine.run();
     };
-    Result result = solve_once(options);
+    auto solve_once = [&](Options const& run_options) {
+        dmtk::InvocationGuard invocation(run_options.scratch_parent, run_options.log);
+        return engine_run(run_options, nullptr);
+    };
+    Result result;
+    if (options.checkpoint_directory.empty()) {
+        result = solve_once(options);
+    } else {
+        detail::Checkpoint checkpoint(options, fingerprint(problem, options), problem.num_sites);
+        dmtk::InvocationGuard invocation(checkpoint.directory(), checkpoint.registry(), options.log);
+        try {
+            checkpoint.begin();
+            result = engine_run(options, &checkpoint);
+        } catch (...) {
+            // Kept only where a solve can resume.
+            if (!checkpoint.resumable()) {
+                dmtk::tmp_files.remove_registered();
+                checkpoint.remove();
+            }
+            throw;
+        }
+        // Returned: the checkpoint is spent.
+        dmtk::tmp_files.remove_registered();
+        checkpoint.remove();
+    }
     if (!product) return result;
     auto check = warmup_check(*product, result.energies.at(0), result.options.lanczos_tolerance);
     if (check.misplaced) {
         report_misplaced(options.log, check);
         Options repeat = options;
         repeat.warmup_configuration = product->configuration;
+        // The repeat runs in a private directory: the checkpoint is spent.
+        repeat.checkpoint_directory.clear();
+        repeat.resume = false;
+        repeat.resume_point.reset();
         Result repeated = solve_once(repeat);
         if (repeated.energies.at(0) < result.energies.at(0)) result = std::move(repeated);
     }
@@ -1726,6 +1898,7 @@ EvolutionResult evolve(models::CompiledOperator const& initial, models::Compiled
                        models::PhysicalBasis const& basis, Evolution const& evolution, Options const& options,
                        Measurements const& measurements, IterationCallback callback) {
     validate_options(options);
+    reject_checkpoint(options, "evolve");
     validate_evolution(evolution, options);
     Problem problem = prepare(initial, basis, options, measurements);
     prepare_evolution(problem, final_hamiltonian, evolution, initial.site_dims);
@@ -1775,6 +1948,7 @@ EvolutionResult evolve(std::vector<std::size_t> const& configuration,
                        Evolution const& evolution, Options const& options, Measurements const& measurements,
                        IterationCallback callback) {
     validate_options(options);
+    reject_checkpoint(options, "evolve");
     validate_evolution(evolution, options);
     if (!options.warmup_configuration.empty())
         throw std::invalid_argument("classic DMRG evolve from a product configuration has nothing to warm up: "

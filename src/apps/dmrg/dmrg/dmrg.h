@@ -144,11 +144,31 @@ void DMRGTask<value_type>::init()
 
   // read number of sweeps
   int const num_sweeps = parms.value_or_default("SWEEPS",4);
-  // Resuming from the scratch files of an interrupted run is gone with the
-  // application's private engine: the solver owns its scratch directory.
-  if (static_cast<int>(parms.value_or_default("START_SWEEP",0)) != 0)
-    boost::throw_exception(std::runtime_error("START_SWEEP (with START_DIR and START_ITER) is no longer supported: "
-                                              "the dmrg application cannot resume an interrupted run"));
+  // START_SWEEP, START_DIR and START_ITER continue a run interrupted in its
+  // regular sweeps from the checkpoint it kept in CHECKPOINT_DIRECTORY, at
+  // the point the checkpoint records: sweep START_SWEEP (SWEEPS + 1 is the
+  // final sweep), direction START_DIR (dmtk's numbering, 0 left to right and
+  // 1 right to left) and iteration START_ITER. The defaults are the former
+  // engine's; unlike its System::resume, direction and iteration apply to
+  // the first resumed sweep only.
+  int const start_sweep = parms.value_or_default("START_SWEEP",0);
+  int const start_dir = parms.value_or_default("START_DIR",0);
+  int const start_iter = parms.value_or_default("START_ITER",1);
+  if (start_dir != 0 && start_dir != 1)
+    boost::throw_exception(std::runtime_error("START_DIR can assume the values 0 (left-to-right) or 1 (right-to-left)"));
+  if (start_sweep < 0)
+    boost::throw_exception(std::runtime_error("START_SWEEP must not be negative"));
+  if (start_sweep > 0) {
+    if (!parms.defined("CHECKPOINT_DIRECTORY"))
+      boost::throw_exception(std::runtime_error("START_SWEEP resumes the run that kept its checkpoint in "
+                                                "CHECKPOINT_DIRECTORY; set CHECKPOINT_DIRECTORY to that directory"));
+    if (start_iter < 1)
+      boost::throw_exception(std::runtime_error("START_ITER must be positive"));
+    options.resume = true;
+    options.resume_point = classic::SweepPoint{static_cast<std::size_t>(start_sweep),
+      start_dir == 1 ? classic::Direction::right_to_left : classic::Direction::left_to_right,
+      static_cast<std::size_t>(start_iter)};
+  }
   int const verbose = parms.value_or_default("VERBOSE",0);
 
   // read number of states
@@ -301,11 +321,15 @@ void DMRGTask<value_type>::dostep()
 
   // Select scratch storage when this task runs; other tasks may have been
   // constructed since init(). The solver works in a private directory below
-  // it and removes that directory when it returns.
+  // it and removes that directory when it returns. CHECKPOINT_DIRECTORY (an
+  // existing directory, one per task) keeps the files there instead until
+  // the run completes, so that an interrupted run can be resumed.
   if (parms.defined("TEMP_DIRECTORY"))
     options.scratch_parent = static_cast<std::string>(parms["TEMP_DIRECTORY"]);
   else
     options.scratch_parent = alps::temp_directory_path().string();
+  if (parms.defined("CHECKPOINT_DIRECTORY"))
+    options.checkpoint_directory = static_cast<std::string>(parms["CHECKPOINT_DIRECTORY"]);
 
   // The scheduler seeded the disorder generator before this task built its
   // lattice; seed it again so the catalog model builds the same graph.

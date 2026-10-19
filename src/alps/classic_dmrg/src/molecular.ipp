@@ -90,6 +90,7 @@ void validate(MolecularInput const& input, Options const& options) {
         throw std::invalid_argument("classic molecular solves require one real target and electron counts from MolecularInput, with options.sector empty");
     if (!options.warmup_configuration.empty())
         throw std::invalid_argument("classic molecular solves take their warm-up from MolecularInput, with options.warmup_configuration empty");
+    reject_checkpoint(options, "solve_molecular");
     if (options.lanczos_tolerance && (!finite(*options.lanczos_tolerance) || *options.lanczos_tolerance <= 0.))
         throw std::invalid_argument("classic molecular lanczos_tolerance must be finite and positive");
     if (options.truncation_error && (!finite(*options.truncation_error) ||

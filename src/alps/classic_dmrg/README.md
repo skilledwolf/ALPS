@@ -38,7 +38,8 @@ auto const& density = result.measurements.at("n").values[0];  // row = target st
 
 | name | content |
 | --- | --- |
-| `Options` | `sweeps` (`fixed_sweeps`, `ramped_sweeps` or an explicit `SweepStates` list; the right-to-left half sweep runs first), `warmup_states`, `warmup_configuration` ([below](#unevenly-distributed-ground-states)), `num_eigenvalues`, optional `truncation_error` with `truncation_max_states`, optional `lanczos_tolerance` ([below](#the-lanczos-stop-rule)), `arithmetic` (real or complex), `sector` (name → total of a declared conserved charge), `scratch_parent`, `log`, `verbose`, `keep_mps` ([below](#matrix-product-states)) |
+| `Options` | `sweeps` (`fixed_sweeps`, `ramped_sweeps` or an explicit `SweepStates` list; the right-to-left half sweep runs first), `warmup_states`, `warmup_configuration` ([below](#unevenly-distributed-ground-states)), `num_eigenvalues`, optional `truncation_error` with `truncation_max_states`, optional `lanczos_tolerance` ([below](#the-lanczos-stop-rule)), `arithmetic` (real or complex), `sector` (name → total of a declared conserved charge), `scratch_parent`, `log`, `verbose`, `keep_mps` ([below](#matrix-product-states)), `checkpoint_directory`, `resume` and `resume_point` ([below](#checkpoints-and-resuming)) |
+| `SweepPoint` | an iteration of the regular sweeps: `sweep` (from one), `direction`, `iteration` (from one); sweep `sweeps.size() + 1` right to left, iteration one, is the start of the final sweep |
 | `Measurements` | `expectation`: name → operator, one value `<ψ\|O\|ψ>`; `terms`: name → operator, one value per term (one column per site, pair, …) |
 | `site_terms(model, op)`, `pair_terms(model, a, b)` | builders over a model's local operator names: one term per site, one term per ordered site pair (i-major, on-site product at i = j); no two columns are ever combined |
 | `solve(op, basis, options, measurements, callback)` | the engine on a compiled operator and its physical basis |
@@ -282,6 +283,80 @@ pyalps returns the tensors as NumPy arrays, with `to_dense`, `amplitude`,
 `overlap` and `norm`. Measurements after the solve are not part of the
 engine; a time evolution keeps its states through `Evolution::keep_mps`
 ([below](#time-evolution)).
+
+## Checkpoints and resuming
+
+A solve with `Options::checkpoint_directory` keeps its scratch files in that
+directory, which must exist and be empty, instead of a private directory
+below `scratch_parent`. After the warm-up and after every iteration of the
+regular sweeps it records where it continues. A solve that ends in the
+regular sweeps, because the callback threw, an exception ended it or the
+process was killed, leaves the files in place. A later solve with `resume`
+continues from them:
+
+```c++
+cd::Options options;                               // the interrupted solve's options
+options.checkpoint_directory = "run.checkpoint";   // must exist
+// ... solve(model, options, observe) is killed in sweep 3 ...
+options.resume = true;                             // the same model, measurements, options
+options.resume_point = cd::SweepPoint{3, cd::Direction::left_to_right, 7}; // optional check
+auto const result = cd::solve(model, options, observe);
+```
+
+The resumed solve returns what the uninterrupted solve returns, bit for bit:
+the energies, every iteration row (`Result::iterations` includes those of
+the interrupted solve; the callback observes the remaining ones only), the
+measurements and the truncation error. The files on disk after an iteration
+are those that the next iteration reads: the blocks, the density matrices
+and the wave functions of every target. An iteration overwrites none of the
+files it reads, with one exception. The first iteration of a half sweep
+transforms its seed with the density matrix of the two-site block that the
+previous half sweep in its direction left on its side, and then writes its
+own there. That file is copied before the iteration starts
+(`checkpoint-turn-<sweep>-<direction>.dat`) and put back when a solve resumes
+at that iteration. Without the copy, a process killed between that write
+and the next record resumed with a different seed, and the energy of the
+10-site test chain then differed by 5e-15. The checkpoint adds the iteration
+rows and dmtk's Lanczos start-vector streams. The warm-up draws random start
+vectors, so the streams do not restart at their seed. A solve that returns
+removes the files it wrote and leaves the directory. So does a solve that
+throws in the warm-up or the final sweep, which cannot be resumed (below).
+
+The directory then holds dmtk's files under fixed names, the list of those
+names (`checkpoint-files.txt`), the iteration rows so far
+(`checkpoint-iterations.txt`), the copied density matrix and the manifest
+`checkpoint.txt`. The manifest is replaced by a rename after every
+iteration. It records a fingerprint of the problem and the options, the
+stage (`warmup`, `sweeps` or `final`), the point where the solve continues
+(`next <sweep> <direction> <iteration>`, direction 0 left to right and 1
+right to left), the number of valid rows and the two random streams. The
+point uses the numbering of `Iteration` and of the `dmrg` application's
+`START_SWEEP`, `START_DIR` and `START_ITER`. A resume is refused, and the
+checkpoint is left untouched, in these cases:
+- no checkpoint exists, or its manifest cannot be read;
+- the fingerprint differs: the Hamiltonian, the physical basis, the
+  measurements or any option except `scratch_parent`, `log`, `verbose`,
+  `checkpoint_directory` (the directory may move), `resume` and
+  `resume_point` changed;
+- `resume_point` is out of range, or is not where the checkpoint continues
+  (the message names where it does);
+- the process was killed in the warm-up, whose blocks are not all written
+  yet, or in the final sweep. The final sweep starts with such a first
+  iteration, and its left-to-right half rewrites the left blocks.
+
+A solve without `resume` refuses a directory that holds a checkpoint or any
+other file. The repeat after a failed check of the uniform warm-up
+([above](#the-check-of-the-uniform-warm-up)) runs in a private directory, so
+an interruption there cannot be resumed. `evolve` and `solve_molecular`
+reject the three options.
+
+What it costs: the files are those that every solve writes anyway, but they
+stay until the solve returns: about 10 MB for a 40-site spin chain at 100
+states. Each iteration also rewrites the manifest and appends a row. The
+`dmrg` application on that chain (six sweeps, `MAXSTATES=100`,
+correlations) took 2.81 s instead of 2.70 s on an Apple M-series laptop.
+The files are not synced to the device: a killed process loses nothing,
+but a crash of the machine can.
 
 ## Time evolution
 
@@ -610,7 +685,9 @@ only when `ALPS_ENABLE_CLASSIC_DMRG` is on. Parameters and output keep their
 names and layout: `SWEEPS`, `STATES` (2 × `SWEEPS` values) or `MAXSTATES`
 (ramped) or `NUMSTATES` (fixed), `NUM_WARMUP_STATES`, `TRUNCATION_ERROR`,
 `LANCZOS_TOLERANCE`, `NUMBER_EIGENVALUES`, `VERBOSE`, `COMPLEX`,
-`TEMP_DIRECTORY`, `DISORDERSEED`, `SAVE_MPS` and the `MEASURE_*` definitions. A charge is
+`TEMP_DIRECTORY`, `DISORDERSEED`, `SAVE_MPS`, `START_SWEEP`, `START_DIR`,
+`START_ITER` and the `MEASURE_*` definitions, plus the new
+`CHECKPOINT_DIRECTORY`. A charge is
 conserved when `CONSERVED_QUANTUMNUMBERS` names it and `<name>_total` is set;
 names the model lacks are ignored. Compared with the application's former
 copy of the engine:
@@ -631,8 +708,29 @@ copy of the engine:
   `pyalps.loadMPS` reads: `length`, `center`, `tensors/<i>/{shape,values}`,
   `site_type` and the local quantum numbers under `site_basis`. `center` is
   where the final sweep ended (above), not always `L/2`.
-- `START_SWEEP` (resuming an interrupted run) is rejected. Scratch files go
-  to a private directory below `TEMP_DIRECTORY` that is removed afterwards.
+- Scratch files go to a private directory below `TEMP_DIRECTORY` that is
+  removed afterwards. With `CHECKPOINT_DIRECTORY` (an existing, empty
+  directory, one per task) they stay there until the run completes
+  ([above](#checkpoints-and-resuming)). A run killed in its
+  regular sweeps is resumed by running it again with `START_SWEEP`,
+  `START_DIR` (0 left to right, 1 right to left) and `START_ITER` set to the
+  point that `checkpoint.txt` names on its `next` line. Sweep `SWEEPS + 1`,
+  direction 1, iteration 1 means only the final sweep remains. The resumed
+  run writes the results of an uninterrupted run, bit for bit, including
+  every `Iteration` row; the `dmrg_resume` test kills a run and checks this.
+  A wrong point is rejected with the right one named. The defaults
+  `START_DIR=0` and `START_ITER=1` are the old ones, and they apply to the
+  first resumed sweep only.
+- The old `START_SWEEP` could not resume a run from a new process, which is
+  what it was for, and the old engine's code shows why. In ALPS 3.0.0
+  and on master, `FileList::get_filename` gave every scratch file an
+  `mkstemp` suffix (`alps::temporary_filename`). The suffix lived only in the
+  process's map, so a new process opened new, empty files under other
+  names. Master also removes the files when the task ends.
+  `System::resume` handed `START_DIR` and `START_ITER` to every remaining
+  sweep, so the default `START_DIR=0` skipped every right-to-left half.
+  `read_status` read a field that `write_status` never wrote. Nothing
+  outside `dmrg.h` used these parameters, and no tutorial did.
 - Lattices of fewer than four sites, more than four tracked charges and
   measurement terms of odd fermion parity are rejected with a message.
 - Energies come out equal or lower than the old code's, which stopped its
@@ -780,6 +878,15 @@ here too: the warm-up runs with the configuration's prefix charges, and
 `EvolvingSystem` overrides the virtual `System::diagonalize` with the
 product state.
 
+The checkpoint is written here, not taken from alpsx or the legacy
+application. `src/checkpoint.hpp` holds the manifest, the fingerprint and
+the resume checks. `dmtk::FileList` gains fixed names with a registry, and
+the invocation guard uses the caller's directory without removing it. The
+solve drives the sweeps itself from the resume point, with
+`System::sweep`, instead of through `System::run`/`System::resume`. Every
+sweep of a solve that is not resumed starts as `System::resume` started it,
+so its results are unchanged.
+
 The MPS export (`src/mps.hpp`) is adapted from master's SAVE_MPS
 ([ALPSim/ALPS#216](https://redirect.github.com/ALPSim/ALPS/pull/216), Marcus
 Rosales, commits 46c76b1d2 and 35cea33e7): `DMRGTask::extract_mps` and
@@ -805,7 +912,16 @@ abort, iteration energies with a constant term); measurements against
 `ALPS::ed` (site and pair spin terms, fermion densities and hopping
 correlations, split charge components, scalar terms, one row per target); equivalent operator forms (reversed factors, scales in
 the matrices, projector-form terms, `Nup` and `Ndown` as fermionic charges);
-the private scratch directory; the rejected inputs; and the kept MPS
+the private scratch directory; checkpoints (`classic_dmrg_checkpoint`): solves
+interrupted by a throwing callback inside a right-to-left and a
+left-to-right half sweep, at both turns, at the end of the last regular
+sweep, twice in a row, with stored products, in complex arithmetic and with
+a truncation error, before the repeat after a failed warm-up check and,
+emulated, killed inside the first iteration of a half sweep, each resumed
+bit for bit equal to an uninterrupted solve; a
+completed checkpointed solve that leaves its directory empty, as do solves
+that throw in the warm-up or the final sweep, and the rejected resumes; the
+rejected inputs; and the kept MPS
 (`classic_dmrg_mps`), contracted to a vector and compared with the
 `ALPS::ed` eigenvector of each target for spin-1/2 and spin-1 chains, an odd
 length, four sites, an unrestricted solve, the Hubbard chain, frustrated

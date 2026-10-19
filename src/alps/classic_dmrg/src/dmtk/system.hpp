@@ -114,17 +114,42 @@ class FileList
     std::map<std::string,std::string> _tmp_filenames;
     std::string last_filename;
     std::filesystem::path temp_dir;
+    // Changed here (written for this tree): a checkpoint keeps every file
+    // under its requested name in temp_dir and lists the names in this
+    // registry, so that a later process finds the files and removes them
+    // (alps::dmrg::classic Options::checkpoint_directory).
+    std::filesystem::path registry;
   public:
     // Static construction must be silent; an invocation validates and reports
     // its selected scratch directory through set_temp_dir.
     FileList() : temp_dir(".") {}
     FileList(const char *dir) { set_temp_dir(dir); }
+    // Changed here: fixed names in `dir`, listed in `registry_file`, which
+    // may already list the files of an interrupted process.
+    FileList(const char *dir, std::filesystem::path registry_file) : registry(std::move(registry_file))
+      {
+         set_temp_dir(dir);
+         std::ifstream listed(registry);
+         std::string name;
+         while(std::getline(listed, name))
+           if(!name.empty()) _tmp_filenames[name] = (temp_dir / name).string();
+      }
 
     void swap(FileList& other) noexcept
       {
          _tmp_filenames.swap(other._tmp_filenames);
          last_filename.swap(other.last_filename);
          temp_dir.swap(other.temp_dir);
+         registry.swap(other.registry);
+      }
+
+    // Changed here: removes the registry's files and the registry itself.
+    void remove_registered() noexcept
+      {
+         std::error_code ignored;
+         for(auto const& entry : _tmp_filenames) std::filesystem::remove(entry.second, ignored);
+         _tmp_filenames.clear();
+         if(!registry.empty()) std::filesystem::remove(registry, ignored);
       }
 
     void set_temp_dir(const char *dir) 
@@ -148,8 +173,17 @@ class FileList
          std::map<std::string,std::string>::iterator old_name = _tmp_filenames.find(filename);
          if(old_name != _tmp_filenames.end()) return (old_name->second).c_str();
 
-         filename = filename.substr(0,filename.find_first_of('.'));
-         this->last_filename = dmtk::temporary_filename((temp_dir / filename).string());
+         if(!registry.empty()) {
+           // Changed here: a checkpoint's fixed name, registered before use.
+           this->last_filename = (temp_dir / filename).string();
+           std::ofstream listed(registry, std::ios::app);
+           listed << filename << '\n';
+           if(!listed.flush())
+             throw std::runtime_error("ALPS DMRG could not register the checkpoint file " + this->last_filename);
+         } else {
+           filename = filename.substr(0,filename.find_first_of('.'));
+           this->last_filename = dmtk::temporary_filename((temp_dir / filename).string());
+         }
          _tmp_filenames[std::string(input)] = this->last_filename;
          dmtk::err() << "Creating temp file " << this->last_filename << std::endl;
          return this->last_filename.c_str();

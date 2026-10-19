@@ -51,6 +51,20 @@ ALPS_CLASSIC_DMRG_DECL std::vector<SweepStates> fixed_sweeps(std::size_t sweeps,
 // A ramp that would retain zero states is rejected.
 ALPS_CLASSIC_DMRG_DECL std::vector<SweepStates> ramped_sweeps(std::size_t sweeps, std::size_t maximum);
 
+// An iteration of the regular sweeps: `sweep` counts from one in
+// Options::sweeps order, `iteration` from one within its half sweep, up to
+// L - 4 for L sites, as Iteration::index does. Sweep sweeps.size() + 1,
+// right to left, iteration one is the start of the final sweep.
+struct SweepPoint {
+    std::size_t sweep = 1;
+    Direction direction = Direction::right_to_left;
+    std::size_t iteration = 1;
+    bool operator==(SweepPoint const& o) const {
+        return sweep == o.sweep && direction == o.direction && iteration == o.iteration;
+    }
+    bool operator!=(SweepPoint const& o) const { return !(*this == o); }
+};
+
 struct Options {
     std::vector<SweepStates> sweeps = fixed_sweeps(4, 40);
     std::size_t warmup_states = 20;
@@ -87,6 +101,32 @@ struct Options {
     // Parent of the private scratch directory; empty selects the system
     // temporary directory. The directory is removed when the solve ends.
     std::filesystem::path scratch_parent;
+    // solve() only: keep the scratch files in this existing directory, under
+    // fixed names, instead of a private directory below scratch_parent, and
+    // record after the warm-up and after every iteration of the regular
+    // sweeps the point where the solve continues. A solve that ends in the
+    // regular sweeps (a callback that throws, an exception, a killed
+    // process) leaves its files there for a solve with `resume`. A solve
+    // that returns, or throws in the warm-up or the final sweep, removes
+    // them and leaves the directory: the warm-up has not written every file
+    // a resume reads yet, and the final sweep rewrites some, so neither can
+    // be resumed. Unless resuming, the directory must be empty. The repeat
+    // after a failed warm-up check (WarmupCheck) runs in a private directory
+    // again.
+    std::filesystem::path checkpoint_directory;
+    // Continue the interrupted solve of checkpoint_directory instead of
+    // starting afresh. The checkpoint must come from the same Hamiltonian,
+    // physical basis and measurements, and from the same options except
+    // scratch_parent, checkpoint_directory, log, verbose, resume and
+    // resume_point. The solve
+    // returns what the uninterrupted solve returns: Result::iterations
+    // include those of the interrupted solve, and the callback observes the
+    // remaining ones only.
+    bool resume = false;
+    // With resume: where the solve must continue, which is checked against
+    // the checkpoint (the dmrg application's START_SWEEP, START_DIR and
+    // START_ITER). Empty continues wherever the checkpoint does.
+    std::optional<SweepPoint> resume_point;
     // Engine diagnostics; nullptr discards them. The caller keeps ownership.
     std::ostream* log = nullptr;
     int verbose = 0;
