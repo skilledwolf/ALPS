@@ -46,6 +46,22 @@ mdl::Hamiltonian fermion_chain() {
     return model;
 }
 
+// The compiled Hamiltonian of `base` plus `extra`, which the models kit would
+// reject as part of a Hamiltonian: classic DMRG must reject it itself.
+void expect_rejected(mdl::Hamiltonian const& base, mdl::TermSum const& extra, Sector const& sector,
+                     std::string const& reason) {
+    auto op = mdl::compile_hamiltonian(base).op;
+    for (auto& term : base.operator_decomposition(extra).op.terms) op.terms.push_back(std::move(term));
+    auto options = exact_options(16, sector);
+    options.arithmetic = cd::Arithmetic::complex;
+    try {
+        cd::solve(op, mdl::physical_basis(base), options);
+        FAIL() << "accepted a Hamiltonian that " << reason;
+    } catch (std::invalid_argument const& error) {
+        EXPECT_NE(std::string(error.what()).find(reason), std::string::npos) << error.what();
+    }
+}
+
 void expect_values(cd::Measurement const& measured, std::vector<double> const& reference) {
     ASSERT_EQ(measured.values.size(), 1u);
     ASSERT_EQ(measured.values[0].size(), reference.size());
@@ -105,6 +121,46 @@ TEST(ClassicDmrgNSite, WarmupCheckCountsTermsOnManySites) {
     ASSERT_TRUE(result.warmup_check);
     EXPECT_NEAR(result.warmup_check->product_energy, exact, 1e-12);
     EXPECT_FALSE(result.warmup_check->misplaced);
+}
+
+TEST(ClassicDmrgNSite, ComplexCoefficientsOfManyFermionsMatchExactDiagonalization) {
+    // Hermitian pairs of four and of two odd factors: their partners carry
+    // the conjugate coefficient, and the reordered strings give the sign.
+    auto model = mdl::hubbard(lat::chain(6, 1.0, lat::Boundary::open), 1.0, 3.0);
+    auto const c = mdl::spinful_fermion();
+    model.add(on(c, "c_dag_up", 0) * on(c, "c_dag_dn", 2) * on(c, "c_dn", 5) * on(c, "c_up", 3)
+                  * std::complex<double>(0.3, 0.7), true);
+    model.add(on(c, "n_dn", 4) * on(c, "c_dag_up", 1) * on(c, "c_up", 5) * std::complex<double>(0., -0.45), true);
+    Sector const sector{{"N", 4.}, {"Sz", 0.}};
+    auto options = exact_options(128, sector);
+    options.arithmetic = cd::Arithmetic::complex;
+    EXPECT_NEAR(cd::solve(model, options).energies.at(0), ed_energies(model, sector).at(0), 1e-8);
+}
+
+TEST(ClassicDmrgNSite, NonHermitianTermsAreRejected) {
+    auto const s = mdl::spin(0.5);
+    expect_rejected(mdl::heisenberg(lat::chain(8, 1.0, lat::Boundary::open), 1.0),
+                    on(s, "Sp", 0) * on(s, "Sm", 2) * on(s, "Sp", 5) * on(s, "Sm", 7) * std::complex<double>(0.6),
+                    {{"Sz", 0.}}, "not Hermitian");
+    // Each term with its partner of the opposite phase: anti-Hermitian.
+    auto const c = mdl::spinful_fermion();
+    auto const hubbard = mdl::hubbard(lat::chain(6, 1.0, lat::Boundary::open), 1.0, 3.0);
+    mdl::TermSum const pair_hop = on(c, "c_dag_up", 0) * on(c, "c_dag_dn", 2) * on(c, "c_dn", 5) * on(c, "c_up", 3);
+    mdl::TermSum const density_hop = on(c, "n_dn", 4) * on(c, "c_dag_up", 1) * on(c, "c_up", 5);
+    for (auto const& term : {pair_hop, density_hop})
+        expect_rejected(hubbard, (term + term.dag()) * std::complex<double>(0., 0.7), {{"N", 4.}, {"Sz", 0.}},
+                        "not Hermitian");
+}
+
+TEST(ClassicDmrgNSite, TermsOnThreeSitesMustConserveTheSector) {
+    auto const c = mdl::spinful_fermion();
+    auto const hubbard = mdl::hubbard(lat::chain(6, 1.0, lat::Boundary::open), 1.0, 3.0);
+    // The first two factors change N; then only the last two do.
+    mdl::TermSum const pair = on(c, "c_dag_up", 0) * on(c, "c_dag_dn", 2) * on(c, "n_dn", 4);
+    mdl::TermSum const hop_and_pair = on(c, "c_dag_up", 0) * on(c, "c_up", 2) * on(c, "c_dag_dn", 4) * on(c, "c_dag_up", 5);
+    for (auto const& term : {pair, hop_and_pair})
+        expect_rejected(hubbard, (term + term.dag()) * std::complex<double>(0.5), {{"N", 4.}, {"Sz", 0.}},
+                        "does not conserve the requested charge: N");
 }
 
 TEST(ClassicDmrgNSite, StringsOtherThanTheStrictConventionsAreRejected) {
