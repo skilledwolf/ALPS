@@ -12,14 +12,14 @@
 
 /* $Id$ */
 
-#include <alps/utility/cli.hpp>
-#include <alps/utility/copyright.hpp>
+#include <alps/cli.hpp>
+#include <alps/utilities/copyright.hpp>
 #include <alps/scheduler.h>
 #include <alps/alea.h>
 #include <fstream>
-#include <boost/filesystem/operations.hpp>
+#include <filesystem>
 
-void evaluate(const boost::filesystem::path& p, std::ostream& out, const bool write_xml) {
+void evaluate(const std::filesystem::path& p, std::ostream& out, const bool write_xml) {
   alps::ProcessList nowhere;
   alps::scheduler::MCSimulation sim(nowhere,p);
 
@@ -113,12 +113,12 @@ try {
 
   for(; i<argc; i++)
    {
-    boost::filesystem::path p =
-      boost::filesystem::absolute(boost::filesystem::path(argv[i]));
+    std::filesystem::path p =
+      std::filesystem::absolute(std::filesystem::path(argv[i]));
     evaluate(p,std::cout,write_xml);
    }
 
-/*  boost::filesystem::path p(argv[1]);
+/*  std::filesystem::path p(argv[1]);
   std::string name=argv[1];
   if (argc==2)
     evaluate(p,std::cout);

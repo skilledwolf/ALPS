@@ -2,8 +2,8 @@
 #include <alps/hdf5/archive.hpp>
 #include <alps/hdf5/complex.hpp>
 #include <alps/hdf5/vector.hpp>
-#include <alps/ngs/signal.hpp>
-#include <boost/filesystem/operations.hpp>
+#include <alps/utilities/signal.hpp>
+#include <filesystem>
 #include <complex>
 #include <stdexcept>
 #include <vector>
@@ -34,12 +34,12 @@ int main() {
             throw std::runtime_error("HDF5 component exception identity failed");
     }
     // Check exported signal state without delivering process-level signals.
-    alps::ngs::signal signals;
-    alps::ngs::signal::slot(17);
+    alps::signal signals;
+    alps::signal::slot(17);
     if (signals.empty() || signals.top() != 17)
         throw std::runtime_error("HDF5 signal state is not shared");
     signals.pop();
     if (!signals.empty())
         throw std::runtime_error("HDF5 signal queue was not cleared");
-    boost::filesystem::remove(filename);
+    std::filesystem::remove(filename);
 }

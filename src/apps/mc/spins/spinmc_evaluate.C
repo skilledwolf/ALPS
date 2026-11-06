@@ -9,15 +9,15 @@
 *
 *****************************************************************************/
 
-#include <alps/utility/cli.hpp>
-#include <alps/utility/copyright.hpp>
+#include <alps/cli.hpp>
+#include <alps/utilities/copyright.hpp>
 #include <alps/config.h>
 #include <alps/alea.h>
 #include <alps/scheduler.h>
 
-#include <boost/filesystem/operations.hpp>
+#include <filesystem>
 
-void evaluate(const boost::filesystem::path& p, const bool write_xml) {
+void evaluate(const std::filesystem::path& p, const bool write_xml) {
   alps::ProcessList nowhere;
   alps::scheduler::MCSimulation sim(nowhere,p);
   const alps::ObservableSet& m_in=sim.get_measurements();
@@ -95,8 +95,8 @@ try {
 
   for(; i<argc; i++)
    {
-    boost::filesystem::path p =
-      boost::filesystem::absolute(boost::filesystem::path(argv[i]));
+    std::filesystem::path p =
+      std::filesystem::absolute(std::filesystem::path(argv[i]));
     evaluate(p,write_xml);
    }
 

@@ -20,8 +20,9 @@ ctest --preset dev -R Matrix
 ```
 
 `dev` omits applications. `default` includes application tests. `mpi` enables
-MPI, `extensive` enables graph and HDF5 type-matrix tests, and `sanitizers`
-instruments a Debug build with AddressSanitizer and UndefinedBehaviorSanitizer.
+MPI, `extensive` enables graph and HDF5 type-matrix tests, `debug` builds
+applications and tests with assertions enabled, and `sanitizers` instruments a
+Debug build with AddressSanitizer and UndefinedBehaviorSanitizer.
 Build each preset before testing it. To exercise actual ranks:
 
 ```sh
@@ -117,7 +118,7 @@ The remaining CMake process runner is for executable/CLI/tutorial contracts.
 
 ## CI policy and evidence
 
-Every PR runs a fixed set of checks: static/packaging helpers and numerical tutorial references, Linux serial native and editable-Python tests, Clang MPI integration, macOS SDK consumers, native ASan/UBSan, and manylinux packaging. The stable aggregate `CI` check requires every job to succeed; select it in branch protection. No workflow-level path filters can leave that required check pending.
+A ready PR runs static/packaging helpers and numerical tutorial references, Linux serial native and editable-Python tests, Clang MPI integration, a Debug build with assertions, native ASan/UBSan, and manylinux packaging. Draft PRs run only the first two, and macOS SDK consumers run on master pushes instead of PRs; see [CI coverage](../CONTRIBUTING.md#ci-coverage). The stable aggregate `CI` check requires every job that ran to succeed; select it in branch protection. No workflow-level path filters can leave that required check pending.
 
 Weekly compatibility checks cover compiler/dependency boundaries, C++20/C++23, extensive HDF5 tests, OpenMP, installed tutorials, MPI-enabled Python, Intel/newer macOS, and all three wheel families. Release tags run the same compatibility workflow, including distribution artifact validation, before publishing those exact files. Python 3.10, 3.11 and 3.12 exercise distinct wheel ABIs; newer interpreters test reuse of the abi3 wheel through binding, object-lifetime and package-loading checks. Fresh-runner smoke checks cover bindings and package loading. The identical C++ SDK consumers run once per wheel platform on Python 3.12. JUnit, CTest and per-rank MPI reports remain available as workflow artifacts. See [CI coverage](../CONTRIBUTING.md#ci-coverage) for the workflow entry points.
 

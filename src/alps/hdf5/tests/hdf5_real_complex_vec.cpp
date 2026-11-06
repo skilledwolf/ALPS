@@ -17,9 +17,9 @@
 #include <alps/hdf5/archive.hpp>
 #include <alps/hdf5/vector.hpp>
 #include <alps/hdf5/complex.hpp>
-#include <alps/utility/vectorio.hpp>
+#include <alps/utilities/vectorio.hpp>
 
-#include <boost/filesystem.hpp>
+#include <filesystem>
 
 #include <vector>
 #include <complex>

@@ -13,7 +13,7 @@
 #include <alps/parapack/clone_info.h>
 #include <alps/parapack/util.h>
 
-#include <alps/utility/os.hpp>
+#include <alps/utilities/os.hpp>
 #include <boost/date_time/posix_time/posix_time.hpp>
 #include <boost/foreach.hpp>
 
@@ -327,7 +327,7 @@ alps::IDump& operator>>(alps::IDump& dp, alps::clone_info& info) {
 
 namespace alps {
 
-clone_info_mpi::clone_info_mpi(boost::mpi::communicator const& comm, cid_t cid,
+clone_info_mpi::clone_info_mpi(alps::mpi::communicator const& comm, cid_t cid,
   Parameters const& params, std::string const& dump) :
   clone_info(cid, params, dump, false), comm_(comm) {
   clone_info::init(params, dump);

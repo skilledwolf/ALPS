@@ -14,14 +14,14 @@
 #ifndef HYB_HPP
 #define HYB_HPP
 
-#include <alps/ngs.hpp>
-#include <alps/mcbase.hpp>
-#include <alps/ngs/signal.hpp>
+#include <alps/mc/api.hpp>
+#include <alps/mc/mcbase.hpp>
+#include <alps/hdf5/vector.hpp>
+#include <alps/utilities/signal.hpp>
 #include "green_function.h"
 #include "hybsegment.hpp"
 #include "hyblocal.hpp"
 #include "hybconfig.hpp"
-#include "boost/chrono/chrono.hpp"
 
 #ifdef HYB_SIM_MAIN
 boost::uint64_t sweep_count;
@@ -38,6 +38,7 @@ class hybridization:public alps::mcbase
 public:
   //constructor
   hybridization(const alps::params &parms, int crank);
+  static void define_parameters(alps::params &parms); //define the parameters the solver reads, with their defaults
   void sanity_check(const alps::params &parms); //check whether parameters make sense
   void show_info(const alps::params &parms, int crank);
   //Monte Carlo update and measurements functions
@@ -54,8 +55,6 @@ private:
   int output_period;
   clock_t start_time;
   clock_t end_time;
-  //boost::chrono::steady_clock::time_point lasttime;
-  //boost::chrono::steady_clock::duration delay;
 
   //initialize all measurements and measurement vectors (with 0)
   void create_measurements();

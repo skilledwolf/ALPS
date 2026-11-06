@@ -14,8 +14,8 @@
 /* $Id$ */
 
 #include <alps/scheduler/options.h>
-#include <alps/utility/copyright.hpp>
-#include <alps/utility/cli.hpp>
+#include <alps/utilities/copyright.hpp>
+#include <alps/cli.hpp>
 #include <boost/limits.hpp>
 #include <boost/throw_exception.hpp>
 #include <boost/program_options.hpp>
@@ -143,7 +143,7 @@ Options::Options(int argc, char** argv, const std::string& citation_component)
 #endif
 
   if (!filename.empty())
-    jobfilename=boost::filesystem::path(filename);
+    jobfilename=std::filesystem::path(filename);
   else
     boost::throw_exception(std::runtime_error("No job file specified"));
     

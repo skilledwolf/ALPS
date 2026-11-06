@@ -6,8 +6,10 @@ name: Compatibility
   workflow_call: null
 permissions:
   contents: read
+# The weekly schedule runs upstream only, not on every fork.
 jobs:
   minimum:
+    if: github.event_name != 'schedule' || github.repository == 'ALPSim/ALPS'
     runs-on: ubuntu-22.04
     timeout-minutes: 90
     env:
@@ -22,8 +24,6 @@ jobs:
         python: '3.10'
         cmake: cmake==3.27.9
     - name: Build the minimum supported Boost
-      env:
-        ALPS_BOOST_MPI: 'OFF'
       run: |
         python -m pip install numpy==1.26.0
         python -m pytest tests/tutorials -q --junitxml=_build/ci/tutorial-floor.xml
@@ -51,6 +51,7 @@ jobs:
           _build/mpi/*.xml
           _build/ci/Testing/Temporary/**
   extensive:
+    if: github.event_name != 'schedule' || github.repository == 'ALPSim/ALPS'
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     env:
@@ -112,6 +113,7 @@ jobs:
           _build/mpi/*.xml
           _build/ci/Testing/Temporary/**
   cxx23:
+    if: github.event_name != 'schedule' || github.repository == 'ALPSim/ALPS'
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     env:
@@ -143,6 +145,7 @@ jobs:
           _build/mpi/*.xml
           _build/ci/Testing/Temporary/**
   mpi-python:
+    if: github.event_name != 'schedule' || github.repository == 'ALPSim/ALPS'
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     env:
@@ -186,6 +189,7 @@ jobs:
           _build/mpi/*.xml
           _build/ci/Testing/Temporary/**
   macos:
+    if: github.event_name != 'schedule' || github.repository == 'ALPSim/ALPS'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
     env:
@@ -225,12 +229,13 @@ jobs:
         - macos-26
         - macos-15-intel
   packaging:
+    if: github.event_name != 'schedule' || github.repository == 'ALPSim/ALPS'
     uses: ./.github/workflows/_wheels.yml
     with:
       full: true
   status:
     name: Compatibility
-    if: always()
+    if: always() && (github.event_name != 'schedule' || github.repository == 'ALPSim/ALPS')
     needs:
     - minimum
     - extensive
