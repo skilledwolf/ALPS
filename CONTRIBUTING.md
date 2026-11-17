@@ -73,7 +73,8 @@ Build and install the C++ SDK with CMake, then build the Python package against 
 - CMake ≥ 3.27, Ninja for the bundled presets, and C++17/C11 compilers such as GCC or Clang.
 - Boost ≥ 1.76 with its compiled libraries and CMake packages, HDF5 ≥ 1.10.5 (C library), and LP64 BLAS/LAPACK. Use serial HDF5 for the default MPI-disabled build; see [numerical libraries](#numerical-libraries).
 - For Python development: GIL-enabled CPython ≥ 3.10 in a writable Python environment. Pip installs NumPy, SciPy and Matplotlib with pyalps. Free-threaded Python is unsupported.
-- Optional: MPI and Boost.MPI for `ALPS_ENABLE_MPI=ON`; an OpenMP runtime for `ALPS_ENABLE_OPENMP=ON`; a Fortran compiler for the Fortran examples.
+- Eigen ≥ 3.3 for the applications, which need it for MaxEnt. Library-only builds (`ALPS_BUILD_APPLICATIONS=OFF`) can do without it; they then leave out the components copied from ALPSCore that need it, such as [ALEA v2](src/alps/aleav2/README.md).
+- Optional: MPI for `ALPS_ENABLE_MPI=ON`; an OpenMP runtime for `ALPS_ENABLE_OPENMP=ON`; a Fortran compiler for the Fortran examples.
 
 Use existing dependencies or your preferred package manager. Keep the compiler, architecture and native dependency stack consistent between the SDK, bindings and downstream extensions.
 
@@ -159,45 +160,13 @@ Reuse build directories for ordinary edits. Machine-specific CMake settings belo
 
 ### Run the tests
 
-Native MaxEnt reference tests require NumPy and h5py in the CMake-selected Python interpreter (`python -m pip install numpy h5py`). The executable and Python binding share the same scientific validation.
-
-See [the testing guide](tests/README.md) for GoogleTest conventions, component selection, MPI, sanitizers, standalone tutorial checks, and CI coverage policy. For library-only iteration use the `dev` configure/build/test presets; the `default` preset below also builds applications.
-
-CTest runs the native suite only. After the SDK build, run:
-
 ```sh
-ctest --preset default
+ctest --preset default                       # native suite
+python -m pytest python/pyalps/tests -q -rs  # after the editable install above
 ```
 
-After the editable install above, test Python and installed-SDK consumers too:
-
-```sh
-python -m pip install "pytest>=8"
-PYALPS_TEST_DOWNSTREAM_EXPORT=1 CMAKE_BUILD_PARALLEL_LEVEL=2 \
-  python -m pytest python/pyalps/tests tests/cmake -q -rs
-```
-
-Keep `ALPS_DIR` and any dependency prefixes set. The downstream flag enables tests that compile Python extensions against the installed SDK and pyalps runtime. These checks compile additional small projects and take longer than import tests. `tests/cmake` assumes an MPI-disabled LP64 SDK for its consumer contracts; use the default SDK for this command. If custom toolchain arguments are needed by these temporary builds, `ALPS_TEST_CMAKE_ARGS` accepts a JSON array of CMake arguments.
-
-Read the skip reasons: MPI tests need additional MPI setup, and some wheel checks apply only to repaired distribution artifacts. A successful local run with skips does not exercise every CI configuration. For a quick iteration, select native tests with `ctest --preset default -R <pattern>` or Python tests with `python -m pytest <test-file> -q`.
-
-For XML CLI changes, install `xsltproc` (Ubuntu: `sudo apt-get install xsltproc`; Homebrew: `brew install libxslt` and add its `bin` directory to `PATH`), then run:
-
-```sh
-ALPS_XML_BUILD="$PWD/_build/default" python -m pytest tests/cli -q
-```
-
-These tests install and relocate the XML component before exercising transformations. Build/release helper changes also have tests under `tests/ci` and `tests/packaging`; release-version helpers require Python ≥ 3.11 and `packaging`.
-
-To retain installed-wheel validation evidence, run:
-
-```sh
-python .github/scripts/validate_pyalps.py --output _build/validation --wheelhouse wheelhouse
-```
-
-The runner records test reports, logs, source and binary hashes, dependency versions and timings. Add `--packaging` for packaging checks, `--downstream` for compiled consumers (requires the matching SDK, CMake, a compiler and nanobind), or `--applications` for six installed solver smoke workflows. The exact-diagonalization cases check the four-site Heisenberg ground-state energy; the short Monte Carlo and DMRG runs check finite results, not convergence.
-
-Historical checkpoint loading runs in the regular Python suite using `python/pyalps/tests/fixtures/legacy_checkpoint.h5`. Its adjacent C++ source records the historical serializer revision and reproduction instructions. Keep this fixture frozen during ALPSCore consolidation: a checkpoint regenerated with the current SDK would lose the backward-compatibility check. The retired Boost.Python comparison scripts remain available in Git history.
+[tests/README.md](tests/README.md) is the testing guide: presets and labels,
+the installed-library, CLI and packaging suites, and how to write a test.
 
 All tests must pass before submitting a pull request.
 
@@ -226,7 +195,7 @@ All tests must pass before submitting a pull request.
    docs: add Heisenberg chain tutorial
    ```
 
-4. **Add or update tests** for any changed behaviour. New simulation methods should include at least one regression test comparing output against a known result.
+4. **Add the test the change needs**, following [when to add a test](tests/README.md#when-to-add-a-test).
 
 ---
 
@@ -268,10 +237,8 @@ request review.
 
 2. Open a pull request against the `master` branch of `ALPSim/ALPS`.
 
-3. Fill in the pull request template, including:
-   - What problem this solves and why
-   - How to test the change
-   - Any known limitations or follow-up work
+3. Fill in the pull request template. It asks only for what a reviewer cannot
+   see in the diff.
 
 4. Ensure CI passes (build + tests on Linux and macOS).
 
@@ -288,7 +255,7 @@ For substantial changes — new simulation applications, new libraries, signific
 - `python/pyalps/`: Python sources, bindings, packaging and extension example.
 - `tutorials/`: tutorials and [standalone library examples](tutorials/examples/README.md).
 - `tests/`: cross-module integration, Python, SDK, CLI, build-helper and packaging tests.
-- `third_party/`: [Numeric Bindings headers](third_party/boost_numeric_bindings/README.md) and [XDR serialization](third_party/xdr/README.md).
+- `third_party/`: [Numeric Bindings headers](third_party/boost_numeric_bindings/README.md) and [XDR serialization](third_party/xdr/README.md). [ALEA v2](src/alps/aleav2/README.md), [GF](src/alps/gf/README.md), the [accumulators](src/alps/accumulators/README.md) and the [parameters](src/alps/params/README.md) with iniparser, copied from ALPSCore, live in `src/alps/aleav2/`, `src/alps/gf/`, `src/alps/accumulators/` and `src/alps/params/` with their licenses. ALPSCore's numeric headers are recorded in the [numerics](src/alps/numerics/README.md) README. ALPSCore's MPI wrapper and test helpers are recorded in the [utilities](src/alps/utilities/README.md) and [test support](tests/support/README.md) READMEs.
 - `cmake/` and `.github/`: shared build configuration, generated-header templates, version file, CI and release helpers.
 
 Add exported headers to the owning target's CMake `HEADERS` file set. Public `<alps/...>` and `<ietl/...>` include names are independent of the physical source directory. Keep subsystem tests beside their owner and cross-module tests under `tests/`.
@@ -300,7 +267,7 @@ Add exported headers to the owning target's CMake `HEADERS` file set. Public `<a
 | `ALPS_BUILD_TESTING` | `ON` | Build and register native ALPS tests, independently of a parent's `BUILD_TESTING` |
 | `ALPS_BUILD_APPLICATIONS` | `ON` | Build simulation applications, solver libraries and command-line tools |
 | `BUILD_SHARED_LIBS` | `ON` when unset | Shared libraries; required for Python bindings |
-| `ALPS_ENABLE_MPI` | `OFF` | Enable MPI; requires matching MPI and Boost.MPI installations |
+| `ALPS_ENABLE_MPI` | `OFF` | Enable MPI; requires an MPI installation |
 | `ALPS_ENABLE_OPENMP` | `OFF` | Enable OpenMP, including worker scheduling |
 | `ALPS_BUILD_EXTENSIVE_TESTS` | `OFF` | Add expensive graph and HDF5 type-matrix tests when testing is enabled |
 
@@ -324,7 +291,7 @@ cmake --install _build/mpi-openmp
 export ALPS_DIR="$PWD/_build/mpi-openmp/install/share/alps"
 ```
 
-MPI presets require MPI and a matching Boost.MPI installation; OpenMP presets
+MPI presets require an MPI installation; OpenMP presets
 require compiler/runtime support for OpenMP. These options enable capabilities
 in supported applications. Choose MPI ranks and OpenMP threads when running
 the application; `--parallel` above controls compilation jobs only.
@@ -349,7 +316,7 @@ add_executable(my_simulation main.cpp)
 target_link_libraries(my_simulation PRIVATE ALPS::alps)
 ```
 
-The imported target carries headers, C++17 requirements, compile definitions and transitive dependencies. Use a compiler and configuration compatible with the SDK's ABI. `ALPS::headers` exposes the compile interface without linking; `ALPS::fortran` supplies the C++ Fortran bridge and its GNU Fortran compatibility flag. Programs using only utilities can request `find_package(ALPS CONFIG REQUIRED COMPONENTS utilities)` and link `ALPS::utilities`. Archive-only programs can similarly request the `hdf5` component and link `ALPS::hdf5`, which also owns archive signal cleanup. Typed parameter programs can request the `params` component and link `ALPS::params`. XML parsing/output and command-line parsing are available through the `xml` and `cli` components and targets `ALPS::xml` and `ALPS::cli`. The parameter-file constructor and text/XML conversion adapters still require `ALPS::alps`. Package discovery still checks the SDK's complete dependency set; component-specific configuration is future work.
+The imported target carries headers, C++17 requirements, compile definitions and transitive dependencies. Use a compiler and configuration compatible with the SDK's ABI. `ALPS::headers` exposes the compile interface without linking; `ALPS::fortran` supplies the C++ Fortran bridge and its GNU Fortran compatibility flag. Programs using only utilities can request `find_package(ALPS CONFIG REQUIRED COMPONENTS utilities)` and link `ALPS::utilities`. Archive-only programs can similarly request the `hdf5` component and link `ALPS::hdf5`, which also owns archive signal cleanup. Typed parameter programs can request the `params` component and link `ALPS::params`, which reads INI files and HDF5 groups. XML parsing/output and command-line parsing are available through the `xml` and `cli` components and targets `ALPS::xml` and `ALPS::cli`. Reading ALPS parameter and XML files (`make_parameters_from_file`, `make_parameters_from_xml`) and converting to the older `Parameters` still require `ALPS::alps`. Package discovery still checks the SDK's complete dependency set; component-specific configuration is future work.
 
 Use `ALPS::containers` for array storage and `ALPS::numerics` for matrix/vector algorithms and array mathematics, including the existing `<alps/multi_array.hpp>` umbrella. Numerical archive consumers link `ALPS::numeric_io` and explicitly include `<alps/hdf5/matrix.hpp>` or `<alps/hdf5/numeric_vector.hpp>`. For example:
 
@@ -376,13 +343,48 @@ alps-xml convert html simulation.out.xml --output results.html
 alps-xml extract text plot-definition.xml task*.out.xml --output measurements.txt
 ```
 
-Plot/extraction formats are `text`, `html`, `gnuplot`, `matplotlib` and `grace`; conversion supports `text` and `html`. The `xml` installation component includes the command and resources.
+Plot/extraction formats are `text`, `html`, `gnuplot`, `matplotlib` and `grace`; conversion supports `text` and `html`. The `xml` installation component includes the command and resources. Python wheels provide the same `alps-xml` command without requiring `xsltproc`.
+
+The historical command names remain installed in the same `xml` component as aliases of `alps-xml`, with identical output. New scripts and documentation should use `alps-xml`.
+
+| Historical name | `alps-xml` command |
+| --- | --- |
+| `plot2text`, `plot2html`, `plot2gp`, `plot2mpl`, `plot2xmgr` | `alps-xml plot text`, `html`, `gnuplot`, `matplotlib`, `grace` |
+| `convert2text`, `convert2html` | `alps-xml convert text`, `html` |
+| `extracttext`, `extracthtml`, `extractgp`, `extractmpl`, `extractxmgr` | `alps-xml extract text`, `html`, `gnuplot`, `matplotlib`, `grace`. The earlier shell versions of these exited successfully with empty output |
+
+Wheels install `plot2text`, `plot2gp`, `plot2xmgr` and `convert2text` as aliases in the same way.
+
+Two shell helpers have no `alps-xml` equivalent. They still work, but each prints a deprecation warning, and they will be removed in a future release:
+
+| Deprecated helper | Replacement |
+| --- | --- |
+| `xslttransform` | `xsltproc stylesheet.xsl input.xml` |
+| `use_local_stylesheet` | `alps-xml convert html` writes viewable HTML. Default task output already refers to a local `ALPS.xsl` |
+
+`archivecat` has been removed; `alps-xml extract` reads task files directly.
+
+Application builds also retain the archive-producing commands in the `tools`
+installation component:
+
+```sh
+txt2archive --xaxis T --yaxis Energy --with-error measurements.txt > results.archive.xml
+xml2archive simulation.in.xml > results.archive.xml
+```
+
+`txt2archive` reads x/y columns, with an optional third error column;
+`xml2archive` collects a master JOB XML file's task results. These operations
+produce archive XML rather than render it. If SQLite development headers and
+libraries are available at configure time, the `archive` tool is also built.
+It retains its existing SQLite schema and `install`, `append`, `rebuild`, `list`
+and `plot` commands; existing databases can be reopened without conversion.
+Use `archive --help` for its options. The SDK libraries do not depend on SQLite.
 
 ---
 
 ## CI coverage
 
-Pull requests and master pushes report an aggregate `CI` check. The [PR workflow](.github/workflows/ci.yml) selects affected areas: static/helper checks, Linux native and editable Python tests, MPI integration, macOS native tests and SDK consumers, native sanitizers, and Linux wheel packaging. It uses binary dependency packages where available and compiler caches to reduce repeated builds.
+Pull requests and master pushes report an aggregate `CI` check. The [PR workflow](.github/workflows/ci.yml) selects affected areas: static/helper checks, Linux native and editable Python tests, MPI integration, macOS native tests and SDK consumers, a Debug build of library and applications with assertions enabled, native sanitizers, and Linux wheel packaging. It uses binary dependency packages where available and compiler caches to reduce repeated builds.
 
 Each area fingerprints its source, tests, build configuration and runner image. A successful matching fingerprint can skip a repeated check; missing history, unknown paths or uncertain parsing cause checks to run. Citation metadata and generated snapshots invalidate all areas. Use the workflow's manual `force` input to run every area regardless of recorded passes. See [change detection](.github/scripts/ci/README.md) for details.
 
@@ -429,10 +431,15 @@ use `skip-existing` to hide a version mismatch.
 
 ## Review process
 
-ALPS uses a consensus-based review model:
+[REVIEW.md](REVIEW.md) lists what reviewers look for in this repository and how
+findings are reported. The [maintainers table](https://alps.comp-phys.org/govern/maintainers/)
+on the ALPS website says who maintains each part of the code and who the core
+maintainers are. Reviewer time is the scarcest resource ALPS has, so how much
+review a change needs depends on what it touches:
 
-- Pull requests are reviewed by **maintainers** (at least one per simulation code) and **core maintainers**.
-- A pull request is accepted if all active reviewers approve, or if no objections are raised within **six weeks** of submission.
+- **Changes that cannot alter results** (documentation, tutorials, `CHANGELOG.md`, CI helper scripts, test-only changes, packaging metadata) need green CI and one approval from anyone with write access.
+- **Everything else** needs green CI and two approvals, at least one from a core maintainer. The maintainer of the affected code is requested as a reviewer and their comments are addressed; if they have not responded within two weeks, their silence does not block the merge.
+- A pull request with no reviewer activity for **six weeks** may be merged by a core maintainer if CI is green and no objections were raised.
 - Controversial changes can be escalated to the [Governing Council](https://alps.comp-phys.org/govern/).
 
 Core maintainers are responsible for validating that code compiles, tests pass, and results are physically correct. Please be responsive to review comments; PRs with no author activity for eight weeks may be closed.
@@ -447,7 +454,7 @@ If you are contributing a new simulation application or library, the Governing C
 
 - Target C++17.
 - Match the style of the surrounding code. ALPS does not enforce a single formatter, but keeps consistent conventions within each subdirectory.
-- Avoid undefined behaviour and compiler warnings. New code should compile cleanly with `-Wall -Wextra` on GCC and Clang.
+- Avoid undefined behaviour and compiler warnings. New code should compile cleanly with `-Wall -Wextra` on GCC and Clang; CI does not yet enforce this, so check locally when touching C++.
 - Prefer standard library and Boost facilities over hand-rolled implementations.
 
 ### Python

@@ -84,7 +84,10 @@ void SlaveTask::run()
 
   // no more messages: do some work
   if(theWorker) {
-    dynamic_cast<Worker&>(*theWorker).run();
+    Worker& worker = dynamic_cast<Worker&>(*theWorker);
+    worker.run();
+    if (worker.idle()) // nothing to do until the master's next message
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
   } else {
     std::this_thread::sleep_for(std::chrono::seconds(1));
   }
@@ -100,7 +103,7 @@ void SlaveTask::halt()
 
 // OTHER MEMBER FUNCTIONS NEVER USED
 
-void SlaveTask::checkpoint(const boost::filesystem::path&, bool ) const
+void SlaveTask::checkpoint(const std::filesystem::path&, bool ) const
 {
   boost::throw_exception(std::logic_error("should never checkpoint a slave simulation"));
 }

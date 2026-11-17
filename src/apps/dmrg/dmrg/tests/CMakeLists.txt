@@ -1,5 +1,14 @@
-# DMRG scratch-file and SAVE_MPS tests of the application. The solver's own
-# scratch directory and its MPS are tested with the classic DMRG component.
+# DMRG scratch-file and parameter tests, owned by the solver.
+
+add_executable(dmrg_temporary_files dmrg_temporary_files.cpp)
+target_include_directories(dmrg_temporary_files PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/..")
+target_link_libraries(dmrg_temporary_files PRIVATE ALPS::utilities)
+alps_add_gtest(dmrg_temporary_files COMPONENT dmrg LABELS utilities compatibility)
+
+add_executable(dmrg_signals dmrg_signals.cpp)
+target_include_directories(dmrg_signals PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/..")
+target_link_libraries(dmrg_signals PRIVATE ALPS::alps)
+alps_add_gtest(dmrg_signals COMPONENT dmrg)
 
 if(TARGET dmrg AND TARGET parameter2xml)
   add_test(NAME dmrg_scratch_cleanup
@@ -10,32 +19,54 @@ if(TARGET dmrg AND TARGET parameter2xml)
       "-Dtest_dir=${CMAKE_CURRENT_BINARY_DIR}/dmrg-scratch"
       -P "${CMAKE_CURRENT_SOURCE_DIR}/dmrg_scratch_cleanup.cmake")
   set_tests_properties(dmrg_scratch_cleanup PROPERTIES LABELS "dmrg" TIMEOUT 120)
+
+  add_test(NAME dmrg_checkpoint_cache
+    COMMAND ${CMAKE_COMMAND}
+      "-Ddmrg=$<TARGET_FILE:dmrg>"
+      "-Dparameter2xml=$<TARGET_FILE:parameter2xml>"
+      "-Dxml_dir=${PROJECT_SOURCE_DIR}/src/alps/resources"
+      "-Dtest_dir=${CMAKE_CURRENT_BINARY_DIR}/dmrg-checkpoint"
+      -P "${CMAKE_CURRENT_SOURCE_DIR}/dmrg_checkpoint_cache.cmake")
+  set_tests_properties(dmrg_checkpoint_cache PROPERTIES LABELS "dmrg" TIMEOUT 300)
+
+  add_test(NAME dmrg_nsite_terms
+    COMMAND ${CMAKE_COMMAND}
+      "-Ddmrg=$<TARGET_FILE:dmrg>"
+      "-Dparameter2xml=$<TARGET_FILE:parameter2xml>"
+      "-Dxml_dir=${PROJECT_SOURCE_DIR}/src/alps/resources"
+      "-Dtest_dir=${CMAKE_CURRENT_BINARY_DIR}/dmrg-nsite"
+      -P "${CMAKE_CURRENT_SOURCE_DIR}/dmrg_nsite_terms.cmake")
+  set_tests_properties(dmrg_nsite_terms PROPERTIES LABELS "dmrg" TIMEOUT 120)
+
+  add_test(NAME dmrg_measure_local
+    COMMAND ${CMAKE_COMMAND}
+      "-Ddmrg=$<TARGET_FILE:dmrg>"
+      "-Dparameter2xml=$<TARGET_FILE:parameter2xml>"
+      "-Dxml_dir=${PROJECT_SOURCE_DIR}/src/alps/resources"
+      "-Dtest_dir=${CMAKE_CURRENT_BINARY_DIR}/dmrg-measure-local"
+      -P "${CMAKE_CURRENT_SOURCE_DIR}/dmrg_measure_local.cmake")
+  set_tests_properties(dmrg_measure_local PROPERTIES LABELS "dmrg" TIMEOUT 120)
 endif()
 
-if(TARGET dmrg AND TARGET parameter2xml)
-  add_executable(dmrg_mps_check dmrg_mps_check.cpp)
-  target_link_libraries(dmrg_mps_check PRIVATE ALPS::alps)
-  add_test(NAME dmrg_save_mps
-    COMMAND ${CMAKE_COMMAND}
-      "-Ddmrg=$<TARGET_FILE:dmrg>"
-      "-Dparameter2xml=$<TARGET_FILE:parameter2xml>"
-      "-Dchecker=$<TARGET_FILE:dmrg_mps_check>"
-      "-Dxml_dir=${PROJECT_SOURCE_DIR}/src/alps/resources"
-      "-Dtest_dir=${CMAKE_CURRENT_BINARY_DIR}/dmrg-save-mps"
-      -P "${CMAKE_CURRENT_SOURCE_DIR}/dmrg_save_mps.cmake")
-  set_tests_properties(dmrg_save_mps PROPERTIES LABELS "dmrg" TIMEOUT 300)
+add_executable(dmrg_parameters dmrg_parameters.cpp)
+target_include_directories(dmrg_parameters PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/..")
+target_link_libraries(dmrg_parameters PRIVATE ALPS::alps)
+alps_add_gtest(dmrg_parameters COMPONENT dmrg)
 
-  # START_SWEEP, START_DIR and START_ITER resume a run killed in its sweeps
-  # from its CHECKPOINT_DIRECTORY.
-  add_executable(dmrg_compare_results dmrg_compare_results.cpp)
-  target_link_libraries(dmrg_compare_results PRIVATE ALPS::alps)
-  add_test(NAME dmrg_resume
-    COMMAND ${CMAKE_COMMAND}
-      "-Ddmrg=$<TARGET_FILE:dmrg>"
-      "-Dparameter2xml=$<TARGET_FILE:parameter2xml>"
-      "-Dcompare=$<TARGET_FILE:dmrg_compare_results>"
-      "-Dxml_dir=${PROJECT_SOURCE_DIR}/src/alps/resources"
-      "-Dtest_dir=${CMAKE_CURRENT_BINARY_DIR}/dmrg-resume"
-      -P "${CMAKE_CURRENT_SOURCE_DIR}/dmrg_resume.cmake")
-  set_tests_properties(dmrg_resume PROPERTIES LABELS "dmrg" TIMEOUT 300)
+if(TARGET dmrg)
+  add_test(NAME dmrg.invalid_parameter
+    COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:dmrg>"
+      "-DXML_PATH=${PROJECT_SOURCE_DIR}/src/alps/resources"
+      "-DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/invalid_parameter"
+      -P "${CMAKE_CURRENT_SOURCE_DIR}/invalid_parameter.cmake")
+  set_tests_properties(dmrg.invalid_parameter PROPERTIES LABELS "dmrg;cli"
+    TIMEOUT 60 ENVIRONMENT "OMP_NUM_THREADS=1;OPENBLAS_NUM_THREADS=1")
+
+  add_test(NAME dmrg.same_seed
+    COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_FILE:dmrg>"
+      "-DXML_PATH=${PROJECT_SOURCE_DIR}/src/alps/resources"
+      "-DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/same_seed"
+      -P "${CMAKE_CURRENT_SOURCE_DIR}/same_seed.cmake")
+  set_tests_properties(dmrg.same_seed PROPERTIES LABELS "dmrg"
+    TIMEOUT 120 ENVIRONMENT "OMP_NUM_THREADS=1;OPENBLAS_NUM_THREADS=1")
 endif()

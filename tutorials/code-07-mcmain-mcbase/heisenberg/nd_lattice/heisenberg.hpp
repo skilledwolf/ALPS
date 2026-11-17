@@ -5,7 +5,7 @@
 #ifndef HEISENBERG_HPP
 #define HEISENBERG_HPP
 
-#include <alps/mcbase.hpp>
+#include <alps/mc/mcbase.hpp>
 #include <alps/ngs/numeric.hpp>
 #include <alps/random/uniform_on_sphere_n.h>
 #include <alps/lattice.h>
@@ -15,7 +15,7 @@
 #include <alps/hdf5/array.hpp>
 
 #include <boost/function.hpp>
-#include <boost/filesystem/path.hpp>
+#include <filesystem>
 #include <boost/array.hpp>
 
 #include <vector>
@@ -28,6 +28,8 @@ class heisenberg_sim : public alps::mcbase {
     public:
 
         heisenberg_sim(parameters_type const & parms, std::size_t seed_offset = 0);
+
+        static parameters_type & define_parameters(parameters_type & parameters);
 
         virtual void update();
         virtual void measure();

@@ -23,7 +23,7 @@
 #include <alps/parameter.h>
 #include <alps/random.h>
 #include <boost/smart_ptr.hpp>
-#include <boost/filesystem/path.hpp>
+#include <filesystem>
 #include <alps/osiris/process.h>
 #include <alps/osiris/dump.h>
 #include <cmath>
@@ -78,8 +78,8 @@ public:
   virtual void save(hdf5::archive &) const {};
   virtual void load(hdf5::archive &) {};
 
-  virtual void save_to_file(const boost::filesystem::path&,const boost::filesystem::path&) const=0;
-  virtual void load_from_file(const boost::filesystem::path&,const boost::filesystem::path&)=0;
+  virtual void save_to_file(const std::filesystem::path&,const std::filesystem::path&) const=0;
+  virtual void load_from_file(const std::filesystem::path&,const std::filesystem::path&)=0;
   virtual void set_parameters(const Parameters& parms)=0;
   virtual TaskInfo get_info() const = 0;
   virtual double work_done() const =0;
@@ -111,9 +111,9 @@ public:
   virtual void save(hdf5::archive &) const;
   virtual void load(hdf5::archive &);
 
-  virtual void write_xml(const boost::filesystem::path& name) const;
-  void save_to_file(const boost::filesystem::path&,const boost::filesystem::path&) const;
-  void load_from_file(const boost::filesystem::path&,const boost::filesystem::path&);
+  virtual void write_xml(const std::filesystem::path& name) const;
+  void save_to_file(const std::filesystem::path&,const std::filesystem::path&) const;
+  void load_from_file(const std::filesystem::path&,const std::filesystem::path&);
   // creates a new information object containing information about this run
   TaskInfo get_info() const;
   void start_worker();
@@ -127,6 +127,14 @@ public:
   virtual void dostep();
   double work_done() const;
   virtual ResultType get_summary() const;  
+
+  /// true if run() has nothing to do: the run is not started or its work is done
+  bool idle() const { return !started || done_; }
+
+  /// A run whose results exist only once it has finished (work_done() >= 1)
+  /// returns true. Its task then ends when all of its runs have finished,
+  /// instead of when their work adds up to 1.
+  virtual bool needs_complete_run() const { return false; }
 
 protected:
   int32_t version;
@@ -155,6 +163,7 @@ private:
   std::string rng_name() const { return parms.value_or_default("RNG","mt19937");}
   TaskInfo info;
   int started;
+  bool done_; // work_done() has reached 1 since the run was started
   std::string file_name1, file_name2;
 };
 
@@ -178,8 +187,8 @@ public:
   void set_parameters(const Parameters& parms);
 
   // save function also saves actual object
-  void save_to_file(const boost::filesystem::path&,const boost::filesystem::path&) const;
-  void load_from_file(const boost::filesystem::path&,const boost::filesystem::path&);
+  void save_to_file(const std::filesystem::path&,const std::filesystem::path&) const;
+  void load_from_file(const std::filesystem::path&,const std::filesystem::path&);
   void start_worker();
   virtual void halt_worker();
   

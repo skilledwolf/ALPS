@@ -30,29 +30,40 @@ double *c_or_cdagger::omegan_;
 std::complex<double> *c_or_cdagger::exp_iomegan_tau_;
 
 
+
+void InteractionExpansion::define_parameters(alps::params &p)
+{
+  alps::mcbase::define_parameters(p); //SEED
+  alps::input::define_ctint_parameters(p);
+}
+
 InteractionExpansion::InteractionExpansion(const alps::params &parms, int node)
+: InteractionExpansion(parms, node, alps::input::read_ctint_parameters(parms))
+{
+}
+
+InteractionExpansion::InteractionExpansion(const alps::params &parms, int node, const alps::input::ctint_parameters &input)
 : alps::mcbase(parms,node),
-max_order(parms["MAX_ORDER"] | 2048),
-n_flavors(parms["FLAVORS"] | (parms["N_ORBITALS"] | 2)),
-n_site(parms["SITES"] | 1),
-n_matsubara((int)(parms["NMATSUBARA"]|parms["N_MATSUBARA"])),
-n_matsubara_measurements(parms["NMATSUBARA_MEASUREMENTS"] | (int)n_matsubara),
-n_tau((int)(parms["N"]|parms["N_TAU"])),
+max_order(input.max_order),
+n_flavors(input.flavors),
+n_site(input.sites),
+n_matsubara(input.n_matsubara),
+n_matsubara_measurements(input.n_matsubara_measurements),
+n_tau(input.n_tau),
 n_tau_inv(1./n_tau),
-n_self(parms["NSELF"] | (int)(10*n_tau)),
-mc_steps((boost::uint64_t)parms["SWEEPS"]),
-therm_steps((unsigned int)parms["THERMALIZATION"]),        
-max_time_in_seconds(parms["MAX_TIME"] | 86400),
-beta((double)parms["BETA"]),                        
+n_self(input.n_self),
+mc_steps(input.sweeps),
+therm_steps(input.thermalization),        
+max_time_in_seconds((int)input.max_time),
+beta(input.beta),                        
 temperature(1./beta),
-onsite_U((double)parms["U"]),                        
-alpha((double)parms["ALPHA"]),
+onsite_U(input.U),                        
+alpha(input.alpha),
 U(alps::make_deprecated_parameters(parms)),                         
-recalc_period(parms["RECALC_PERIOD"] | 5000),
-measurement_period(parms["MEASUREMENT_PERIOD"] | (parms["N_MEAS"] | 200)),
-convergence_check_period(parms["CONVERGENCE_CHECK_PERIOD"] | (int)recalc_period),
-almost_zero(parms["ALMOSTZERO"] | 1.e-16),
-seed(parms["SEED"] | 0),
+recalc_period(input.recalc_period),
+measurement_period(input.measurement_period),
+convergence_check_period(input.convergence_check_period),
+almost_zero(input.almost_zero),
 green_matsubara(n_matsubara, n_site, n_flavors),
 bare_green_matsubara(n_matsubara,n_site, n_flavors), 
 bare_green_itime(n_tau+1, n_site, n_flavors),
@@ -60,7 +71,7 @@ green_itime(n_tau+1, n_site, n_flavors),
 pert_hist(max_order)
 {
   //initialize measurement method
-  if (parms["HISTOGRAM_MEASUREMENT"] | false)
+  if (input.histogram_measurement)
     measurement_method=selfenergy_measurement_itime_rs;
   else
     measurement_method=selfenergy_measurement_matsubara;
@@ -74,9 +85,9 @@ pert_hist(max_order)
   measurement_time=0;
   update_time=0;
   thermalized=therm_steps==0?true:false;
-  if(!parms.defined("ATOMIC")) {
-    alps::hdf5::archive ar(parms["INFILE"].cast<std::string>(),"r");
-    if(parms.defined("DMFT_FRAMEWORK") && parms["DMFT_FRAMEWORK"].cast<bool>()){
+  if(!input.atomic) {
+    alps::hdf5::archive ar(input.infile,"r");
+    if(input.dmft_framework){
       //read in as green_function
 //      std::cerr << "Reading G0 ...";
       bare_green_matsubara.read_hdf5(ar,"/G0");
@@ -97,19 +108,8 @@ pert_hist(max_order)
     
     FourierTransformer::generate_transformer(alps::make_deprecated_parameters(parms), fourier_ptr);
     fourier_ptr->backward_ft(bare_green_itime, bare_green_matsubara);
-  } else {
-    for(spin_t flavor=0; flavor<n_flavors; ++flavor) 
-      for(site_t site1=0; site1<n_site; ++site1) 
-        for(site_t site2=0; site2<n_site; ++site2) 
-          for(itime_index_t t=0; t<=n_tau; ++t)
-            bare_green_itime(t, site1, site2, flavor)=-0.5;
-    for(spin_t flavor=0; flavor<n_flavors; ++flavor) 
-      for(site_t site1=0; site1<n_site; ++site1) 
-        for(site_t site2=0; site2<n_site; ++site2) 
-          for(unsigned int k=0; k<n_matsubara; ++k) 
-            bare_green_matsubara(k, site1, site2, flavor)=std::complex<double>(0, -beta/((2*k+1)*boost::math::constants::pi<double>()));
-    //fourier transform of -1/2
-  }
+  } else
+    atomic_bare_green(bare_green_itime, bare_green_matsubara, beta);
   //initialize the simulation variables
   initialize_simulation(parms);
   if(node==0) {print(std::cout);}
@@ -118,9 +118,27 @@ pert_hist(max_order)
   for(unsigned int i=0;i<n_flavors*n_flavors;++i){
     vertex_histograms[i]=new simple_hist(vertex_histogram_size);
   }
-  c_or_cdagger::initialize_simulation(parms);
+  c_or_cdagger::initialize_simulation(input);
   
   if(n_site !=1) throw std::invalid_argument("you're trying to run this code for more than one site. Do you know what you're doing?!?");
+}
+
+
+
+void atomic_bare_green(itime_green_function_t &bare_green_itime,
+                       matsubara_green_function_t &bare_green_matsubara, double beta)
+{
+  for(spin_t flavor=0; flavor<bare_green_itime.nflavor(); ++flavor)
+    for(site_t site1=0; site1<bare_green_itime.nsite(); ++site1)
+      for(site_t site2=0; site2<bare_green_itime.nsite(); ++site2)
+        for(itime_index_t t=0; t<bare_green_itime.ntime(); ++t)
+          bare_green_itime(t, site1, site2, flavor)=-0.5;
+  for(spin_t flavor=0; flavor<bare_green_matsubara.nflavor(); ++flavor)
+    for(site_t site1=0; site1<bare_green_matsubara.nsite(); ++site1)
+      for(site_t site2=0; site2<bare_green_matsubara.nsite(); ++site2)
+        for(unsigned int k=0; k<bare_green_matsubara.nfreq(); ++k)
+          bare_green_matsubara(k, site1, site2, flavor)=std::complex<double>(0, -beta/((2*k+1)*boost::math::constants::pi<double>()));
+  //fourier transform of -1/2
 }
 
 
@@ -135,9 +153,12 @@ void InteractionExpansion::update()
     if(step % recalc_period ==0)
       reset_perturbation_series();
   }
+  if(step>therm_steps)
+    thermalized=true;
 }
 void InteractionExpansion::measure(){
-  measure_observables();
+  if(thermalized)
+    measure_observables();
 }
 
 
@@ -173,16 +194,16 @@ void InteractionExpansion::initialize_simulation(const alps::params &parms)
 
 
 
-void c_or_cdagger::initialize_simulation(const alps::params &p)
+void c_or_cdagger::initialize_simulation(const alps::input::ctint_parameters &input)
 {
-  beta_=p["BETA"];
-  nm_=p["NMATSUBARA_MEASUREMENTS"] | (p["NMATSUBARA"]|p["N_MATSUBARA"]);
+  beta_=input.beta;
+  nm_=input.n_matsubara_measurements;
   omegan_ = new double[nm_];
   for(unsigned int i=0;i<nm_;++i) {
     omegan_[i]=(2.*i+1.)*boost::math::constants::pi<double>()/beta_;
   }
-  if(p.defined("TAU_DISCRETIZATION_FOR_EXP")) {
-    ntau_=p["TAU_DISCRETIZATION_FOR_EXP"];
+  if(input.tau_discretization_for_exp!=0) {
+    ntau_=input.tau_discretization_for_exp;
     use_static_exp_=true;
     exp_iomegan_tau_=new std::complex<double> [2*nm_*ntau_];
     if(exp_iomegan_tau_==0){throw std::runtime_error("not enough memory for computing exp!"); }

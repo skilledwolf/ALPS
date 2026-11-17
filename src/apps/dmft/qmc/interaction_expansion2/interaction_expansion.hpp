@@ -16,8 +16,11 @@
 #ifndef DMFT_QMC_WEAK_COUPLING_H
 #define DMFT_QMC_WEAK_COUPLING_H
 
-#include <alps/ngs.hpp>
-#include <alps/mcbase.hpp>
+#include <alps/mc/api.hpp>
+#include <alps/mc/mcbase.hpp>
+#include <alps/input/ctint.hpp>
+#include <alps/hdf5/vector.hpp>
+#include <alps/numeric/vector_valarray_conversion.hpp>
 
 #include <alps/alea.h>
 #include <cmath>
@@ -183,7 +186,7 @@ private:
 {
 public:
 
-  InteractionExpansionSim(const alps::ProcessList &w, const boost::filesystem::path &p) : alps::scheduler::MCSimulation(w,p) {}
+  InteractionExpansionSim(const alps::ProcessList &w, const std::filesystem::path &p) : alps::scheduler::MCSimulation(w,p) {}
   
   InteractionExpansionSim(const alps::ProcessList &w, const alps::Parameters &p) : alps::scheduler::MCSimulation(w,p) {p_=p;}
   
@@ -208,14 +211,24 @@ private:
 };*/
 
 
+// The bare Green's function of an ATOMIC run: -1/2 at every imaginary time,
+// 1/(i omega_n) on the Matsubara frequencies. The simulation starts from it
+// and the evaluation uses it, instead of the G0 in INFILE.
+void atomic_bare_green(itime_green_function_t &bare_green_itime,
+                       matsubara_green_function_t &bare_green_matsubara, double beta);
+
 
 class InteractionExpansion: public alps::mcbase
 {
 public:
 
   InteractionExpansion(const alps::params& p, int rank);
+  static void define_parameters(alps::params &p); //define the parameters the solver reads, with their defaults
+private:
+  InteractionExpansion(const alps::params& p, int rank, const alps::input::ctint_parameters& input);
+public:
   ~InteractionExpansion() {}
-  bool is_thermalized() const {return true;} //thermalization is done in the constructor. It's not a big deal here.
+  bool is_thermalized() const {return thermalized;} //set by update() once step exceeds THERMALIZATION
   void update();
   void measure();
   double fraction_completed() const;
@@ -288,8 +301,6 @@ protected:
   
   /*InteractionExpansion's roundoff threshold*/
   const double almost_zero;                        
-  /*PRNG seed*/
-  const int seed;                                
   
   /*private member variables*/
   matsubara_green_function_t green_matsubara;

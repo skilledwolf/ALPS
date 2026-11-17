@@ -22,7 +22,7 @@
 #undef tolower
 #undef toupper
 
-#include <boost/regex.hpp> 
+#include <regex>
 
 #ifndef ALPS_WITHOUT_XML
 
@@ -60,6 +60,7 @@ void alps::SiteOperator::substitute_operators(const ModelLibrary& m, const Param
   std::vector<std::string> s(1,site());
   OperatorSubstitution<std::complex<double> > subs(m,p,s);
   Expression e(term());
+  refuse_operator_in_denominator(e, s);
   e.partial_evaluate(subs);
   e.simplify();
   // Full precision: lexical_cast prints 6 significant digits, which truncated
@@ -107,8 +108,8 @@ void alps::SiteTermDescriptor::write_xml(oxstream& os) const
 std::set<std::string> alps::SiteOperator::operator_names() const
 {
   std::set<std::string> names;
-  boost::regex expression("^(.*)\\(.*\\)$");
-  boost::smatch what;
+  std::regex expression("^(.*)\\(.*\\)$");
+  std::smatch what;
   alps::Expression ex(term_);
   ex.flatten();
   ex.simplify();
@@ -117,7 +118,7 @@ std::set<std::string> alps::SiteOperator::operator_names() const
     for (Term::factor_iterator fit = tit->factors().first;
          fit != tit->factors().second; ++fit) {
       std::string name = boost::lexical_cast<std::string>(*fit);
-      if (boost::regex_match(name, what, expression))
+      if (std::regex_match(name, what, expression))
         names.insert(std::string(what[1].first, what[1].second));
     }
   return names;

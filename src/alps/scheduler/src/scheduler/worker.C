@@ -22,7 +22,7 @@
 #include <alps/osiris/mpdump.h>
 
 #include <boost/lexical_cast.hpp>
-#include <boost/filesystem/operations.hpp>
+#include <filesystem>
 
 #include <cmath>
 #include <cstdio>
@@ -47,7 +47,8 @@ Worker::Worker(const ProcessList& w,const alps::Parameters&  myparms,int32_t n)
     engine_ptr(rng_factory.create(rng_name())),
     random(*engine_ptr, boost::uniform_real<>()),
     random_01(*engine_ptr, boost::uniform_real<>()),
-    started(false)
+    started(false),
+    done_(false)
 {
   if( node<0||(node>=(int32_t)where.size()&&where.size()!=0))
     boost::throw_exception(std::logic_error("illegal node number " + boost::lexical_cast<std::string,int>(n)+" in Worker::Worker"));
@@ -68,7 +69,8 @@ Worker::Worker(const alps::Parameters&  myparms,int32_t n)
     engine_ptr(rng_factory.create(rng_name())),
     random(*engine_ptr, boost::uniform_real<>()),
     random_01(*engine_ptr, boost::uniform_real<>()),
-    started(false)
+    started(false),
+    done_(false)
 {
   if( node<0||(node>=(int32_t)where.size()&&where.size()!=0))
     boost::throw_exception(std::logic_error("illegal node number " + boost::lexical_cast<std::string,int>(n)+" in Worker::Worker"));
@@ -197,6 +199,7 @@ void Worker::start_worker()
   if(node==0) 
     info.start(work_phase()); // store info about starting
   started=true;
+  done_=false;
   start(); // user start
   // TODO: start all slaves
   // TODO: start thread
@@ -204,22 +207,29 @@ void Worker::start_worker()
 
                 
 // do some work
+// A run stops stepping once its work is done, so it performs the same number
+// of steps however often the scheduler asks whether the task is finished. It
+// resumes only if it is started again or its parameters change.
 void Worker::run()
 {
-  if(started)
+  if (!started || done_)
+    return;
+  if (work_done() >= 1.)
+    done_ = true;
+  else
     dostep();
 }
 
 
-void Worker::write_xml(const boost::filesystem::path&) const
+void Worker::write_xml(const std::filesystem::path&) const
 {
   boost::throw_exception(std::runtime_error("XML output not implemented for the worker"));
 }
 
-void Worker::load_from_file(const boost::filesystem::path& fn,const boost::filesystem::path& hdf5path)
+void Worker::load_from_file(const std::filesystem::path& fn,const std::filesystem::path& hdf5path)
 {
 #ifdef ALPS_HAVE_HDF5
-  if (boost::filesystem::exists(hdf5path)) {
+  if (std::filesystem::exists(hdf5path)) {
       hdf5::archive ar(hdf5path.string());
       ar["/"] >> *this;
   }
@@ -228,25 +238,25 @@ void Worker::load_from_file(const boost::filesystem::path& fn,const boost::files
   load_worker(dump);
 }
 
-void Worker::save_to_file(const boost::filesystem::path& fnpath, const boost::filesystem::path& hdf5path) const
+void Worker::save_to_file(const std::filesystem::path& fnpath, const std::filesystem::path& hdf5path) const
 {
-  boost::filesystem::path bakpath=fnpath.parent_path()/(fnpath.filename().string()+".bak");
-  bool backup=boost::filesystem::exists(fnpath);
+  std::filesystem::path bakpath=fnpath.parent_path()/(fnpath.filename().string()+".bak");
+  bool backup=std::filesystem::exists(fnpath);
   
 #ifdef ALPS_HAVE_HDF5
-  boost::filesystem::path hdf5bakpath =  fnpath.parent_path()/(hdf5path.filename().string()+".bak");
-  backup =  backup || boost::filesystem::exists(fnpath);
+  std::filesystem::path hdf5bakpath =  fnpath.parent_path()/(hdf5path.filename().string()+".bak");
+  backup =  backup || std::filesystem::exists(fnpath);
   {
-    boost::filesystem::path p = backup ? hdf5bakpath : hdf5path;
-    if (boost::filesystem::exists(p))
-      boost::filesystem::remove(p);
+    std::filesystem::path p = backup ? hdf5bakpath : hdf5path;
+    if (std::filesystem::exists(p))
+      std::filesystem::remove(p);
     hdf5::archive worker_ar(p.string(), "a");
     worker_ar["/"] << *this;
   } // close file
   if (backup) {
-    if (boost::filesystem::exists(hdf5path))
-      boost::filesystem::remove(hdf5path);
-    boost::filesystem::rename(hdf5bakpath,hdf5path);
+    if (std::filesystem::exists(hdf5path))
+      std::filesystem::remove(hdf5path);
+    std::filesystem::rename(hdf5bakpath,hdf5path);
   }
 #endif
 
@@ -255,9 +265,9 @@ void Worker::save_to_file(const boost::filesystem::path& fnpath, const boost::fi
     save_worker(dump);
   } // close file
   if (backup) {
-    if (boost::filesystem::exists(fnpath))
-      boost::filesystem::remove(fnpath);
-    boost::filesystem::rename(bakpath,fnpath);
+    if (std::filesystem::exists(fnpath))
+      std::filesystem::remove(fnpath);
+    std::filesystem::rename(bakpath,fnpath);
   }
 }
 
@@ -281,13 +291,13 @@ bool Worker::handle_message(const Process& master,int32_t tag) {
     case MCMP_load_run_from_file:
       message.receive(master,MCMP_load_run_from_file);
       message >> name1 >> name2;
-      load_from_file(boost::filesystem::path(name1),boost::filesystem::path(name2));
+      load_from_file(std::filesystem::path(name1),std::filesystem::path(name2));
       break;
           
     case MCMP_save_run_to_file:
       message.receive(master,MCMP_save_run_to_file);
       message >> file_name1 >> file_name2;
-      save_to_file(boost::filesystem::path(file_name1),boost::filesystem::path(file_name2));
+      save_to_file(std::filesystem::path(file_name1),std::filesystem::path(file_name2));
       return true;
 
     case MCMP_get_run_work:
@@ -329,6 +339,7 @@ std::string Worker::work_phase()
 
 void Worker::set_parameters(const alps::Parameters& p)
 {
+  done_=false; // more work may have been asked for, for example a larger SWEEPS
   for (Parameters::const_iterator it = p.begin(); it != p.end(); ++it) {
     if(it->key() != "SEED" && 
       !same_values(simplify_value(parms[it->key()],parms),simplify_value(it->value(),p),1e-6)) {

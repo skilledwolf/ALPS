@@ -21,8 +21,9 @@
 #include <alps/parser/parser.h>
 #include <alps/osiris/mpdump.h>
 
-#include <boost/filesystem/operations.hpp>
-#include <boost/filesystem/fstream.hpp>
+#include <filesystem>
+#include <alps/utilities/fs/absolute.hpp>
+#include <fstream>
 #include <boost/throw_exception.hpp>
 #include <fstream>
 #include <stdexcept>
@@ -32,7 +33,7 @@
 namespace alps {
 namespace scheduler {
 
-WorkerTask::WorkerTask(const ProcessList& w,const boost::filesystem::path& filename)
+WorkerTask::WorkerTask(const ProcessList& w,const std::filesystem::path& filename)
   : Task(w,filename),
     start_time(0),
     start_work(0.)
@@ -79,11 +80,11 @@ void WorkerTask::handle_tag(std::istream& infile, const XMLTag& intag)
     if (tag.attributes["file"]=="")
       boost::throw_exception(std::runtime_error("file attribute missing in <CHECKPOINT> element in task file"));
     if (tag.attributes["format"]=="osiris")
-      files.in=boost::filesystem::absolute(
-      boost::filesystem::path(tag.attributes["file"]),infilename.parent_path());
+      files.in=alps::fs::absolute(
+      std::filesystem::path(tag.attributes["file"]),infilename.parent_path());
     else if (tag.attributes["format"]=="hdf5")
-      files.hdf5in=boost::filesystem::absolute(
-      boost::filesystem::path(tag.attributes["file"]),infilename.parent_path());
+      files.hdf5in=alps::fs::absolute(
+      std::filesystem::path(tag.attributes["file"]),infilename.parent_path());
     else
       boost::throw_exception(std::runtime_error("unknown format in <CHECKPOINT> element in task file"));
     skip_element(infile,tag);
@@ -327,7 +328,7 @@ ResultType WorkerTask::get_summary() const
     // collect results
     for (unsigned int i=0; i<where_master.size(); i++) {
       // receive dump
-      IMPDump receive(MCMP_summary);
+      IMPDump receive(where_master[i],MCMP_summary);
       ResultType s_res;
       receive >> s_res.T >> s_res.mean >> s_res.error >> s_res.count;
       res += s_res;
@@ -338,7 +339,12 @@ ResultType WorkerTask::get_summary() const
 
 double WorkerTask::work_done()  const
 {
-  double w=0.;
+  // Runs whose results exist only once they have finished: the task is done
+  // when every run at work is, so take the minimum instead of the sum. Runs
+  // without a process cannot finish and do not hold the task back.
+  Worker const* local = dynamic_cast<Worker const*>(theWorker);
+  bool const complete_runs = local && local->needs_complete_run();
+  double w = complete_runs ? 1. : 0.;
   ProcessList where_master;
 
   // add runs stored locally
@@ -350,8 +356,10 @@ double WorkerTask::work_done()  const
         //where_master.push_back( Process(dynamic_cast<RemoteWorker&>(*runs[i]).process()));
         where_master.push_back(dynamic_cast<RemoteWorker*>(runs[i])->process());
       }
-      else if(runs[i])
+      else if(runs[i] && !complete_runs)
         w += runs[i]->work_done();
+      else if(runs[i] && workerstatus[i]==LocalRun)
+        w = std::min(w, runs[i]->work_done());
     }
   }
 
@@ -364,8 +372,9 @@ double WorkerTask::work_done()  const
     // collect results
     for (unsigned int i=0;i<where_master.size();i++) {
       // receive dump from remote process, abort if error
-      IMPDump receive(MCMP_run_work);
-      w += double(receive);
+      IMPDump receive(where_master[i],MCMP_run_work);
+      double const run_work = double(receive);
+      w = complete_runs ? std::min(w, run_work) : w + run_work;
     }
   }
   return w;
@@ -379,17 +388,17 @@ double WorkerTask::work() const
          *(1.-work_done());
 }
 
-inline boost::filesystem::path optional_complete(boost::filesystem::path const& p, boost::filesystem::path const& dir)
+inline std::filesystem::path optional_complete(std::filesystem::path const& p, std::filesystem::path const& dir)
 {
   if (dir.empty() || p.empty())
     return p;
   else
-    return boost::filesystem::absolute(p,dir);
+    return alps::fs::absolute(p,dir);
 }
 
 // checkpoint: save into a file
-void WorkerTask::write_xml_body(alps::oxstream& out, const boost::filesystem::path& fn, bool) const {
-  boost::filesystem::path dir=fn.parent_path();
+void WorkerTask::write_xml_body(alps::oxstream& out, const std::filesystem::path& fn, bool) const {
+  std::filesystem::path dir=fn.parent_path();
   for (unsigned int i=0;i<runs.size();++i) {
     if(workerstatus[i] == RunNotExisting) {
       if(runs[i])
@@ -423,9 +432,9 @@ void WorkerTask::write_xml_body(alps::oxstream& out, const boost::filesystem::pa
             found=true;
           j++;
         } while (found);
-        runfiles[i].out = boost::filesystem::path(name);
+        runfiles[i].out = std::filesystem::path(name);
 #ifdef ALPS_HAVE_HDF5
-        runfiles[i].hdf5out = boost::filesystem::path(name+".h5");
+        runfiles[i].hdf5out = std::filesystem::path(name+".h5");
 #endif
       }
       runfiles[i].in=optional_complete(runfiles[i].out,dir);
@@ -433,15 +442,15 @@ void WorkerTask::write_xml_body(alps::oxstream& out, const boost::filesystem::pa
         runs[i]->save_to_file(optional_complete(runfiles[i].out,dir),optional_complete(runfiles[i].hdf5out,dir));
       } else if (workerstatus[i] == RunOnDump) {
         if(optional_complete(runfiles[i].out,dir).string()!=runfiles[i].in.string()) {
-          boost::filesystem::remove(boost::filesystem::absolute(runfiles[i].out,dir));
-          boost::filesystem::copy_file(boost::filesystem::absolute(runfiles[i].in,dir),boost::filesystem::absolute(runfiles[i].out,dir));
+          std::filesystem::remove(alps::fs::absolute(runfiles[i].out,dir));
+          std::filesystem::copy_file(alps::fs::absolute(runfiles[i].in,dir),alps::fs::absolute(runfiles[i].out,dir));
         }
 #ifdef ALPS_HAVE_HDF5
         if(optional_complete(runfiles[i].hdf5out,dir).string()!=runfiles[i].hdf5in.string()) {
-          if (boost::filesystem::exists(optional_complete(runfiles[i].hdf5out,dir)))
-            boost::filesystem::remove(optional_complete(runfiles[i].hdf5out,dir));
-          if (boost::filesystem::exists(optional_complete(runfiles[i].hdf5in,dir)))
-            boost::filesystem::copy_file(optional_complete(runfiles[i].hdf5in,dir),optional_complete(runfiles[i].hdf5out,dir));
+          if (std::filesystem::exists(optional_complete(runfiles[i].hdf5out,dir)))
+            std::filesystem::remove(optional_complete(runfiles[i].hdf5out,dir));
+          if (std::filesystem::exists(optional_complete(runfiles[i].hdf5in,dir)))
+            std::filesystem::copy_file(optional_complete(runfiles[i].hdf5in,dir),optional_complete(runfiles[i].hdf5out,dir));
         }
 #endif
       }
@@ -451,7 +460,7 @@ void WorkerTask::write_xml_body(alps::oxstream& out, const boost::filesystem::pa
       if (!runfiles[i].hdf5out.empty())
         runfiles[i].hdf5in=optional_complete(runfiles[i].hdf5out,dir);
       else
-        runfiles[i].hdf5in=boost::filesystem::path();
+        runfiles[i].hdf5in=std::filesystem::path();
 #endif
     }
   }
@@ -466,7 +475,7 @@ void WorkerTask::write_xml_body(alps::oxstream& out, const boost::filesystem::pa
           << alps::attribute("file",runfiles[i].out.string())
           << alps::end_tag("CHECKPOINT");
 #ifdef ALPS_HAVE_HDF5
-      if (boost::filesystem::exists(runfiles[i].hdf5in)) {
+      if (std::filesystem::exists(runfiles[i].hdf5in)) {
         out << alps::start_tag("CHECKPOINT")
             << alps::attribute("format","hdf5")
             << alps::attribute("file",runfiles[i].hdf5out.string())
@@ -480,7 +489,7 @@ void WorkerTask::write_xml_body(alps::oxstream& out, const boost::filesystem::pa
     OMPDump send;
     send.send(remote_runs, MCMP_get_run_info);
     for (std::size_t i = 0; i < remote_runs.size(); ++i) {
-      IMPDump receive(MCMP_run_info);
+      IMPDump receive(remote_runs[i],MCMP_run_info);
       TaskInfo infos;
       std::string name1, name2;
       receive >> infos >> name1 >> name2;
@@ -491,7 +500,7 @@ void WorkerTask::write_xml_body(alps::oxstream& out, const boost::filesystem::pa
           << alps::attribute("file",name1)
           << alps::end_tag("CHECKPOINT");
 #ifdef ALPS_HAVE_HDF5
-      if (boost::filesystem::exists(name2))
+      if (std::filesystem::exists(name2))
         out << alps::start_tag("CHECKPOINT")
             << alps::attribute("format","hdf5")
             << alps::attribute("file", name2)

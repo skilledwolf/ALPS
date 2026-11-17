@@ -24,9 +24,6 @@ int64_t WRun::make_worm()
     stat[0]+=1.;
     do {
       length++;
-      if(measure_green_function_)
-        measure_green();
-
       // can/should we annihilate the two kinks?
       if(worm_head[0].site()==worm_head[1].site() && random_real()<P_REMOVE) {
         stat[1]+=1.;
@@ -727,6 +724,13 @@ bool WRun::create_worm()
   // shift time t2
   shift_kink(worm_head[1],worm_head[0]);
   subinterval_valid = false;
+
+  // Choose at random which of the two discontinuities becomes the moving
+  // head. annihilate_worm() accepts both time orderings of head and tail,
+  // so creation must produce both orderings as well, otherwise the
+  // creation/annihilation pair does not satisfy detailed balance.
+  if (random_real()<0.5)
+    worm_head[0].swap_with(worm_head[1]);
 
   return true;
 }   // WRun::create_worm

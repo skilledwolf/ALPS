@@ -70,9 +70,6 @@ include(cmake/ALPSCitations.cmake)
 if(NOT DEFINED BUILD_SHARED_LIBS)
   set(BUILD_SHARED_LIBS ON)
 endif()
-option(ALPS_NGS_USE_NEW_ALEA "Use the experimental NGS accumulator implementation" OFF)
-option(ALPS_NGS_OPENMPI_ULFM "Enable user-level failure mitigation with a compatible OpenMPI" OFF)
-mark_as_advanced(ALPS_NGS_USE_NEW_ALEA ALPS_NGS_OPENMPI_ULFM)
 option(ALPS_ENABLE_OPENMP "Enable OpenMP parallelization" OFF)
 option(ALPS_BUILD_EXTENSIVE_TESTS "Build expensive graph and HDF5 type-matrix tests" OFF)
 option(ALPS_ENABLE_SANITIZERS "Instrument ALPS and tests with address/undefined sanitizers" OFF)
@@ -108,14 +105,11 @@ endif()
 string(TIMESTAMP ALPS_YEAR "%Y" UTC)
 
 find_package(Threads REQUIRED)
-set(ALPS_BOOST_COMPONENTS filesystem serialization program_options regex thread date_time chrono)
 if(ALPS_ENABLE_MPI)
   find_package(MPI REQUIRED COMPONENTS CXX)
-  list(APPEND ALPS_BOOST_COMPONENTS mpi)
   set(ALPS_HAVE_MPI 1)
-  set(ALPS_HAVE_BOOST_MPI 1)
 endif()
-find_package(Boost 1.76 CONFIG REQUIRED COMPONENTS ${ALPS_BOOST_COMPONENTS})
+find_package(Boost 1.76 CONFIG REQUIRED)
 
 # FindHDF5 supplies HDF5::HDF5 and preserves the provider's configurations.
 # Keep the manylinux_2_28 system package within the supported source-build range.
@@ -147,6 +141,7 @@ endif()
 # The bundled XDR implementation is portable and preserves the legacy format.
 # Using it consistently avoids incompatible platform RPC typedefs and ABIs.
 configure_file(cmake/config/config.h.in generated/include/alps/config.h)
+configure_file(cmake/config/config.hpp.in generated/include/alps/config.hpp @ONLY)
 configure_file(cmake/config/version.h.in generated/include/alps/version.h)
 
 file(RELATIVE_PATH _alps_bin_to_lib "${CMAKE_INSTALL_FULL_BINDIR}" "${CMAKE_INSTALL_FULL_LIBDIR}")
@@ -187,6 +182,8 @@ endif()
 
 get_property(ALPS_SDK_COMPONENTS GLOBAL PROPERTY ALPS_SDK_COMPONENTS)
 get_property(ALPS_SDK_RUNTIME_TARGETS GLOBAL PROPERTY ALPS_SDK_RUNTIME_TARGETS)
+get_property(ALPS_EIGEN_COMPONENT_NAMES GLOBAL PROPERTY ALPS_EIGEN_COMPONENT_NAMES)
+get_property(ALPS_EIGEN_COMPONENTS GLOBAL PROPERTY ALPS_EIGEN_COMPONENTS)
 configure_package_config_file(
   cmake/ALPSConfig.cmake.in "${PROJECT_BINARY_DIR}/cmake/ALPSConfig.cmake"
   INSTALL_DESTINATION ${CMAKE_INSTALL_DATADIR}/alps
@@ -205,6 +202,9 @@ install(
   DESTINATION ${CMAKE_INSTALL_DATADIR}/alps
   COMPONENT build)
 include(cmake/legacy/ALPSLegacyInterfaces.cmake)
+# Deprecated C++ interfaces. Everything in legacy/ is wired in that one file;
+# deleting the legacy/ directory removes it without further edits.
+include(legacy/ALPSLegacy.cmake OPTIONAL)
 install(
   FILES CHANGELOG.md CITATION.md CONTRIBUTING.md LICENSE.txt README.md
   DESTINATION ${CMAKE_INSTALL_DATADIR}/alps

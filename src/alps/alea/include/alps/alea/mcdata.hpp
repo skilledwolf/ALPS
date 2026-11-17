@@ -23,17 +23,17 @@
 #ifndef ALPS_ALEA_MCDATA_HPP
 #define ALPS_ALEA_MCDATA_HPP
 
-#include <alps/ngs/short_print.hpp>
+#include <alps/utilities/short_print.hpp>
 
 #include <alps/config.h>
 #include <alps/alea/nan.h>
 #include <alps/parser/parser.h>
-#include <alps/utility/resize.hpp>
+#include <alps/utilities/resize.hpp>
 #include <alps/hdf5/vector.hpp>
 #include <alps/utility/set_zero.hpp>
 #include <alps/numeric/functional.hpp>
 #include <alps/alea/simpleobservable.h>
-#include <alps/utility/numeric_cast.hpp>
+#include <alps/numeric/numeric_cast.hpp>
 #include <alps/numeric/outer_product.hpp>
 #include <alps/type_traits/param_type.hpp>
 #include <alps/type_traits/average_type.hpp>
@@ -42,7 +42,7 @@
 #include <alps/type_traits/covariance_type.hpp>
 #include <alps/type_traits/change_value_type.hpp>
 #include <alps/numeric/vector_valarray_conversion.hpp>
-#include <alps/utility/data.hpp>
+#include <alps/utilities/data.hpp>
 
 // #ifdef ALPS_NGS_USE_NEW_ALEA
 //     #include <alps/ngs/alea/wrapper/accumulator_wrapper.hpp>
@@ -54,7 +54,6 @@
 #include <boost/lambda/bind.hpp>
 #include <boost/lambda/lambda.hpp>
 #include <boost/optional/optional.hpp>
-#include <boost/serialization/vector.hpp>
 
 #include <vector>
 #include <numeric>
@@ -257,7 +256,7 @@ namespace alps {
                     std::swap(mean_, rhs.mean_);
                     std::swap(error_, rhs.error_);
                     std::swap(binsize_, rhs.binsize_);
-                    std::swap(rhs.max_bin_number_, rhs.max_bin_number_);
+                    std::swap(max_bin_number_, rhs.max_bin_number_);
                     std::swap(data_is_analyzed_, rhs.data_is_analyzed_);
                     std::swap(jacknife_bins_valid_, rhs.jacknife_bins_valid_);
                     std::swap(cannot_rebin_, rhs.cannot_rebin_);
@@ -883,22 +882,6 @@ namespace alps {
                     data_is_analyzed_ = true;
                 }
 
-                friend class boost::serialization::access;
-                template <typename Archive> void serialize(Archive & ar, const unsigned int version) {
-                    ar & count_;
-                    ar & binsize_;
-                    ar & max_bin_number_;
-                    ar & data_is_analyzed_;
-                    ar & jacknife_bins_valid_;
-                    ar & cannot_rebin_;
-                    ar & mean_;
-                    ar & error_;
-                    ar & variance_opt_;
-                    ar & tau_opt_;
-                    ar & values_;
-                    ar & jack_;
-                }
-
                 mutable uint64_t count_;
                 mutable uint64_t binsize_;
                 mutable uint64_t max_bin_number_;
@@ -1083,10 +1066,6 @@ namespace alps {
                 using alps::numeric::acos;                                                                                                                  \
                 using std::atan;                                                                                                                            \
                 using alps::numeric::atan;                                                                                                                  \
-                using boost::numeric::operators::operator+;                                                                                                 \
-                using boost::numeric::operators::operator-;                                                                                                 \
-                using boost::numeric::operators::operator*;                                                                                                 \
-                using boost::numeric::operators::operator/;                                                                                                 \
                 using alps::numeric::operator+;                                                                                                             \
                 using alps::numeric::operator-;                                                                                                             \
                 using alps::numeric::operator*;                                                                                                             \

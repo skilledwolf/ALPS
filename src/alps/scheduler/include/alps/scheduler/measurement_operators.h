@@ -23,8 +23,8 @@
 #include <alps/parameter.h>
 #include <alps/xml.h>
 #include <alps/config.h>
-#include <alps/utility/encode.hpp>
-#include <alps/utility/numeric_cast.hpp>
+#include <alps/utilities/encode.hpp>
+#include <alps/numeric/numeric_cast.hpp>
 #include <alps/numeric/real.hpp>
 #include <boost/foreach.hpp>
 #include <vector>
@@ -84,7 +84,7 @@ public:
   EigenvectorMeasurements(LatticeModel const&);
   virtual ~EigenvectorMeasurements() {}
 
-  void write_xml_one_vector(oxstream& out, const boost::filesystem::path&, std::size_t j) const;
+  void write_xml_one_vector(oxstream& out, const std::filesystem::path&, std::size_t j) const;
   XMLTag handle_tag(std::istream& infile, const XMLTag& intag);
   
   virtual void save(hdf5::archive &) const;
@@ -164,6 +164,10 @@ void EigenvectorMeasurements<ValueType>::save(alps::hdf5::archive& ar) const
 template <class ValueType>
 void EigenvectorMeasurements<ValueType>::load(alps::hdf5::archive & ar)
 {
+  // save() writes the results only when something was measured, e.g. not
+  // for MEASURE_ENERGY=false without custom measurements
+  if (!ar.is_group(ar.get_context()+"/results"))
+    return;
   std::vector<std::string> list = ar.list_children(ar.get_context()+"/results");
   for (std::vector<std::string>::const_iterator it = list.begin(); it != list.end(); ++it) {
     std::string name = hdf5_name_decode(*it);
@@ -208,7 +212,7 @@ void EigenvectorMeasurements<ValueType>::load(alps::hdf5::archive & ar)
 
 template <class ValueType>
 void EigenvectorMeasurements<ValueType>::write_xml_one_vector(
-    oxstream& out, const boost::filesystem::path&, std::size_t j) const
+    oxstream& out, const std::filesystem::path&, std::size_t j) const
 {
   using alps::numeric::real;
 

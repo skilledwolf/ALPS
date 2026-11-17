@@ -1,8 +1,12 @@
 // SPDX-License-Identifier: MIT
-#include <alps/ngs/params.hpp>
+#include <alps/params.hpp>
 #include <alps/ngs/make_deprecated_parameters.hpp>
+#include <alps/ngs/make_parameters_from_deprecated.hpp>
+#include <alps/ngs/make_parameters_from_file.hpp>
 #include <alps/ngs/make_parameters_from_xml.hpp>
+#include <filesystem>
 #include <fstream>
+#include <map>
 #include <stdexcept>
 
 void require(bool condition) {
@@ -10,32 +14,42 @@ void require(bool condition) {
 }
 
 int main() {
-    const boost::filesystem::path text("legacy-params-contract.parm");
+    const std::filesystem::path text("legacy-params-contract.parm");
     {
         std::ofstream output(text.string());
         output << "// Existing ALPS parameter grammar\n"
                << "LATTICE=\"chain lattice\"; L=10; T=2.25;\n";
     }
-    auto parameters = alps::params(text);
-    require(parameters.size() == 3 && parameters.begin()->first == "LATTICE");
-    require(parameters["LATTICE"].cast<std::string>() == "chain lattice");
-    require(parameters["L"].cast<int>() == 10 && parameters["T"].cast<double>() == 2.25);
-    // File input stores text values; conversion preserves their existing form.
-    require(parameters.find("L")->which() == alps::detail::paramvalue_index<std::string>::value);
+    // File input supplies text; the program's definitions give the types.
+    auto parameters = alps::make_parameters_from_file(text);
+    const std::map<std::string, std::string> supplied = {
+        {"L", "10"}, {"LATTICE", "chain lattice"}, {"T", "2.25"}};
+    require(parameters.supplied_text() == supplied);
+    parameters.define<std::string>("LATTICE", "lattice").define<int>("L", "length");
+    require(parameters.ok() && parameters["LATTICE"].as<std::string>() == "chain lattice");
+    require(parameters["L"].as<int>() == 10);
+    // The bridge passes on supplied text, including parameters not defined.
     auto legacy = alps::make_deprecated_parameters(parameters);
     require(legacy.defined("L") && std::string(legacy["L"]) == "10");
-    require(std::string(legacy["LATTICE"]) == "chain lattice");
+    require(std::string(legacy["LATTICE"]) == "chain lattice" && std::string(legacy["T"]) == "2.25");
+    parameters.define<int>("SITES", 1, "sites");
+    require(!alps::make_deprecated_parameters(parameters).defined("SITES"));
+    // The reverse bridge supplies the text for the program to define.
+    auto typed = alps::make_parameters_from_deprecated(legacy);
+    require(typed.supplied_text() == supplied);
+    typed.define<double>("T", "temperature");
+    require(typed.ok() && typed["T"].as<double>() == 2.25);
     {
         std::ofstream output(text.string());
         output << "L=10; garbage @\n";
     }
     bool caught = false;
-    try { (void)alps::params(text); }
+    try { (void)alps::make_parameters_from_file(text); }
     catch (const std::runtime_error&) { caught = true; }
     require(caught);
-    boost::filesystem::remove(text);
+    std::filesystem::remove(text);
 
-    const boost::filesystem::path xml("legacy-params-contract.xml");
+    const std::filesystem::path xml("legacy-params-contract.xml");
     for (bool explicit_seed : {false, true}) {
         {
             std::ofstream output(xml.string());
@@ -44,9 +58,10 @@ int main() {
             if (explicit_seed) output << "<PARAMETER name=\"SEED\">23</PARAMETER>";
             output << "</PARAMETERS></SIMULATION>\n";
         }
-        const auto from_xml = alps::make_parameters_from_xml(xml);
-        require(from_xml["L"].cast<int>() == 12);
-        require(from_xml["SEED"].cast<int>() == (explicit_seed ? 23 : 0));
+        auto from_xml = alps::make_parameters_from_xml(xml);
+        from_xml.define<int>("L", "length").define<int>("SEED", "seed");
+        require(from_xml.ok() && from_xml["L"].as<int>() == 12);
+        require(from_xml["SEED"].as<int>() == (explicit_seed ? 23 : 0));
     }
-    boost::filesystem::remove(xml);
+    std::filesystem::remove(xml);
 }

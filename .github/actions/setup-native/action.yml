@@ -24,7 +24,7 @@ runs:
   - name: Install macOS libraries
     run: |
       brew install --force-bottle boost eigen googletest hdf5 openblas
-      echo "CMAKE_PREFIX_PATH=$(brew --prefix boost):$(brew --prefix hdf5):$(brew --prefix openblas):$(brew --prefix eigen)" >> "$GITHUB_ENV"
+      echo "CMAKE_PREFIX_PATH=$(brew --prefix boost):$(brew --prefix eigen):$(brew --prefix hdf5):$(brew --prefix openblas)" >> "$GITHUB_ENV"
     shell: bash
     if: runner.os == 'macOS'
   - name: Install build tools

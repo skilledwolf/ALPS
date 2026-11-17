@@ -29,14 +29,12 @@
 #include <alps/hdf5.hpp>
 #include <alps/alea/observable.h>
 #include <alps/alea/observablefactory.h>
-#include <alps/osiris/archivedump.h>
 #include <alps/parser/parser.h>
 #include <alps/xml.h>
 #include <alps/alea.h>
 
 #include <boost/functional.hpp>
-#include <boost/filesystem/path.hpp>
-#include <boost/serialization/split_member.hpp>
+#include <filesystem>
 #include <map>
 
 namespace alps {
@@ -183,22 +181,6 @@ class ALPS_DECL ObservableSet: public std::map<std::string,Observable*>
 virtual void save(hdf5::archive &) const;
 virtual void load(hdf5::archive &);
 
-  BOOST_SERIALIZATION_SPLIT_MEMBER()
-
-  /// support for Boost serialization
-  template<class Archive>
-  void save(Archive& ar, const unsigned int) const {
-    archive_odump<Archive> dump(ar);
-    save(dump);
-  }
-
-  /// support for Boost serialization
-  template<class Archive>
-  void load(Archive& ar, const unsigned int) {
-    archive_idump<Archive> dump(ar);
-    load(dump);
-  }
-
   // sign support
   void update_signs();
   void set_sign(const std::string&);
@@ -206,14 +188,14 @@ virtual void load(hdf5::archive &);
   /// compact the observables to save space, discarding e.g. time series information
   void compact() {} // deprecated
 
-  void write_xml(oxstream& oxs, const boost::filesystem::path& =boost::filesystem::path()) const;
+  void write_xml(oxstream& oxs, const std::filesystem::path& =std::filesystem::path()) const;
   void write_xml_with_id(oxstream& oxs, int id,
-    const boost::filesystem::path& = boost::filesystem::path()) const;
+    const std::filesystem::path& = std::filesystem::path()) const;
 
   void read_xml(std::istream& infile, const XMLTag& tag);
 
-  void write_hdf5(boost::filesystem::path const &, std::size_t realization=0, std::size_t clone=0) const;
-  void read_hdf5(boost::filesystem::path const &, std::size_t realization=0, std::size_t clone=0);
+  void write_hdf5(std::filesystem::path const &, std::size_t realization=0, std::size_t clone=0) const;
+  void read_hdf5(std::filesystem::path const &, std::size_t realization=0, std::size_t clone=0);
 
   void clear();
 

@@ -21,7 +21,8 @@
 #include <alps/parser/xslt_path.h>
 #include <alps/osiris/mpdump.h>
 #include <alps/alea/detailedbinning.h>
-#include <boost/filesystem/fstream.hpp>
+#include <filesystem>
+#include <fstream>
 
 namespace alps {
 namespace scheduler {
@@ -104,7 +105,7 @@ ObservableSet MCSimulation::get_measurements(bool compactit) const
     // collect results
     for (unsigned int i=0;i<where_master.size();i++) {
       // receive dump from remote process, abort if error
-      IMPDump receive(MCMP_measurements);
+      IMPDump receive(where_master[i],MCMP_measurements);
       ObservableSet m;
       receive >> m;
       accumulate_measurements(all_measurements, m);
@@ -148,7 +149,7 @@ ObservableSet MCSimulation::get_and_remove_observable(const std::string& obsname
     // collect results
     for (unsigned int i=0;i<where_master.size();i++) {
       // receive dump from remote process, abort if error
-      IMPDump receive(MCMP_observable);
+      IMPDump receive(where_master[i],MCMP_observable);
       ObservableSet m;
       receive >> m;
       obs_set << m;
@@ -172,7 +173,7 @@ std::string MCSimulation::worker_tag() const
 }
 
 
-void MCSimulation::write_xml_body(oxstream& out, boost::filesystem::path const& fn, bool writeall) const {
+void MCSimulation::write_xml_body(oxstream& out, std::filesystem::path const& fn, bool writeall) const {
   if (writeall) {
     ObservableSet set = get_measurements(false);
     set.write_xml(out); // write non-compacted measurements
@@ -260,10 +261,10 @@ bool MCRun::is_thermalized() const
 }
 
 
-void MCRun::write_xml(const boost::filesystem::path& name) const
+void MCRun::write_xml(const std::filesystem::path& name) const
 {
   oxstream xml(name.parent_path()/(name.filename().string()+".xml"));
-  boost::filesystem::path fn_hdf5(name.parent_path()/(name.filename().string()+".hdf"));
+  std::filesystem::path fn_hdf5(name.parent_path()/(name.filename().string()+".hdf"));
 
   xml << header("UTF-8") << stylesheet(xslt_path("ALPS.xsl"));
   xml << start_tag("SIMULATION") << xml_namespace("xsi","http://www.w3.org/2001/XMLSchema-instance")
@@ -405,7 +406,7 @@ void MCSimulation::save(hdf5::archive & ar) const {
             OMPDump send;
             send.send(remote_runs, MCMP_get_measurements_and_infos);
             for (unsigned int i = 0; i < remote_runs.size(); ++i) {
-                IMPDump receive(MCMP_measurements_and_infos);
+                IMPDump receive(remote_runs[i],MCMP_measurements_and_infos);
                 ObservableSet measurements;
                 receive >> measurements;
                 all_measurements.push_back(make_pair(1, measurements));

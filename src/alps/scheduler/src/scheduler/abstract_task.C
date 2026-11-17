@@ -24,14 +24,21 @@ namespace alps {
 namespace scheduler {
 
 AbstractTask::AbstractTask(const ProcessList& w)
- : where(w)
+ : theWorker(0), where(w)
 { 
   use_error_limit=false;
 }
 
 AbstractTask::AbstractTask()
+ : theWorker(0)
 {
   use_error_limit=false;
+}
+
+bool AbstractTask::idle() const
+{
+  Worker const* worker = dynamic_cast<Worker const*>(theWorker);
+  return worker && worker->idle();
 }
 
 AbstractTask::~AbstractTask()
@@ -112,7 +119,7 @@ bool AbstractTask::handle_message(const Process& master,int tag)
     case MCMP_checkpoint:
       message.receive(master,MCMP_checkpoint);
       message >> filename >> flag;
-      checkpoint(boost::filesystem::path(filename),flag);
+      checkpoint(std::filesystem::path(filename),flag);
       return true;
 
     default:
