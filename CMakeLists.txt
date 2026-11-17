@@ -126,15 +126,17 @@ endif()
 include(cmake/ALPSNumerics.cmake)
 
 # The classic DMRG component (ALPS::classic_dmrg) uses Eigen privately; the
-# installed SDK and its consumers do not need Eigen.
-option(ALPS_ENABLE_CLASSIC_DMRG "Build the classic DMRG solver component (requires Eigen 3.3 or newer)" ON)
+# installed SDK and its consumers do not need Eigen. As for the other Eigen
+# components (src/alps/CMakeLists.txt), a missing Eigen skips it rather than
+# failing the configure.
+option(ALPS_ENABLE_CLASSIC_DMRG "Build the classic DMRG solver component when Eigen 3.3 or newer is found" ON)
 if(ALPS_ENABLE_CLASSIC_DMRG)
   # Eigen's package version file accepts one major version only; Eigen 3.3+
   # and 5 are both supported, so check the version after finding it.
-  find_package(Eigen3 CONFIG)
+  find_package(Eigen3 CONFIG QUIET)
   if(NOT Eigen3_FOUND OR Eigen3_VERSION VERSION_LESS 3.3)
-    message(FATAL_ERROR "ALPS_ENABLE_CLASSIC_DMRG requires Eigen 3.3 or newer (Eigen3Config.cmake); "
-                        "install Eigen or configure with -DALPS_ENABLE_CLASSIC_DMRG=OFF")
+    message(STATUS "Eigen 3.3 or newer not found: ALPS::classic_dmrg is not built")
+    set(ALPS_ENABLE_CLASSIC_DMRG OFF)
   endif()
 endif()
 

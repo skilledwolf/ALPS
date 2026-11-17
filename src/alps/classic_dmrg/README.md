@@ -3,8 +3,8 @@
 Finite-system, two-site density-matrix renormalization group for models built
 with [`ALPS::models`](../models/README.md): Adrian Feiguin's dmtk engine
 driven by the numeric local terms of a `CompiledOperator` on its
-`PhysicalBasis`. The XML `dmrg` application runs on this component
-([below](#the-dmrg-application)). The engine warms up, sweeps with a
+`PhysicalBasis`. It is separate from the XML `dmrg` application
+([below](#relation-to-the-dmrg-application)). The engine warms up, sweeps with a
 kept-state schedule, targets one or several lowest states of one conserved
 sector and measures compiled operators on them, or evolves the ground state
 in real or imaginary time ([below](#time-evolution)). The component depends on
@@ -330,8 +330,7 @@ iteration. It records a fingerprint of the problem and the options, the
 stage (`warmup`, `sweeps` or `final`), the point where the solve continues
 (`next <sweep> <direction> <iteration>`, direction 0 left to right and 1
 right to left), the number of valid rows and the two random streams. The
-point uses the numbering of `Iteration` and of the `dmrg` application's
-`START_SWEEP`, `START_DIR` and `START_ITER`. A resume is refused, and the
+point uses the numbering of `Iteration`. A resume is refused, and the
 checkpoint is left untouched, in these cases:
 - no checkpoint exists, or its manifest cannot be read;
 - the fingerprint differs: the Hamiltonian, the physical basis, the
@@ -352,9 +351,9 @@ reject the three options.
 
 What it costs: the files are those that every solve writes anyway, but they
 stay until the solve returns: about 10 MB for a 40-site spin chain at 100
-states. Each iteration also rewrites the manifest and appends a row. The
-`dmrg` application on that chain (six sweeps, `MAXSTATES=100`,
-correlations) took 2.81 s instead of 2.70 s on an Apple M-series laptop.
+states. Each iteration also rewrites the manifest and appends a row. A solve
+of that chain (six sweeps, 100 states, correlations) took 2.81 s instead of
+2.70 s on an Apple M-series laptop.
 The files are not synced to the device: a killed process loses nothing,
 but a crash of the machine can.
 
@@ -675,72 +674,14 @@ atomic orbitals at 256 states and six sweeps come within 1.3e-10 of the
 full-CI energy, with the RDMs within 7e-7. In the canonical RHF orbitals,
 which are delocalized, the same chain at 512 states stays 3.6e-4 above it.
 
-## The `dmrg` application
+## Relation to the `dmrg` application
 
-The XML application `dmrg` (`src/apps/dmrg/dmrg`) reads its parameters,
-builds the catalog Hamiltonian and the measured operators with
-`alps::models::CatalogModel` (the importer `ALPS::ed` is checked against,
-`<alps/model/catalog.hpp>`) and solves them with this component; it is built
-only when `ALPS_ENABLE_CLASSIC_DMRG` is on. Parameters and output keep their
-names and layout: `SWEEPS`, `STATES` (2 × `SWEEPS` values) or `MAXSTATES`
-(ramped) or `NUMSTATES` (fixed), `NUM_WARMUP_STATES`, `TRUNCATION_ERROR`,
-`LANCZOS_TOLERANCE`, `NUMBER_EIGENVALUES`, `VERBOSE`, `COMPLEX`,
-`TEMP_DIRECTORY`, `DISORDERSEED`, `SAVE_MPS`, `START_SWEEP`, `START_DIR`,
-`START_ITER` and the `MEASURE_*` definitions, plus the new
-`CHECKPOINT_DIRECTORY`. A charge is
-conserved when `CONSERVED_QUANTUMNUMBERS` names it and `<name>_total` is set;
-names the model lacks are ignored. Compared with the application's former
-copy of the engine:
-
-- `MEASURE_LOCAL` of a bond operator reports the whole operator, where the
-  old code kept only its first term (`Sz Sz`, a third of an isotropic
-  exchange).
-- `MEASURE_CORRELATIONS` averages over all pairs at each distance on
-  periodic lattices, where the old code reported the pairs of site 0
-  divided by the multiplicity; on ladders and other lattices whose pair
-  order differs from the distance order the values are filed under their
-  own labels.
-- Two-site values of excited targets are corrected. Energies are equal or
-  lower, and the iteration count can differ by one.
-- `SAVE_MPS=1` writes the ground state's `MatrixProductState` to `/mps` of
-  the HDF5 result, in the layout of master's
-  [ALPSim/ALPS#216](https://redirect.github.com/ALPSim/ALPS/pull/216), which
-  `pyalps.loadMPS` reads: `length`, `center`, `tensors/<i>/{shape,values}`,
-  `site_type` and the local quantum numbers under `site_basis`. `center` is
-  where the final sweep ended (above), not always `L/2`.
-- Scratch files go to a private directory below `TEMP_DIRECTORY` that is
-  removed afterwards. With `CHECKPOINT_DIRECTORY` (an existing, empty
-  directory, one per task) they stay there until the run completes
-  ([above](#checkpoints-and-resuming)). A run killed in its
-  regular sweeps is resumed by running it again with `START_SWEEP`,
-  `START_DIR` (0 left to right, 1 right to left) and `START_ITER` set to the
-  point that `checkpoint.txt` names on its `next` line. Sweep `SWEEPS + 1`,
-  direction 1, iteration 1 means only the final sweep remains. The resumed
-  run writes the results of an uninterrupted run, bit for bit, including
-  every `Iteration` row; the `dmrg_resume` test kills a run and checks this.
-  A wrong point is rejected with the right one named. The defaults
-  `START_DIR=0` and `START_ITER=1` are the old ones, and they apply to the
-  first resumed sweep only.
-- The old `START_SWEEP` could not resume a run from a new process, which is
-  what it was for, and the old engine's code shows why. In ALPS 3.0.0
-  and on master, `FileList::get_filename` gave every scratch file an
-  `mkstemp` suffix (`alps::temporary_filename`). The suffix lived only in the
-  process's map, so a new process opened new, empty files under other
-  names. Master also removes the files when the task ends.
-  `System::resume` handed `START_DIR` and `START_ITER` to every remaining
-  sweep, so the default `START_DIR=0` skipped every right-to-left half.
-  `read_status` read a field that `write_status` never wrote. Nothing
-  outside `dmrg.h` used these parameters, and no tutorial did.
-- Lattices of fewer than four sites, more than four tracked charges and
-  measurement terms of odd fermion parity are rejected with a message.
-- Energies come out equal or lower than the old code's, which stopped its
-  Lanczos solves on an energy stall: the solves of the final sweep now
-  certify their states ([below](#the-lanczos-stop-rule)). Runs take about as
-  long: on an Apple M-series laptop, a spin-1 chain of 64 sites at
-  `MAXSTATES=300` takes 16.6 s against 15.8 s for the old code (the certified
-  final sweep is the difference), a Hubbard chain of 32 sites at
-  `MAXSTATES=400` 6.1 s against 7.5 s, and the dmrg-06 tutorial at 32 sites
-  with correlations 2.9 s against 3.1 s.
+The XML application `dmrg` (`src/apps/dmrg/dmrg`) keeps its own copy of
+dmtk and does not use this component; it stays close to ALPS 3.0.0. An
+earlier version of this branch ran the application on this component; that
+was dropped when master's dmrg work (n-site terms, its own checkpoints,
+`MEASURE_*` fixes) was merged. The two copies of the engine share the
+namespace `dmtk`, so no binary should link both.
 
 ## The Lanczos stop rule
 
@@ -790,8 +731,7 @@ disorder state, HDF5 output and run recipe are not ported. Written here and
 not taken from alpsx, which fed dmtk from catalog operators: the search for
 a set of fermionic carrier charges, factors in either order, the
 normalization and combination of terms, the dense Hermiticity check and
-the component-wise measurement. The `dmrg` application's own copy of dmtk
-was removed when the application moved onto this component.
+the component-wise measurement.
 
 The molecular solver (`include/alps/dmrg/molecular.hpp`,
 `src/molecular.ipp`, included at the end of `src/classic.cpp`) is ported from
@@ -831,8 +771,8 @@ orbitals with 32 states and two sweeps, by 1e-3 and 1e-2 in the energy).
 The molecular solver adds its measured terms (now only the caller's
 observables) for the final sweep only, instead of rotating them through
 every step. With stored products and a full sweep
-(the molecular solver, and the `dmrg` application with several targets and
-two-site measurements), `final_sweep` builds measurement operators only
+(the molecular solver, and solves with several targets and two-site
+measurements), `final_sweep` builds measurement operators only
 where the closing measurement reads them. It skips the right blocks of its
 right-to-left half and the left block grown at its last step, and it
 removes each left block's file once the next step has read it; `read_block`
@@ -999,11 +939,7 @@ energy in the iterations; and for the rejected inputs; and its kept MPS
 against the CI vector of the same run on every determinant, padded, exact and truncated. `classic_dmrg_multisite` locks the engine's long-range hopping and
 four-site fermion products, which the molecular solver used before it had
 its own operator engine, against an exact diagonalization for 4, 6 and 8
-sites. With the `dmrg` application built, `ctest -L dmrg` also runs
-`dmrg_save_mps`, which reads back the `/mps` of a spin chain and of a
-Hubbard chain with two targets and correlations: shapes, canonical form,
-norm, the charge total of every product state with weight, and the centre.
-The label also covers XML catalog models solved against `ALPS::ed` (wrap
+sites. The `dmrg` label also covers XML catalog models solved against `ALPS::ed` (wrap
 bonds, spin 1, ladders, spinless fermion rings, Hubbard chains, rings and
 ladders, the t-J chain, correlations in both site orders). The SDK consumer
 contract solves the open 6-site chain through the installed component.
